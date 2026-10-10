@@ -57,4 +57,22 @@ describe('bulk assignment', () => {
   it('refuses a rep without ASSIGN', async () => {
     expect((await send([h.repA1.leadId], h.repA1.cookie)).status).toBe(403);
   });
+
+  // A suspended account signs nobody in: a lead handed to one sits where no
+  // colleague at OWN scope sees it and the Allocation queue does not list it.
+  it('refuses to hand leads to a suspended account', async () => {
+    await prisma.user.update({ where: { tenantId: h.tenantId, id: h.repB1.id }, data: { status: 'SUSPENDED' } });
+    try {
+      const res = await post(
+        assign,
+        '/api/v1/leads/assign',
+        { leadIds: [h.repSubTeam.leadId], ownerId: h.repB1.id },
+        h.director.cookie,
+      );
+      expect(res.status, JSON.stringify(res.body)).toBe(404);
+      expect(await ownerOf(h.repSubTeam.leadId)).toBe(h.repSubTeam.id);
+    } finally {
+      await prisma.user.update({ where: { tenantId: h.tenantId, id: h.repB1.id }, data: { status: 'ACTIVE' } });
+    }
+  });
 });

@@ -3,14 +3,16 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Field from '@/components/forms/Field';
+import { DeactivateForm, HandOverStep, problemText, type HandOverChoice } from './HandOver';
 
 /**
- * The two administrator actions the reference shows on each directory row.
+ * The administrator actions on each directory row.
  *
  * Reset password issues a temporary one the administrator reads out once — it
  * is never mailed and never stored in the clear, and there is no endpoint that
  * will hand it back afterwards. Face enrolment opens the supervised enrolment
- * console, which is the only place templates are captured.
+ * console, which is the only place templates are captured. Deactivate and
+ * Remove both ask first where the account's open work goes (`HandOverStep`).
  */
 export default function UserRowActions({
   endpoint,
@@ -19,6 +21,7 @@ export default function UserRowActions({
   employeeId,
   workspaceSlug,
   mayDelete = false,
+  active = true,
 }: {
   endpoint: string;
   userId: string;
@@ -27,6 +30,8 @@ export default function UserRowActions({
   workspaceSlug: string;
   /** Whether the viewer holds `users:DELETE`. The server checks again. */
   mayDelete?: boolean;
+  /** Only an active account offers Deactivate. */
+  active?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -37,8 +42,10 @@ export default function UserRowActions({
   const [temporary, setTemporary] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
   const [typedName, setTypedName] = useState('');
   const [reason, setReason] = useState('');
+  const [handOver, setHandOver] = useState<HandOverChoice>(null);
 
   const mismatch = mode === 'set' && confirmed.length > 0 && chosen !== confirmed;
   const tooShort = mode === 'set' && chosen.length > 0 && chosen.length < 12;
@@ -78,14 +85,16 @@ export default function UserRowActions({
    */
   async function removeAccount(event: React.FormEvent) {
     event.preventDefault();
+    if (!handOver) return;
     setBusy(true);
     setError(null);
     try {
       const query = new URLSearchParams({ userId });
       if (reason.trim()) query.set('reason', reason.trim());
+      if (handOver.handOverTo) query.set('handOverTo', handOver.handOverTo);
+      if (handOver.leadsToQueue) query.set('leadsToQueue', 'true');
       const res = await fetch(`${endpoint}/account-delete?${query}`, { method: 'DELETE' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Could not remove the account.');
+      if (!res.ok) throw new Error(await problemText(res, 'Could not remove the account.'));
       setConfirmingDelete(false);
       setTypedName('');
       setReason('');
@@ -115,6 +124,16 @@ export default function UserRowActions({
           Face enrolment
         </a>
       )}
+      {active && (
+        <button
+          type="button"
+          className="lf-btn lf-btn--secondary lf-btn--sm"
+          disabled={busy}
+          onClick={() => setConfirmingDeactivate((was) => !was)}
+        >
+          Deactivate
+        </button>
+      )}
       {mayDelete && (
         <button
           type="button"
@@ -127,14 +146,25 @@ export default function UserRowActions({
         </button>
       )}
 
+      {confirmingDeactivate && (
+        <DeactivateForm
+          endpoint={endpoint}
+          userId={userId}
+          userName={userName}
+          onClose={() => setConfirmingDeactivate(false)}
+        />
+      )}
+
       {confirmingDelete && (
         <form className="lf-users__reset" onSubmit={removeAccount}>
           <strong>Remove {userName} from this workspace</strong>
           <p style={{ margin: '4px 0 0', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
-            Their sign-in ends immediately and they disappear from every list. Records they own — leads, activities,
-            audit history — are kept and still name them. Their HR record, if they have one, is untouched: end
-            employment through offboarding. To suspend someone temporarily, deactivate the account instead.
+            Their sign-in ends immediately and they disappear from every list. Their open work goes where you choose
+            below; closed leads, activities and audit history are kept and still name them. Their HR record, if they
+            have one, is untouched: end employment through offboarding. To suspend someone temporarily, deactivate the
+            account instead.
           </p>
+          <HandOverStep endpoint={endpoint} userId={userId} onChange={setHandOver} />
           <Field
             label={
               <>
@@ -173,7 +203,7 @@ export default function UserRowActions({
               className="lf-btn lf-btn--sm"
               type="submit"
               style={{ background: 'var(--lf-vermillion)' }}
-              disabled={busy || typedName.trim() !== userName}
+              disabled={busy || typedName.trim() !== userName || !handOver}
             >
               {busy ? 'Removing…' : 'Remove account'}
             </button>

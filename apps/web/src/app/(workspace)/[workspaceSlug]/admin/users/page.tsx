@@ -221,6 +221,7 @@ export default async function UsersPage({
                           employeeId={employee?.id ?? null}
                           workspaceSlug={workspaceSlug}
                           mayDelete={mayDelete}
+                          active={row.status === 'ACTIVE'}
                         />
                       )}
                     </td>

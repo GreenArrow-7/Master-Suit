@@ -7,6 +7,7 @@ import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton'
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 import TemporaryPasswordButton from '@/components/workspace/TemporaryPasswordButton';
 import { accountDetail } from '@/services/identity/accounts';
+import DeactivateAccount from '../HandOver';
 
 export const metadata = { title: 'Account' };
 
@@ -103,13 +104,8 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
             )}
 
             {account.status === 'ACTIVE' ? (
-              <WorkspaceActionButton
-                endpoint={`${endpoint}/account-active`}
-                body={{ userId: account.userId, active: false }}
-                label="Suspend account"
-                variant="danger"
-                promptFor={{ name: 'reason', label: 'Reason', required: false }}
-              />
+              // Asks where the account's open work goes before it acts.
+              <DeactivateAccount endpoint={endpoint} userId={account.userId} userName={account.fullName} />
             ) : (
               <WorkspaceActionButton
                 endpoint={`${endpoint}/account-active`}
@@ -138,7 +134,8 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           </div>
           <p style={{ margin: 0, color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-xs)' }}>
             A password reset signs the account out everywhere and forces the user to set their own before anything else
-            opens. Suspension revokes live sessions immediately rather than waiting for them to expire.
+            opens. Deactivating revokes live sessions immediately rather than waiting for them to expire, and first asks
+            where the account&apos;s open leads, follow-ups and tasks go.
           </p>
         </section>
       )}

@@ -13,10 +13,14 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { DELETE as identityDelete } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/[action]/route';
+import {
+  DELETE as identityDelete,
+  GET as identityGet,
+  POST as identityPost,
+} from '@/app/api/v1/workspaces/[workspaceSlug]/identity/[action]/route';
 import { createSessionToken } from '../helpers/session';
 import { createWorkspaceUser, type Grants, grantPermissions } from '../helpers/fixtures';
-import { del } from '../helpers/request';
+import { del, get, post } from '../helpers/request';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `userdel-${suffix}`;
@@ -50,6 +54,10 @@ async function member(label: string, roleId: string) {
 
 let adminRoleId = '';
 let staffRoleId = '';
+let teamAdminCookie = '';
+let stageId = '';
+let wonStageId = '';
+let taskTypeId = '';
 
 beforeAll(async () => {
   const tenant = await prisma.tenant.create({
@@ -59,11 +67,33 @@ beforeAll(async () => {
 
   // rank 10 matches ADMIN_ROLE_RANK, so these count as administrators for the
   // last-admin guard — the same shape the seed gives Organization Administrator.
+  // leads:ASSIGN is what lets them hand a departing member's work on.
   const orgAdmin = await role('orgadmin', 10, [
     ['users', 'VIEW'],
     ['users', 'MANAGE_USERS'],
     ['users', 'DELETE'],
+    ['leads', 'ASSIGN'],
   ]);
+  // Administers accounts, but assigns leads only inside a team it has none of.
+  const teamAdmin = await prisma.role.create({
+    data: { tenantId, key: `teamadmin-${suffix}`, name: 'teamadmin', rank: 10, defaultScope: 'TEAM' },
+  });
+  await grantPermissions(tenantId, teamAdmin.id, [
+    ['users', 'VIEW'],
+    ['users', 'MANAGE_USERS'],
+  ]);
+  await grantPermissions(tenantId, teamAdmin.id, [['leads', 'ASSIGN']], 'TEAM');
+  stageId = (
+    await prisma.leadStage.create({
+      data: { tenantId, key: `new-${suffix}`, name: 'New', position: 0, isDefault: true },
+    })
+  ).id;
+  wonStageId = (
+    await prisma.leadStage.create({
+      data: { tenantId, key: `won-${suffix}`, name: 'Won', position: 9, category: 'CONVERSION' },
+    })
+  ).id;
+  taskTypeId = (await prisma.taskType.create({ data: { tenantId, key: `call-${suffix}`, name: 'Call' } })).id;
   const managerOnly = await role('manageronly', 10, [
     ['users', 'VIEW'],
     ['users', 'MANAGE_USERS'],
@@ -82,6 +112,7 @@ beforeAll(async () => {
 
   orgAdminCookie = await createSessionToken(tenantId, admin.id);
   managerOnlyCookie = await createSessionToken(tenantId, manager.id);
+  teamAdminCookie = await createSessionToken(tenantId, (await member('teamadmin', teamAdmin.id)).id);
 });
 
 afterAll(async () => {
@@ -186,5 +217,224 @@ describe('USERDEL-001: removing a workspace account', () => {
     expect(still?.deletedAt).toBeNull();
 
     await prisma.tenant.delete({ where: { id: other.id } }).catch(() => {});
+  });
+});
+
+/**
+ * USERDEL-002: deactivating or removing an account hands its open work on.
+ *
+ * Both used to leave the account's open leads, follow-ups and tasks owned by a
+ * SUSPENDED (or removed) user — invisible to colleagues working at OWN scope and
+ * absent from the Allocation queue, because a lead with an owner is not waiting.
+ * Now the server refuses while any is left unless the request names where it
+ * goes: a member, or the allocation queue for the leads.
+ */
+describe('USERDEL-002: open work is handed over, never left with a suspended account', () => {
+  const activeAt = { workspaceSlug: slug, action: 'account-active' };
+  const deactivate = (body: Record<string, unknown>, as = orgAdminCookie) =>
+    post(identityPost, `/api/v1/workspaces/${slug}/identity/account-active`, { active: false, ...body }, as, activeAt);
+
+  /** An agent with 3 open leads, 2 open follow-ups and 1 open task — plus work that is not open and stays. */
+  async function agentWithWork(label: string, opts: { followUps?: number; tasks?: number } = {}) {
+    const agent = await member(label, staffRoleId);
+    const leadIds: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const lead = await prisma.lead.create({
+        data: {
+          tenantId,
+          reference: `${label}-${i}-${suffix}`,
+          fullName: `${label} lead ${i}`,
+          stageId,
+          ownerId: agent.id,
+        },
+      });
+      leadIds.push(lead.id);
+    }
+    // A won lead is history, not work: it keeps its owner.
+    await prisma.lead.create({
+      data: {
+        tenantId,
+        reference: `${label}-won-${suffix}`,
+        fullName: `${label} won`,
+        stageId: wonStageId,
+        ownerId: agent.id,
+      },
+    });
+    const due = new Date(Date.now() + 86_400_000);
+    for (let i = 0; i < (opts.followUps ?? 2); i += 1) {
+      await prisma.followUpTask.create({
+        data: {
+          tenantId,
+          ownerId: agent.id,
+          leadId: leadIds[i],
+          title: `Call back ${i}`,
+          dueAt: due,
+          status: i ? 'RESCHEDULED' : 'OPEN',
+        },
+      });
+    }
+    await prisma.followUpTask.create({
+      data: { tenantId, ownerId: agent.id, title: 'Done already', dueAt: due, status: 'COMPLETED' },
+    });
+    for (let i = 0; i < (opts.tasks ?? 1); i += 1) {
+      await prisma.task.create({
+        data: { tenantId, typeId: taskTypeId, ownerId: agent.id, title: `Send brochure ${i}`, dueAt: due },
+      });
+    }
+    return { agent, leadIds };
+  }
+
+  /** What the account still owns that somebody should be working. */
+  async function openOwnedBy(userId: string) {
+    const open = { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] as ('OPEN' | 'IN_PROGRESS' | 'RESCHEDULED')[] };
+    const [leads, followUps, tasks] = await Promise.all([
+      prisma.lead.count({ where: { tenantId, ownerId: userId, deletedAt: null, stage: { is: { category: 'OPEN' } } } }),
+      prisma.followUpTask.count({ where: { tenantId, ownerId: userId, deletedAt: null, status: open } }),
+      prisma.task.count({ where: { tenantId, ownerId: userId, deletedAt: null, status: open } }),
+    ]);
+    return { leads, followUps, tasks };
+  }
+
+  const statusOf = async (userId: string) =>
+    (
+      await prisma.user.findFirst({
+        where: { tenantId, id: userId },
+        select: { status: true },
+        ...({ __includeDeleted: true } as Record<string, unknown>),
+      })
+    )?.status;
+
+  it('refuses to deactivate an agent who still owns open work, and names it', async () => {
+    const { agent } = await agentWithWork('refused');
+
+    const res = await deactivate({ userId: agent.id });
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(res.body.detail).toContain('3 open leads, 2 follow-ups and 1 task');
+    expect(await statusOf(agent.id)).toBe('ACTIVE');
+
+    // The queue takes leads only; follow-ups and tasks still need a person.
+    const queueOnly = await deactivate({ userId: agent.id, leadsToQueue: true });
+    expect(queueOnly.status, JSON.stringify(queueOnly.body)).toBe(409);
+    expect(await statusOf(agent.id)).toBe('ACTIVE');
+    expect(await openOwnedBy(agent.id)).toEqual({ leads: 3, followUps: 2, tasks: 1 });
+  });
+
+  it('deactivating an agent with 3 open leads, 2 follow-ups and 1 task leaves 0 open records with the SUSPENDED account', async () => {
+    const { agent, leadIds } = await agentWithWork('handed');
+    const receiver = await member('receiver', staffRoleId);
+
+    const res = await deactivate({ userId: agent.id, handOverTo: receiver.id });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await statusOf(agent.id)).toBe('SUSPENDED');
+
+    expect(await openOwnedBy(agent.id)).toEqual({ leads: 0, followUps: 0, tasks: 0 });
+    expect(await openOwnedBy(receiver.id)).toEqual({ leads: 3, followUps: 2, tasks: 1 });
+    // Not open, so not handed over: the won lead and the completed follow-up keep their history.
+    expect(await prisma.lead.count({ where: { tenantId, ownerId: agent.id } })).toBe(1);
+    expect(await prisma.followUpTask.count({ where: { tenantId, ownerId: agent.id } })).toBe(1);
+
+    const history = await prisma.leadAssignmentHistory.findMany({
+      where: { tenantId, leadId: { in: leadIds } },
+      select: { fromOwnerId: true, toOwnerId: true, reason: true },
+    });
+    expect(history).toHaveLength(3);
+    for (const row of history) {
+      expect(row).toEqual({ fromOwnerId: agent.id, toOwnerId: receiver.id, reason: 'OWNER_DEACTIVATED' });
+    }
+    const entry = await prisma.auditLog.findFirst({
+      where: { tenantId, event: 'OWNER_CHANGED', objectType: 'user', recordId: agent.id },
+      select: { actorUserId: true },
+    });
+    expect(entry?.actorUserId).toBe(orgAdminId);
+  });
+
+  it('sends the leads to the allocation queue, unassigned and waiting, and the rest to a member', async () => {
+    const { agent, leadIds } = await agentWithWork('queued');
+    const receiver = await member('queuereceiver', staffRoleId);
+
+    const res = await deactivate({ userId: agent.id, handOverTo: receiver.id, leadsToQueue: true });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+
+    expect(await openOwnedBy(agent.id)).toEqual({ leads: 0, followUps: 0, tasks: 0 });
+    expect(await openOwnedBy(receiver.id)).toEqual({ leads: 0, followUps: 2, tasks: 1 });
+    const leads = await prisma.lead.findMany({ where: { tenantId, id: { in: leadIds } }, select: { ownerId: true } });
+    expect(leads.map((lead) => lead.ownerId)).toEqual([null, null, null]);
+    // The way an unplaced intake lead waits: one open triage episode each.
+    const waiting = await prisma.leadTriageEntry.findMany({
+      where: { tenantId, leadId: { in: leadIds }, status: 'WAITING' },
+      select: { reason: true },
+    });
+    expect(waiting.map((row) => row.reason)).toEqual(['OWNER_DEACTIVATED', 'OWNER_DEACTIVATED', 'OWNER_DEACTIVATED']);
+  });
+
+  it('needs no member when only leads are left and they go to the queue', async () => {
+    const { agent } = await agentWithWork('leadsonly', { followUps: 0, tasks: 0 });
+    const res = await deactivate({ userId: agent.id, leadsToQueue: true });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await openOwnedBy(agent.id)).toEqual({ leads: 0, followUps: 0, tasks: 0 });
+  });
+
+  it('removing an account refuses the same way, and hands over the same way', async () => {
+    const { agent } = await agentWithWork('removedwork');
+    const receiver = await member('removereceiver', staffRoleId);
+
+    const refused = await del(identityDelete, path(agent.id), orgAdminCookie, at.params);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(409);
+    expect(await statusOf(agent.id)).toBe('ACTIVE');
+
+    const res = await del(identityDelete, `${path(agent.id)}&handOverTo=${receiver.id}`, orgAdminCookie, at.params);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await statusOf(agent.id)).toBe('DEACTIVATED');
+    expect(await openOwnedBy(agent.id)).toEqual({ leads: 0, followUps: 0, tasks: 0 });
+    expect(await openOwnedBy(receiver.id)).toEqual({ leads: 3, followUps: 2, tasks: 1 });
+  });
+
+  it('refuses a hand-over to an account that is not active, or to the departing one', async () => {
+    const { agent } = await agentWithWork('badtarget');
+    const parked = await member('parked', staffRoleId);
+    await prisma.user.update({ where: { tenantId, id: parked.id }, data: { status: 'SUSPENDED' } });
+
+    for (const handOverTo of [parked.id, agent.id]) {
+      const res = await deactivate({ userId: agent.id, handOverTo });
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+    }
+    expect(await statusOf(agent.id)).toBe('ACTIVE');
+    expect(await openOwnedBy(agent.id)).toEqual({ leads: 3, followUps: 2, tasks: 1 });
+  });
+
+  it('refuses when the caller’s ASSIGN scope does not reach the agent, and changes nothing', async () => {
+    const { agent } = await agentWithWork('outofreach');
+    const receiver = await member('reachreceiver', staffRoleId);
+
+    const res = await deactivate({ userId: agent.id, handOverTo: receiver.id }, teamAdminCookie);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
+    expect(await statusOf(agent.id)).toBe('ACTIVE');
+    expect(await openOwnedBy(agent.id)).toEqual({ leads: 3, followUps: 2, tasks: 1 });
+  });
+
+  it('gives the dialog the counts and only active members to hand to', async () => {
+    const { agent } = await agentWithWork('counted');
+    const parked = await member('parkedmember', staffRoleId);
+    await prisma.user.update({ where: { tenantId, id: parked.id }, data: { status: 'SUSPENDED' } });
+
+    const res = await get(
+      identityGet,
+      `/api/v1/workspaces/${slug}/identity/account-work?userId=${agent.id}`,
+      orgAdminCookie,
+      { workspaceSlug: slug, action: 'account-work' },
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ leads: 3, followUps: 2, tasks: 1 });
+    const memberIds = (res.body.members as { id: string }[]).map((m) => m.id);
+    expect(memberIds).toContain(orgAdminId);
+    expect(memberIds).not.toContain(agent.id);
+    expect(memberIds).not.toContain(parked.id);
+  });
+
+  it('still deactivates an account with nothing open without asking for a hand-over', async () => {
+    const idle = await member('idle', staffRoleId);
+    const res = await deactivate({ userId: idle.id });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await statusOf(idle.id)).toBe('SUSPENDED');
   });
 });
