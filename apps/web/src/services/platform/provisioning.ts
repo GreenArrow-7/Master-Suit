@@ -39,8 +39,10 @@ const TEAM_ATTENDANCE = at('TEAM', { employee: ['VIEW'], attendance: ['VIEW', 'A
  * roles (`isSystem` false), ranked below the administrator, so the role editor
  * edits, deactivates or deletes them like any other. Only the modules a lead
  * desk works; users, roles, settings and integrations stay with the
- * administrator. Pool allocation (`allocation:APPROVE`) and visit verification
- * do not narrow by scope, so they are the manager's alone.
+ * administrator. Pool allocation (`allocation:APPROVE`) does not narrow by
+ * scope, so it is the manager's alone; so is visit verification, the sign-off
+ * a commission rests on. Visit approval follows the approver's scope
+ * (services/visits/lifecycle.ts), so a team lead decides its team's.
  */
 const STARTER_ROLES = [
   {
@@ -69,7 +71,8 @@ const STARTER_ROLES = [
     name: 'Team Lead',
     rank: 30,
     defaultScope: 'TEAM',
-    description: 'An agent’s work across their team: assigns within it, approves its site visits and early check-outs.',
+    description:
+      'An agent’s work across their team: assigns the team’s leads, approves its site visits and early check-outs.',
     grants: [
       ...at('TEAM', {
         ...AGENT,
@@ -92,7 +95,7 @@ const STARTER_ROLES = [
     name: 'Telecaller',
     rank: 50,
     defaultScope: 'OWN',
-    description: 'An agent’s work with contact details masked and no exports.',
+    description: 'An agent’s work, without the permissions for full contact details or for exporting leads.',
     grants: [
       ...at(
         'OWN',
@@ -106,7 +109,7 @@ const STARTER_ROLES = [
     name: 'Viewer',
     rank: 60,
     defaultScope: 'ORGANIZATION',
-    description: 'Reads the whole lead desk and changes nothing; contact details masked.',
+    description: 'Reads the whole lead desk, without the permission for full contact details.',
     grants: [
       ...at(
         'ORGANIZATION',

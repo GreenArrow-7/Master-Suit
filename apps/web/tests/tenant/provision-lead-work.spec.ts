@@ -18,6 +18,10 @@ import { GET as allocation } from '@/app/api/v1/allocation/route';
 import { GET as projects } from '@/app/api/v1/projects/route';
 import { GET as listings } from '@/app/api/v1/listings/route';
 import { GET as reports } from '@/app/api/v1/reports/route';
+import { GET as visitGet, PATCH as visitChange } from '@/app/api/v1/site-visits/[id]/route';
+import { POST as visitPunch } from '@/app/api/v1/site-visits/[id]/punch/route';
+import { ctxForUser } from '@/lib/auth/session';
+import { leaderQueues } from '@/services/visits/lifecycle';
 import { createWorkspaceUser } from '../helpers/fixtures';
 import { get, patch, post } from '../helpers/request';
 import { createPlatformSessionToken, createSessionToken } from '../helpers/session';
@@ -313,6 +317,36 @@ describe('the Lead Eagle starter roles', () => {
     expect(await names(id)).toEqual(STARTER);
   });
 
+  it('a plan change that keeps Lead Eagle adds no role and brings back none', async () => {
+    const id = await workspace('plan-keep');
+    const le = await prisma.subscriptionPlan.findUniqueOrThrow({ where: { code: planCode } });
+    const both = await prisma.subscriptionPlan.create({
+      data: {
+        code: `prov-lehr-${suffix}`,
+        name: 'Lead Eagle and HR',
+        modules: ['LEAD_EAGLE', 'HRMS'],
+        seatLimit: 10,
+        storageMb: 512,
+        planModules: { create: [{ module: 'LEAD_EAGLE' }, { module: 'HRMS' }] },
+      },
+    });
+    await prisma.moduleEntitlement.create({ data: { tenantId: id, module: 'LEAD_EAGLE', state: 'ACTIVE' } });
+    await withPlatformTx((tx) => provisionLeadWork(tx, id, ['LEAD_EAGLE']));
+    await prisma.role.deleteMany({ where: { tenantId: id, key: 'telecaller' } });
+    const subscription = await prisma.tenantSubscription.create({
+      data: { tenantId: id, planId: le.id, state: 'ACTIVE' },
+    });
+    const res = await patch(
+      editSubscription,
+      `/api/v1/platform/subscriptions/${subscription.id}`,
+      { planCode: both.code },
+      ownerCookie,
+      { subscriptionId: subscription.id },
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await names(id)).toEqual(['Manager', 'Team Lead', 'Agent', 'Viewer']);
+  });
+
   it('switched on again, adds only what is missing and leaves an edited role as the administrator left it', async () => {
     const id = await workspace('again');
     await withPlatformTx((tx) => provisionLeadWork(tx, id, ['LEAD_EAGLE']));
@@ -343,6 +377,101 @@ describe('the Lead Eagle starter roles', () => {
     });
     await withPlatformTx((tx) => provisionLeadWork(tx, id, ['LEAD_EAGLE']));
     expect(await names(id)).toEqual(['manager', 'Team Lead', 'Agent', 'Telecaller', 'Viewer']);
+  });
+
+  /**
+   * Site visits as the starter roles meet them. A decision, a change and a read
+   * reach as far as the role's scope; past it the visit is not found. They used
+   * to load a visit by id alone, so the team lead's TEAM approval and the
+   * agent's OWN edit reached every visit in the workspace.
+   */
+  describe('site visits under the starter roles', () => {
+    const people: Record<string, { id: string; cookie: string }> = {};
+    let clientId = '';
+
+    beforeAll(async () => {
+      const on = async (name: string, tag: string) => {
+        const role = await prisma.role.findFirstOrThrow({ where: { tenantId: wizardMade, name } });
+        const user = await createWorkspaceUser({
+          tenantId: wizardMade,
+          roleId: role.id,
+          email: `visit-${tag}.${suffix}@prov.test`,
+          fullName: `Visit ${tag}`,
+        });
+        return user.id;
+      };
+      const ids = {
+        lead: await on('Team Lead', 'lead'),
+        mine: await on('Agent', 'mine'),
+        other: await on('Agent', 'other'),
+      };
+      // "mine" reports to the team lead; "other" is outside the team.
+      await prisma.user.update({ where: { tenantId: wizardMade, id: ids.mine }, data: { managerId: ids.lead } });
+      for (const [tag, id] of Object.entries(ids)) {
+        people[tag] = { id, cookie: await createSessionToken(wizardMade, id) };
+      }
+      const stage = await prisma.leadStage.findFirstOrThrow({ where: { tenantId: wizardMade, isDefault: true } });
+      const client = await prisma.lead.create({
+        data: { tenantId: wizardMade, reference: `PV-${suffix}`, fullName: 'Visit Client', stageId: stage.id },
+      });
+      clientId = client.id;
+    });
+
+    const visit = (owner: string, status: 'REQUESTED' | 'APPROVED' | 'COMPLETED' = 'REQUESTED') =>
+      prisma.siteVisit.create({
+        data: {
+          tenantId: wizardMade,
+          ownerId: people[owner]!.id,
+          leadId: clientId,
+          kind: 'CLIENT_MEETING',
+          address: 'Marina café',
+          scheduledAt: new Date(Date.now() + 3_600_000),
+          status,
+          ...(status !== 'REQUESTED' && { decidedById: people.lead!.id, decidedAt: new Date() }),
+        },
+      });
+    const change = async (id: string, body: Record<string, unknown>, as: string) =>
+      (await patch(visitChange, `/api/v1/site-visits/${id}`, body, people[as]!.cookie, { id })).status;
+    const statusOf = async (id: string) =>
+      (await prisma.siteVisit.findFirstOrThrow({ where: { tenantId: wizardMade, id } })).status;
+
+    it('a team lead approves its team’s visit; another team’s is not found and stays requested', async () => {
+      const theirs = await visit('other');
+      const ours = await visit('mine');
+      expect(await change(theirs.id, { action: 'transition', status: 'APPROVED' }, 'lead')).toBe(404);
+      expect(await statusOf(theirs.id)).toBe('REQUESTED');
+      expect(await change(ours.id, { action: 'transition', status: 'APPROVED' }, 'lead')).toBe(200);
+      expect(await statusOf(ours.id)).toBe('APPROVED');
+    });
+
+    it('an agent cannot cancel, punch, amend or open a colleague’s visit; its owner still amends it', async () => {
+      const approved = await visit('other', 'APPROVED');
+      const done = await visit('other', 'COMPLETED');
+      const amend = { action: 'amend', reason: 'Wrong outcome recorded', outcome: 'Booked a second viewing' };
+      expect(await change(approved.id, { action: 'transition', status: 'CANCELLED' }, 'mine')).toBe(404);
+      expect(await statusOf(approved.id)).toBe('APPROVED');
+      const punched = await post(
+        visitPunch,
+        `/api/v1/site-visits/${approved.id}/punch`,
+        { direction: 'in', latitude: 25.08, longitude: 55.14 },
+        people.mine!.cookie,
+        { id: approved.id },
+      );
+      expect(punched.status).toBe(404);
+      expect(await change(done.id, amend, 'mine')).toBe(404);
+      const read = await get(visitGet, `/api/v1/site-visits/${done.id}`, people.mine!.cookie, { id: done.id });
+      expect(read.status).toBe(404);
+      expect(await change(done.id, amend, 'other')).toBe(200);
+    });
+
+    it('counts a team lead’s approval queue over its team’s visits, not the workspace’s', async () => {
+      await prisma.siteVisit.deleteMany({ where: { tenantId: wizardMade } });
+      await visit('mine');
+      await visit('other');
+      await visit('other');
+      const queues = await leaderQueues(await ctxForUser(people.lead!.id, wizardMade, 'provision-lead-work'));
+      expect(queues.awaitingApproval).toBe(1);
+    });
   });
 });
 

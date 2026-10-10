@@ -17,11 +17,12 @@
  * salesperson locked out of their own check-in at a client's door will simply
  * stop using the register — which costs more than the fraud it would prevent.
  */
-import { Conflict, Invalid, NotFound } from '@/lib/errors';
+import { Conflict, Invalid } from '@/lib/errors';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { haversineM, insideGeofence } from '@/lib/geo';
 import type { Ctx } from '@/lib/security/rbac';
+import { findVisitInScope } from './lifecycle';
 
 export interface VisitPolicy {
   radiusM: number;
@@ -151,10 +152,7 @@ export async function punch(input: PunchInput) {
   const now = new Date();
 
   return withTx(ctx.tenantId, async (tx) => {
-    const visit = await tx.siteVisit.findFirst({
-      where: { id: input.visitId, tenantId: ctx.tenantId, deletedAt: null },
-    });
-    if (!visit) throw NotFound('Site visit');
+    const visit = await findVisitInScope(ctx, tx, input.visitId, 'EDIT');
 
     // Only the agent on the visit punches for it. A colleague checking somebody
     // in from the office is the exact thing a register is meant to catch.

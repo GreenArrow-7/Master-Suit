@@ -73,7 +73,7 @@ export default async function SiteVisitsPage({
         listing: { select: { id: true, title: true } },
       },
     }),
-    isLeader ? leaderQueues(ctx.tenantId) : null,
+    isLeader ? leaderQueues(ctx) : null,
   ]);
 
   return (

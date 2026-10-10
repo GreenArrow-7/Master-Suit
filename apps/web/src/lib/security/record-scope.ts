@@ -69,13 +69,29 @@ export function eventScopeFilter(actorId: string) {
 export async function assertLeadInScope(ctx: Ctx, leadId: string, db: TxClient | typeof prisma, action: Action) {
   const lead = await db.lead.findFirst({ where: { tenantId: ctx.tenantId, id: leadId, deletedAt: null } });
   if (!lead) throw NotFound('Lead');
+  await assertRecordInScope(ctx, 'leads', lead, db, action, 'Lead');
+  return lead;
+}
+
+/**
+ * `assertRecordVisible` for a record a route loaded by id: out of scope answers
+ * the same 404 as a missing id (`label` names it), never a 403. Inside
+ * `withTx`, pass its `tx`.
+ */
+export async function assertRecordInScope(
+  ctx: Ctx,
+  module: string,
+  record: Parameters<typeof assertRecordVisible>[2],
+  db: TxClient | typeof prisma,
+  action: Action,
+  label: string,
+) {
   try {
-    await assertRecordVisible(ctx, 'leads', lead, db, action);
+    await assertRecordVisible(ctx, module, record, db, action);
   } catch (err) {
-    if (err instanceof AppError && err.status === 403) throw NotFound('Lead');
+    if (err instanceof AppError && err.status === 403) throw NotFound(label);
     throw err;
   }
-  return lead;
 }
 
 /**

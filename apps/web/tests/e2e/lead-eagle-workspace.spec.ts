@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { hashPassword } from '@/lib/auth/password';
 import {
   createWorkspaceViaWizard,
   login,
@@ -111,6 +112,55 @@ test.describe('Lead Eagle, from the platform portal to a lead', () => {
         'Telecaller',
         'Viewer',
       ]);
+    });
+
+    await test.step('an Agent cannot open a colleague’s site visit, on the page or the API', async () => {
+      const tenantId = (await prisma.tenant.findUniqueOrThrow({ where: { slug: eagle.slug }, select: { id: true } }))
+        .id;
+      const admin = await prisma.user.findFirstOrThrow({ where: { tenantId, role: { key: 'company_admin' } } });
+      const visit = await prisma.siteVisit.create({
+        data: {
+          tenantId,
+          ownerId: admin.id,
+          leadId,
+          kind: 'CLIENT_MEETING',
+          address: 'Marina café',
+          scheduledAt: new Date(Date.now() + 3_600_000),
+        },
+        select: { id: true },
+      });
+      const role = await prisma.role.findFirstOrThrow({ where: { tenantId, key: 'agent' } });
+      const email = `agent.eagle.${run}@masterapp.local`;
+      const platformUser = await prisma.platformUser.create({
+        data: {
+          email,
+          normalizedEmail: email,
+          fullName: 'Eagle Agent',
+          status: 'ACTIVE',
+          passwordHash: await hashPassword(eagle.adminPassword),
+          passwordChangedAt: new Date(),
+          emailVerifiedAt: new Date(),
+        },
+      });
+      const user = await prisma.user.create({
+        data: { tenantId, email, fullName: 'Eagle Agent', roleId: role.id, status: 'ACTIVE' },
+      });
+      await prisma.workspaceMembership.create({
+        data: {
+          tenantId,
+          platformUserId: platformUser.id,
+          salesUserId: user.id,
+          status: 'ACTIVE',
+          joinedAt: new Date(),
+        },
+      });
+
+      await logout(page);
+      await login(page, email, eagle.adminPassword);
+      await page.goto(at(`/lead-eagle/site-visits/${visit.id}`));
+      await expect(page.getByText(/couldn.t find that/)).toBeVisible();
+      await expect(page.getByText('Marina café')).toHaveCount(0);
+      expect((await page.request.get(`/api/v1/site-visits/${visit.id}`)).status()).toBe(404);
     });
   });
 });

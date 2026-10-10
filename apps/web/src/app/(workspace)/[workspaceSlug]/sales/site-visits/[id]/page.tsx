@@ -3,6 +3,7 @@ import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
+import { visibilityWhere } from '@/lib/security/visibility';
 import { visitPolicy } from '@/services/visits/punch';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -24,8 +25,9 @@ export default async function SiteVisitPage({ params }: { params: Promise<{ id: 
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['visits', 'VIEW'] });
 
   const [visit, policy] = await Promise.all([
+    // Scoped like the list: a colleague's visit, client and phone included, is not found.
     prisma.siteVisit.findFirst({
-      where: { id, tenantId: ctx.tenantId, deletedAt: null },
+      where: { ...(await visibilityWhere(ctx, 'visits', 'VIEW')), id, deletedAt: null },
       include: {
         project: { select: { id: true, name: true, address: true, latitude: true, longitude: true } },
         listing: { select: { id: true, reference: true, title: true, latitude: true, longitude: true } },

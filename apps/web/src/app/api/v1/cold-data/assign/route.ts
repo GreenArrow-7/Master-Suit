@@ -3,8 +3,13 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
+import { coldDataScope } from '@/services/leads/coldData';
 
-/** Hand a list's unconverted records to one agent, or back to nobody. */
+/**
+ * Hand a list's unconverted records to one agent, or back to nobody: the ones
+ * the caller works (coldDataScope). Without it, an assigner below
+ * organisation-wide lead access moved every agent's records in the list.
+ */
 export const POST = route(
   {
     module: 'leads',
@@ -22,7 +27,7 @@ export const POST = route(
       if (!agent) throw NotFound('User');
     }
     const { count } = await prisma.dataRecord.updateMany({
-      where: { tenantId: ctx.tenantId, batch: body.batch, convertedLeadId: null },
+      where: { ...coldDataScope(ctx), batch: body.batch, convertedLeadId: null },
       data: { ownerId: body.ownerId },
     });
     return { assigned: count };
