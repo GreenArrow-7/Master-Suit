@@ -189,18 +189,22 @@ export async function notifyCrm(ctx: Ctx, notification: CrmNotification): Promis
  * The destination is the lead where there is one. A missed call's useful screen
  * is the record you now have to chase, not the log entry saying you missed it;
  * calls with no lead attached fall back to the call itself.
+ *
+ * The title names the lead, never its number: the bell reaches the lead's owner,
+ * who may see that number masked (leads:VIEW_SENSITIVE_FIELDS), whoever booked
+ * the call. `verb` is the start of it, "Missed call from".
  */
 export async function notifyAboutCall(
   ctx: Ctx,
-  call: { id: string; leadId: string | null; callerId: string | null },
+  call: { id: string; leadId: string | null; callerId: string | null; recipientNumber: string | null },
   event: Extract<CrmEventKey, 'call.scheduled' | 'call.missed' | 'call.completed'>,
-  title: string,
+  verb: string,
   body?: string,
 ): Promise<{ recipients: number }> {
   const lead = call.leadId
     ? await prisma.lead.findFirst({
         where: { tenantId: ctx.tenantId, id: call.leadId },
-        select: { id: true, ownerId: true },
+        select: { id: true, ownerId: true, fullName: true },
       })
     : null;
 
@@ -210,7 +214,7 @@ export async function notifyAboutCall(
     // The dialler hears about their own missed call only when somebody else owns
     // the lead and the two are different people.
     alsoNotify: [call.callerId],
-    title,
+    title: `${verb} ${lead ? lead.fullName : (call.recipientNumber ?? 'an unknown number')}`,
     body,
     objectType: lead ? 'lead' : 'call',
     recordId: lead ? lead.id : call.id,

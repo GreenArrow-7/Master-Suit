@@ -134,9 +134,11 @@ A lead's phone numbers and email need no rule row: they are sensitive fields
 (`LEAD_SENSITIVE_FIELDS`, `src/services/leads/createLead.ts`), shown masked as
 above to a role without `leads:VIEW_SENSITIVE_FIELDS` — on the lists, the lead
 page, the API, the CSV export, calls and the assistant — and such a role cannot
-dial, mail or change them. The address is withheld entirely. Every role that
-could read leads before this was introduced holds the permission; switching it
-off in Roles & permissions is what masks a role.
+dial, mail or change them. A phone keeps only its country code and last two
+digits (a local `0501234567` reads `••••••••67`). The address is withheld
+entirely. Every role that could read leads or calls before this was introduced
+holds the permission, as does the role the HR screen creates for a new
+employee; switching it off in Roles & permissions is what masks a role.
 
 Rules that hold everywhere:
 

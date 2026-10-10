@@ -5,7 +5,7 @@ import { obligationAccess, obligationWhere, scopedNextFollowUp } from '@/service
 import type { EntityType } from '@/lib/nav/entityRoute';
 import { redact } from '../redact';
 import { applyFieldSecurity, loadFieldRules } from '@/lib/security/fieldSecurity';
-import { contactSearch, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
+import { contactSearch, LEAD_SENSITIVE_FIELDS, maskCallNumbers } from '@/services/leads/createLead';
 
 /**
  * The CRM tool layer the assistant model calls.
@@ -723,7 +723,8 @@ export const TOOLS: ToolDef[] = [
       return {
         data: {
           events: events.map((e) => ({ title: e.title, at: fmtDate(e.startAt), where: e.location, type: e.eventType })),
-          scheduledCalls: calls.map((c) => ({ id: c.id, number: c.recipientNumber })),
+          // A call to a lead holds the lead's number, read as its phone reads to this role.
+          scheduledCalls: (await maskCallNumbers(ctx, calls)).map((c) => ({ id: c.id, number: c.recipientNumber })),
         },
         sources: [
           { label: 'Calendar', type: 'calendar' as const },

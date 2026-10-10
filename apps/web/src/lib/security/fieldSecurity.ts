@@ -117,13 +117,17 @@ function mask(value: unknown, strategy: MaskStrategy): string | null {
   switch (strategy) {
     case 'MASK_ALL':
       return '•'.repeat(Math.min(s.length, 9));
-    case 'MASK_PARTIAL':
-      // The first four and the last two, separators as typed: "+971 50 123 4567"
-      // reads "+971 •• ••• ••67" — enough to recognise a number, not to dial it.
-      // The same reach as a listing owner's mask (lib/inventory/listings.ts).
-      return s.length <= 6
-        ? '•'.repeat(s.length)
-        : `${s.slice(0, 4)}${s.slice(4, -2).replace(/[^\s().-]/g, '•')}${s.slice(-2)}`;
+    case 'MASK_PARTIAL': {
+      if (s.length <= 6) return '•'.repeat(s.length);
+      // A phone number keeps its country code (a "+" and at most three digits)
+      // and its last two digits, separators as typed: "+971 50 123 4567" reads
+      // "+971 •• ••• ••67". A local "0501234567" keeps no prefix — there it is
+      // the operator code, and a lead can be found by its whole number, so each
+      // digit left showing is one fewer to guess. Anything else (an IBAN) keeps
+      // the first four and the last two.
+      const head = /^\+?[\d\s().-]+$/.test(s) ? (s.match(/^\+\d{1,3}/)?.[0] ?? '') : s.slice(0, 4);
+      return `${head}${s.slice(head.length, -2).replace(/[^\s().-]/g, '•')}${s.slice(-2)}`;
+    }
     case 'MASK_EMAIL': {
       const [local, domain] = s.split('@');
       if (!domain) return '•'.repeat(s.length);

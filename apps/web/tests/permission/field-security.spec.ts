@@ -38,6 +38,21 @@ vi.mock('next/headers', () => ({
     },
   }),
 }));
+// The dial route's provider: answers as a connected vendor would, without one.
+vi.mock('@/lib/integrations/telephony/resolve', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/integrations/telephony/resolve')>()),
+  resolveTelephony: async () => ({
+    vendor: 'twilio',
+    webhookKey: 'fieldsec',
+    callerNumber: '+97145550000',
+    recordingEnabled: false,
+    consentRequired: false,
+    provider: {
+      capabilities: [],
+      initiateCall: async () => ({ externalCallId: `ext-${Date.now()}`, event: 'CALL_INITIATED' }),
+    },
+  }),
+}));
 
 import { prisma, withPlatformTx } from '@/lib/db';
 import {
@@ -53,6 +68,14 @@ import { GET as readLead, PATCH as patchLead } from '@/app/api/v1/leads/[id]/rou
 import { GET as exportLeads } from '@/app/api/v1/leads/export/route';
 import { POST as addPhone, DELETE as removePhone } from '@/app/api/v1/leads/[id]/phones/route';
 import { GET as listCalls, POST as createCall } from '@/app/api/v1/calls/route';
+import { GET as readCall } from '@/app/api/v1/calls/[id]/route';
+import { POST as dialCall } from '@/app/api/v1/calls/[id]/dial/route';
+import { POST as draftFollowUp, PUT as sendFollowUp } from '@/app/api/v1/calls/[id]/follow-up-email/route';
+import { GET as sellerDay } from '@/app/api/v1/targets/daily/[userId]/route';
+import CallAuditsPage from '@/app/(workspace)/[workspaceSlug]/sales/call-audits/page';
+import { executeTool } from '@/lib/ai/assistant/tools';
+import { coachingCallList } from '@/services/shared/coachingInsights';
+import { runReminderSweep } from '@/services/crm/reminders';
 import LeadsPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/page';
 import LeadDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
 import CallsPage from '@/app/(workspace)/[workspaceSlug]/sales/calls/page';
@@ -303,12 +326,16 @@ describe('masking strategies', () => {
   });
 
   it('MASK_PARTIAL reads a phone number as the country code and the last two digits', () => {
-    // The owner's shape (M2-06): the first four and the last two, the spacing as
+    // The owner's shape (M2-06): the country code and the last two, the spacing as
     // typed — and nothing from the subscriber number before the last two.
-    expect(apply({ phone: '+971 50 123 4567' }, new Map([rule('phone', 'MASK_PARTIAL')])).phone).toBe(
-      '+971 •• ••• ••67',
-    );
-    expect(apply({ phone: '+971501234567' }, new Map([rule('phone', 'MASK_PARTIAL')])).phone).toBe('+971•••••••67');
+    const phone = (value: string) => apply({ phone: value }, new Map([rule('phone', 'MASK_PARTIAL')])).phone;
+    expect(phone('+971 50 123 4567')).toBe('+971 •• ••• ••67');
+    expect(phone('+971501234567')).toBe('+971•••••••67');
+    expect(phone('+1 (555) 123-4567')).toBe('+1 (•••) •••-••67');
+    // A local number keeps no prefix: "0501" would leave four digits to guess,
+    // and a masked role can still find a lead by its whole number.
+    expect(phone('0501234567')).toBe('••••••••67');
+    expect(phone('050 123 4567')).toBe('••• ••• ••67');
   });
 
   it('MASK_PARTIAL does not leak a short value whole', () => {
@@ -416,6 +443,23 @@ describe("a lead's main phone and email follow leads:VIEW_SENSITIVE_FIELDS (M2-0
   let maskedEmail = '';
   let leadId = '';
   let leadName = '';
+  let maskedRoleId = '';
+  let callId = '';
+  // The telecaller as a service sees them: no VIEW_SENSITIVE_FIELDS.
+  const maskedCtx = () =>
+    buildCtx(
+      buildActor({
+        id: userIds.leadmasked!,
+        tenantId,
+        roleId: maskedRoleId,
+        grants: [
+          ['leads', 'VIEW'],
+          ['calls', 'VIEW'],
+          ['events', 'VIEW'],
+        ],
+      }),
+    );
+  const leaks = (value: unknown) => /123 ?4567|1234567/.test(JSON.stringify(value));
 
   const exportCsv = async (cookie: string) => {
     const res = await exportLeads(new Request('http://localhost/api/v1/leads/export', { headers: { cookie } }), {
@@ -440,9 +484,10 @@ describe("a lead's main phone and email follow leads:VIEW_SENSITIVE_FIELDS (M2-0
       ['leads', 'EXPORT'],
       ['calls', 'VIEW'],
       ['calls', 'CREATE'],
+      ['calls', 'EDIT'],
     ] as const;
     // No VIEW_SENSITIVE_FIELDS: the telecaller the switch exists for.
-    await member('leadmasked', grants);
+    maskedRoleId = await member('leadmasked', grants);
     await member('leadopen', [...grants, ['leads', 'VIEW_SENSITIVE_FIELDS']]);
 
     email = `contact.${suffix}@example.com`;
@@ -470,12 +515,16 @@ describe("a lead's main phone and email follow leads:VIEW_SENSITIVE_FIELDS (M2-0
     await prisma.leadPhone.create({
       data: { tenantId, leadId, raw: OTHER, normalized: '+971557654321', label: 'Work', isWhatsapp: true },
     });
-    await prisma.call.create({
-      data: { tenantId, callerId: userIds.leadmasked!, leadId, recipientNumber: PHONE, status: 'COMPLETED' },
-    });
+    callId = (
+      await prisma.call.create({
+        data: { tenantId, callerId: userIds.leadmasked!, leadId, recipientNumber: PHONE, status: 'COMPLETED' },
+      })
+    ).id;
   });
 
   afterAll(async () => {
+    await prisma.notification.deleteMany({ where: { tenantId } });
+    await prisma.communication.deleteMany({ where: { tenantId } });
     await prisma.call.deleteMany({ where: { tenantId } });
     await prisma.leadPhone.deleteMany({ where: { tenantId } });
     await prisma.lead.deleteMany({ where: { tenantId } });
@@ -653,6 +702,140 @@ describe("a lead's main phone and email follow leads:VIEW_SENSITIVE_FIELDS (M2-0
     await prisma.leadPhone.deleteMany({ where: { tenantId, id: added.body.id } });
   });
 
+  it('masks the number a placed call answers with, and on the assistant’s calendar', async () => {
+    // "Call with AI assistance", then "Place call": the provider dials the stored
+    // number; the answers that carry it back read masked.
+    const booked = await post(
+      createCall,
+      '/api/v1/calls',
+      { leadId, recipientNumber: MASKED_PHONE },
+      cookies.leadmasked,
+    );
+    expect(booked.status).toBe(200);
+    try {
+      const dialled = await post(
+        dialCall,
+        `/api/v1/calls/${booked.body.id}/dial`,
+        { agentNumber: '+971500000001' },
+        cookies.leadmasked,
+        { id: booked.body.id },
+      );
+      expect(dialled.status).toBe(200);
+      expect(dialled.body.recipientNumber).toBe(MASKED_PHONE);
+      expect(leaks(dialled.body)).toBe(false);
+      const placed = await prisma.call.findFirstOrThrow({ where: { tenantId, id: booked.body.id } });
+      expect(placed.recipientNumber).toBe(PHONE);
+
+      // Still SCHEDULED for the calendar's purposes: the vendor has not called back.
+      await prisma.call.updateMany({ where: { tenantId, id: booked.body.id }, data: { status: 'SCHEDULED' } });
+      const calendar = await executeTool(maskedCtx(), 'getCalendar', {});
+      expect(JSON.stringify(calendar.data)).toContain(MASKED_PHONE);
+      expect(leaks(calendar)).toBe(false);
+    } finally {
+      await prisma.call.deleteMany({ where: { tenantId, id: booked.body.id } });
+    }
+  });
+
+  it('masks the number on the seller’s own day board, coaching list and call audits', async () => {
+    const day = await get(sellerDay, `/api/v1/targets/daily/${userIds.leadmasked}`, cookies.leadmasked, {
+      userId: userIds.leadmasked!,
+    });
+    expect(day.status).toBe(200);
+    expect(day.body.calls.map((c: { recipientNumber: string }) => c.recipientNumber)).toEqual([MASKED_PHONE]);
+    expect(leaks(day.body)).toBe(false);
+
+    const coaching = await coachingCallList(maskedCtx(), { analysedOnly: false });
+    expect(coaching.map((c) => c.recipientNumber)).toEqual([MASKED_PHONE]);
+
+    await prisma.callAudit.create({
+      data: { tenantId, callId, scorecardId: 'fieldsec', status: 'COMPLETED', overallScore: 7, maxScore: 10 },
+    });
+    cookieJar.value = cookies.leadmasked;
+    const audits = await pageText(CallAuditsPage());
+    expect(audits).toContain(MASKED_PHONE);
+    expect(leaks(audits)).toBe(false);
+  });
+
+  it("masks the lead's number on an inbound call, where it is the one that rang", async () => {
+    const inbound = await prisma.call.create({
+      data: {
+        tenantId,
+        callerId: userIds.leadmasked!,
+        leadId,
+        direction: 'INBOUND',
+        callerNumber: PHONE,
+        recipientNumber: '+97145550000',
+        status: 'COMPLETED',
+      },
+    });
+    const one = await get(readCall, `/api/v1/calls/${inbound.id}`, cookies.leadmasked);
+    expect(one.status).toBe(200);
+    expect(one.body.callerNumber).toBe(MASKED_PHONE);
+    // The other side is the workspace's own line.
+    expect(one.body.recipientNumber).toBe('+97145550000');
+    const list = await get(listCalls, '/api/v1/calls', cookies.leadmasked);
+    expect(list.status).toBe(200);
+    expect(leaks(list.body)).toBe(false);
+    expect((await get(readCall, `/api/v1/calls/${inbound.id}`, cookies.leadopen)).body.callerNumber).toBe(PHONE);
+    await prisma.call.deleteMany({ where: { tenantId, id: inbound.id } });
+  });
+
+  it('drafts and sends the follow-up email without showing a masked address', async () => {
+    const draft = await post(draftFollowUp, `/api/v1/calls/${callId}/follow-up-email`, {}, cookies.leadmasked, {
+      id: callId,
+    });
+    expect(draft.status).toBe(200);
+    expect(draft.body.to).toBe(maskedEmail);
+    const res = await sendFollowUp(
+      new Request(`http://localhost/api/v1/calls/${callId}/follow-up-email`, {
+        method: 'PUT',
+        headers: { cookie: cookies.leadmasked!, 'content-type': 'application/json' },
+        body: JSON.stringify({ subject: 'After our call', body: 'Thank you.' }),
+      }),
+      { params: Promise.resolve({ id: callId }) },
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()).to).toBe(maskedEmail);
+    // The send itself went to the stored address.
+    const sent = await prisma.communication.findFirstOrThrow({
+      where: { tenantId, leadId },
+      select: { toAddress: true },
+    });
+    expect(sent.toAddress).toBe(email);
+
+    const open = await post(draftFollowUp, `/api/v1/calls/${callId}/follow-up-email`, {}, cookies.leadopen, {
+      id: callId,
+    });
+    expect(open.body.to).toBe(email);
+  });
+
+  it('names the lead, never its number, in the bell its owner reads', async () => {
+    await prisma.lead.updateMany({ where: { tenantId, id: leadId }, data: { ownerId: userIds.leadmasked! } });
+    try {
+      // A manager who sees the number books a call on the telecaller's lead,
+      // with a follow-up time the reminder sweep picks up.
+      const booked = await post(createCall, '/api/v1/calls', { leadId, recipientNumber: PHONE }, cookies.leadopen);
+      expect(booked.status).toBe(200);
+      await prisma.call.updateMany({
+        where: { tenantId, id: booked.body.id },
+        data: { followUpAt: new Date(Date.now() + 10 * 60_000) },
+      });
+      await runReminderSweep();
+
+      const bell = await prisma.notification.findMany({
+        where: { tenantId, userId: userIds.leadmasked! },
+        select: { kind: true, title: true, body: true },
+      });
+      expect(bell.map((n) => n.kind).sort()).toEqual(['call.reminder', 'call.scheduled']);
+      expect(bell.find((n) => n.kind === 'call.scheduled')!.title).toBe(`Call scheduled with ${leadName}`);
+      expect(bell.find((n) => n.kind === 'call.reminder')!.title).toBe(`Call follow-up due: ${leadName}`);
+      expect(leaks(bell)).toBe(false);
+      await prisma.call.deleteMany({ where: { tenantId, id: booked.body.id } });
+    } finally {
+      await prisma.lead.updateMany({ where: { tenantId, id: leadId }, data: { ownerId: null } });
+    }
+  });
+
   it('is granted on deploy to every role that can already read leads, at the same scope', async () => {
     const sql = readFileSync(
       path.join(
@@ -670,13 +853,15 @@ describe("a lead's main phone and email follow leads:VIEW_SENSITIVE_FIELDS (M2-0
       prisma.role.create({ data: { tenantId, key: `${key}-${suffix}`, name: key, rank: 60, defaultScope: 'TEAM' } });
     const reader = await role('m-reader');
     const caller = await role('m-caller');
+    const other = await role('m-other');
     await grantPermissions(tenantId, reader.id, [['leads', 'VIEW']], 'TEAM');
-    await grantPermissions(tenantId, caller.id, [['calls', 'VIEW']], 'TEAM');
+    await grantPermissions(tenantId, caller.id, [['calls', 'VIEW']], 'OWN');
+    await grantPermissions(tenantId, other.id, [['tasks', 'VIEW']], 'TEAM');
 
-    // Only this case's two roles: the statement as written, narrowed by one clause.
+    // Only this case's roles: the statements as written, narrowed by one clause.
     const scoped = sql.replaceAll(
       'AND rp."granted"',
-      `AND rp."granted" AND rp."roleId" IN ('${reader.id}', '${caller.id}')`,
+      `AND rp."granted" AND rp."roleId" IN ('${reader.id}', '${caller.id}', '${other.id}')`,
     );
     expect(scoped).not.toBe(sql);
     await withPlatformTx(async (tx) => {
@@ -691,6 +876,8 @@ describe("a lead's main phone and email follow leads:VIEW_SENSITIVE_FIELDS (M2-0
         select: { granted: true, scope: true },
       });
     expect(await sensitive(reader.id)).toEqual({ granted: true, scope: 'TEAM' });
-    expect(await sensitive(caller.id)).toBeNull();
+    // A role reading calls but not leads saw the number on the calls screens.
+    expect(await sensitive(caller.id)).toEqual({ granted: true, scope: 'OWN' });
+    expect(await sensitive(other.id)).toBeNull();
   });
 });

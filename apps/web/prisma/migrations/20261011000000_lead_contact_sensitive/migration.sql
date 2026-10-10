@@ -17,3 +17,15 @@ JOIN "Permission" target ON target."module" = 'leads' AND target."action" = 'VIE
 WHERE source."module" = 'leads' AND source."action" = 'VIEW'
   AND rp."granted" AND rp."scope" <> 'NONE'
 ON CONFLICT ("roleId", "permissionId") DO NOTHING;
+
+-- A role that reads calls but not leads saw a lead's number whole on the calls
+-- screens, where it now reads as the lead's phone does. It keeps seeing it, at
+-- the scope it reads calls at; a role already granted above is left as it is.
+INSERT INTO "RolePermission" ("id", "tenantId", "roleId", "permissionId", "granted", "scope", "updatedAt")
+SELECT gen_random_uuid()::text, rp."tenantId", rp."roleId", target."id", true, rp."scope", NOW()
+FROM "RolePermission" rp
+JOIN "Permission" source ON source."id" = rp."permissionId"
+JOIN "Permission" target ON target."module" = 'leads' AND target."action" = 'VIEW_SENSITIVE_FIELDS'
+WHERE source."module" = 'calls' AND source."action" = 'VIEW'
+  AND rp."granted" AND rp."scope" <> 'NONE'
+ON CONFLICT ("roleId", "permissionId") DO NOTHING;

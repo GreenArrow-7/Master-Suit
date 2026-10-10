@@ -59,16 +59,22 @@ export function contactSearch(ctx: Ctx, rules: Map<string, FieldRule>, q: string
   ];
 }
 
-/** Calls on their way out: one to a lead went to the lead's number, and reads as it. */
-export async function maskCallNumbers<T extends { leadId: string | null; recipientNumber: string | null }>(
-  ctx: Ctx,
-  calls: T[],
-): Promise<T[]> {
+/**
+ * Calls on their way out. A call with a lead holds the lead's number — the one
+ * dialled, or on an inbound call the one that rang in (`callerNumber`) — and it
+ * reads as the lead's phone does. The other side is the workspace's own line.
+ */
+export async function maskCallNumbers<
+  T extends { leadId: string | null; recipientNumber: string | null; direction?: string; callerNumber?: string | null },
+>(ctx: Ctx, calls: T[]): Promise<T[]> {
   if (!calls.some((call) => call.leadId)) return calls;
   const rules = await loadFieldRules(ctx, 'LEAD');
-  return calls.map((call) =>
-    call.leadId ? { ...call, recipientNumber: asLeadPhone(ctx, rules, call.recipientNumber) } : call,
-  );
+  return calls.map((call) => {
+    if (!call.leadId) return call;
+    return call.direction === 'INBOUND'
+      ? { ...call, callerNumber: asLeadPhone(ctx, rules, call.callerNumber ?? null) }
+      : { ...call, recipientNumber: asLeadPhone(ctx, rules, call.recipientNumber) };
+  });
 }
 
 export interface CreateLeadInput {

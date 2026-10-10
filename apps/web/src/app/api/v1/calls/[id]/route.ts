@@ -81,7 +81,6 @@ export const PATCH = route(
      * A PATCH that touches notes on a MISSED call must not re-announce it.
      */
     if (body.status && body.status !== existing.status) {
-      const label = updated.recipientNumber;
       /**
        * Target progress rides the same transition as the notification: the
        * status change is the moment the work becomes countable. Credited to
@@ -111,15 +110,9 @@ export const PATCH = route(
         await recordTargetProgress(ctx, updated.callerId, 'CALLS_CONNECTED');
       }
       if (body.status === 'MISSED') {
-        await notifyAboutCall(ctx, updated, 'call.missed', `Missed call from ${label}`, updated.notes ?? undefined);
+        await notifyAboutCall(ctx, updated, 'call.missed', 'Missed call from', updated.notes ?? undefined);
       } else if (body.status === 'COMPLETED') {
-        await notifyAboutCall(
-          ctx,
-          updated,
-          'call.completed',
-          `Call completed with ${label}`,
-          updated.notes ?? undefined,
-        );
+        await notifyAboutCall(ctx, updated, 'call.completed', 'Call completed with', updated.notes ?? undefined);
       }
     }
 

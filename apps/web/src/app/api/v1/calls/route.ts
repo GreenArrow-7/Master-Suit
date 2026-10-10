@@ -55,12 +55,11 @@ export const POST = route(
 
     // Reaches the lead's owner when somebody else booked the call for them; the
     // actor is filtered out, so scheduling your own call is silent.
-    // The number as this caller may see it, in the answer and in the bell.
-    const [shown] = await maskCallNumbers(ctx, [call]);
-    await notifyAboutCall(ctx, call, 'call.scheduled', `Call scheduled with ${shown.recipientNumber}`);
+    await notifyAboutCall(ctx, call, 'call.scheduled', 'Call scheduled with');
     await touchLead(ctx.tenantId, call.leadId);
 
-    return shown;
+    // The number as this caller may see it.
+    return (await maskCallNumbers(ctx, [call]))[0];
   },
 );
 
