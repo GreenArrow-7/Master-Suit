@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
+import { visibilityWhere } from '@/lib/security/visibility';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -27,10 +28,13 @@ export const POST = route(
     });
     if (!campaign) throw NotFound('Campaign');
 
+    // Only leads the caller may see — the picker searches the lead list — move
+    // either way; an id outside that counts zero, as bulk assign does.
+    const visible = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
     const [added, removed] = await Promise.all([
       body.add.length
         ? prisma.lead.updateMany({
-            where: { tenantId: ctx.tenantId, id: { in: body.add }, deletedAt: null },
+            where: { ...visible, id: { in: body.add }, deletedAt: null },
             data: { campaignId: campaign.id },
           })
         : { count: 0 },
@@ -38,7 +42,7 @@ export const POST = route(
         ? prisma.lead.updateMany({
             // Only detach leads that are actually on THIS campaign; a stale id
             // from another campaign's list must not be yanked off it.
-            where: { tenantId: ctx.tenantId, id: { in: body.remove }, campaignId: campaign.id },
+            where: { ...visible, id: { in: body.remove }, campaignId: campaign.id },
             data: { campaignId: null },
           })
         : { count: 0 },

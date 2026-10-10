@@ -40,9 +40,11 @@ export const PATCH = route(
     withTx(ctx.tenantId, async (tx) => {
       const task = await tx.task.findFirst({ where: { tenantId: ctx.tenantId, id: params.id } });
       if (!task) throw NotFound('Task');
-      // The gate says you may change tasks; which ones is the task lists' rule.
-      // Seeded managers hold `tasks:VIEW` and `ASSIGN`, not `tasks:EDIT`.
+      // A task you may see (the task lists' rule; seeded managers hold
+      // `tasks:VIEW` and `ASSIGN`, not `tasks:EDIT`) whose owner the route's own
+      // `leads:EDIT` reaches: seeing every task is no licence to take one.
       await assertOwnerInScope(ctx, tx, 'tasks', 'VIEW', task.ownerId, 'Task');
+      await assertOwnerInScope(ctx, tx, 'leads', 'EDIT', task.ownerId, 'Task');
 
       // Reassigning to another person needs the same reach creating for them does.
       if (body.ownerId && body.ownerId !== task.ownerId) {

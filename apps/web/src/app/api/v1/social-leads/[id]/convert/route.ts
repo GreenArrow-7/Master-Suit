@@ -115,7 +115,15 @@ export const POST = route(
         where: { id: enquiry.id, tenantId: ctx.tenantId },
         data: { linkedLeadId: duplicate.id, status: 'CONVERTED', convertedAt: new Date() },
       });
-      return { leadId: duplicate.id, reference: duplicate.reference, linkedToExisting: true };
+      // Linked whoever owns it, since the duplicate rules span the workspace;
+      // its id comes back only when the caller may open it (cold data's Make lead).
+      const open = await prisma.lead.findFirst({ where: { ...visible, id: duplicate.id }, select: { id: true } });
+      return {
+        leadId: open ? duplicate.id : null,
+        reference: duplicate.reference,
+        linkedToExisting: true,
+        visible: !!open,
+      };
     }
 
     const stage = body.stageId
