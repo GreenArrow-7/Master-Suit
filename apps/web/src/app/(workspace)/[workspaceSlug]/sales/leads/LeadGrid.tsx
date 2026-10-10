@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
+import { DateTimeInput } from '@/components/forms/DateInput';
 import SalesLink from '@/components/workspace/SalesLink';
 import { columnPriority, type ColumnDef } from '@/lib/grid/columns';
 import RowDetails from '@/components/workspace/RowDetails';
@@ -362,7 +363,7 @@ export default function LeadGrid({
                   </label>
                   <label style={{ fontSize: 'var(--lf-text-2xs)' }}>
                     Due
-                    <input className="lf-input" name="dueAt" type="datetime-local" required />
+                    <DateTimeInput name="dueAt" required aria-label="Due" />
                   </label>
                   <label style={{ fontSize: 'var(--lf-text-2xs)' }}>
                     Priority

@@ -21,6 +21,7 @@ import SalesLink from '@/components/workspace/SalesLink';
 import { obligationAccess } from '@/services/leads/nextFollowUp';
 
 import { can, atLeast } from '@/lib/security/rbac';
+import DateInput from '@/components/forms/DateInput';
 import DailyBoardView from './DailyBoardView';
 import LiveRefresh from './LiveRefresh';
 import { dailyBoard } from '@/services/targets/dailyBoard';
@@ -301,17 +302,16 @@ export default async function LeadershipPage({
             {!custom && period !== 'mtd' && <input type="hidden" name="period" value={period} />}
             <label className="lf-field">
               <span className="lf-eyebrow">From</span>
-              <input
-                type="date"
+              <DateInput
+                key={params.from ?? ''}
                 name="from"
-                defaultValue={params.from ?? ''}
-                className="lf-input"
+                defaultValue={params.from}
                 aria-describedby="lf-range-hint"
               />
             </label>
             <label className="lf-field">
               <span className="lf-eyebrow">To</span>
-              <input type="date" name="to" defaultValue={params.to ?? ''} className="lf-input" />
+              <DateInput key={params.to ?? ''} name="to" defaultValue={params.to} />
             </label>
             <label className="lf-field">
               <span className="lf-eyebrow">Person</span>
