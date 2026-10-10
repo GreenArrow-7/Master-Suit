@@ -48,7 +48,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           createdAt: true,
         },
       },
-      stageHistory: { orderBy: { createdAt: 'desc' }, take: 10 },
+      stageHistory: { orderBy: { createdAt: 'desc' }, take: 50 },
       // The latest only: a manual reassignment after it carries no note, and hides it.
       assignments: { orderBy: { createdAt: 'desc' }, take: 1, select: { note: true } },
       phones: {
@@ -106,6 +106,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     city: lead.city,
     country: lead.country,
     source: lead.source,
+    sourceDetail: lead.sourceDetail,
     consentStatus: lead.consentStatus,
     priority: lead.priority,
     status: lead.status,
@@ -132,6 +133,14 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       occurredAt: a.occurredAt.toISOString(),
       durationSecs: a.durationSecs,
       type: a.type,
+    })),
+    // Stored rows with their stored times; a stage deleted since is named as such, not guessed.
+    stageChanges: lead.stageHistory.map((h) => ({
+      id: h.id,
+      at: h.createdAt.toISOString(),
+      from: h.fromStageId ? (stages.find((s) => s.id === h.fromStageId)?.name ?? 'a removed stage') : null,
+      to: stages.find((s) => s.id === h.toStageId)?.name ?? 'a removed stage',
+      reason: h.reason,
     })),
     tasks: lead.tasks.map((t) => ({
       id: t.id,

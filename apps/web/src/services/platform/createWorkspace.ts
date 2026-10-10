@@ -212,10 +212,19 @@ export async function createWorkspace(
     // and communicated. Say which of the two happened instead of guessing.
     const existingIdentity = await tx.platformUser.findUnique({
       where: { normalizedEmail: adminEmail },
-      select: { id: true, deletedAt: true },
+      select: { id: true, deletedAt: true, status: true },
     });
     if (existingIdentity?.deletedAt) {
       throw Conflict('That email belongs to a deleted account. Restore it or use a different address.');
+    }
+    // Making a workspace must not undo a suspension. The update below sets the
+    // identity ACTIVE (an invited one has now proved its address), and since
+    // self-serve sign-up runs through here, a suspended or deactivated person
+    // could otherwise sign up with their own email and be back in.
+    if (existingIdentity && (existingIdentity.status === 'SUSPENDED' || existingIdentity.status === 'DEACTIVATED')) {
+      throw Conflict(
+        'That email belongs to a suspended or deactivated account. Ask the platform owner to restore it, or use a different address.',
+      );
     }
     const reusedExistingIdentity = Boolean(existingIdentity);
     const platformUser = existingIdentity

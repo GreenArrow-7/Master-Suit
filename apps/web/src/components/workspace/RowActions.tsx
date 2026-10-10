@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import DateInput from '@/components/forms/DateInput';
 
 export interface EditableField {
   name: string;
@@ -36,9 +37,9 @@ export default function RowActions({
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<'idle' | 'editing' | 'confirming'>('idle');
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(fields.map((field) => [field.name, field.value == null ? '' : String(field.value)])),
-  );
+  const savedValues = () =>
+    Object.fromEntries(fields.map((field) => [field.name, field.value == null ? '' : String(field.value)]));
+  const [values, setValues] = useState<Record<string, string>>(savedValues);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,12 +84,22 @@ export default function RowActions({
         {fields.map((field) => (
           <label key={field.name} style={{ display: 'grid', gap: 2, fontSize: 'var(--lf-text-xs)' }}>
             <span style={{ color: 'var(--lf-ink-3)' }}>{field.label}</span>
-            <input
-              className="lf-input"
-              type={field.type ?? 'text'}
-              value={values[field.name] ?? ''}
-              onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))}
-            />
+            {field.type === 'date' ? (
+              // Required: the API refuses a blank date, so say so here rather
+              // than come back with "1 field failed validation".
+              <DateInput
+                required
+                value={values[field.name] ?? ''}
+                onChange={(value) => setValues((current) => ({ ...current, [field.name]: value }))}
+              />
+            ) : (
+              <input
+                className="lf-input"
+                type={field.type ?? 'text'}
+                value={values[field.name] ?? ''}
+                onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))}
+              />
+            )}
           </label>
         ))}
         <div style={{ display: 'flex', gap: 6 }}>
@@ -99,6 +110,7 @@ export default function RowActions({
             className="lf-btn lf-btn--ghost lf-btn--sm"
             type="button"
             onClick={() => {
+              setValues(savedValues());
               setMode('idle');
               setError(null);
             }}

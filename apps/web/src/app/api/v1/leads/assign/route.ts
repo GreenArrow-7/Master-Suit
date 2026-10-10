@@ -2,6 +2,8 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
+import { NotFound } from '@/lib/errors';
+import { visibilityWhere } from '@/lib/security/visibility';
 
 const body = z
   .object({
@@ -17,18 +19,25 @@ export const POST = route(
       where: { id: ownerId, tenantId: ctx.tenantId, deletedAt: null },
       select: { id: true },
     });
-    if (!owner) throw new Error('Target user not found');
+    if (!owner) throw NotFound('User');
+
+    // Only the leads the caller's ASSIGN scope reaches move; an id outside it,
+    // or one that does not exist, simply does not count. Writing history for
+    // every requested id used to reassign across teams and 500 on an unknown id.
+    const scope = await visibilityWhere(ctx, 'leads', 'ASSIGN', { includeUnassigned: true });
+    const inScope = (
+      await prisma.lead.findMany({ where: { ...scope, id: { in: leadIds }, deletedAt: null }, select: { id: true } })
+    ).map((lead) => lead.id);
 
     const now = new Date();
 
     const [updated] = await prisma.$transaction([
       prisma.lead.updateMany({
-        where: { id: { in: leadIds }, tenantId: ctx.tenantId },
+        where: { id: { in: inScope }, tenantId: ctx.tenantId },
         data: { ownerId, assignedAt: now, updatedById: ctx.actor.id },
       }),
-      // record assignment history for each lead
       prisma.leadAssignmentHistory.createMany({
-        data: leadIds.map((leadId) => ({
+        data: inScope.map((leadId) => ({
           tenantId: ctx.tenantId,
           leadId,
           toOwnerId: ownerId,

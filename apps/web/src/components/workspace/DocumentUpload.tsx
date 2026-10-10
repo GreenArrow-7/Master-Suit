@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authFetch } from '@/lib/auth/client';
+import DateInput from '@/components/forms/DateInput';
 
 /**
  * Uploads a scan. Multipart rather than JSON, so it posts to the dedicated
@@ -93,11 +94,11 @@ export default function DocumentUpload({
         </label>
         <label className="lf-field">
           <span className="lf-label">Issued on</span>
-          <input className="lf-input" name="issuedAt" type="date" />
+          <DateInput name="issuedAt" />
         </label>
         <label className="lf-field">
           <span className="lf-label">Expires on</span>
-          <input className="lf-input" name="expiresAt" type="date" />
+          <DateInput name="expiresAt" />
         </label>
         <label className="lf-field">
           <span className="lf-label">File (PDF or image)</span>

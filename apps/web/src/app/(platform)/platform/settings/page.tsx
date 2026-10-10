@@ -4,17 +4,18 @@ import SettingEditor from '@/components/platform/SettingEditor';
 import { env } from '@/lib/env';
 import { getNumericSetting } from '@/lib/platform-settings';
 import { requirePlatformPage } from '@/lib/platform-page';
+import { signupOffer } from '@/services/platform/signup';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * Two kinds of rows, visibly different on purpose.
  *
- * Operator settings — session lifetime, idle timeout, the lockout thresholds
- * and the upload limit — are editable here and take effect immediately: they
- * live in the database and override the environment default. All five are read
- * at the point of use rather than captured at boot, which is what makes editing
- * them at runtime honest.
+ * Operator settings — session lifetime, idle timeout, the lockout thresholds,
+ * the upload limit and self-serve sign-up — are editable here and take effect
+ * immediately: they live in the database and override the environment default.
+ * All six are read at the point of use rather than captured at boot, which is
+ * what makes editing them at runtime honest.
  * Deployment configuration (URLs, providers, proxies) is shown read-only from
  * the environment the server actually booted with: editing those at runtime
  * would produce a page that disagrees with the running process, which is worse
@@ -22,12 +23,14 @@ export const dynamic = 'force-dynamic';
  */
 export default async function PlatformSettingsPage() {
   await requirePlatformPage();
-  const [uploadMaxMb, sessionTtl, idleTimeout, maxFailedLogins, lockoutMinutes] = await Promise.all([
+  const [uploadMaxMb, sessionTtl, idleTimeout, maxFailedLogins, lockoutMinutes, trialDays, offer] = await Promise.all([
     getNumericSetting('uploadMaxMb'),
     getNumericSetting('sessionTtlMinutes'),
     getNumericSetting('sessionIdleTimeoutMinutes'),
     getNumericSetting('maxFailedLogins'),
     getNumericSetting('lockoutMinutes'),
+    getNumericSetting('signupTrialDays'),
+    signupOffer(),
   ]);
 
   const readOnlyRows: [string, string, string][] = [
@@ -107,6 +110,22 @@ export default async function PlatformSettingsPage() {
                 hint="Whole number of megabytes, 1–500. Applies to every workspace immediately."
               />,
               'All workspaces',
+            ],
+            [
+              'Self-serve sign-up (trial days)',
+              <SettingEditor
+                key="signupTrialDays"
+                settingKey="signupTrialDays"
+                value={`${trialDays}`}
+                hint="0 keeps /signup closed; 1–90 opens it, with a free trial that many days long."
+              />,
+              // Whether it is actually open: a trial length alone is not enough
+              // without an active plan that includes Lead Eagle.
+              offer
+                ? `Open at /signup, on the ${offer.plan.name} plan`
+                : trialDays
+                  ? 'Closed: no active plan includes Lead Eagle'
+                  : 'Closed',
             ],
           ]}
         />

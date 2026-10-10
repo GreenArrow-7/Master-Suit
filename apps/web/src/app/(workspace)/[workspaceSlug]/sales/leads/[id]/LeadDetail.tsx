@@ -82,6 +82,8 @@ interface LeadData {
   city: string | null;
   country: string | null;
   source: string;
+  /** Where exactly it came from, when known: a portal, a campaign. */
+  sourceDetail: string | null;
   consentStatus: string;
   priority: string;
   slaState: string;
@@ -102,6 +104,7 @@ interface LeadData {
   assignedWhy: string | null;
   owner: { fullName: string; email: string } | null;
   activities: Activity[];
+  stageChanges: { id: string; at: string; from: string | null; to: string; reason: string | null }[];
   tasks: TaskItem[];
   documents: Doc[];
 }
@@ -285,8 +288,8 @@ export default function LeadDetail({
               <button key={t} className="lf-tab" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
                 {t}
                 {t === 'Tasks' && lead.tasks.length > 0 && <span className="lf-tab__count">{lead.tasks.length}</span>}
-                {t === 'Timeline' && lead.activities.length > 0 && (
-                  <span className="lf-tab__count">{lead.activities.length}</span>
+                {t === 'Timeline' && lead.activities.length + lead.stageChanges.length > 0 && (
+                  <span className="lf-tab__count">{lead.activities.length + lead.stageChanges.length}</span>
                 )}
               </button>
             ))}
@@ -621,7 +624,7 @@ function OverviewTab({
     ['City', lead.city ?? '—', 'city'],
     ['Country', lead.country ?? '—', 'country'],
     ['Industry', lead.industry ?? '—', null],
-    ['Source', lead.source.replace(/_/g, ' ').toLowerCase(), null],
+    ['Source', [lead.source.replace(/_/g, ' ').toLowerCase(), lead.sourceDetail].filter(Boolean).join(' · '), null],
     ['Consent', lead.consentStatus.toLowerCase(), null],
     ['Created', fmtDate(lead.createdAt), null],
   ];
@@ -812,6 +815,28 @@ function TimelineTab({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Activities and stage changes, one timeline, newest first (ISO instants sort as text).
+  const entries = [
+    ...lead.activities.map((a) => ({
+      key: a.id,
+      at: a.occurredAt,
+      title: a.type.name,
+      kind: a.type.key.startsWith('call') ? 'call' : 'default',
+      outcome: a.outcome,
+      notes: a.notes,
+      durationSecs: a.durationSecs,
+    })),
+    ...lead.stageChanges.map((h) => ({
+      key: `stage-${h.id}`,
+      at: h.at,
+      title: h.from ? `Stage: ${h.from} → ${h.to}` : `Stage: ${h.to}`,
+      kind: 'default',
+      outcome: h.reason,
+      notes: null,
+      durationSecs: null,
+    })),
+  ].sort((x, y) => y.at.localeCompare(x.at));
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.typeId) return;
@@ -924,35 +949,31 @@ function TimelineTab({
         </form>
       )}
 
-      {lead.activities.length === 0 ? (
+      {entries.length === 0 ? (
         <p style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)', margin: 0 }}>
           Nothing recorded yet. Log a call or send an email to start the timeline.
         </p>
       ) : (
         <div className="lf-timeline">
-          {lead.activities.map((a) => (
-            <div
-              key={a.id}
-              className="lf-timeline__item"
-              data-kind={a.type.key.startsWith('call') ? 'call' : 'default'}
-            >
+          {entries.map((e) => (
+            <div key={e.key} className="lf-timeline__item" data-kind={e.kind}>
               <span className="lf-timeline__dot" aria-hidden="true" />
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--lf-space-3)' }}>
                 <strong style={{ fontSize: 'var(--lf-text-sm)', fontFamily: 'var(--lf-font-ui)', fontWeight: 600 }}>
-                  {a.type.name}
+                  {e.title}
                 </strong>
-                <span className="lf-timeline__time">{fmtDateTime(a.occurredAt)}</span>
-                {a.durationSecs != null && (
+                <span className="lf-timeline__time">{fmtDateTime(e.at)}</span>
+                {e.durationSecs != null && (
                   <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
-                    {Math.round(a.durationSecs / 60)}m
+                    {Math.round(e.durationSecs / 60)}m
                   </span>
                 )}
               </div>
-              {a.outcome && (
-                <div style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)', marginTop: 2 }}>{a.outcome}</div>
+              {e.outcome && (
+                <div style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)', marginTop: 2 }}>{e.outcome}</div>
               )}
-              {a.notes && (
-                <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)', marginTop: 2 }}>{a.notes}</div>
+              {e.notes && (
+                <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)', marginTop: 2 }}>{e.notes}</div>
               )}
             </div>
           ))}

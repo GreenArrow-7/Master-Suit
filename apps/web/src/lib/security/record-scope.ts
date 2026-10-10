@@ -61,12 +61,13 @@ export function eventScopeFilter(actorId: string) {
  * `leadId` was otherwise the whole check — an agent at OWN scope could put a
  * call, visit or sale on any lead in the workspace and read its name back on
  * their own screens. Not found either way. Inside `withTx`, pass its `tx`.
+ * Returns the row for callers that go on to edit it: the lead's own by-id
+ * writes (PATCH, DELETE, close-out, phones, temperature) load through here
+ * too, so an out-of-scope id answers the same 404 as GET instead of a 403
+ * that confirmed the lead exists.
  */
 export async function assertLeadInScope(ctx: Ctx, leadId: string, db: TxClient | typeof prisma, action: Action) {
-  const lead = await db.lead.findFirst({
-    where: { tenantId: ctx.tenantId, id: leadId, deletedAt: null },
-    select: { tenantId: true, ownerId: true },
-  });
+  const lead = await db.lead.findFirst({ where: { tenantId: ctx.tenantId, id: leadId, deletedAt: null } });
   if (!lead) throw NotFound('Lead');
   try {
     await assertRecordVisible(ctx, 'leads', lead, db, action);
@@ -74,6 +75,7 @@ export async function assertLeadInScope(ctx: Ctx, leadId: string, db: TxClient |
     if (err instanceof AppError && err.status === 403) throw NotFound('Lead');
     throw err;
   }
+  return lead;
 }
 
 /**

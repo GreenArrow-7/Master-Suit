@@ -12,10 +12,11 @@ android {
         applicationId "com.youhan.one1"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // 9. A versionCode cannot be reused, and 8 has already been built as a
-        // com.youhan.one bundle — so one code keeps meaning exactly one
-        // artefact. Same versionName: only the package name changed.
-        versionCode 9
+        // A versionCode cannot be reused, and one code means exactly one
+        // artefact: 8 was the last com.youhan.one bundle, 9 the first
+        // com.youhan.one1 one, 10 its closed-testing build (10 Oct). The shell
+        // is unchanged since 9, so the versionName stays.
+        versionCode 10
         versionName "1.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {

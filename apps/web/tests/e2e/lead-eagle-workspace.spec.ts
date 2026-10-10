@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { Prisma } from '@prisma/client';
+import { prisma } from '@/lib/db';
 import {
   createWorkspaceViaWizard,
   login,
@@ -54,6 +56,37 @@ test.describe('Lead Eagle, from the platform portal to a lead', () => {
       leadId = (await res.json()).id;
       await page.goto(at(`/lead-eagle/leads/${leadId}`));
       await expect(page.getByText(`Eagle Lead ${run}`).first()).toBeVisible();
+    });
+
+    await test.step('a requirement with live stock offers no shortlist: proposals are not part of it', async () => {
+      const tenantId = (await prisma.tenant.findUniqueOrThrow({ where: { slug: eagle.slug }, select: { id: true } }))
+        .id;
+      const listing = await prisma.listing.create({
+        data: {
+          tenantId,
+          reference: `LS-${run}`,
+          title: 'Marina two bed',
+          listingType: 'SALE',
+          status: 'ACTIVE',
+          price: new Prisma.Decimal(1_800_000),
+        },
+        select: { id: true },
+      });
+      const res = await page.request.post('/api/v1/requirements', { data: { leadId, purpose: 'BUY' } });
+      expect(res.status(), await res.text()).toBeLessThan(300);
+      const requirementId = (await res.json()).id as string;
+
+      await page.goto(at(`/lead-eagle/requirements/${requirementId}`));
+      // The match renders, so the role and matches gates are open; only the entitlement withholds the button.
+      await expect(page.getByRole('link', { name: 'Marina two bed' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Send a shortlist' })).toHaveCount(0);
+      await expect(page.getByTestId('shortlist-unavailable')).toContainText('not enabled');
+
+      // The API is the authority; the note only mirrors it.
+      const refused = await page.request.post('/api/v1/proposals', {
+        data: { requirementId, leadId, title: 'A few places', listingIds: [listing.id] },
+      });
+      expect(refused.status()).toBe(403);
     });
 
     await test.step('a /sales/ link lands on the same screen under Lead Eagle', async () => {
