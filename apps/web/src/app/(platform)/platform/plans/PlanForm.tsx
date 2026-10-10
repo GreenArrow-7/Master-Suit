@@ -11,9 +11,13 @@ export default function PlanForm() {
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // Held before the await: React clears event.currentTarget once the handler
+    // yields, and reading it afterwards threw — so a plan that had just been
+    // created was reported as "The server could not be reached."
+    const formElement = event.currentTarget;
     setBusy(true);
     setError(null);
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     const values = Object.fromEntries(form.entries());
     try {
       const response = await fetch('/api/v1/platform/plans', {
@@ -54,7 +58,7 @@ export default function PlanForm() {
         setError(data.detail ?? 'The plan could not be created.');
         return;
       }
-      event.currentTarget.reset();
+      formElement.reset();
       router.refresh();
     } catch {
       setError('The server could not be reached.');
