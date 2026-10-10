@@ -1,4 +1,6 @@
 import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 // The reports screen reads its session the way Next serves it.
@@ -13,7 +15,7 @@ vi.mock('next/headers', () => ({
   }),
 }));
 
-import { prisma } from '@/lib/db';
+import { prisma, withPlatformTx } from '@/lib/db';
 import { runReport } from '@/services/leadership/reports';
 import { GET as reportRoute } from '@/app/api/v1/reports/route';
 import ReportsPage from '@/app/(workspace)/[workspaceSlug]/sales/reports/page';
@@ -177,5 +179,46 @@ describe('report CSV export', () => {
       recordId: 'follow-up-adherence',
       metadata: { report: 'follow-up-adherence', from, to, rows: expect.any(Number) },
     });
+  });
+});
+
+/**
+ * The grant that keeps today's report viewers able to download, run as written
+ * with one condition added: only this spec's workspace.
+ */
+describe('the migration 20261011000000_reports_export_grant', () => {
+  it('gives every role that views reports EXPORT at the same scope, and nothing to anyone else', async () => {
+    const role = async (key: string, grants: [string, 'VIEW' | 'EXPORT'][], scope: 'TEAM' | 'ORGANIZATION') => {
+      const created = await prisma.role.create({ data: { tenantId, key: `${key}-${suffix}`, name: key, rank: 50 } });
+      await grantPermissions(tenantId, created.id, grants, scope);
+      return created.id;
+    };
+    const viewer = await role('grant-viewer', [['reports', 'VIEW']], 'TEAM');
+    const exporter = await role(
+      'grant-exporter',
+      [
+        ['reports', 'VIEW'],
+        ['reports', 'EXPORT'],
+      ],
+      'ORGANIZATION',
+    );
+    const other = await role('grant-other', [['leads', 'VIEW']], 'ORGANIZATION');
+
+    const sql = readFileSync(
+      path.join(__dirname, '..', '..', 'prisma', 'migrations', '20261011000000_reports_export_grant', 'migration.sql'),
+      'utf8',
+    ).replace('WHERE source."module"', `WHERE rp."tenantId" = '${tenantId}' AND source."module"`);
+    await withPlatformTx((tx) => tx.$executeRawUnsafe(sql));
+
+    const exportScope = async (roleId: string) =>
+      (
+        await prisma.rolePermission.findMany({
+          where: { tenantId, roleId, permission: { module: 'reports', action: 'EXPORT' } },
+          select: { scope: true },
+        })
+      ).map((r) => r.scope);
+    expect(await exportScope(viewer)).toEqual(['TEAM']);
+    expect(await exportScope(exporter)).toEqual(['ORGANIZATION']);
+    expect(await exportScope(other)).toEqual([]);
   });
 });
