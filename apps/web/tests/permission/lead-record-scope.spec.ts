@@ -28,6 +28,9 @@ let typeId: string;
 let campaignId: string;
 /** Sees every task (`tasks:VIEW` at ORGANIZATION) but edits only its own leads. */
 let taskDesk: Member;
+/** Holds `campaigns:EDIT` and no `leads` grant. */
+let mailer: Member;
+let poolLeadId: string;
 const MISSING = `c${'0'.repeat(24)}`;
 const THEIR_PHONE = '+971509990001';
 const OWN_EMAIL = `repa1.second.${randomBytes(4).toString('hex')}@hierarchy.test`;
@@ -114,6 +117,21 @@ beforeAll(async () => {
     fullName: 'Task desk',
   });
   taskDesk = { id: desk.id, cookie: await createSessionToken(tenantId, desk.id), leadId: '' };
+
+  const mailerRole = await prisma.role.create({
+    data: { tenantId, key: `mailer-${randomBytes(4).toString('hex')}`, name: 'Mailer', rank: 60 },
+  });
+  await grantPermissions(tenantId, mailerRole.id, [['campaigns', 'EDIT']], 'ORGANIZATION');
+  const mailerUser = await createWorkspaceUser({
+    tenantId,
+    roleId: mailerRole.id,
+    email: `mailer-${randomBytes(4).toString('hex')}@hierarchy.test`,
+    fullName: 'Mailer',
+  });
+  mailer = { id: mailerUser.id, cookie: await createSessionToken(tenantId, mailerUser.id), leadId: '' };
+  poolLeadId = (
+    await prisma.lead.create({ data: { tenantId, reference: 'POOL-AUDIENCE', fullName: 'Pool lead', stageId } })
+  ).id;
 }, 60_000);
 afterAll(async () => {
   await h?.cleanup();
@@ -221,12 +239,15 @@ const LEAD_WORK = [
     send: (id: string, as: Member) =>
       patch(patchTask, `/api/v1/tasks/${id}`, { title: 'Taken', status: 'COMPLETED', ownerId: as.id }, as.cookie),
     row: taskRow,
+    done: async (id: string) => (await taskRow(id))?.title === 'Taken',
   },
   {
     name: 'DELETE tasks/{id}',
     make: task,
     send: (id: string, as: Member) => del(deleteTask, `/api/v1/tasks/${id}`, as.cookie),
     row: taskRow,
+    done: async (id: string) =>
+      (await prisma.task.count({ where: { tenantId: h.tenantId, id, deletedAt: { not: null } } })) === 1,
   },
   {
     name: 'PATCH follow-ups/{id}',
@@ -244,10 +265,12 @@ const LEAD_WORK = [
         where: { tenantId: h.tenantId, id },
         select: { title: true, status: true, ownerId: true, completedAt: true },
       }),
+    done: async (id: string) =>
+      (await prisma.followUpTask.count({ where: { tenantId: h.tenantId, id, title: 'Taken' } })) === 1,
   },
 ];
 
-describe.each(LEAD_WORK)('$name', ({ make, send, row }) => {
+describe.each(LEAD_WORK)('$name', ({ make, send, row, done }) => {
   it('a team manager: another team’s answers exactly as a missing id, and nothing changes', async () => {
     const elsewhere = await make(h.repB1.id, h.repB1.leadId);
     const before = await row(elsewhere);
@@ -277,8 +300,10 @@ describe.each(LEAD_WORK)('$name', ({ make, send, row }) => {
       [h.repSubTeam, h.teamManagerA],
       [h.repOtherRegion, h.director],
     ]) {
-      const res = await send(await make(owner.id, owner.leadId), as);
+      const id = await make(owner.id, owner.leadId);
+      const res = await send(id, as);
       expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(await done(id)).toBe(true);
     }
   });
 });
@@ -330,10 +355,26 @@ describe('a campaign’s audience', () => {
       removed: 0,
     });
     expect(await onCampaign(h.repB1.leadId)).toBe(false);
+    await prisma.lead.update({ where: { tenantId: h.tenantId, id: h.repA2.leadId }, data: { campaignId } });
     expect((await change({ add: [h.repB1.leadId], remove: [h.repA2.leadId] }, h.director)).body).toEqual({
       added: 1,
       removed: 1,
     });
+    expect(await onCampaign(h.repB1.leadId)).toBe(true);
+    expect(await onCampaign(h.repA2.leadId)).toBe(false);
+  });
+
+  it('takes an unassigned lead only for someone who may assign it', async () => {
+    expect((await change({ add: [poolLeadId] }, h.repA1)).body).toEqual({ added: 0, removed: 0 });
+    expect(await onCampaign(poolLeadId)).toBe(false);
+    expect((await change({ add: [poolLeadId] }, h.teamManagerA)).body).toEqual({ added: 1, removed: 0 });
+    expect(await onCampaign(poolLeadId)).toBe(true);
+  });
+
+  it('refuses a campaign editor who may see no leads at all, and moves nothing', async () => {
+    await prisma.lead.update({ where: { tenantId: h.tenantId, id: h.repA2.leadId }, data: { campaignId } });
+    expect((await change({ add: [h.repB1.leadId], remove: [h.repA2.leadId] }, mailer)).status).toBe(403);
+    expect(await onCampaign(h.repA2.leadId)).toBe(true);
   });
 });
 
@@ -352,19 +393,33 @@ describe('converting a social enquiry', () => {
         },
       })
     ).id;
-  const convert = async (body: Record<string, string>) =>
+  const convert = async (body: Record<string, string>, id?: string) =>
     post(
       convertEnquiry,
-      `/api/v1/social-leads/${await enquiry()}/convert`,
+      `/api/v1/social-leads/${id ?? (await enquiry())}/convert`,
       { fullName: 'Social Buyer', ...body },
       h.repA1.cookie,
     );
 
-  it('links a teammate’s lead without handing back its id', async () => {
-    const res = await convert({ phone: THEIR_PHONE });
+  it('links a teammate’s lead without handing back its id or reference', async () => {
+    const id = await enquiry();
+    const res = await convert({ phone: THEIR_PHONE }, id);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(res.body).toMatchObject({ leadId: null, linkedToExisting: true, visible: false });
-    expect(JSON.stringify(res.body)).not.toContain(h.repA2.leadId);
+    expect(res.body).toEqual({ leadId: null, reference: null, linkedToExisting: true, visible: false });
+    const linked = await prisma.socialComment.findFirstOrThrow({ where: { tenantId: h.tenantId, id } });
+    expect(linked).toMatchObject({ linkedLeadId: h.repA2.leadId, status: 'CONVERTED' });
+  });
+
+  it('keeps a new lead with the enquiry’s owner when the caller may not assign', async () => {
+    const res = await convert({
+      fullName: `Fresh ${Date.now()}`,
+      phone: `+97155${String(Date.now()).slice(-7)}`,
+      ownerId: h.repA2.id,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ linkedToExisting: false });
+    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId: h.tenantId, id: res.body.leadId } });
+    expect(lead.ownerId).toBe(h.repA1.id);
   });
 
   it('opens a match the caller may see', async () => {

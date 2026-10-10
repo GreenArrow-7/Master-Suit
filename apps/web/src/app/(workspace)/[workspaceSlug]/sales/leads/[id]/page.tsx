@@ -18,8 +18,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const [scope, taskScope] = await Promise.all([
     visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true }),
     // A Task is read under `tasks`, not `leads` (services/leads/nextFollowUp.ts):
-    // the Tasks tab lists what the viewer's Tasks page would, so each row passes
-    // the scope check of PATCH /tasks/{id}, and a role with no `tasks` grant sees none.
+    // the Tasks tab lists what the viewer's Tasks page would, and a role with no
+    // `tasks` grant sees none. Completing one also takes `leads:EDIT` over its
+    // owner (PATCH /tasks/{id}), which no seeded role lacks where it sees the task.
     scopeFor(ctx, 'tasks', 'VIEW') === 'NONE'
       ? { id: { in: [] } }
       : visibilityWhere(ctx, 'tasks', 'VIEW', { ownerField: 'ownerId' }),
