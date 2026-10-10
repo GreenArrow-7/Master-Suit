@@ -18,7 +18,7 @@ import { assertMayAdministerRole, type Ctx } from '@/lib/security/rbac';
 import { audit, platformAudit } from '@/lib/security/audit';
 import { hashPassword, assertPasswordPolicy } from '@/lib/auth/password';
 import { sendMail } from '@/lib/mailer';
-import { assertIdentityReusable, passwordPolicy } from './accounts';
+import { activateIdentity, assertIdentityReusable, passwordPolicy } from './accounts';
 import { buildChecklist, isAgent } from '@/services/hr/lifecycle';
 import { resolvePolicy } from '@/services/hr/settings';
 
@@ -83,7 +83,7 @@ export async function inviteUser(ctx: Ctx, input: InviteInput) {
   });
   if (alreadyHere) throw Conflict('That person is already a member of this workspace.');
   // Told now rather than at acceptance, which checks again.
-  await assertIdentityReusable(prisma, email);
+  await assertIdentityReusable(prisma, email, { neutral: true });
 
   await assertSeatAvailable(ctx);
 
@@ -240,7 +240,7 @@ export async function acceptInvitation(token: string, input: { password: string;
     const existing = await assertIdentityReusable(tx, email);
 
     const platformUser = existing
-      ? await tx.platformUser.update({ where: { id: existing.id }, data: { status: 'ACTIVE' } })
+      ? await activateIdentity(tx, existing.id)
       : await tx.platformUser.create({
           data: {
             email,

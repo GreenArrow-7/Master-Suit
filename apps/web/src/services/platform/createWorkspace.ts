@@ -3,7 +3,7 @@ import { withPlatformTx } from '@/lib/db';
 import type { ProductModuleKey } from '@/lib/modules/catalogue';
 import { platformAudit } from '@/lib/security/audit';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
-import { assertIdentityReusable } from '@/services/identity/accounts';
+import { activateIdentity, assertIdentityReusable } from '@/services/identity/accounts';
 import { provisionLeadWork } from '@/services/platform/provisioning';
 
 /**
@@ -217,10 +217,7 @@ export async function createWorkspace(
     const existingIdentity = await assertIdentityReusable(tx, adminEmail);
     const reusedExistingIdentity = Boolean(existingIdentity);
     const platformUser = existingIdentity
-      ? await tx.platformUser.update({
-          where: { id: existingIdentity.id },
-          data: { fullName: body.primaryAdminName, status: 'ACTIVE' },
-        })
+      ? await activateIdentity(tx, existingIdentity.id, { fullName: body.primaryAdminName })
       : await tx.platformUser.create({
           data: {
             email: adminEmail,
