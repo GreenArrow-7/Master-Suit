@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-10 | [Signing up could bring back a suspended account](2026-10-10-signup-suspended-identity.md) | #152 | security, Lead Eagle |
 | 2026-10-10 | [Self-serve sign-up could not be opened from the console](2026-10-10-signup-setting-row.md) | #151 | fix, Lead Eagle |
 | 2026-10-10 | [Release 1dddaf9](2026-10-10-release-1dddaf9.md) | #135, #138, #140, #142, #147, #148 | release |
 | 2026-10-10 | [Creating a plan said "The server could not be reached." after creating it](2026-10-10-plan-form-reset.md) | #148 | fix, platform |
