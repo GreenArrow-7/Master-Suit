@@ -448,6 +448,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // The record of each move outlives the workspace (tenantId set null); this one need not.
+  await prisma.platformAuditEvent.deleteMany({ where: { tenantId } });
   await fixture.cleanup();
 });
 
@@ -468,6 +470,46 @@ describe('moving a Lead Eagle company', () => {
     const noMoney = await moveCompany(tenantId, { ...snapshot(), bookings: [], commissions: [] }, { commit: false });
     expect(noMoney.needsRealEstate).toBe(false);
     expect(noMoney.problems.some((p) => p.includes('--enable-real-estate'))).toBe(false);
+  });
+
+  it('reports every person a row loses and every row that stays behind', async () => {
+    const snap = snapshot();
+    const note = { ...snap.activities[0]!, summary: 'A note' };
+    const report = await moveCompany(
+      tenantId,
+      {
+        ...snap,
+        // Owned by someone deleted in Lead Eagle, so not among its users.
+        leads: [
+          ...snap.leads,
+          { ...snap.leads[1]!, id: 'l-3', reference: 'LE-0003', primaryPhone: '0501110004', ownerId: 'u-removed' },
+        ],
+        activities: [
+          ...snap.activities,
+          { ...note, userId: 'u-ghost' },
+          { ...note, leadId: 'l-2', userId: 'u-removed' },
+          // On a merged duplicate (the reader leaves merged leads behind) and on deleted cold data.
+          { ...note, leadId: 'l-merged' },
+          { ...note, leadId: null, dataRecordId: 'd-deleted', type: 'CALL' },
+        ],
+        enquiries: [...snap.enquiries, { ...snap.enquiries[0]!, leadId: 'l-merged' }],
+        followUps: [...snap.followUps, { ...snap.followUps[0]!, leadId: 'l-merged' }],
+      },
+      { commit: false },
+    );
+    expect(report.problems).toEqual(
+      expect.arrayContaining([
+        'ghost@nowhere.test owns 2 records but has no account here; they move unowned.',
+        '1 records are owned by people no longer in Lead Eagle; they move unowned.',
+        '2 activities were logged by someone without an account here; they move without who logged them.',
+        '1 stage changes were made by someone without an account here; they move without who made them.',
+        '3 activities and enquiries are on merged duplicates or deleted records, which stay behind; they are not moved.',
+        '1 follow-ups are on merged duplicates or deleted leads, which stay behind; they are not moved.',
+      ]),
+    );
+    expect(report.counts['activities and enquiries']).toEqual({ source: 11, moved: 8 });
+    expect(report.counts['follow-ups']).toEqual({ source: 3, moved: 2 });
+    expect(await moved()).toHaveLength(0);
   });
 
   it('moves the book, matching people by email and reporting what needs a person', async () => {
@@ -578,5 +620,28 @@ describe('moving a Lead Eagle company', () => {
   it('refuses to move the same company twice', async () => {
     await expect(moveCompany(tenantId, snapshot(), { commit: true })).rejects.toThrow('was already moved');
     expect(await moved()).toHaveLength(2);
+  });
+
+  it('moves a company with no leads once, and refuses it the second time', async () => {
+    const snap = snapshot();
+    const coldOnly: LeadEagleCompany = {
+      ...snap,
+      company: { id: 'le-company-2', slug: 'cold-only', name: 'Cold Only' },
+      leads: [],
+      activities: [],
+      enquiries: [],
+      followUps: [],
+      dataRecords: [{ ...snap.dataRecords[1]!, fullName: 'Cold Only Record', phone: '0501110010' }],
+      captureLinks: [],
+      projects: [],
+      units: [],
+      listings: [],
+      bookings: [],
+      commissions: [],
+    };
+    const first = await moveCompany(tenantId, coldOnly, { commit: true });
+    expect(first.counts['cold data']).toEqual({ source: 1, moved: 1 });
+    await expect(moveCompany(tenantId, coldOnly, { commit: true })).rejects.toThrow('was already moved');
+    expect(await prisma.dataRecord.count({ where: { tenantId, fullName: 'Cold Only Record' } })).toBe(1);
   });
 });
