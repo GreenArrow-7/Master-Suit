@@ -112,4 +112,15 @@ describe("a lead's Tasks tab", () => {
 
     expect(await tasksShown(h.branchManager, l)).toEqual([]);
   });
+
+  // The tenant guard adds `deletedAt: null` to a query's own model, not to a
+  // relation it includes.
+  it('leaves out a deleted task', async () => {
+    const l = await lead(h.repA1.id);
+    const open = await task(h.repA1.id, l);
+    const gone = await task(h.repA1.id, l);
+    await prisma.task.update({ where: { tenantId: h.tenantId, id: gone }, data: { deletedAt: new Date() } });
+
+    expect(await tasksShown(h.repA1, l)).toEqual([open]);
+  });
 });

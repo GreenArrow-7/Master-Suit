@@ -37,7 +37,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         include: { type: { select: { name: true, key: true } } },
       },
       tasks: {
-        where: { ...taskScope, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+        // The tenant guard's soft-delete filter reaches the lead, not what it includes.
+        where: { ...taskScope, deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS'] } },
         orderBy: { dueAt: 'asc' },
         take: 20,
         include: { type: true },
