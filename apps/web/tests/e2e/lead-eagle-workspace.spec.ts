@@ -100,5 +100,17 @@ test.describe('Lead Eagle, from the platform portal to a lead', () => {
       expect((await page.request.get('/api/v1/collections/receipts')).status()).toBe(403);
       expect((await page.request.get('/api/v1/opportunities')).status()).toBe(403);
     });
+
+    await test.step('Admin > Roles lists Lead Eagle’s starter roles beside the administrator (M2-03)', async () => {
+      await page.goto(at('/admin/roles'));
+      await expect(page.locator('.lf-roles__row strong')).toHaveText([
+        'Agent',
+        'Company Administrator',
+        'Manager',
+        'Team Lead',
+        'Telecaller',
+        'Viewer',
+      ]);
+    });
   });
 });

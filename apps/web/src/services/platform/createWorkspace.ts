@@ -3,7 +3,6 @@ import { withPlatformTx } from '@/lib/db';
 import { Conflict } from '@/lib/errors';
 import type { ProductModuleKey } from '@/lib/modules/catalogue';
 import { platformAudit } from '@/lib/security/audit';
-import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { provisionLeadWork } from '@/services/platform/provisioning';
 
 /**
@@ -266,10 +265,9 @@ export async function createWorkspace(
         joinedOn: new Date(),
       },
     });
-    // Lead stages, activity and task types: every module that works leads needs them.
-    if (body.enabledModules.some((module) => (LEAD_MODULES as readonly string[]).includes(module))) {
-      await provisionLeadWork(tx, created.id);
-    }
+    // Lead stages, activity and task types for every module that works leads;
+    // Lead Eagle's starter roles.
+    await provisionLeadWork(tx, created.id, body.enabledModules);
     if (body.enabledModules.includes('SALES')) {
       /**
        * The default opportunity pipeline and its stages.
