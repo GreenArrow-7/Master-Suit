@@ -65,13 +65,13 @@ test.describe('phone redesign: shell, Leads, Leadership', () => {
     expect((await figure.boundingBox())!.y).toBeLessThan(700);
 
     await filters.locator('summary').click();
-    await expect(page.locator('.lf-report-filters__form input[name=from]')).toBeVisible();
+    // The shared date field: the typed box is the visible control; input[name=from] is its hidden value.
+    const typed = (name: string) =>
+      page.locator(`.lf-report-filters__form .lf-date:has(input[name=${name}]) .lf-date__text`);
+    await expect(typed('from')).toBeVisible();
     for (const width of [390, 320]) {
       await page.setViewportSize({ width, height: 844 });
-      const [from, to] = await Promise.all([
-        page.locator('.lf-report-filters__form input[name=from]').boundingBox(),
-        page.locator('.lf-report-filters__form input[name=to]').boundingBox(),
-      ]);
+      const [from, to] = await Promise.all([typed('from').boundingBox(), typed('to').boundingBox()]);
       const apart = from!.x + from!.width <= to!.x || to!.x + to!.width <= from!.x || from!.y + from!.height <= to!.y;
       expect(apart, `From/To apart at ${width}`).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);

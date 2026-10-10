@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
+import DateInput from '@/components/forms/DateInput';
 import { call } from '../call';
 
 export interface ReceiptRow {
@@ -192,12 +193,10 @@ export default function ReceiptPanel({
           </label>
           <label className="lf-field">
             <span>Payment date</span>
-            <input
-              className="lf-input"
-              type="date"
+            <DateInput
               required
               value={form.paidAt}
-              onChange={(e) => setForm({ ...form, paidAt: e.target.value })}
+              onChange={(paidAt) => setForm({ ...form, paidAt })}
               aria-label="Payment date"
             />
           </label>

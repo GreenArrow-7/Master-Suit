@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-10 | [One date field everywhere: type it or pick it](2026-10-10-date-fields.md) | #154 | fix, all modules |
 | 2026-10-10 | [Saving a workspace in the console cut off a paying customer's modules](2026-10-10-workspace-edit-entitlements.md) | #153 | fix, platform |
 | 2026-10-10 | [Signing up could bring back a suspended account](2026-10-10-signup-suspended-identity.md) | #152 | security, Lead Eagle |
 | 2026-10-10 | [Self-serve sign-up could not be opened from the console](2026-10-10-signup-setting-row.md) | #151 | fix, Lead Eagle |

@@ -14,6 +14,7 @@ import { csvCell } from '@/lib/csv';
 import TableSearch from '@/components/workspace/TableSearch';
 import PageHeader from '@/components/ui/PageHeader';
 import Badge from '@/components/ui/Badge';
+import DateInput from '@/components/forms/DateInput';
 
 export const metadata = { title: 'Attendance' };
 
@@ -159,9 +160,9 @@ export default async function Page({
       {/* The date range is a toolbar, like every other list's controls — not a
           labelled card-form with its own Apply button above the numbers. */}
       <form className="lf-toolbar" method="get">
-        <input className="lf-input" type="date" name="from" defaultValue={iso(from)} aria-label="From" />
+        <DateInput name="from" defaultValue={iso(from)} aria-label="From" />
         <span style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>to</span>
-        <input className="lf-input" type="date" name="to" defaultValue={iso(to)} aria-label="To" />
+        <DateInput name="to" defaultValue={iso(to)} aria-label="To" />
         <button className="lf-btn lf-btn--secondary lf-btn--sm" type="submit">
           Apply
         </button>
