@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { enqueue } from '@/lib/queue';
 import { logger } from '@/lib/logger';
+import { audit } from '@/lib/security/audit';
 
 /**
  * Runs once, at the lead's slaDueAt (createLead delays the job that far out — see
@@ -18,6 +19,19 @@ export async function checkLeadFirstContact(tenantId: string, leadId: string) {
 
   await prisma.lead.updateMany({ where: { tenantId, id: leadId }, data: { slaState: 'BREACHED' } });
   logger.warn({ tenantId, leadId }, 'lead SLA breached');
+  if (lead.slaState !== 'BREACHED') {
+    await audit(
+      { tenantId, source: 'sla' },
+      {
+        event: 'RECORD_UPDATED',
+        objectType: 'lead',
+        recordId: leadId,
+        fieldKey: 'slaState',
+        previousValue: lead.slaState,
+        newValue: 'BREACHED',
+      },
+    );
+  }
 
   await enqueue('automation', 'trigger', { tenantId, event: 'sla.warning', object: 'LEAD', recordId: leadId });
 }

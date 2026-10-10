@@ -4,6 +4,7 @@ import { AppError } from '@/lib/errors';
 import { env } from '@/lib/env';
 import { readUpload } from '@/lib/api/read-body';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { audit } from '@/lib/security/audit';
 import { scanBuffer } from '@/lib/antivirus';
 import { putObject } from '@/lib/storage';
 import { prisma } from '@/lib/db';
@@ -58,6 +59,13 @@ export const POST = route(
         createdById: ctx.actor.id,
       },
       select: { id: true, name: true, status: true, scanState: true, sizeBytes: true, createdAt: true },
+    });
+    // Rejected uploads too: the row is the record of the attempt.
+    await audit(ctx, {
+      event: 'RECORD_CREATED',
+      objectType: 'documents',
+      recordId: document.id,
+      metadata: { leadId: lead.id, scan: scan.verdict },
     });
 
     if (scan.verdict !== 'CLEAN') {

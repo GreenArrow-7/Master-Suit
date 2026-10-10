@@ -12,6 +12,7 @@ import { parseAmounts } from '@/lib/ai/simulated';
 import { leadCallContext, contextPromptBlock, budgetMatchHint } from '@/services/leads/callContext';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
 import { seesWholeWorkspace } from '@/lib/security/record-scope';
+import { audit } from '@/lib/security/audit';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -89,6 +90,8 @@ export const POST = route(
           outcome: call.outcome ?? 'CONNECTED',
         },
       });
+      // As the call's own PATCH records it. Its start was recorded when the call was logged.
+      await audit(ctx, { event: 'CALL_COMPLETED', objectType: 'calls', recordId: call.id });
       const transcript = await prisma.transcript.findFirst({
         where: { callId: call.id, tenantId: ctx.tenantId },
         select: { content: true },

@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma, withTx } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { audit } from '@/lib/security/audit';
 import { assessEligibility, lockAndVerify, policyFromRule, redactForSales, type Eligibility } from './eligibility';
 import { openTriageEntry, resolveTriageEntry, type TriageDetail, type TriageReason } from './triage';
 
@@ -242,6 +243,19 @@ async function tryAssign(
         note,
       },
     });
+    await audit(
+      { tenantId, source: 'distribution' },
+      {
+        event: 'OWNER_CHANGED',
+        objectType: 'lead',
+        recordId: leadId,
+        fieldKey: 'ownerId',
+        previousValue: null,
+        newValue: userId,
+        metadata: { rule: rule.name },
+      },
+      tx,
+    );
 
     // The pointer moves only on a real assignment. Advancing it for a lead that
     // turned out to be taken would skip somebody's turn.
