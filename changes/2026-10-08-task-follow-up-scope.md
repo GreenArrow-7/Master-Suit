@@ -34,7 +34,7 @@ from TEAM up, also those owned by someone in your `leads` scope. Out of scope
 answers 404, the same as a missing id. Moving either to another lead is still
 #140's check.
 
-**Verified.** `tests/permission/task-follow-up-scope.spec.ts`, 6 tests on the
+**Verified.** `tests/permission/task-follow-up-scope.spec.ts` (its cases now live in `lead-record-scope.spec.ts`, #157), 6 tests on the
 hierarchy fixture, with `tasks:VIEW` and `tasks:DELETE` at the reps' and the
 team manager's scope:
 
