@@ -75,4 +75,23 @@ describe('bulk assignment', () => {
       await prisma.user.update({ where: { tenantId: h.tenantId, id: h.repB1.id }, data: { status: 'ACTIVE' } });
     }
   });
+
+  // The platform console suspends the membership and leaves the workspace User
+  // ACTIVE; that person cannot sign in either.
+  it('refuses an owner whose workspace access is suspended', async () => {
+    const membership = { tenantId: h.tenantId, salesUserId: h.repB1.id };
+    await prisma.workspaceMembership.updateMany({ where: membership, data: { status: 'SUSPENDED' } });
+    try {
+      const res = await post(
+        assign,
+        '/api/v1/leads/assign',
+        { leadIds: [h.repSubTeam.leadId], ownerId: h.repB1.id },
+        h.director.cookie,
+      );
+      expect(res.status, JSON.stringify(res.body)).toBe(404);
+      expect(await ownerOf(h.repSubTeam.leadId)).toBe(h.repSubTeam.id);
+    } finally {
+      await prisma.workspaceMembership.updateMany({ where: membership, data: { status: 'ACTIVE' } });
+    }
+  });
 });

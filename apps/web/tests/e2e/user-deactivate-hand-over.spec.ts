@@ -1,6 +1,7 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { prisma } from '@/lib/db';
-import { login, ok, resetLoginThrottle, uniq } from './helpers';
+import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
+import { login, ok, resetLoginThrottle, strongPassword, uniq } from './helpers';
 
 /**
  * Deactivating a member hands their open work on (M2-02).
@@ -156,9 +157,72 @@ test.describe('Admin > Users: Deactivate asks where the open work goes', () => {
         select: { ownerId: true, fullName: true },
       });
       expect(lead.ownerId).toBeNull();
-      await page.goto(at('/sales/allocation?view=waiting'));
-      await expect(page.getByRole('link', { name: lead.fullName })).toBeVisible({ timeout: 60_000 });
-      await expect(page.getByText(`Handed back when ${queuedName} was deactivated`)).toBeVisible();
+      const entry = { tenantId, leadId, status: 'WAITING' as const };
+      // The Waiting view lists the 100 oldest. Made the oldest, so entries other
+      // specs left in the shared workspace cannot push it off the page.
+      await prisma.leadTriageEntry.updateMany({ where: entry, data: { openedAt: new Date('2000-01-01T00:00:00Z') } });
+      try {
+        await page.goto(at('/sales/allocation?view=waiting'));
+        await expect(page.getByRole('link', { name: lead.fullName })).toBeVisible({ timeout: 60_000 });
+        await expect(page.getByText(`Handed back when ${queuedName} was deactivated`)).toBeVisible();
+      } finally {
+        // Closed, so each run does not leave one more waiting entry behind.
+        await prisma.leadTriageEntry.updateMany({
+          where: entry,
+          data: { status: 'CANCELLED', resolvedAt: new Date(), resolution: 'E2E clean-up' },
+        });
+      }
+    });
+
+    await test.step('an account administrator who cannot assign the work is told before submit', async () => {
+      const taskOnlyName = `Task Only Agent ${run}`;
+      const taskOnlyId = await account(admin, taskOnlyName, 'T');
+      await work(admin, taskOnlyId, 0, 0, 1);
+
+      // users:MANAGE_USERS and nothing of Sales, like the seeded it_admin.
+      const role = await prisma.role.create({
+        data: {
+          tenantId,
+          key: `handover_it_${run}`,
+          name: `Accounts only ${run}`,
+          rank: 30,
+          defaultScope: 'ORGANIZATION',
+        },
+      });
+      await grantPermissions(tenantId, role.id, [
+        ['users', 'VIEW'],
+        ['users', 'MANAGE_USERS'],
+      ]);
+      const itEmail = `handover-it-${run}@example.com`;
+      const itPassword = strongPassword(run);
+      const it = await createWorkspaceUser({
+        tenantId,
+        roleId: role.id,
+        email: itEmail,
+        fullName: `Accounts Admin ${run}`,
+        password: itPassword,
+      });
+      await prisma.platformUser.update({
+        where: { id: it.platformUserId },
+        data: { passwordChangedAt: new Date(), emailVerifiedAt: new Date() },
+      });
+
+      const itContext = await browser.newContext({ baseURL: base() });
+      try {
+        const itPage = await itContext.newPage();
+        await login(itPage, itEmail, itPassword);
+        await itPage.goto(at(`/admin/users?q=${encodeURIComponent(taskOnlyName)}`));
+        await itPage
+          .getByRole('row', { name: new RegExp(taskOnlyName) })
+          .getByRole('button', { name: 'Deactivate', exact: true })
+          .click();
+        await expect(itPage.getByText('They own 1 task, and your role cannot assign their work.')).toBeVisible({
+          timeout: 60_000,
+        });
+        await expect(itPage.getByRole('button', { name: 'Deactivate account' })).toBeDisabled();
+      } finally {
+        await itContext.close();
+      }
     });
 
     await context.close();

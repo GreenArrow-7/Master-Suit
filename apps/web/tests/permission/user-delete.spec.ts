@@ -18,6 +18,7 @@ import {
   GET as identityGet,
   POST as identityPost,
 } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/[action]/route';
+import { POST as hrAction } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/actions/[action]/route';
 import { createSessionToken } from '../helpers/session';
 import { createWorkspaceUser, type Grants, grantPermissions } from '../helpers/fixtures';
 import { del, get, post } from '../helpers/request';
@@ -43,18 +44,23 @@ async function role(label: string, rank: number, grants: Grants) {
 }
 
 /** A disposable member to delete, at a rank below the administrator's. */
-async function member(label: string, roleId: string) {
+async function member(label: string, roleId: string, branchId?: string) {
   return createWorkspaceUser({
     tenantId,
     roleId,
     email: `${label}-${suffix}@userdel.test`,
     fullName: `${label} Person`,
+    branchId,
   });
 }
 
 let adminRoleId = '';
 let staffRoleId = '';
 let teamAdminCookie = '';
+let branchAdminCookie = '';
+let branchId = '';
+let viewerCookie = '';
+let hrCookie = '';
 let stageId = '';
 let wonStageId = '';
 let taskTypeId = '';
@@ -109,6 +115,25 @@ beforeAll(async () => {
   // A second administrator, so removing one never trips the last-admin guard
   // except in the test that means to.
   await member('spareadmin', orgAdmin.id);
+
+  // Removes accounts and assigns leads only inside its own branch.
+  branchId = (await prisma.branch.create({ data: { tenantId, name: 'Marina', code: `MAR-${suffix}` } })).id;
+  const branchAdmin = await role('branchadmin', 10, [
+    ['users', 'VIEW'],
+    ['users', 'DELETE'],
+  ]);
+  await grantPermissions(tenantId, branchAdmin.id, [['leads', 'ASSIGN']], 'BRANCH');
+  branchAdminCookie = await createSessionToken(tenantId, (await member('branchadmin', branchAdmin.id, branchId)).id);
+  // Reads the directory, and nothing more.
+  const viewer = await role('viewer', 10, [['users', 'VIEW']]);
+  viewerCookie = await createSessionToken(tenantId, (await member('viewer', viewer.id)).id);
+  // HR closes an employment, which ends the workspace account too.
+  await prisma.moduleEntitlement.create({ data: { tenantId, module: 'HRMS', state: 'ACTIVE' } });
+  const hr = await role('hradmin', 10, [
+    ['employee', 'EDIT'],
+    ['leads', 'ASSIGN'],
+  ]);
+  hrCookie = await createSessionToken(tenantId, (await member('hradmin', hr.id)).id);
 
   orgAdminCookie = await createSessionToken(tenantId, admin.id);
   managerOnlyCookie = await createSessionToken(tenantId, manager.id);
@@ -310,6 +335,8 @@ describe('USERDEL-002: open work is handed over, never left with a suspended acc
     const res = await deactivate({ userId: agent.id });
     expect(res.status, JSON.stringify(res.body)).toBe(409);
     expect(res.body.detail).toContain('3 open leads, 2 follow-ups and 1 task');
+    // As data too, so an API caller need not parse the sentence.
+    expect(res.body.openWork).toEqual({ leads: 3, followUps: 2, tasks: 1 });
     expect(await statusOf(agent.id)).toBe('ACTIVE');
 
     // The queue takes leads only; follow-ups and tasks still need a person.
@@ -393,8 +420,11 @@ describe('USERDEL-002: open work is handed over, never left with a suspended acc
     const { agent } = await agentWithWork('badtarget');
     const parked = await member('parked', staffRoleId);
     await prisma.user.update({ where: { tenantId, id: parked.id }, data: { status: 'SUSPENDED' } });
+    // Suspended the platform console's way: the membership, with the User left ACTIVE.
+    const offline = await member('offline', staffRoleId);
+    await prisma.workspaceMembership.update({ where: { id: offline.membershipId }, data: { status: 'SUSPENDED' } });
 
-    for (const handOverTo of [parked.id, agent.id]) {
+    for (const handOverTo of [parked.id, agent.id, offline.id]) {
       const res = await deactivate({ userId: agent.id, handOverTo });
       expect(res.status, JSON.stringify(res.body)).toBe(422);
     }
@@ -416,6 +446,8 @@ describe('USERDEL-002: open work is handed over, never left with a suspended acc
     const { agent } = await agentWithWork('counted');
     const parked = await member('parkedmember', staffRoleId);
     await prisma.user.update({ where: { tenantId, id: parked.id }, data: { status: 'SUSPENDED' } });
+    const offline = await member('offlinemember', staffRoleId);
+    await prisma.workspaceMembership.update({ where: { id: offline.membershipId }, data: { status: 'SUSPENDED' } });
 
     const res = await get(
       identityGet,
@@ -424,11 +456,93 @@ describe('USERDEL-002: open work is handed over, never left with a suspended acc
       { workspaceSlug: slug, action: 'account-work' },
     );
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(res.body).toMatchObject({ leads: 3, followUps: 2, tasks: 1 });
+    expect(res.body).toMatchObject({ leads: 3, followUps: 2, tasks: 1, mayHandOver: true });
     const memberIds = (res.body.members as { id: string }[]).map((m) => m.id);
     expect(memberIds).toContain(orgAdminId);
     expect(memberIds).not.toContain(agent.id);
     expect(memberIds).not.toContain(parked.id);
+    expect(memberIds).not.toContain(offline.id);
+  });
+
+  it('tells an administrator without leads:ASSIGN before submit, and shows no workload to users:VIEW alone', async () => {
+    const { agent } = await agentWithWork('upfront');
+    const work = (cookie: string) =>
+      get(identityGet, `/api/v1/workspaces/${slug}/identity/account-work?userId=${agent.id}`, cookie, {
+        workspaceSlug: slug,
+        action: 'account-work',
+      });
+
+    // MANAGE_USERS without leads:ASSIGN, like the seeded hr_admin and it_admin.
+    const manager = await work(managerOnlyCookie);
+    expect(manager.status, JSON.stringify(manager.body)).toBe(200);
+    expect(manager.body).toMatchObject({ leads: 3, followUps: 2, tasks: 1, mayHandOver: false });
+
+    // Outranks the agent, but may neither deactivate nor remove.
+    const viewer = await work(viewerCookie);
+    expect(viewer.status, JSON.stringify(viewer.body)).toBe(403);
+  });
+
+  it('a BRANCH-scoped remover who reaches the agent hands the work over', async () => {
+    const { agent } = await agentWithWork('branchremoved');
+    await prisma.user.update({ where: { tenantId, id: agent.id }, data: { branchId } });
+    const receiver = await member('branchreceiver', staffRoleId, branchId);
+
+    const res = await del(identityDelete, `${path(agent.id)}&handOverTo=${receiver.id}`, branchAdminCookie, at.params);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await statusOf(agent.id)).toBe('DEACTIVATED');
+    expect(await openOwnedBy(agent.id)).toEqual({ leads: 0, followUps: 0, tasks: 0 });
+    expect(await openOwnedBy(receiver.id)).toEqual({ leads: 3, followUps: 2, tasks: 1 });
+  });
+
+  it('removing an account can send its leads to the allocation queue', async () => {
+    const { agent, leadIds } = await agentWithWork('removequeued', { followUps: 0, tasks: 0 });
+
+    const res = await del(identityDelete, `${path(agent.id)}&leadsToQueue=true`, orgAdminCookie, at.params);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await statusOf(agent.id)).toBe('DEACTIVATED');
+    const leads = await prisma.lead.findMany({ where: { tenantId, id: { in: leadIds } }, select: { ownerId: true } });
+    expect(leads.map((lead) => lead.ownerId)).toEqual([null, null, null]);
+    const waiting = await prisma.leadTriageEntry.count({
+      where: { tenantId, leadId: { in: leadIds }, status: 'WAITING' },
+    });
+    expect(waiting).toBe(3);
+  });
+
+  it('HR finalising an exit refuses the same way, and hands the work over the same way', async () => {
+    const { agent } = await agentWithWork('exiting');
+    const receiver = await member('exitreceiver', staffRoleId);
+    const employee = await prisma.employeeProfile.create({
+      data: {
+        tenantId,
+        membershipId: agent.membershipId,
+        employeeNumber: `EXIT-${suffix}`,
+        joinedOn: new Date('2020-01-01'),
+        employmentStatus: 'NOTICE',
+      },
+    });
+    const exit = (body: Record<string, unknown>) =>
+      post(
+        hrAction,
+        `/api/v1/workspaces/${slug}/hr/actions/employee-exit`,
+        { employeeId: employee.id, confirmSettlementPaid: true, ...body },
+        hrCookie,
+        { workspaceSlug: slug, action: 'employee-exit' },
+      );
+    const employment = async () =>
+      (await prisma.employeeProfile.findFirstOrThrow({ where: { tenantId, id: employee.id } })).employmentStatus;
+
+    const refused = await exit({});
+    expect(refused.status, JSON.stringify(refused.body)).toBe(409);
+    expect(refused.body.openWork).toEqual({ leads: 3, followUps: 2, tasks: 1 });
+    expect(await employment()).toBe('NOTICE');
+    expect(await statusOf(agent.id)).toBe('ACTIVE');
+
+    const res = await exit({ handOverTo: receiver.id });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await employment()).toBe('EXITED');
+    expect(await statusOf(agent.id)).toBe('DEACTIVATED');
+    expect(await openOwnedBy(agent.id)).toEqual({ leads: 0, followUps: 0, tasks: 0 });
+    expect(await openOwnedBy(receiver.id)).toEqual({ leads: 3, followUps: 2, tasks: 1 });
   });
 
   it('still deactivates an account with nothing open without asking for a hand-over', async () => {

@@ -16,9 +16,9 @@ import { OPEN_STATUSES } from './nextFollowUp';
  * one that does not exist, simply does not count. Writing history for every
  * requested id used to reassign across teams and 500 on an unknown id.
  *
- * The new owner must be an active member. A suspended or removed account signs
- * nobody in, so a lead handed to one sits where no colleague at OWN scope sees
- * it and the Allocation queue does not list it.
+ * The new owner must be an active member (`activeMemberWhere`). A suspended,
+ * removed or invited account signs nobody in, so a lead handed to one sits where
+ * no colleague at OWN scope sees it and the Allocation queue does not list it.
  *
  * Returns the ids that moved. Inside `withTx`, pass its `tx`.
  */
@@ -31,7 +31,7 @@ export async function assignLeads(
 ): Promise<string[]> {
   if (ownerId) {
     const owner = await tx.user.findFirst({
-      where: { id: ownerId, tenantId: ctx.tenantId, deletedAt: null, status: 'ACTIVE' },
+      where: { ...activeMemberWhere(ctx.tenantId), id: ownerId },
       select: { id: true },
     });
     if (!owner) throw NotFound('User');
@@ -59,6 +59,33 @@ export async function assignLeads(
     })),
   });
   return ids;
+}
+
+/**
+ * Who may be handed work: an ACTIVE, undeleted account whose workspace access
+ * is active too. The platform console suspends a membership and leaves the
+ * workspace User ACTIVE, and that person cannot sign in either. An account with
+ * no membership row is not blocked, as in `assessEligibility`.
+ */
+export const activeMemberWhere = (tenantId: string) => ({
+  tenantId,
+  deletedAt: null,
+  status: 'ACTIVE' as const,
+  NOT: { workspaceMembership: { is: { status: { not: 'ACTIVE' as const } } } },
+});
+
+/**
+ * Whether the caller's leads:ASSIGN scope reaches `userId`. Every record a
+ * hand-over moves is theirs, so this one check covers leads, follow-ups and
+ * tasks — reassigning a follow-up or task is a `leads` permission too (the
+ * follow-ups/[id] and tasks/[id] routes). Read before the account's row is
+ * soft-deleted: a BRANCH or REGION reach lists users, and the tenant guard
+ * hides deleted ones.
+ */
+export async function mayHandOverWorkOf(ctx: Ctx, userId: string, db: TxClient | typeof prisma = prisma) {
+  const reach = scopeFor(ctx, 'leads', 'ASSIGN');
+  if (reach === 'NONE') return false;
+  return reach === 'ORGANIZATION' || (await resolveOwnerIds(ctx, reach, db)).includes(userId);
 }
 
 /** Open leads: an OPEN-category stage, not closed out — what bulk allocation would hand out. */
@@ -121,11 +148,14 @@ export interface HandOver {
  * an unplaced intake lead waits; follow-ups and tasks always need a member,
  * because the queue holds leads only.
  *
- * The caller's leads:ASSIGN scope must reach the departing member — every
- * record moved is theirs, so one check covers all three kinds.
+ * The caller's leads:ASSIGN scope must reach the departing member
+ * (`mayHandOverWorkOf`), so an account administrator without it — the seeded
+ * hr_admin and it_admin — cannot end an account that still holds work.
  *
- * Call after the account's own row is written: User before Lead is the lock
- * order assignment uses (services/distribution/assignLead.ts).
+ * Call after the account's status is written and before its `deletedAt` is:
+ * User before Lead is the lock order assignment uses
+ * (services/distribution/assignLead.ts), and the reach check cannot see a
+ * soft-deleted user.
  */
 export async function handOverOpenWork(
   ctx: Ctx,
@@ -143,17 +173,17 @@ export async function handOverOpenWork(
     throw Conflict(
       `${from.fullName} still owns ${describeOpenWork(work)}. Hand them to an active member` +
         `${work.leads ? ' (or send the leads to the allocation queue)' : ''} before this account is ${why}.`,
+      { openWork: work },
     );
   }
 
-  const reach = scopeFor(ctx, 'leads', 'ASSIGN');
-  if (reach === 'NONE' || (reach !== 'ORGANIZATION' && !(await resolveOwnerIds(ctx, reach, tx)).includes(from.id))) {
+  if (!(await mayHandOverWorkOf(ctx, from.id, tx))) {
     throw Forbidden(`${from.fullName}'s work is outside what you may assign. Ask someone who can assign it.`);
   }
 
   const to = handOver.toUserId
     ? await tx.user.findFirst({
-        where: { tenantId: ctx.tenantId, id: handOver.toUserId, deletedAt: null, status: 'ACTIVE' },
+        where: { ...activeMemberWhere(ctx.tenantId), id: handOver.toUserId },
         select: { id: true },
       })
     : null;

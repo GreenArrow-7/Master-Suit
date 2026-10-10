@@ -9,6 +9,8 @@ interface OpenWork {
   leads: number;
   followUps: number;
   tasks: number;
+  /** Whether this caller's leads:ASSIGN scope reaches the account; the server refuses otherwise. */
+  mayHandOver: boolean;
   members: { id: string; fullName: string }[];
 }
 
@@ -61,11 +63,12 @@ export function HandOverStep({
   const others = work ? work.followUps + work.tasks : 0;
   const toQueue = queue && (work?.leads ?? 0) > 0;
   const needsMember = !!work && ((work.leads > 0 && !toQueue) || others > 0);
+  const blocked = !!work && work.leads + others > 0 && !work.mayHandOver;
 
   useEffect(() => {
-    if (!work || (needsMember && !to)) return onChange(null);
+    if (!work || blocked || (needsMember && !to)) return onChange(null);
     onChange({ ...(to ? { handOverTo: to } : {}), ...(toQueue ? { leadsToQueue: true } : {}) });
-  }, [work, to, toQueue, needsMember, onChange]);
+  }, [work, blocked, to, toQueue, needsMember, onChange]);
 
   if (error) {
     return (
@@ -83,6 +86,16 @@ export function HandOverStep({
     work.tasks && plural(work.tasks, 'task'),
   ].filter(Boolean) as string[];
   const listed = counts.length > 1 ? `${counts.slice(0, -1).join(', ')} and ${counts.at(-1)}` : counts[0];
+
+  // Said before submit: the server would refuse with 403 after it.
+  if (blocked) {
+    return (
+      <p className="lf-users__once" data-bad role="alert">
+        They own {listed}, and your role cannot assign their work. Ask someone who can assign their leads to hand it
+        over first.
+      </p>
+    );
+  }
 
   return (
     <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: 8 }}>

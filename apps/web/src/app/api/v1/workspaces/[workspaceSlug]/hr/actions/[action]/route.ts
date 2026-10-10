@@ -816,9 +816,21 @@ export const POST = route(
         return startOffboarding(ctx, input);
       }
 
+      // An exit ends the workspace account too, so its open work needs
+      // `handOverTo` and/or `leadsToQueue`, as on identity/account-active.
       case 'employee-exit': {
-        const input = z.object({ employeeId: id, confirmSettlementPaid: z.coerce.boolean() }).parse(body);
-        return finaliseExit(ctx, input.employeeId, input.confirmSettlementPaid);
+        const input = z
+          .object({
+            employeeId: id,
+            confirmSettlementPaid: z.coerce.boolean(),
+            handOverTo: id.optional(),
+            leadsToQueue: z.boolean().optional(),
+          })
+          .parse(body);
+        return finaliseExit(ctx, input.employeeId, input.confirmSettlementPaid, {
+          toUserId: input.handOverTo,
+          leadsToQueue: input.leadsToQueue,
+        });
       }
 
       // ── Biometrics and attendance ──────────────────────────────────────────
