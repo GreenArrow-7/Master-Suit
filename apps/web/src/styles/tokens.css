@@ -29,6 +29,8 @@
    ═════════════════════════════════════════════════════════════════════════════ */
 
 :root {
+  /* Light by default; the dark themes below switch native controls too. */
+  color-scheme: light;
   /**
    * Space reserved at the bottom of scrollable page content so the fixed
    * assistant button (.lf-ai-fab: bottom 18px, 52px tall) never comes to rest
@@ -271,6 +273,10 @@
    shares this block and overrides only its surfaces further down. */
 [data-theme='dark'],
 [data-theme='glass'] {
+  /* Native controls follow the theme: without this the date and time fields'
+     calendar and clock icons are drawn dark on these dark surfaces, nearly
+     invisible, and the pickers open in light. */
+  color-scheme: dark;
   --yh-bg: #020817;
   --yh-surface: #0a1729;
   --yh-surface-elevated: #0d1c30;

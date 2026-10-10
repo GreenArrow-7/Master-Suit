@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { DateTimeInput } from '@/components/forms/DateInput';
 
 interface Props {
   callId: string;
@@ -314,7 +315,7 @@ export default function CallActions({
         <form onSubmit={createFollowUp} style={{ display: 'grid', gap: 8 }}>
           <div style={{ fontSize: 'var(--lf-text-sm)', fontWeight: 500 }}>New Follow-up</div>
           <input name="title" required className="lf-input" placeholder="Follow-up title" />
-          <input name="dueAt" type="datetime-local" required className="lf-input" />
+          <DateTimeInput name="dueAt" required aria-label="Due" />
           <select name="priority" className="lf-input" defaultValue="MEDIUM">
             <option value="LOW">Low</option>
             <option value="MEDIUM">Medium</option>

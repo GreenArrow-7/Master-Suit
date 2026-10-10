@@ -6,6 +6,7 @@ import SalesLink from '@/components/workspace/SalesLink';
 import { useModuleBase } from '@/components/workspace/SalesLink';
 import { problemSummary } from '@/components/forms/useFormErrors';
 import Field from '@/components/forms/Field';
+import DateInput from '@/components/forms/DateInput';
 
 export default function OpportunityForm({
   accounts = [],
@@ -40,8 +41,10 @@ export default function OpportunityForm({
 
   const editing = Boolean(opportunityId);
 
-  async function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    // A half-typed date reads as '' — without this, Save would clear the saved one.
+    if (!e.currentTarget.reportValidity()) return;
     setBusy(true);
     setError(null);
     try {
@@ -149,13 +152,7 @@ export default function OpportunityForm({
       </div>
 
       <Field label="Expected close date" htmlFor="expectedCloseDate">
-        <input
-          id="expectedCloseDate"
-          className="lf-input"
-          type="date"
-          value={expectedCloseDate}
-          onChange={(e) => setExpectedCloseDate(e.target.value)}
-        />
+        <DateInput id="expectedCloseDate" value={expectedCloseDate} onChange={setExpectedCloseDate} />
       </Field>
 
       <div style={{ display: 'flex', gap: 'var(--lf-space-3)', marginTop: 'var(--lf-space-2)' }}>

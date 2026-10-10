@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 
 import { METRICS } from './metrics';
 import Field from '@/components/forms/Field';
+import DateInput from '@/components/forms/DateInput';
+import { toDateValue } from '@/lib/dates';
 
 /**
  * Assign a sales target to a teammate — the form the Targets page was missing.
@@ -17,12 +19,12 @@ export default function TargetAdmin({ users }: { users: { id: string; fullName: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const monday = () => {
+  // This week's Monday plus `days`, as a local calendar day.
+  const monday = (days = 0) => {
     const d = new Date();
-    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-    return d.toISOString().slice(0, 10);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + days);
+    return toDateValue(d);
   };
-  const inDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
 
   // Lazy initialiser: the clock reads once on mount, not on every render.
   const [form, setForm] = useState(() => ({
@@ -31,14 +33,16 @@ export default function TargetAdmin({ users }: { users: { id: string; fullName: 
     period: 'WEEKLY',
     targetValue: '25',
     periodStart: monday(),
-    periodEnd: inDays(6),
+    periodEnd: monday(6),
   }));
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  async function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    // A missing, half-typed or out-of-order date stops here with its own message.
+    if (!e.currentTarget.reportValidity()) return;
     setBusy(true);
     setError(null);
     try {
@@ -149,23 +153,20 @@ export default function TargetAdmin({ users }: { users: { id: string; fullName: 
         </Field>
 
         <Field label="From" htmlFor="tg-start">
-          <input
+          <DateInput
             id="tg-start"
-            className="lf-input"
-            type="date"
             value={form.periodStart}
-            onChange={set('periodStart')}
+            onChange={(v) => setForm((f) => ({ ...f, periodStart: v }))}
             required
           />
         </Field>
 
         <Field label="To" htmlFor="tg-end">
-          <input
+          <DateInput
             id="tg-end"
-            className="lf-input"
-            type="date"
             value={form.periodEnd}
-            onChange={set('periodEnd')}
+            min={form.periodStart || undefined}
+            onChange={(v) => setForm((f) => ({ ...f, periodEnd: v }))}
             required
           />
         </Field>

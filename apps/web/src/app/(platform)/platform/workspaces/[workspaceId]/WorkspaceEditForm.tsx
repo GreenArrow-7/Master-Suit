@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import DateInput from '@/components/forms/DateInput';
 import { PRODUCT_MODULE_CHOICES } from '@/lib/modules/catalogue';
 
 interface Plan {
@@ -186,19 +187,13 @@ export default function WorkspaceEditForm({
 
       <Section title="Trial">
         <Field label="Trial starts">
-          <input
-            className="lf-input"
-            type="date"
-            value={values.trialStartedAt}
-            onChange={(event) => set('trialStartedAt', event.target.value)}
-          />
+          <DateInput value={values.trialStartedAt} onChange={(value) => set('trialStartedAt', value)} />
         </Field>
         <Field label="Trial ends">
-          <input
-            className="lf-input"
-            type="date"
+          <DateInput
             value={values.trialEndsAt}
-            onChange={(event) => set('trialEndsAt', event.target.value)}
+            min={values.trialStartedAt || undefined}
+            onChange={(value) => set('trialEndsAt', value)}
           />
         </Field>
       </Section>

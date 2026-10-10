@@ -35,6 +35,9 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 | 2026-10-10 | [High-priority notifications now look and sort like it](2026-10-10-notification-priority.md) | #155 | Lead Eagle |
 | 2026-10-10 | [A Lead-Eagle-only workspace no longer offers a shortlist it cannot send](2026-10-10-shortlist-lead-eagle.md) | #155 | Lead Eagle |
 | 2026-10-10 | [The standalone move tool: bookings visible, orphans reported, source and stage history shown](2026-10-10-move-tool-gaps.md) | #155 | Lead Eagle |
+| 2026-10-10 | [One date field everywhere: type it or pick it](2026-10-10-date-fields.md) | #154 | fix, all modules |
+| 2026-10-10 | [Saving a workspace in the console cut off a paying customer's modules](2026-10-10-workspace-edit-entitlements.md) | #153 | fix, platform |
+| 2026-10-10 | [Signing up could bring back a suspended account](2026-10-10-signup-suspended-identity.md) | #152 | security, Lead Eagle |
 | 2026-10-10 | [Self-serve sign-up could not be opened from the console](2026-10-10-signup-setting-row.md) | #151 | fix, Lead Eagle |
 | 2026-10-10 | [Release 1dddaf9](2026-10-10-release-1dddaf9.md) | #135, #138, #140, #142, #147, #148 | release |
 | 2026-10-10 | [Creating a plan said "The server could not be reached." after creating it](2026-10-10-plan-form-reset.md) | #148 | fix, platform |

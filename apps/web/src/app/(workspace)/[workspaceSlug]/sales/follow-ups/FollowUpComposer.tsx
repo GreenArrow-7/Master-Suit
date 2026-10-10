@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Field from '@/components/forms/Field';
+import { DateTimeInput } from '@/components/forms/DateInput';
 
 /** Create a follow-up from the Follow-ups page, against POST /api/v1/follow-ups. */
 const EMPTY = { title: '', dueAt: '', priority: 'MEDIUM', description: '' };
@@ -20,7 +21,10 @@ export default function FollowUpComposer() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.title || !form.dueAt) return;
+    if (!form.title || !form.dueAt) {
+      setError(!form.title ? 'Enter a title.' : 'Enter a due date and time.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -98,13 +102,11 @@ export default function FollowUpComposer() {
           gap: 'var(--lf-space-4)',
         }}
       >
-        <Field label="Due" htmlFor="f-due">
-          <input
+        <Field label="Due" htmlFor="f-due" required>
+          <DateTimeInput
             id="f-due"
-            className="lf-input"
-            type="datetime-local"
             value={form.dueAt}
-            onChange={set('dueAt')}
+            onChange={(dueAt) => setForm((f) => ({ ...f, dueAt }))}
             required
           />
         </Field>
