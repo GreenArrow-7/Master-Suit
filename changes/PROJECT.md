@@ -58,7 +58,15 @@ Node 22 or newer (CI uses 24).
   predicates are in `src/services/hr/access.ts`. A manager's authority over
   people stops at their reporting line (`reportingLine`, `src/services/hr/leave.ts`).
   A task is read under `tasks` wherever it shows, a lead's page included, and
-  a follow-up under `leads` (`src/services/leads/nextFollowUp.ts`).
+  a follow-up under `leads` (`src/services/leads/nextFollowUp.ts`); a task is
+  changed only where `tasks:VIEW` and `leads:EDIT` both reach its owner. A
+  record loaded by id outside the caller's scope answers 404, as a missing id
+  does (`src/lib/security/record-scope.ts`).
+- **Identities.** A workspace path that attaches an existing platform identity
+  (Add user, invite and accept, a new workspace) takes it through
+  `assertIdentityReusable` (`src/services/identity/accounts.ts`): a suspended,
+  deactivated, deleted or erasing account answers 409, and only the platform
+  console's reactivate brings one back.
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
   P2002 answers 409 and P2025 404, a zod failure 422 — let the database say
   "already exists" or "not found" instead of reading first.
