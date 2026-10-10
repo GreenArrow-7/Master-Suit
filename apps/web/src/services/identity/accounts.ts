@@ -19,7 +19,7 @@
  * the case it matters — an account that has already been taken over.
  */
 import { randomInt } from 'node:crypto';
-import { prisma, withTx } from '@/lib/db';
+import { prisma, withTx, type TxClient } from '@/lib/db';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import {
   assertPasswordPolicy,
@@ -45,6 +45,40 @@ export async function passwordPolicy(tenantId: string): Promise<PasswordPolicy> 
   });
   const stored = (settings?.passwordPolicy ?? {}) as Partial<PasswordPolicy>;
   return { ...DEFAULT_POLICY, ...stored };
+}
+
+/**
+ * The identity behind `email` if a workspace may take it on, or null when there
+ * is none. Every path that attaches an existing identity to a workspace sets it
+ * ACTIVE — Add user, Invite → accept, and `createWorkspace` (the console's
+ * wizard and self-serve sign-up) — so each reads it through here and none can
+ * drift: a suspension or deactivation is the platform owner's to lift, from the
+ * console, and an erasure in flight must not gain a membership its executor
+ * never saw (that shows as `deletedAt` only at the last step). Inside a
+ * transaction, pass its `tx`.
+ */
+export async function assertIdentityReusable(db: TxClient | typeof prisma, email: string) {
+  const identity = await db.platformUser.findUnique({
+    where: { normalizedEmail: email },
+    select: { id: true, deletedAt: true, status: true },
+  });
+  if (!identity) return null;
+  if (identity.deletedAt) throw Conflict('That email belongs to a deleted account. Use a different address.');
+  const erasing = await db.accountDeletionRequest.findFirst({
+    where: { platformUserId: identity.id, status: { in: ['REQUESTED', 'BLOCKED', 'IN_PROGRESS'] } },
+    select: { id: true },
+  });
+  if (erasing) {
+    throw Conflict(
+      'That account is being deleted. Its owner can withdraw the request; otherwise use a different address.',
+    );
+  }
+  if (identity.status === 'SUSPENDED' || identity.status === 'DEACTIVATED') {
+    throw Conflict(
+      'That email belongs to a suspended or deactivated account. Ask the platform owner to restore it, or use a different address.',
+    );
+  }
+  return identity;
 }
 
 /**
@@ -719,11 +753,7 @@ export async function createStaffAccount(ctx: Ctx, input: NewStaffAccount) {
     // A person who already signs in elsewhere keeps their own password: being
     // added to a second workspace is not authority to reset the credential
     // guarding the first.
-    const existing = await tx.platformUser.findUnique({
-      where: { normalizedEmail: email },
-      select: { id: true, deletedAt: true },
-    });
-    if (existing?.deletedAt) throw Conflict('That email belonged to a removed account. Use a different address.');
+    const existing = await assertIdentityReusable(tx, email);
 
     const platformUser = existing
       ? await tx.platformUser.update({ where: { id: existing.id }, data: { status: 'ACTIVE' } })
