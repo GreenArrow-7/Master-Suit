@@ -55,6 +55,11 @@ Node 22 or newer (CI uses 24).
   `atLeast(ctx, module, action, scope)` (`src/lib/security/rbac.ts`). HR's
   predicates are in `src/services/hr/access.ts`. A manager's authority over
   people stops at their reporting line (`reportingLine`, `src/services/hr/leave.ts`).
+- **Sensitive fields.** A lead's phone numbers and email are masked for a role
+  without `leads:VIEW_SENSITIVE_FIELDS` (`LEAD_SENSITIVE_FIELDS`,
+  `src/services/leads/createLead.ts`). A screen or route that shows a lead or a
+  number it holds serialises it through `applyFieldSecurity` or `asLeadPhone`,
+  and builds `tel:` and `wa.me` links with `dialable()`, which refuses a mask.
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
   P2002 answers 409 and P2025 404, a zod failure 422 — let the database say
   "already exists" or "not found" instead of reading first.
