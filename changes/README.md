@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-10 | [Release b28d2b7](2026-10-10-release-b28d2b7.md) | #151–#155 | release |
 | 2026-10-10 | [Lead writes outside your scope answered 'forbidden'; bulk assign ignored scope; Make lead opened a lead you cannot see](2026-10-10-lead-record-scope.md) | #155 | security, Lead Eagle |
 | 2026-10-10 | [Cold data: assign one record; Make lead opens only what you may see; notes shown](2026-10-10-cold-data-assign-and-make-lead.md) | #155 | Lead Eagle |
 | 2026-10-10 | [The lead grid said only how many bulk moves failed, never why](2026-10-10-lead-grid-bulk-reasons.md) | #155 | Lead Eagle |
