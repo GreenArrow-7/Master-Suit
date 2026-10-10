@@ -17,10 +17,29 @@
  * if a caller can filter or sort on it: ten requests recover a masked salary by
  * bisection. `assertFilterableFields` refuses instead of silently dropping the
  * clause, and that refusal is asserted here through the real query parameter.
+ *
+ * The last block is a lead's main phone and email (M2-06): `leads:` VIEW_SENSITIVE_FIELDS
+ * in the role editor is the switch, on every screen and route a lead leaves by.
  */
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { prisma } from '@/lib/db';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+// The lead screens are server components that read the session cookie through
+// next/headers; the routes take it from the request, so this only feeds pages.
+const cookieJar = vi.hoisted(() => ({ value: '' }));
+vi.mock('next/headers', () => ({
+  headers: async () => new Headers({ cookie: cookieJar.value, 'x-pathname': '/' }),
+  cookies: async () => ({
+    get: (name: string) => {
+      const match = cookieJar.value.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+      return match ? { name, value: match[1] } : undefined;
+    },
+  }),
+}));
+
+import { prisma, withPlatformTx } from '@/lib/db';
 import {
   applyFieldSecurity,
   assertFilterableFields,
@@ -29,10 +48,20 @@ import {
   type FieldRule,
 } from '@/lib/security/fieldSecurity';
 import { GET as listOpportunities, POST as createOpportunityRoute } from '@/app/api/v1/opportunities/route';
+import { GET as listLeads } from '@/app/api/v1/leads/route';
+import { GET as readLead, PATCH as patchLead } from '@/app/api/v1/leads/[id]/route';
+import { GET as exportLeads } from '@/app/api/v1/leads/export/route';
+import { POST as addPhone, DELETE as removePhone } from '@/app/api/v1/leads/[id]/phones/route';
+import { GET as listCalls, POST as createCall } from '@/app/api/v1/calls/route';
+import LeadsPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/page';
+import LeadDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
+import CallsPage from '@/app/(workspace)/[workspaceSlug]/sales/calls/page';
+import { dialable } from '@/components/workspace/CallLink';
 import { createSessionToken } from '../helpers/session';
 import { buildActor, buildCtx } from '../helpers/ctx';
-import { get, post } from '../helpers/request';
+import { del, get, patch, post } from '../helpers/request';
 import { grantPermissions, type Grants, createWorkspaceUser } from '../helpers/fixtures';
+import { pageText } from '../helpers/render';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `fieldsec-${suffix}`;
@@ -268,9 +297,18 @@ describe('masking strategies', () => {
 
   it('MASK_PARTIAL keeps enough to recognise a record and not enough to use it', () => {
     const out = apply({ iban: 'AE070331234567890123456' }, new Map([rule('iban', 'MASK_PARTIAL')]));
-    expect(String(out.iban).startsWith('AE070')).toBe(true);
+    expect(String(out.iban).startsWith('AE07')).toBe(true);
     expect(String(out.iban).endsWith('56')).toBe(true);
     expect(out.iban).not.toBe('AE070331234567890123456');
+  });
+
+  it('MASK_PARTIAL reads a phone number as the country code and the last two digits', () => {
+    // The owner's shape (M2-06): the first four and the last two, the spacing as
+    // typed — and nothing from the subscriber number before the last two.
+    expect(apply({ phone: '+971 50 123 4567' }, new Map([rule('phone', 'MASK_PARTIAL')])).phone).toBe(
+      '+971 •• ••• ••67',
+    );
+    expect(apply({ phone: '+971501234567' }, new Map([rule('phone', 'MASK_PARTIAL')])).phone).toBe('+971•••••••67');
   });
 
   it('MASK_PARTIAL does not leak a short value whole', () => {
@@ -315,17 +353,25 @@ describe('sensitive fields', () => {
         roleId: restrictedRoleId,
         roleKey: 'restricted',
         roleRank: 50,
-        permissions: new Map([['opportunity:VIEW_SENSITIVE_FIELDS', 'ORGANIZATION' as const]]),
+        // The module the role editor grants, `opportunities` — not the object
+        // type's own name. The check read `opportunity:` (and `lead:`), which no
+        // role can be given, so the switch reached nobody.
+        permissions: new Map([['opportunities:VIEW_SENSITIVE_FIELDS', 'ORGANIZATION' as const]]),
       }),
     );
 
   it('are withheld by default, with no rule row needed', () => {
-    const out = applyFieldSecurity(ctxWithout(), 'OPPORTUNITY', new Map(), { salary: 100 }, ['salary']);
+    const out = applyFieldSecurity(ctxWithout(), 'OPPORTUNITY', new Map(), { salary: 100 }, { salary: 'HIDE' });
     expect(out).not.toHaveProperty('salary');
   });
 
+  it('are masked by default when the field names a mask', () => {
+    const out = applyFieldSecurity(ctxWithout(), 'OPPORTUNITY', new Map(), { code: 'ABCDEFGH' }, { code: 'MASK_ALL' });
+    expect(out.code).toBe('••••••••');
+  });
+
   it('are returned to a role holding VIEW_SENSITIVE_FIELDS', () => {
-    const out = applyFieldSecurity(ctxWith(), 'OPPORTUNITY', new Map(), { salary: 100 }, ['salary']);
+    const out = applyFieldSecurity(ctxWith(), 'OPPORTUNITY', new Map(), { salary: 100 }, { salary: 'HIDE' });
     expect(out.salary).toBe(100);
   });
 });
@@ -355,5 +401,296 @@ describe('write and filter guards as units', () => {
 
   it('allows filtering on a viewable-but-uneditable field', () => {
     expect(() => assertFilterableFields(uneditable, ['amount'])).not.toThrow();
+  });
+});
+
+describe("a lead's main phone and email follow leads:VIEW_SENSITIVE_FIELDS (M2-06)", () => {
+  const PHONE = '+971 50 123 4567';
+  const MASKED_PHONE = '+971 •• ••• ••67';
+  const NORMALIZED = '+971501234567';
+  const MASKED_NORMALIZED = '+971•••••••67';
+  const OTHER = '+971 55 765 4321';
+  const MASKED_OTHER = '+971 •• ••• ••21';
+  const SECONDARY = '+971 4 555 0199';
+  let email = '';
+  let maskedEmail = '';
+  let leadId = '';
+  let leadName = '';
+
+  const exportCsv = async (cookie: string) => {
+    const res = await exportLeads(new Request('http://localhost/api/v1/leads/export', { headers: { cookie } }), {
+      params: Promise.resolve({}),
+    });
+    expect(res.status).toBe(200);
+    return res.text();
+  };
+  const leadPage = (cookie: string) => {
+    cookieJar.value = cookie;
+    return pageText(LeadDetailPage({ params: Promise.resolve({ id: leadId }) }));
+  };
+  const listPage = (cookie: string, q?: string) => {
+    cookieJar.value = cookie;
+    return pageText(LeadsPage({ searchParams: Promise.resolve(q ? { q } : {}) }));
+  };
+
+  beforeAll(async () => {
+    const grants = [
+      ['leads', 'VIEW'],
+      ['leads', 'EDIT'],
+      ['leads', 'EXPORT'],
+      ['calls', 'VIEW'],
+      ['calls', 'CREATE'],
+    ] as const;
+    // No VIEW_SENSITIVE_FIELDS: the telecaller the switch exists for.
+    await member('leadmasked', grants);
+    await member('leadopen', [...grants, ['leads', 'VIEW_SENSITIVE_FIELDS']]);
+
+    email = `contact.${suffix}@example.com`;
+    maskedEmail = `c${'•'.repeat(`contact.${suffix}`.length - 1)}@example.com`;
+    leadName = `Amina ${suffix}`;
+    // The lead grid and its CSV show phone and email only where the workspace chose them.
+    await prisma.organizationSetting.create({ data: { tenantId, gridColumns: { LEAD: ['email', 'phone'] } } });
+    const stage = await prisma.leadStage.create({
+      data: { tenantId, key: `lead-new-${suffix}`, name: 'New', position: 1, isDefault: true },
+    });
+    const lead = await prisma.lead.create({
+      data: {
+        tenantId,
+        reference: `LD-${suffix}`,
+        fullName: leadName,
+        phone: PHONE,
+        phoneNormalized: NORMALIZED,
+        whatsappNumber: NORMALIZED,
+        secondaryPhone: SECONDARY,
+        email,
+        stageId: stage.id,
+      },
+    });
+    leadId = lead.id;
+    await prisma.leadPhone.create({
+      data: { tenantId, leadId, raw: OTHER, normalized: '+971557654321', label: 'Work', isWhatsapp: true },
+    });
+    await prisma.call.create({
+      data: { tenantId, callerId: userIds.leadmasked!, leadId, recipientNumber: PHONE, status: 'COMPLETED' },
+    });
+  });
+
+  afterAll(async () => {
+    await prisma.call.deleteMany({ where: { tenantId } });
+    await prisma.leadPhone.deleteMany({ where: { tenantId } });
+    await prisma.lead.deleteMany({ where: { tenantId } });
+  });
+
+  it('masks them on GET /api/v1/leads', async () => {
+    const res = await get(listLeads, '/api/v1/leads', cookies.leadmasked);
+    expect(res.status).toBe(200);
+    const row = res.body.data.find((r: { id: string }) => r.id === leadId);
+    expect(row.phone).toBe(MASKED_PHONE);
+    expect(row.email).toBe(maskedEmail);
+  });
+
+  it('masks every number on GET /api/v1/leads/{id}', async () => {
+    const res = await get(readLead, `/api/v1/leads/${leadId}`, cookies.leadmasked);
+    expect(res.status).toBe(200);
+    expect(res.body.phone).toBe(MASKED_PHONE);
+    expect(res.body.phoneNormalized).toBe(MASKED_NORMALIZED);
+    expect(res.body.whatsappNumber).toBe(MASKED_NORMALIZED);
+    expect(res.body.email).toBe(maskedEmail);
+    const body = JSON.stringify(res.body);
+    for (const leaked of ['123 4567', '501234567', '555 0199', email]) expect(body).not.toContain(leaked);
+  });
+
+  it('masks them in the CSV export', async () => {
+    const csv = await exportCsv(cookies.leadmasked);
+    expect(csv).toContain(MASKED_PHONE);
+    expect(csv).toContain(maskedEmail);
+    expect(csv).not.toContain(PHONE);
+    expect(csv).not.toContain(email);
+  });
+
+  it('masks them on the lead list', async () => {
+    const text = await listPage(cookies.leadmasked);
+    expect(text).toContain(leadName);
+    expect(text).toContain(MASKED_PHONE);
+    expect(text).toContain(maskedEmail);
+    expect(text).not.toContain(PHONE);
+    expect(text).not.toContain(email);
+  });
+
+  it('finds a masked lead by its whole number or address, never by a fragment', async () => {
+    // A fragment search is the bisection the filter guard refuses: a few
+    // searches would read the number back digit by digit.
+    expect(await listPage(cookies.leadmasked, '4567')).not.toContain(leadName);
+    expect(await listPage(cookies.leadmasked, `contact.${suffix}`)).not.toContain(leadName);
+    // The whole number, as anyone would type it, and the whole address still
+    // find the lead: they tell the caller nothing they did not type.
+    expect(await listPage(cookies.leadmasked, '050 123 4567')).toContain(leadName);
+    expect(await listPage(cookies.leadmasked, email.toUpperCase())).toContain(leadName);
+  });
+
+  it('masks them, and the other numbers, on the lead page, with nothing left to dial', async () => {
+    const text = await leadPage(cookies.leadmasked);
+    expect(text).toContain(leadName);
+    expect(text).toContain(MASKED_PHONE);
+    expect(text).toContain(maskedEmail);
+    expect(text).toContain(MASKED_OTHER);
+    for (const leaked of ['123 4567', '501234567', '765 4321', '557654321', email]) expect(text).not.toContain(leaked);
+    // What the page's Phone, WhatsApp and number links are built from.
+    expect(dialable(MASKED_PHONE)).toBeNull();
+    expect(dialable(MASKED_OTHER)).toBeNull();
+    expect(dialable(PHONE)).toBe(NORMALIZED);
+  });
+
+  it('refuses to add, remove or change a number for a role that cannot see them (403)', async () => {
+    const added = await post(
+      addPhone,
+      `/api/v1/leads/${leadId}/phones`,
+      { phone: '+971 52 000 1111' },
+      cookies.leadmasked,
+    );
+    expect(added.status).toBe(403);
+    const other = await prisma.leadPhone.findFirstOrThrow({ where: { tenantId, leadId } });
+    const removed = await del(removePhone, `/api/v1/leads/${leadId}/phones?phoneId=${other.id}`, cookies.leadmasked);
+    expect(removed.status).toBe(403);
+    const changed = await patch(
+      patchLead,
+      `/api/v1/leads/${leadId}`,
+      { phone: '+971 52 999 0000' },
+      cookies.leadmasked,
+    );
+    expect(changed.status).toBe(403);
+    const rewritten = await patch(patchLead, `/api/v1/leads/${leadId}`, { email: `x.${email}` }, cookies.leadmasked);
+    expect(rewritten.status).toBe(403);
+
+    const stored = await prisma.lead.findFirstOrThrow({
+      where: { tenantId, id: leadId },
+      select: { phone: true, email: true },
+    });
+    expect(stored).toEqual({ phone: PHONE, email });
+    expect(await prisma.leadPhone.count({ where: { tenantId, leadId } })).toBe(1);
+
+    // Everything else on the lead is still theirs to edit, and the answer is masked.
+    const edited = await patch(
+      patchLead,
+      `/api/v1/leads/${leadId}`,
+      { company: 'Marina Holdings' },
+      cookies.leadmasked,
+    );
+    expect(edited.status).toBe(200);
+    expect(edited.body.phone).toBe(MASKED_PHONE);
+
+    // A lead they cannot reach still answers as a missing one, never 403.
+    const missing = `c${'0'.repeat(24)}`;
+    const notThere = await post(
+      addPhone,
+      `/api/v1/leads/${missing}/phones`,
+      { phone: '+971 52 000 1111' },
+      cookies.leadmasked,
+    );
+    expect(notThere.status).toBe(404);
+    expect((await patch(patchLead, `/api/v1/leads/${missing}`, { phone: PHONE }, cookies.leadmasked)).status).toBe(404);
+  });
+
+  it('refuses a filter on a masked field rather than letting it be bisected', async () => {
+    const filter = encodeFilter({ op: 'AND', children: [{ field: 'phone', cmp: 'starts', value: '+9715' }] });
+    const masked = await get(listLeads, `/api/v1/leads?filter=${filter}`, cookies.leadmasked);
+    expect(masked.status).toBe(403);
+    expect(masked.body.detail).toMatch(/restricted field/i);
+    const open = await get(listLeads, `/api/v1/leads?filter=${filter}`, cookies.leadopen);
+    expect(open.status).toBe(200);
+  });
+
+  it('masks the number a call to the lead went to, on the calls list and its API', async () => {
+    cookieJar.value = cookies.leadmasked;
+    const text = await pageText(CallsPage({ searchParams: Promise.resolve({}) }));
+    expect(text).toContain(MASKED_PHONE);
+    expect(text).not.toContain('123 4567');
+    const api = await get(listCalls, '/api/v1/calls', cookies.leadmasked);
+    expect(api.status).toBe(200);
+    expect(api.body.data.map((c: { recipientNumber: string }) => c.recipientNumber)).toEqual([MASKED_PHONE]);
+  });
+
+  it('still places a call by lead id for a masked role, to the real number', async () => {
+    // "Call with AI assistance" sends the number the screen holds, which is the
+    // masked one; the call has to go to the lead, not to the dots.
+    const res = await post(createCall, '/api/v1/calls', { leadId, recipientNumber: MASKED_PHONE }, cookies.leadmasked);
+    expect(res.status).toBe(200);
+    expect(res.body.recipientNumber).toBe(MASKED_PHONE);
+    const stored = await prisma.call.findFirstOrThrow({ where: { tenantId, id: res.body.id } });
+    expect(stored.recipientNumber).toBe(PHONE);
+    await prisma.call.deleteMany({ where: { tenantId, id: res.body.id } });
+  });
+
+  it('returns everything whole to a role holding leads:VIEW_SENSITIVE_FIELDS', async () => {
+    const list = await get(listLeads, '/api/v1/leads', cookies.leadopen);
+    const row = list.body.data.find((r: { id: string }) => r.id === leadId);
+    expect(row.phone).toBe(PHONE);
+    expect(row.email).toBe(email);
+
+    const one = await get(readLead, `/api/v1/leads/${leadId}`, cookies.leadopen);
+    expect(one.body.phone).toBe(PHONE);
+    expect(one.body.phoneNormalized).toBe(NORMALIZED);
+    // The secondary number was withheld from every role, holders included: the
+    // check read `lead:VIEW_SENSITIVE_FIELDS`, which the role editor cannot grant.
+    expect(one.body.secondaryPhone).toBe(SECONDARY);
+
+    const csv = await exportCsv(cookies.leadopen);
+    expect(csv).toContain(PHONE);
+    expect(csv).toContain(email);
+
+    const page = await leadPage(cookies.leadopen);
+    expect(page).toContain(PHONE);
+    expect(page).toContain(OTHER);
+    expect(await listPage(cookies.leadopen)).toContain(PHONE);
+
+    const added = await post(
+      addPhone,
+      `/api/v1/leads/${leadId}/phones`,
+      { phone: '+971 52 000 1111' },
+      cookies.leadopen,
+    );
+    expect(added.status).toBe(200);
+    await prisma.leadPhone.deleteMany({ where: { tenantId, id: added.body.id } });
+  });
+
+  it('is granted on deploy to every role that can already read leads, at the same scope', async () => {
+    const sql = readFileSync(
+      path.join(
+        __dirname,
+        '..',
+        '..',
+        'prisma',
+        'migrations',
+        '20261011000000_lead_contact_sensitive',
+        'migration.sql',
+      ),
+      'utf8',
+    );
+    const role = (key: string) =>
+      prisma.role.create({ data: { tenantId, key: `${key}-${suffix}`, name: key, rank: 60, defaultScope: 'TEAM' } });
+    const reader = await role('m-reader');
+    const caller = await role('m-caller');
+    await grantPermissions(tenantId, reader.id, [['leads', 'VIEW']], 'TEAM');
+    await grantPermissions(tenantId, caller.id, [['calls', 'VIEW']], 'TEAM');
+
+    // Only this case's two roles: the statement as written, narrowed by one clause.
+    const scoped = sql.replaceAll(
+      'AND rp."granted"',
+      `AND rp."granted" AND rp."roleId" IN ('${reader.id}', '${caller.id}')`,
+    );
+    expect(scoped).not.toBe(sql);
+    await withPlatformTx(async (tx) => {
+      for (const statement of scoped.split(/;\s*\n/).filter((part) => /INSERT INTO/.test(part))) {
+        await tx.$executeRawUnsafe(statement);
+      }
+    });
+
+    const sensitive = (roleId: string) =>
+      prisma.rolePermission.findFirst({
+        where: { tenantId, roleId, permission: { module: 'leads', action: 'VIEW_SENSITIVE_FIELDS' } },
+        select: { granted: true, scope: true },
+      });
+    expect(await sensitive(reader.id)).toEqual({ granted: true, scope: 'TEAM' });
+    expect(await sensitive(caller.id)).toBeNull();
   });
 });

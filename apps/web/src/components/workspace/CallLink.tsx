@@ -12,10 +12,16 @@
  * FollowUpRowActions, a client component, and the call detail has no use for it.
  */
 
-/** The `tel:` target, or null when there is no number worth offering. */
+/**
+ * The `tel:` target, or null when there is no number worth offering.
+ *
+ * A masked number ("+971 •• ••• ••67", lib/security/fieldSecurity.ts) is never
+ * one: stripped to its digits it would dial "+97167". Every Call, Phone and
+ * WhatsApp link is built through here, so refusing it here covers them all.
+ */
 export function dialable(raw: unknown): string | null {
   const value = typeof raw === 'string' ? raw.trim() : '';
-  if (!value) return null;
+  if (!value || value.includes('•')) return null;
   const cleaned = value.replace(/[^+\d,;]/g, '').replace(/(?!^)\+/g, '');
   return /\d/.test(cleaned) ? cleaned : null;
 }

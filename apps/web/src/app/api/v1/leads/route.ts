@@ -11,6 +11,7 @@ import {
   applyFieldSecurity,
   stripUneditableFields,
   assertFilterableFields,
+  seesField,
 } from '@/lib/security/fieldSecurity';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { obligationAccess, obligationWhere, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
@@ -80,7 +81,13 @@ export const GET = route(
       : null;
 
     const tree = !named && query.filter ? decodeFilterTree(query.filter) : null;
-    if (tree) assertFilterableFields(rules, referencedFields(tree));
+    if (tree) {
+      assertFilterableFields(
+        rules,
+        referencedFields(tree),
+        (field) => !seesField(ctx, 'LEAD', rules, field, LEAD_SENSITIVE_FIELDS),
+      );
+    }
 
     // mergeWhere, not object spread: three of these four fragments can carry a
     // top-level `OR`, and a spread would keep only the last of them — which used

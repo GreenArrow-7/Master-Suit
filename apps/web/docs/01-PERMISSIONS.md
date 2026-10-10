@@ -73,7 +73,7 @@ Rank orders the hierarchy; a role may only administer roles of a higher rank num
 | leads:BULK_UPDATE           | A         | A         | R        | B      | T        | —         | —         | T        | —         | —       | —         | —       | —         |
 | leads:EXPORT                | A         | A         | R        | B      | —        | —         | —         | A        | —         | —       | —         | A       | —         |
 | leads:IMPORT                | ✓         | ✓         | ✓        | ✓      | —        | —         | —         | ✓        | —         | —       | —         | —       | —         |
-| leads:VIEW_SENSITIVE_FIELDS | ✓         | ✓         | ✓        | ✓      | —        | —         | —         | —        | —         | —       | —         | —       | —         |
+| leads:VIEW_SENSITIVE_FIELDS | ✓         | ✓         | ✓        | ✓      | ✓        | ✓         | ✓         | ✓        | ✓         | ✓       | ✓         | ✓       | ✓         |
 | opportunities:VIEW          | A         | A         | R        | B      | T        | O         | O         | A        | —         | B       | —         | A       | T         |
 | opportunities:EDIT          | A         | A         | R        | B      | T        | O         | O         | —        | —         | —       | —         | —       | —         |
 | opportunities:DELETE        | A         | A         | —        | —      | —        | —         | —         | —        | —         | —       | —         | —       | —         |
@@ -127,8 +127,16 @@ The table above is only the seeded default.
 | -------------- | --------------------------------------- |
 | `HIDE`         | field absent from the response entirely |
 | `MASK_ALL`     | `•••••••••`                             |
-| `MASK_PARTIAL` | `+9715•••••67`                          |
+| `MASK_PARTIAL` | `+971•••••••67`                         |
 | `MASK_EMAIL`   | `y•••@example.com`                      |
+
+A lead's phone numbers and email need no rule row: they are sensitive fields
+(`LEAD_SENSITIVE_FIELDS`, `src/services/leads/createLead.ts`), shown masked as
+above to a role without `leads:VIEW_SENSITIVE_FIELDS` — on the lists, the lead
+page, the API, the CSV export, calls and the assistant — and such a role cannot
+dial, mail or change them. The address is withheld entirely. Every role that
+could read leads before this was introduced holds the permission; switching it
+off in Roles & permissions is what masks a role.
 
 Rules that hold everywhere:
 

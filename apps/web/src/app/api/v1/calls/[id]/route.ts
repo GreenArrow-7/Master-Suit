@@ -8,6 +8,7 @@ import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { notifyAboutCall } from '@/services/crm/notify';
 import { recordTargetProgress } from '@/services/targets/progress';
 import { assertCallInScope } from '@/lib/security/record-scope';
+import { maskCallNumbers } from '@/services/leads/createLead';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -24,8 +25,9 @@ export const GET = route(
       },
     });
     if (!call) throw NotFound('Call');
+    const [masked] = await maskCallNumbers(ctx, [call]);
     // Free-text notes about the conversation follow the sensitive authorisation.
-    return (await hasSensitiveAccess(ctx)) ? call : { ...call, notes: null };
+    return (await hasSensitiveAccess(ctx)) ? masked : { ...masked, notes: null };
   },
 );
 
@@ -121,7 +123,7 @@ export const PATCH = route(
       }
     }
 
-    return updated;
+    return (await maskCallNumbers(ctx, [updated]))[0];
   },
 );
 
