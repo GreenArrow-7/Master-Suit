@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useRef, useState } from 'react';
+import DateInput from '@/components/forms/DateInput';
 import { PRODUCT_MODULE_CHOICES } from '@/lib/modules/catalogue';
 
 const steps = ['Company details', 'Administrator', 'Subscription', 'Modules', 'Review'];
@@ -13,6 +14,7 @@ export default function NewWorkspaceForm({ plans }: { plans: { code: string; nam
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<Record<string, FormDataEntryValue>>({});
   const [created, setCreated] = useState<{ id: string; slug: string; displayName: string } | null>(null);
+  const [trialStart, setTrialStart] = useState('');
 
   function move(next: number) {
     const panel = formRef.current?.querySelector<HTMLElement>(`[data-step-panel="${step}"]`);
@@ -214,8 +216,14 @@ export default function NewWorkspaceForm({ plans }: { plans: { code: string; nam
               <option value="SUSPENDED">Suspended</option>
             </select>
           </label>
-          <Field label="Trial start" name="trialStartDate" type="date" />
-          <Field label="Trial end" name="trialEndDate" type="date" />
+          <label className="lf-field">
+            <span className="lf-label">Trial start</span>
+            <DateInput name="trialStartDate" onChange={setTrialStart} />
+          </label>
+          <label className="lf-field">
+            <span className="lf-label">Trial end</span>
+            <DateInput name="trialEndDate" min={trialStart || undefined} />
+          </label>
         </div>
         <StepActions step={step} onMove={move} />
       </section>

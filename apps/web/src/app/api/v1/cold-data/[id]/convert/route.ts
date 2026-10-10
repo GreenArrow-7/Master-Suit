@@ -3,6 +3,7 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
+import { visibilityWhere } from '@/lib/security/visibility';
 import { coldDataScope } from '@/services/leads/coldData';
 import { takeEnquiry } from '@/services/leads/intake';
 
@@ -51,6 +52,13 @@ export const POST = route(
       where: { tenantId: ctx.tenantId, id: record.id },
       data: { status: 'CONVERTED', convertedLeadId: result.leadId, convertedAt: new Date() },
     });
-    return result;
+    // The match may be another agent's lead; the touch and the owner's bell still
+    // happen (intake.ts), but the screen must not open a 404. Same rule as the
+    // lead page, so the flag can never disagree with it.
+    const visible = !!(await prisma.lead.findFirst({
+      where: { ...(await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true })), id: result.leadId },
+      select: { id: true },
+    }));
+    return { ...result, visible };
   },
 );

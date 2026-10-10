@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from '@/lib/auth/signOut';
 import { applyTheme, THEMES, THEME_LABELS } from '@/lib/theme';
 import { useTheme } from '@/lib/useTheme';
+import Badge from '@/components/ui/Badge';
 
 /**
  * The HR breadcrumb's page name, from the path: `/{slug}/people/work-locations`
@@ -36,7 +37,7 @@ interface NotificationItem {
   destination: string | null;
   /** An external link, for the rare notification that points outside the app. */
   actionUrl: string | null;
-  priority: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   readAt: string | null;
   createdAt: string;
 }
@@ -773,9 +774,14 @@ export default function TopBar({
                                 fontSize: 'var(--lf-text-sm)',
                                 fontWeight: n.readAt ? 400 : 600,
                                 color: 'var(--lf-ink)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                flexWrap: 'wrap',
                               }}
                             >
                               {n.title}
+                              {(n.priority === 'HIGH' || n.priority === 'URGENT') && <Badge value={n.priority} />}
                             </div>
                             {n.body && (
                               <div

@@ -5,12 +5,14 @@ import { useRouter } from 'next/navigation';
 import SalesLink from '@/components/workspace/SalesLink';
 import { useModuleBase } from '@/components/workspace/SalesLink';
 import { problemSummary } from '@/components/forms/useFormErrors';
+import { DateTimeInput } from '@/components/forms/DateInput';
 
 export default function NewEventForm() {
   const router = useRouter();
   const base = useModuleBase();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [startAt, setStartAt] = useState('');
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -91,13 +93,13 @@ export default function NewEventForm() {
               <label className="lf-label" htmlFor="startAt">
                 Start *
               </label>
-              <input className="lf-input" id="startAt" name="startAt" type="datetime-local" required />
+              <DateTimeInput id="startAt" name="startAt" required aria-label="Start" onChange={setStartAt} />
             </div>
             <div>
               <label className="lf-label" htmlFor="endAt">
                 End *
               </label>
-              <input className="lf-input" id="endAt" name="endAt" type="datetime-local" required />
+              <DateTimeInput id="endAt" name="endAt" required aria-label="End" min={startAt} />
             </div>
           </div>
           <div>

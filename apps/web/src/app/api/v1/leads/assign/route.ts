@@ -21,24 +21,23 @@ export const POST = route(
     });
     if (!owner) throw NotFound('User');
 
-    // Only the leads the caller may assign. One outside that reach is skipped
-    // like a missing one, so the count confirms no id.
+    // Only the leads the caller's ASSIGN scope reaches move; an id outside it,
+    // or one that does not exist, simply does not count. Writing history for
+    // every requested id used to reassign across teams and 500 on an unknown id.
     const scope = await visibilityWhere(ctx, 'leads', 'ASSIGN', { includeUnassigned: true });
-    const ids = (
+    const inScope = (
       await prisma.lead.findMany({ where: { ...scope, id: { in: leadIds }, deletedAt: null }, select: { id: true } })
     ).map((lead) => lead.id);
-    if (ids.length === 0) return { assigned: 0 };
 
     const now = new Date();
 
     const [updated] = await prisma.$transaction([
       prisma.lead.updateMany({
-        where: { id: { in: ids }, tenantId: ctx.tenantId },
+        where: { id: { in: inScope }, tenantId: ctx.tenantId },
         data: { ownerId, assignedAt: now, updatedById: ctx.actor.id },
       }),
-      // record assignment history for each lead
       prisma.leadAssignmentHistory.createMany({
-        data: ids.map((leadId) => ({
+        data: inScope.map((leadId) => ({
           tenantId: ctx.tenantId,
           leadId,
           toOwnerId: ownerId,

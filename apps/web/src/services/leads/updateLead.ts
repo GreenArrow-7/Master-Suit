@@ -1,7 +1,7 @@
 import { withTx } from '@/lib/db';
 import { AppError, NotFound } from '@/lib/errors';
 import { auditDiff } from '@/lib/security/audit';
-import { assertRecordVisible } from '@/lib/security/visibility';
+import { assertLeadInScope } from '@/lib/security/record-scope';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { enqueue } from '@/lib/queue';
 import { notifyCrm } from '../crm/notify';
@@ -54,9 +54,7 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
   let ownerChanged = false;
 
   const updated = await withTx(ctx.tenantId, async (tx) => {
-    const before = await tx.lead.findFirst({ where: { tenantId: ctx.tenantId, id } });
-    if (!before) throw NotFound('Lead');
-    await assertRecordVisible(ctx, 'leads', before, tx, 'EDIT');
+    const before = await assertLeadInScope(ctx, id, tx, 'EDIT');
 
     if (input.stageId && input.stageId !== before.stageId) {
       const stage = await tx.leadStage.findFirst({ where: { tenantId: ctx.tenantId, id: input.stageId } });
@@ -187,9 +185,7 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
 /** Soft delete: sets deletedAt rather than removing the row — every list query filters it out. */
 export async function deleteLead(ctx: Ctx, id: string) {
   await withTx(ctx.tenantId, async (tx) => {
-    const before = await tx.lead.findFirst({ where: { tenantId: ctx.tenantId, id } });
-    if (!before) throw NotFound('Lead');
-    await assertRecordVisible(ctx, 'leads', before, tx, 'DELETE');
+    const before = await assertLeadInScope(ctx, id, tx, 'DELETE');
     await tx.lead.update({
       where: { tenantId: ctx.tenantId, id },
       data: { deletedAt: new Date(), updatedById: ctx.actor.id },

@@ -29,6 +29,19 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-10 | [Lead writes outside your scope answered 'forbidden'; bulk assign ignored scope; Make lead opened a lead you cannot see](2026-10-10-lead-record-scope.md) | #155 | security, Lead Eagle |
+| 2026-10-10 | [Cold data: assign one record; Make lead opens only what you may see; notes shown](2026-10-10-cold-data-assign-and-make-lead.md) | #155 | Lead Eagle |
+| 2026-10-10 | [The lead grid said only how many bulk moves failed, never why](2026-10-10-lead-grid-bulk-reasons.md) | #155 | Lead Eagle |
+| 2026-10-10 | [High-priority notifications now look and sort like it](2026-10-10-notification-priority.md) | #155 | Lead Eagle |
+| 2026-10-10 | [A Lead-Eagle-only workspace no longer offers a shortlist it cannot send](2026-10-10-shortlist-lead-eagle.md) | #155 | Lead Eagle |
+| 2026-10-10 | [The standalone move tool: bookings visible, orphans reported, source and stage history shown](2026-10-10-move-tool-gaps.md) | #155 | Lead Eagle |
+| 2026-10-10 | [One date field everywhere: type it or pick it](2026-10-10-date-fields.md) | #154 | fix, all modules |
+| 2026-10-10 | [Saving a workspace in the console cut off a paying customer's modules](2026-10-10-workspace-edit-entitlements.md) | #153 | fix, platform |
+| 2026-10-10 | [Signing up could bring back a suspended account](2026-10-10-signup-suspended-identity.md) | #152 | security, Lead Eagle |
+| 2026-10-10 | [Self-serve sign-up could not be opened from the console](2026-10-10-signup-setting-row.md) | #151 | fix, Lead Eagle |
+| 2026-10-10 | [Release 1dddaf9](2026-10-10-release-1dddaf9.md) | #135, #138, #140, #142, #147, #148 | release |
+| 2026-10-10 | [Creating a plan said "The server could not be reached." after creating it](2026-10-10-plan-form-reset.md) | #148 | fix, platform |
+| 2026-10-10 | [Android com.youhan.one1 1.1.0 (10) for closed testing](2026-10-10-android-one1-vc10.md) | #147 | android |
 | 2026-10-08 | [Bulk assign and event invitees reached any lead in the workspace](2026-10-08-bulk-lead-scope.md) | #144 | security |
 | 2026-10-08 | [Release 6ebdb2e](2026-10-08-release-6ebdb2e.md) | #136, #137, #141 | release |
 | 2026-10-08 | [Release c46624f](2026-10-08-release-c46624f.md) | #134, #139 | release |

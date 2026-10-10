@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useHydrated } from '@/lib/useHydrated';
+import { DateTimeInput } from '@/components/forms/DateInput';
 
 /** Complete / reschedule a follow-up in place, against PATCH /api/v1/follow-ups/[id]. */
 export default function FollowUpRowActions({ id, status }: { id: string; status: string }) {
@@ -46,16 +47,11 @@ export default function FollowUpRowActions({ id, status }: { id: string; status:
   }
 
   if (rescheduling) {
+    // Wraps: on a phone the date, the time and the buttons take two lines
+    // rather than the table scrolling sideways.
     return (
-      <span style={{ display: 'inline-flex', gap: 'var(--lf-space-2)', alignItems: 'center' }}>
-        <input
-          type="datetime-local"
-          className="lf-input"
-          style={{ maxWidth: 200 }}
-          value={dueAt}
-          onChange={(e) => setDueAt(e.target.value)}
-          aria-label="New due date"
-        />
+      <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 'var(--lf-space-2)', alignItems: 'center' }}>
+        <DateTimeInput value={dueAt} onChange={setDueAt} aria-label="New due date" />
         <button
           type="button"
           className="lf-btn lf-btn--sm"

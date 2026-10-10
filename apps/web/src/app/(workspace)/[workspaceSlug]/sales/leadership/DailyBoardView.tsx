@@ -3,6 +3,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import Badge from '@/components/ui/Badge';
 import type { DailyBoard, DailyBoardRow } from '@/services/targets/dailyBoard';
 import AssignDailyTarget from './AssignDailyTarget';
+import DateInput from '@/components/forms/DateInput';
 
 const fmtTime = (d: Date | null, timeZone: string) =>
   d ? new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit' }).format(d) : '—';
@@ -101,7 +102,7 @@ export default function DailyBoardView({
         <input type="hidden" name="view" value="daily" />
         <label className="lf-field lf-daily-board__date">
           <span className="lf-label">Day</span>
-          <input type="date" name="date" className="lf-input" defaultValue={board.date} />
+          <DateInput key={board.date} name="date" defaultValue={board.date} />
         </label>
         <button type="submit" className="lf-btn lf-btn--secondary lf-btn--sm">
           Show
