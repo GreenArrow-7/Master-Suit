@@ -4,7 +4,7 @@ import { route } from '@/lib/api/handler';
 import { withTx } from '@/lib/db';
 import { NotFound, Invalid, Conflict } from '@/lib/errors';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
-import { assertLeadInScope } from '@/lib/security/record-scope';
+import { assertLeadInScope, assertOwnerInScope } from '@/lib/security/record-scope';
 import { recordTargetProgress } from '@/services/targets/progress';
 import { lockLeads, recomputeNextFollowUp } from '@/services/leads/nextFollowUp';
 
@@ -38,11 +38,10 @@ export const PATCH = route(
       const followUp = await tx.followUpTask.findFirst({ where: { tenantId: ctx.tenantId, id: params.id } });
       if (!followUp) throw NotFound('Follow-up');
 
-      // A rep may only work their own queue; TEAM reach and above may touch others'.
+      // A rep may only work their own queue; TEAM reach and above, the queues of
+      // people in their scope.
+      await assertOwnerInScope(ctx, tx, 'leads', 'EDIT', followUp.ownerId, 'Follow-up');
       const scope = scopeFor(ctx, 'leads', 'EDIT');
-      if (followUp.ownerId !== ctx.actor.id && SCOPE_RANK[scope] < SCOPE_RANK.TEAM) {
-        throw NotFound('Follow-up');
-      }
 
       if (body.ownerId && body.ownerId !== followUp.ownerId) {
         if (SCOPE_RANK[scope] < SCOPE_RANK.TEAM && body.ownerId !== ctx.actor.id) {
