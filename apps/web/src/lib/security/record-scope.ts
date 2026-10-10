@@ -56,6 +56,16 @@ export function eventScopeFilter(actorId: string, action: Action = 'VIEW') {
 }
 
 /**
+ * What every read of events adds to its `where`: nothing at TEAM scope and
+ * above, `eventScopeFilter` below it. The list route had it; the Events page,
+ * an event's page, the calendar and the assistant read every event in the
+ * workspace.
+ */
+export function eventListScope(ctx: Ctx) {
+  return seesWholeWorkspace(ctx, 'events') ? {} : eventScopeFilter(ctx.actor.id);
+}
+
+/**
  * The lead a record is being hung on, in the caller's scope under the lead's
  * own rule: `EDIT` where the route is lead work (a task, a follow-up), `VIEW`
  * where the record is another module's and the lead is its client. A body's
