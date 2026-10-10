@@ -48,6 +48,20 @@ describe('bulk assignment', () => {
     expect(history[0]).toMatchObject({ toOwnerId: h.repA1.id, reason: 'bulk_assignment' });
   });
 
+  it('moves an unassigned lead for a manager who may claim it', async () => {
+    const { stageId } = await prisma.lead.findFirstOrThrow({ where: { tenantId: h.tenantId, id: h.repA1.leadId } });
+    const pool = await prisma.lead.create({
+      data: { tenantId: h.tenantId, reference: 'POOL-1', fullName: 'Pool lead', stageId },
+    });
+    expect((await send([pool.id], h.teamManagerA.cookie)).body).toEqual({ assigned: 1 });
+    expect(await ownerOf(pool.id)).toBe(h.repA1.id);
+  });
+
+  it('answers an owner who is not in the workspace with 404, not a server error', async () => {
+    const body = { leadIds: [h.repA1.leadId], ownerId: MISSING };
+    expect((await post(assign, '/api/v1/leads/assign', body, h.teamManagerA.cookie)).status).toBe(404);
+  });
+
   it('lets the director move a lead in another region', async () => {
     const res = await send([h.repOtherRegion.leadId], h.director.cookie);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
