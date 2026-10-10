@@ -10,7 +10,7 @@
  * run cannot double the book.
  *
  * People are matched by email to the workspace's existing users: accounts are
- * never created here (invite them first). Records owned by someone without an
+ * never created here (add them to the workspace first). Records owned by someone without an
  * account move unowned, and anything that must have an owner (a follow-up, a
  * booking) falls to the workspace's first Company Admin; each case is reported.
  */
@@ -279,7 +279,8 @@ export async function moveCompany(
   const counts: MoveReport['counts'] = {};
   const tally = (table: string, source: number, moved: number) => (counts[table] = { source, moved });
   const marker = { leadEagle: { company: snap.company.id } };
-  const needsRealEstate = snap.bookings.length + snap.listings.length + snap.projects.length > 0;
+  // Lead Eagle shows projects and listings itself (Inventory); Collections and Commissions are Real Estate's.
+  const needsRealEstate = snap.bookings.length + snap.commissions.length > 0;
 
   const already = await prisma.lead.count({
     where: { tenantId, customData: { path: ['leadEagle', 'company'], equals: snap.company.id } },
@@ -301,8 +302,13 @@ export async function moveCompany(
   const owned = (id: Id | null) => (id ? (userMap.get(id) ?? null) : null);
   const unmatched = snap.users.filter((u) => !userMap.has(u.id));
   for (const user of unmatched) {
-    const holds = snap.leads.filter((l) => l.ownerId === user.id).length;
-    if (holds) problems.push(`${user.email} owns ${holds} leads but has no account here; they move unowned.`);
+    const holds =
+      snap.leads.filter((l) => l.ownerId === user.id).length +
+      snap.dataRecords.filter((r) => r.ownerId === user.id).length +
+      snap.listings.filter((l) => l.agentId === user.id).length +
+      snap.captureLinks.filter((c) => c.assignToId === user.id).length +
+      snap.units.filter((u) => u.heldById === user.id).length;
+    if (holds) problems.push(`${user.email} owns ${holds} records but has no account here; they move unowned.`);
   }
   const fallback =
     people.find((p) => p.status === 'ACTIVE' && p.role?.key === 'company_admin') ??
@@ -519,15 +525,18 @@ export async function moveCompany(
 
         // ── Follow-ups ───────────────────────────────────────────────────────
         let followUps = 0;
+        let orphanFollowUps = 0;
         for (const f of snap.followUps) {
           const leadId = leadMap.get(f.leadId);
           if (!leadId) continue;
           const status: TaskStatus = f.doneAt ? 'COMPLETED' : f.cancelledAt ? 'CANCELLED' : 'OPEN';
+          const ownerId = owned(f.ownerId);
+          if (!ownerId) orphanFollowUps += 1;
           await tx.followUpTask.create({
             data: {
               tenantId,
               leadId,
-              ownerId: owned(f.ownerId) ?? fallback.id,
+              ownerId: ownerId ?? fallback.id,
               title: f.type.charAt(0) + f.type.slice(1).toLowerCase().replace(/_/g, ' '),
               description: f.note,
               dueAt: date(f.dueAt)!,
@@ -539,6 +548,11 @@ export async function moveCompany(
           followUps += 1;
         }
         tally('follow-ups', snap.followUps.length, followUps);
+        if (orphanFollowUps) {
+          problems.push(
+            `${orphanFollowUps} follow-ups have no owner with an account; they are given to ${fallback.email}.`,
+          );
+        }
 
         // ── Cold data and QR links ──────────────────────────────────────────
         let records = 0;
@@ -847,7 +861,7 @@ export async function moveCompany(
   if (options.commit && options.enableRealEstate && needsRealEstate) await invalidateEntitlements(tenantId);
   if (needsRealEstate && !options.enableRealEstate) {
     problems.push(
-      'This company has projects, listings or bookings, which Real Estate shows and Lead Eagle does not: rerun with --enable-real-estate, or switch it on in the platform portal.',
+      'This company has bookings or commissions, which Real Estate shows (Collections, Commissions) and Lead Eagle does not: rerun with --enable-real-estate, or switch it on in the platform portal.',
     );
   }
   return { committed: options.commit, counts, problems, notMoved: snap.notMoved, needsRealEstate };

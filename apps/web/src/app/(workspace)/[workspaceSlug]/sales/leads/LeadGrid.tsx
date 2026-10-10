@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import { columnPriority, type ColumnDef } from '@/lib/grid/columns';
+import { summarizeBulk, type BulkFailure, type BulkOutcome } from '@/lib/grid/bulkOutcomes';
 import RowDetails from '@/components/workspace/RowDetails';
 import StageReason, { asksForReason, type ReasonedStage } from '@/components/workspace/StageReason';
 
@@ -62,7 +63,7 @@ export default function LeadGrid({
   /** The chosen stage, while it waits for its reason. */
   const [reasonFor, setReasonFor] = useState<ReasonedStage | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [failure, setFailure] = useState<BulkOutcome | null>(null);
 
   const sorted = useMemo(() => {
     const copy = [...rows];
@@ -102,16 +103,38 @@ export default function LeadGrid({
     });
   }
 
-  /** Runs `send` for every selected lead and reports how many failed. */
+  /**
+   * Runs `send` for every selected lead, one independent request each, and
+   * reports each refusal with the server's own sentence.
+   */
   async function run(send: (leadId: string) => Promise<Response>) {
     setBusy(true);
-    setError('');
+    setFailure(null);
     const ids = [...selected];
-    const results = await Promise.all(ids.map((id) => send(id).catch(() => null)));
-    const failed = results.filter((res) => !res || !res.ok).length;
+    const failures: BulkFailure[] = [];
+    await Promise.all(
+      ids.map(async (id) => {
+        const res = await send(id).catch(() => null);
+        if (res?.ok) return;
+        const data = res ? await res.json().catch(() => ({})) : {};
+        failures.push({
+          id,
+          detail:
+            typeof data.detail === 'string'
+              ? data.detail
+              : res
+                ? `Request failed (${res.status}).`
+                : 'Could not reach the server.',
+        });
+      }),
+    );
     setBusy(false);
-    if (failed > 0) {
-      setError(`${failed} of ${ids.length} could not be completed.`);
+    if (failures.length) {
+      // Only what failed stays selected: a retry must not add a second task to,
+      // or re-send, the leads that worked. The refresh shows those their new state.
+      setSelected(new Set(failures.map((f) => f.id)));
+      setFailure(summarizeBulk(ids.length, failures, rows));
+      router.refresh();
       return;
     }
     setAction(null);
@@ -125,13 +148,25 @@ export default function LeadGrid({
 
   async function assign(ownerId: string) {
     setBusy(true);
-    setError('');
+    setFailure(null);
     // A single bulk endpoint, so the assignment history is written in one transaction.
     const res = await post('/api/v1/leads/assign', { leadIds: [...selected], ownerId });
     setBusy(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(data.detail ?? 'Could not assign the selected leads.');
+      setFailure({ summary: data.detail ?? 'Could not assign the selected leads.', groups: [] });
+      return;
+    }
+    // The endpoint moves only the leads inside the caller's ASSIGN scope and
+    // answers with how many; the list is drawn by VIEW, which a custom role may
+    // hold wider, so a short count is the only sign of the ones left behind.
+    const { assigned } = await res.json().catch(() => ({ assigned: selected.size }));
+    if (assigned < selected.size) {
+      setFailure({
+        summary: `${selected.size - assigned} of ${selected.size} could not be assigned: outside your assignment scope.`,
+        groups: [],
+      });
+      router.refresh();
       return;
     }
     setAction(null);
@@ -246,6 +281,7 @@ export default function LeadGrid({
               onClick={() => {
                 setSelected(new Set());
                 setAction(null);
+                setFailure(null);
               }}
             >
               Clear
@@ -379,11 +415,23 @@ export default function LeadGrid({
                   </button>
                 </form>
               )}
-
-              {error && (
-                <p style={{ color: 'var(--lf-vermillion)', fontSize: 'var(--lf-text-2xs)', margin: '8px 0 0' }}>
-                  {error}
-                </p>
+            </div>
+          )}
+          {/* Outside the action panel: a refused Delete runs with no panel open. */}
+          {failure && (
+            <div
+              role="alert"
+              style={{ flexBasis: '100%', color: 'var(--lf-vermillion)', fontSize: 'var(--lf-text-2xs)', marginTop: 8 }}
+            >
+              {failure.summary}
+              {failure.groups.length > 0 && (
+                <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                  {failure.groups.map((g) => (
+                    <li key={g.detail}>
+                      {g.detail} — {g.refs.join(', ')}
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
           )}

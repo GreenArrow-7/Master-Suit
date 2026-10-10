@@ -536,8 +536,8 @@ export default function UserDrawer({ user, back }: { user: PlatformUserView; bac
             {user.memberships.length === 0 ? (
               <div className="lf-actionbox">
                 <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
-                  No workspace membership. An ordinary user with none cannot sign in at all — invite them to a workspace
-                  from <Link href="/platform/workspaces">Workspaces</Link>.
+                  No workspace membership. An ordinary user with none cannot sign in at all — add them from that
+                  workspace&rsquo;s Admin &gt; Users (open it from <Link href="/platform/workspaces">Workspaces</Link>).
                 </span>
               </div>
             ) : (

@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
-import { withTx, type TxClient } from '@/lib/db';
-import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
+import { withTx } from '@/lib/db';
+import { Conflict, Forbidden, Invalid } from '@/lib/errors';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { loadFieldRules } from '@/lib/security/fieldSecurity';
 import type { Ctx } from '@/lib/security/rbac';
-import { assertRecordVisible } from '@/lib/security/visibility';
+import { assertLeadInScope } from '@/lib/security/record-scope';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 
 /**
@@ -23,13 +23,6 @@ const params = z.object({ id: z.string().cuid() });
 async function assertMayEditPhones(ctx: Ctx) {
   const rule = (await loadFieldRules(ctx, 'LEAD')).get('phone');
   if (rule && !(rule.canView && rule.canEdit)) throw Forbidden('Your role cannot change this lead’s phone numbers.');
-}
-
-async function editableLead(ctx: Ctx, tx: TxClient, id: string) {
-  const lead = await tx.lead.findFirst({ where: { tenantId: ctx.tenantId, id } });
-  if (!lead) throw NotFound('Lead');
-  await assertRecordVisible(ctx, 'leads', lead, tx, 'EDIT');
-  return lead;
 }
 
 export const POST = route(
@@ -52,7 +45,7 @@ export const POST = route(
     if (!normalized) throw Invalid([{ field: 'phone', code: 'invalid', message: 'Enter a phone number.' }]);
     await assertMayEditPhones(ctx);
     return withTx(ctx.tenantId, async (tx) => {
-      const lead = await editableLead(ctx, tx, params.id);
+      const lead = await assertLeadInScope(ctx, params.id, tx, 'EDIT');
       if (lead.phoneNormalized === normalized) throw Conflict('That is already this lead’s main number.');
       return tx.leadPhone.create({
         data: {
@@ -81,7 +74,7 @@ export const DELETE = route(
   async ({ ctx, params, query }) => {
     await assertMayEditPhones(ctx);
     await withTx(ctx.tenantId, async (tx) => {
-      await editableLead(ctx, tx, params.id);
+      await assertLeadInScope(ctx, params.id, tx, 'EDIT');
       await tx.leadPhone.delete({ where: { id: query.phoneId, leadId: params.id, tenantId: ctx.tenantId } });
     });
     return { ok: true };

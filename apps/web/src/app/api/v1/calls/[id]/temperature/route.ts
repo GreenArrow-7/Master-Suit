@@ -3,9 +3,8 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound, Invalid } from '@/lib/errors';
-import { assertRecordVisible } from '@/lib/security/visibility';
 import { temperatureFromAnalysis } from '@/lib/ai/temperature';
-import { assertCallInScope } from '@/lib/security/record-scope';
+import { assertCallInScope, assertLeadInScope } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -31,15 +30,10 @@ export const POST = route(
 
     const [analysis, lead] = await Promise.all([
       prisma.aIAnalysis.findFirst({ where: { callId: call.id, tenantId: ctx.tenantId, status: 'COMPLETED' } }),
-      prisma.lead.findFirst({
-        where: { id: call.leadId, tenantId: ctx.tenantId },
-        select: { id: true, tenantId: true, ownerId: true, score: true },
-      }),
+      assertLeadInScope(ctx, call.leadId, prisma, 'EDIT'),
     ]);
     if (!analysis)
       throw Invalid([{ field: 'analysis', code: 'missing', message: 'The call has no completed analysis.' }]);
-    if (!lead) throw NotFound('Lead');
-    await assertRecordVisible(ctx, 'leads', lead, prisma);
 
     const result = temperatureFromAnalysis(analysis);
 

@@ -60,15 +60,17 @@ describe('visibility scopes', () => {
 });
 
 describe('write-path re-check (IDOR)', () => {
+  // 404 with the missing-lead detail, as GET answers: a 403 would confirm the id is real.
   it('a rep cannot patch a teammate lead even with a direct id', async () => {
     const res = await patch(patchLead, `/api/v1/leads/${h.repA2.leadId}`, { fullName: 'Taken' }, h.repA1.cookie);
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(res.status).toBeLessThan(500);
+    expect(res.status).toBe(404);
+    expect(res.body.detail).toBe('Lead not found.');
   });
 
   it('a rep cannot patch a lead in another branch', async () => {
     const res = await patch(patchLead, `/api/v1/leads/${h.repB1.leadId}`, { fullName: 'Taken' }, h.repA1.cookie);
-    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBe(404);
+    expect(res.body.detail).toBe('Lead not found.');
   });
 
   it('a rep cannot reassign a lead to another user without ASSIGN', async () => {
@@ -96,6 +98,7 @@ describe('write-path re-check (IDOR)', () => {
       { fullName: 'Reached' },
       h.teamManagerA.cookie,
     );
-    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBe(404);
+    expect(res.body.detail).toBe('Lead not found.');
   });
 });
