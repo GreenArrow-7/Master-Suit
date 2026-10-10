@@ -4,7 +4,7 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { emptyFollowUpLabel, obligationAccess, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
-import { can } from '@/lib/security/rbac';
+import { can, scopeFor } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import StageRail from '@/components/ui/StageRail';
@@ -15,7 +15,15 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['leads', 'VIEW'] });
 
-  const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
+  const [scope, taskScope] = await Promise.all([
+    visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true }),
+    // A Task is read under `tasks`, not `leads` (services/leads/nextFollowUp.ts):
+    // the Tasks tab lists what the viewer's Tasks page would, so each row passes
+    // the scope check of PATCH /tasks/{id}, and a role with no `tasks` grant sees none.
+    scopeFor(ctx, 'tasks', 'VIEW') === 'NONE'
+      ? { id: { in: [] } }
+      : visibilityWhere(ctx, 'tasks', 'VIEW', { ownerField: 'ownerId' }),
+  ]);
   // One round trip, not three: the lookups and field rules depend only on ctx,
   // so they run alongside the lead fetch instead of after it.
   const leadPromise = prisma.lead.findFirst({
@@ -29,7 +37,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         include: { type: { select: { name: true, key: true } } },
       },
       tasks: {
-        where: { status: { in: ['OPEN', 'IN_PROGRESS'] } },
+        where: { ...taskScope, status: { in: ['OPEN', 'IN_PROGRESS'] } },
         orderBy: { dueAt: 'asc' },
         take: 20,
         include: { type: true },
