@@ -55,6 +55,19 @@ export const PATCH = bareRoute(
       : null;
     if (body.planCode && !plan) throw NotFound('Subscription plan');
 
+    // A module's end follows the trial only while the workspace is on trial, and
+    // only when this save changes the trial end. The edit form sends trialEndsAt
+    // on every save, prefilled with the stored date: writing it into every
+    // module cut a paying customer off — their old trial end is in the past —
+    // the moment anyone fixed, say, the company phone. Compared as calendar
+    // dates because the form prefills the UTC date of the stored instant.
+    const day = (date: Date | null | undefined) => date?.toISOString().slice(0, 10) ?? null;
+    const state = body.subscriptionState ?? current.subscription?.state ?? 'ACTIVE';
+    const onTrial = state === 'TRIAL';
+    const trialEndChanged = body.trialEndsAt !== undefined && day(body.trialEndsAt) !== day(current.trialEndsAt);
+    const moduleEnd = onTrial && trialEndChanged ? body.trialEndsAt : undefined;
+    const newModuleEnd = onTrial ? (body.trialEndsAt ?? current.trialEndsAt) : null;
+
     const workspace = await withPlatformTx(async (tx) => {
       const updated = await tx.tenant.update({
         where: { id: current.id },
@@ -101,14 +114,14 @@ export const PATCH = bareRoute(
           await tx.moduleEntitlement.upsert({
             where: { tenantId_module: { tenantId: current.id, module: productModule } },
             update: {
-              state: enabled ? (body.subscriptionState ?? current.subscription?.state ?? 'ACTIVE') : 'CANCELED',
-              endsAt: enabled ? body.trialEndsAt : new Date(),
+              state: enabled ? state : 'CANCELED',
+              endsAt: enabled ? moduleEnd : new Date(),
             },
             create: {
               tenantId: current.id,
               module: productModule,
-              state: enabled ? (body.subscriptionState ?? current.subscription?.state ?? 'ACTIVE') : 'CANCELED',
-              endsAt: enabled ? body.trialEndsAt : new Date(),
+              state: enabled ? state : 'CANCELED',
+              endsAt: enabled ? newModuleEnd : new Date(),
             },
           });
           if (current.subscription) {
