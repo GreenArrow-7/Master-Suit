@@ -52,9 +52,12 @@ Node 22 or newer (CI uses 24).
 - **Permissions.** Roles live in the database. A new workspace gets one role,
   Company Admin, holding every permission; the admin builds the others in the
   role editor. Lead Eagle's arrival adds five editable starter roles (Manager,
-  Team Lead, Agent, Telecaller, Viewer; `src/services/platform/provisioning.ts`). Scopes run OWN < TEAM < BRANCH < REGION < ORGANIZATION; check with
-  `atLeast(ctx, module, action, scope)` (`src/lib/security/rbac.ts`). HR's
-  predicates are in `src/services/hr/access.ts`. A manager's authority over
+  Team Lead, Agent, Telecaller, Viewer; `src/services/platform/provisioning.ts`).
+  Scopes run OWN < TEAM < BRANCH < REGION < ORGANIZATION; check with
+  `atLeast(ctx, module, action, scope)` (`src/lib/security/rbac.ts`). A record
+  loaded by id is checked with `assertRecordInScope`
+  (`src/lib/security/record-scope.ts`): out of scope answers 404, like a
+  missing id. HR's predicates are in `src/services/hr/access.ts`. A manager's authority over
   people stops at their reporting line (`reportingLine`, `src/services/hr/leave.ts`).
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
   P2002 answers 409 and P2025 404, a zod failure 422 — let the database say
