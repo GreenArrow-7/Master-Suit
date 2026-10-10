@@ -36,9 +36,11 @@ export async function assertCallInScope(ctx: Ctx, callId: string, action: Action
  * The event equivalent. An event has no visibility column, so below TEAM scope
  * the rule is the one the records themselves carry: the event is yours when you
  * host it or created it, and an invitee may see the event they were invited to.
- * Read only: at any other action the invitee clause drops out.
+ * Read only: at any other action the invitee clause drops out. The action is
+ * the route's own and has no default: a VIEW default let PATCH, DELETE, invite
+ * and RSVP reach an event its caller was only invited to.
  */
-export async function assertEventInScope(ctx: Ctx, eventId: string, action: Action = 'VIEW'): Promise<void> {
+export async function assertEventInScope(ctx: Ctx, eventId: string, action: Action): Promise<void> {
   if (atLeast(ctx, 'events', action, 'TEAM')) return;
   const visible = await prisma.event.findFirst({
     where: { id: eventId, tenantId: ctx.tenantId, deletedAt: null, ...eventScopeFilter(ctx.actor.id, action) },

@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { GET as readEvent } from '@/app/api/v1/events/[id]/route';
+import { DELETE as deleteEvent, GET as readEvent, PATCH as patchEvent } from '@/app/api/v1/events/[id]/route';
+import { POST as circulate } from '@/app/api/v1/events/[id]/invite/route';
 import { POST as addInvitees } from '@/app/api/v1/events/[id]/invitees/route';
+import { POST as rsvp } from '@/app/api/v1/events/[id]/rsvp/route';
 import { grantPermissions, seedHierarchy, type Hierarchy } from '../helpers/fixtures';
-import { get, post } from '../helpers/request';
+import { del, get, patch, post } from '../helpers/request';
 
 /**
  * Adding invitees took any lead id in the body, and the event's calling queue
@@ -15,6 +17,7 @@ let unassigned: string;
 let repA1Event: string;
 let repA2Event: string;
 let managerEvent: string;
+let repA1Invite: string;
 const MISSING = `c${'0'.repeat(24)}`;
 const invite = (eventId: string, invitees: Record<string, unknown>[], cookie: string) =>
   post(addInvitees, `/api/v1/events/${eventId}/invitees`, { invitees }, cookie);
@@ -35,6 +38,7 @@ beforeAll(async () => {
     [
       ['events', 'VIEW'],
       ['events', 'EDIT'],
+      ['events', 'DELETE'],
     ],
     'OWN',
   );
@@ -52,7 +56,7 @@ beforeAll(async () => {
   repA1Event = await eventOf(h.repA1.id);
   repA2Event = await eventOf(h.repA2.id);
   managerEvent = await eventOf(h.teamManagerA.id);
-  await prisma.eventInvitee.create({ data: { tenantId, eventId: repA2Event, userId: h.repA1.id } });
+  repA1Invite = (await prisma.eventInvitee.create({ data: { tenantId, eventId: repA2Event, userId: h.repA1.id } })).id;
 
   const { stageId } = await prisma.lead.findFirstOrThrow({ where: { tenantId, id: h.repA1.leadId } });
   unassigned = (await prisma.lead.create({ data: { tenantId, reference: 'POOL-1', fullName: 'Pool lead', stageId } }))
@@ -98,5 +102,35 @@ describe('the event', () => {
 
   it('reading the team’s events does not stretch editing to them', async () => {
     expect((await invite(repA2Event, [{ name: 'Plus one' }], h.teamManagerA.cookie)).status).toBe(404);
+  });
+
+  it('an invitee holding each action at OWN cannot change, delete, circulate or answer for it', async () => {
+    const url = `/api/v1/events/${repA2Event}`;
+    const missing = await patch(patchEvent, `/api/v1/events/${MISSING}`, { title: 'Mine now' }, h.repA1.cookie);
+    for (const res of [
+      await patch(patchEvent, url, { title: 'Mine now' }, h.repA1.cookie),
+      await del(deleteEvent, url, h.repA1.cookie),
+      await post(circulate, `${url}/invite`, { template: 'launch' }, h.repA1.cookie),
+      await post(rsvp, `${url}/rsvp`, { inviteeId: repA1Invite, rsvpStatus: 'DECLINED' }, h.repA1.cookie),
+    ]) {
+      expect(res.status, JSON.stringify(res.body)).toBe(404);
+      expect(res.body.detail).toBe(missing.body.detail);
+    }
+    const event = await prisma.event.findFirstOrThrow({ where: { tenantId: h.tenantId, id: repA2Event } });
+    expect(event).toMatchObject({ title: 'Launch evening', deletedAt: null });
+    const invitee = await prisma.eventInvitee.findFirstOrThrow({ where: { tenantId: h.tenantId, id: repA1Invite } });
+    expect(invitee).toMatchObject({ rsvpStatus: 'PENDING', rsvpAt: null });
+  });
+
+  it('its host changes it and answers for its invitees', async () => {
+    const url = `/api/v1/events/${repA2Event}`;
+    const answered = await post(
+      rsvp,
+      `${url}/rsvp`,
+      { inviteeId: repA1Invite, rsvpStatus: 'CONFIRMED' },
+      h.repA2.cookie,
+    );
+    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
+    expect((await patch(patchEvent, url, { title: 'Launch night' }, h.repA2.cookie)).status).toBe(200);
   });
 });
