@@ -188,21 +188,27 @@ describe('report CSV export', () => {
  */
 describe('the migration 20261011000000_reports_export_grant', () => {
   it('gives every role that views reports EXPORT at the same scope, and nothing to anyone else', async () => {
-    const role = async (key: string, grants: [string, 'VIEW' | 'EXPORT'][], scope: 'TEAM' | 'ORGANIZATION') => {
+    const role = async (key: string, grants: [string, 'VIEW' | 'EXPORT', 'TEAM' | 'ORGANIZATION'][]) => {
       const created = await prisma.role.create({ data: { tenantId, key: `${key}-${suffix}`, name: key, rank: 50 } });
-      await grantPermissions(tenantId, created.id, grants, scope);
+      for (const [module, action, scope] of grants)
+        await grantPermissions(tenantId, created.id, [[module, action]], scope);
       return created.id;
     };
-    const viewer = await role('grant-viewer', [['reports', 'VIEW']], 'TEAM');
-    const exporter = await role(
-      'grant-exporter',
-      [
-        ['reports', 'VIEW'],
-        ['reports', 'EXPORT'],
-      ],
-      'ORGANIZATION',
-    );
-    const other = await role('grant-other', [['leads', 'VIEW']], 'ORGANIZATION');
+    const viewer = await role('grant-viewer', [['reports', 'VIEW', 'TEAM']]);
+    // What an administrator already decided stays: a wider EXPORT, and a refused one.
+    const exporter = await role('grant-exporter', [
+      ['reports', 'VIEW', 'TEAM'],
+      ['reports', 'EXPORT', 'ORGANIZATION'],
+    ]);
+    const refused = await role('grant-refused', [
+      ['reports', 'VIEW', 'TEAM'],
+      ['reports', 'EXPORT', 'TEAM'],
+    ]);
+    await prisma.rolePermission.updateMany({
+      where: { tenantId, roleId: refused, permission: { module: 'reports', action: 'EXPORT' } },
+      data: { granted: false },
+    });
+    const other = await role('grant-other', [['leads', 'VIEW', 'ORGANIZATION']]);
 
     const sql = readFileSync(
       path.join(__dirname, '..', '..', 'prisma', 'migrations', '20261011000000_reports_export_grant', 'migration.sql'),
@@ -210,15 +216,14 @@ describe('the migration 20261011000000_reports_export_grant', () => {
     ).replace('WHERE source."module"', `WHERE rp."tenantId" = '${tenantId}' AND source."module"`);
     await withPlatformTx((tx) => tx.$executeRawUnsafe(sql));
 
-    const exportScope = async (roleId: string) =>
-      (
-        await prisma.rolePermission.findMany({
-          where: { tenantId, roleId, permission: { module: 'reports', action: 'EXPORT' } },
-          select: { scope: true },
-        })
-      ).map((r) => r.scope);
-    expect(await exportScope(viewer)).toEqual(['TEAM']);
-    expect(await exportScope(exporter)).toEqual(['ORGANIZATION']);
-    expect(await exportScope(other)).toEqual([]);
+    const exportGrant = (roleId: string) =>
+      prisma.rolePermission.findMany({
+        where: { tenantId, roleId, permission: { module: 'reports', action: 'EXPORT' } },
+        select: { scope: true, granted: true },
+      });
+    expect(await exportGrant(viewer)).toEqual([{ scope: 'TEAM', granted: true }]);
+    expect(await exportGrant(exporter)).toEqual([{ scope: 'ORGANIZATION', granted: true }]);
+    expect(await exportGrant(refused)).toEqual([{ scope: 'TEAM', granted: false }]);
+    expect(await exportGrant(other)).toEqual([]);
   });
 });

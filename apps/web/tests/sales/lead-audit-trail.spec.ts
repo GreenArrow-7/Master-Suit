@@ -13,9 +13,23 @@ vi.mock('next/headers', () => ({
   }),
 }));
 // An upload is scanned and stored; neither engine runs here.
+const scan = vi.hoisted(() => ({ verdict: 'CLEAN' as 'CLEAN' | 'INFECTED' }));
 vi.mock('@/lib/antivirus', () => ({
-  scanBuffer: async () => ({ verdict: 'CLEAN', signature: 'test', detail: null }),
+  scanBuffer: async () => ({ verdict: scan.verdict, signature: 'test', detail: null }),
 }));
+// The real writer, which a case can make fail once (a lost insert, then the job's retry).
+const auditFault = vi.hoisted(() => ({ failNext: false }));
+vi.mock('@/lib/security/audit', async (original) => {
+  const real = await original<typeof import('@/lib/security/audit')>();
+  return {
+    ...real,
+    audit: (...args: Parameters<typeof real.audit>) => {
+      if (!auditFault.failNext) return real.audit(...args);
+      auditFault.failNext = false;
+      return Promise.reject(new Error('audit insert failed'));
+    },
+  };
+});
 vi.mock('@/lib/storage', async (original) => ({
   ...(await original<typeof import('@/lib/storage')>()),
   putObject: async () => {},
@@ -30,6 +44,8 @@ import { POST as liveAudio } from '@/app/api/v1/calls/[id]/live-audio/route';
 import AuditLogPage from '@/app/(workspace)/[workspaceSlug]/admin/audit/page';
 import { handleJob } from '@/workers/jobs';
 import { checkLeadFirstContact } from '@/services/sla/checkLeadFirstContact';
+import { applyMetaEvent } from '@/services/meta/applyEvent';
+import type { NormalizedMetaEvent } from '@/lib/integrations/meta/events';
 import { post } from '../helpers/request';
 import { grantPermissions, seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { pageText } from '../helpers/render';
@@ -135,7 +151,8 @@ describe('machine writes', () => {
     expect(text).toContain('record_created');
     expect(text).toContain('owner_changed');
     expect(text).toContain('source=property_finder');
-    expect(text).toContain(`ownerId: null → "${fixture.a.userId}"`);
+    // A field change names its machine too, not only the change.
+    expect(text).toContain(`ownerId: null → "${fixture.a.userId}" · rule=Portal rotation · source=distribution`);
     expect(text.split('\n').filter((s) => s === 'System')).toHaveLength(2);
   });
 
@@ -150,15 +167,79 @@ describe('machine writes', () => {
     });
   });
 
-  it('a first-contact SLA breach is a System row', async () => {
+  it('a first-contact SLA breach is one System row, however often the check runs', async () => {
     await checkLeadFirstContact(tenantId, leadId);
-    expect((await auditRows(leadId)).at(-1)).toMatchObject({
-      event: 'RECORD_UPDATED',
-      actorType: 'SYSTEM',
-      fieldKey: 'slaState',
-      newValue: 'BREACHED',
-      metadata: { source: 'sla' },
+    await checkLeadFirstContact(tenantId, leadId);
+    expect((await auditRows(leadId)).filter((r) => r.fieldKey === 'slaState')).toMatchObject([
+      { event: 'RECORD_UPDATED', actorType: 'SYSTEM', newValue: 'BREACHED', metadata: { source: 'sla' } },
+    ]);
+  });
+
+  it('a breach whose audit row failed is undone, and recorded when the job retries', async () => {
+    await deliver('pf-audit-3', '050 123 4003');
+    const { id } = await prisma.lead.findFirstOrThrow({
+      where: { tenantId, phoneNormalized: '+971501234003' },
+      select: { id: true },
     });
+    auditFault.failNext = true;
+    await expect(checkLeadFirstContact(tenantId, id)).rejects.toThrow('audit insert failed');
+    const { slaState } = await prisma.lead.findFirstOrThrow({ where: { tenantId, id }, select: { slaState: true } });
+    expect(slaState).not.toBe('BREACHED');
+
+    await checkLeadFirstContact(tenantId, id);
+    expect((await auditRows(id)).filter((r) => r.fieldKey === 'slaState')).toMatchObject([
+      { actorType: 'SYSTEM', newValue: 'BREACHED', metadata: { source: 'sla' } },
+    ]);
+  });
+
+  it('a Meta Lead Ads lead is a System row, and so is the same person enquiring again', async () => {
+    await prisma.integrationConnection.create({
+      data: { tenantId, provider: 'meta', status: 'CONNECTED', credentials: wrapCredentials({ accessToken: 'graph' }) },
+    });
+    // The Graph answer for any leadgen id: the same person both times.
+    vi.stubGlobal('fetch', async () =>
+      Response.json({
+        field_data: [
+          { name: 'full_name', values: ['Meta Audit'] },
+          { name: 'phone_number', values: ['050 123 4004'] },
+        ],
+      }),
+    );
+    const leadgen = (leadgenId: string): NormalizedMetaEvent => ({
+      kind: 'LEAD_CREATED',
+      externalId: `leadgen:${leadgenId}`,
+      occurredAt: new Date(),
+      lead: { leadgenId, formId: 'form-audit' },
+    });
+    try {
+      const { leadId: metaLead } = (await applyMetaEvent({
+        tenantId,
+        connectionId: 'meta',
+        event: leadgen('m-1'),
+      })) as {
+        leadId: string;
+      };
+      expect(await applyMetaEvent({ tenantId, connectionId: 'meta', event: leadgen('m-2') })).toEqual({
+        leadId: metaLead,
+        created: false,
+      });
+      expect(await auditRows(metaLead)).toMatchObject([
+        {
+          event: 'RECORD_CREATED',
+          actorType: 'SYSTEM',
+          actorUserId: null,
+          metadata: { source: 'facebook:form-audit' },
+        },
+        {
+          event: 'RECORD_UPDATED',
+          actorType: 'SYSTEM',
+          actorUserId: null,
+          metadata: { action: 'lead.enquired_again', source: 'facebook:form-audit' },
+        },
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
@@ -178,11 +259,11 @@ describe('lead writes made by a person', () => {
     expect(created[0]).toMatchObject({ actorType: 'USER', objectType: 'lead', recordId: res.body.leadId });
   });
 
-  it('uploading a document to a lead is recorded', async () => {
+  const sendDocument = () => {
     const form = new FormData();
     form.set('file', new File(['%PDF-1.4 audit'], 'brochure.pdf', { type: 'application/pdf' }));
     form.set('leadId', fixture.a.leadIds[0]!);
-    const res = await upload(
+    return upload(
       new Request('http://localhost/api/v1/documents', {
         method: 'POST',
         headers: { cookie: fixture.a.cookie },
@@ -190,6 +271,10 @@ describe('lead writes made by a person', () => {
       }),
       { params: Promise.resolve({}) },
     );
+  };
+
+  it('uploading a document to a lead is recorded', async () => {
+    const res = await sendDocument();
     expect(res.status).toBe(200);
     const { id } = await res.json();
     expect(await auditRows(id)).toMatchObject([
@@ -200,6 +285,20 @@ describe('lead writes made by a person', () => {
         metadata: { leadId: fixture.a.leadIds[0], scan: 'CLEAN' },
       },
     ]);
+  });
+
+  it('an upload the scan rejects is recorded too', async () => {
+    scan.verdict = 'INFECTED';
+    try {
+      const res = await sendDocument();
+      expect(res.status).toBe(422);
+      const { id } = await res.json();
+      expect(await auditRows(id)).toMatchObject([
+        { event: 'RECORD_CREATED', objectType: 'documents', metadata: { scan: 'INFECTED' } },
+      ]);
+    } finally {
+      scan.verdict = 'CLEAN';
+    }
   });
 
   it('finishing a live-microphone call is recorded like finishing any call', async () => {
