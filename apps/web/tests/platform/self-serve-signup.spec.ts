@@ -152,4 +152,20 @@ describe('self-serve sign-up', () => {
     expect(await verifyPassword(identity.passwordHash!, PASSWORD)).toBe(true);
     expect(await prisma.workspaceMembership.count({ where: { platformUserId: identity.id } })).toBe(2);
   });
+
+  it('does not bring back a suspended or deactivated account, and gives the link back', async () => {
+    for (const status of ['SUSPENDED', 'DEACTIVATED'] as const) {
+      const email = `${status.toLowerCase()}@signup-${suffix}.test`;
+      await prisma.platformUser.create({
+        data: { email, normalizedEmail: email, fullName: 'Old Account', status },
+      });
+      const slug = `${status.toLowerCase()}-co-${suffix}`;
+      expect((await ask(slug, email)).status).toBe(200);
+      const refused = await confirm(tokenFor(email));
+      expect(refused.status).toBe(409);
+      expect((await prisma.platformUser.findFirstOrThrow({ where: { normalizedEmail: email } })).status).toBe(status);
+      expect(await prisma.tenant.count({ where: { slug } })).toBe(0);
+      expect((await prisma.signupRequest.findFirstOrThrow({ where: { email } })).consumedAt).toBeNull();
+    }
+  });
 });
