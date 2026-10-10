@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { Prisma } from '@prisma/client';
 import { requirePageAccess } from '@/lib/workspace-page';
-import { LEAD_MODULES } from '@/lib/security/entitlements';
+import { LEAD_MODULES, hasModuleEntitlement } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { assertRecordVisible } from '@/lib/security/visibility';
 import { matchesForRequirement } from '@/services/inventory/demand';
@@ -25,6 +25,13 @@ export const metadata = { title: 'Requirement' };
 export default async function RequirementPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['requirements', 'VIEW'] });
+  // Proposals are a Sales / Real Estate register (SALES_OR_REALTY on /api/v1/proposals):
+  // this page admits Lead Eagle, which may read matches but cannot send a shortlist.
+  const [sales, realty] = await Promise.all([
+    hasModuleEntitlement(ctx.tenantId, 'SALES'),
+    hasModuleEntitlement(ctx.tenantId, 'REAL_ESTATE'),
+  ]);
+  const proposalsModule = sales ? 'sales' : realty ? 'realty' : null;
 
   const owned = await prisma.clientRequirement.findFirst({
     where: { id, tenantId: ctx.tenantId, deletedAt: null },
@@ -122,19 +129,26 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
 
         {matches.length > 0 && can(ctx, 'requirements', 'CREATE') && (
           <div style={{ margin: '12px 0 18px' }}>
-            <SendShortlist
-              leadId={owned.leadId}
-              contactId={owned.contactId}
-              requirementId={id}
-              clientName={client?.fullName ?? 'you'}
-              matches={matches.map((m) => ({
-                id: m.id,
-                title: m.title,
-                price: m.price.toString(),
-                currency: m.currency,
-                community: m.micromarket ? `${m.micromarket.name}, ${m.micromarket.city}` : null,
-              }))}
-            />
+            {proposalsModule ? (
+              <SendShortlist
+                leadId={owned.leadId}
+                contactId={owned.contactId}
+                requirementId={id}
+                clientName={client?.fullName ?? 'you'}
+                proposalsModule={proposalsModule}
+                matches={matches.map((m) => ({
+                  id: m.id,
+                  title: m.title,
+                  price: m.price.toString(),
+                  currency: m.currency,
+                  community: m.micromarket ? `${m.micromarket.name}, ${m.micromarket.city}` : null,
+                }))}
+              />
+            ) : (
+              <p className="lf-hint" role="note" data-testid="shortlist-unavailable" style={{ margin: 0 }}>
+                Sending a shortlist is part of Sales and Real Estate, which this company has not enabled.
+              </p>
+            )}
           </div>
         )}
 

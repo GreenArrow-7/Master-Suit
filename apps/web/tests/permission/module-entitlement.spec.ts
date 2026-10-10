@@ -23,6 +23,7 @@ import { GET as salesLeads } from '@/app/api/v1/workspaces/[workspaceSlug]/sales
 import { GET as leadsList } from '@/app/api/v1/leads/route';
 import { GET as opportunitiesList } from '@/app/api/v1/opportunities/route';
 import { GET as receiptsList } from '@/app/api/v1/collections/receipts/route';
+import { POST as createProposal } from '@/app/api/v1/proposals/route';
 import { createSessionToken } from '../helpers/session';
 import { get, post } from '../helpers/request';
 import type { Grants } from '../helpers/fixtures';
@@ -66,6 +67,7 @@ async function makeWorkspace(
     ['leads', 'VIEW'],
     ['opportunities', 'VIEW'],
     ['collections', 'VIEW'],
+    ['requirements', 'CREATE'],
   ];
   await grantPermissions(tenant.id, adminRole.id, grants);
 
@@ -212,6 +214,14 @@ describe('Lead Eagle reaches lead work, and neither Sales-only nor money registe
     expect((await get(receiptsList, '/api/v1/collections/receipts', leadEagleOnly.cookie)).status).toBe(403);
     // Past the module gate for Real Estate: the bare request fails only on its missing filters.
     expect((await get(receiptsList, '/api/v1/collections/receipts', realtyOnly.cookie)).status).not.toBe(403);
+  });
+
+  it('a Lead-Eagle-only workspace is refused a shortlist, which Real Estate sends', async () => {
+    // The admin holds `requirements:CREATE`; the entitlement gate runs before
+    // the body is read, so a throwaway body is enough to tell the two apart.
+    const body = { title: 'A few places', listingIds: ['not-a-listing'] };
+    expect((await post(createProposal, '/api/v1/proposals', body, leadEagleOnly.cookie)).status).toBe(403);
+    expect((await post(createProposal, '/api/v1/proposals', body, realtyOnly.cookie)).status).not.toBe(403);
   });
 });
 

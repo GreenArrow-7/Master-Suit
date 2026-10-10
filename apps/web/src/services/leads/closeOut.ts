@@ -1,7 +1,7 @@
 import { withTx } from '@/lib/db';
-import { Invalid, NotFound } from '@/lib/errors';
+import { Invalid } from '@/lib/errors';
 import { auditDiff } from '@/lib/security/audit';
-import { assertRecordVisible } from '@/lib/security/visibility';
+import { assertLeadInScope } from '@/lib/security/record-scope';
 import type { Ctx } from '@/lib/security/rbac';
 
 /**
@@ -26,20 +26,15 @@ export async function closeOutLead(
   input: { status: CloseOutStatus | 'OPEN'; duplicateOfId?: string | null },
 ) {
   return withTx(ctx.tenantId, async (tx) => {
-    const before = await tx.lead.findFirst({ where: { tenantId: ctx.tenantId, id } });
-    if (!before) throw NotFound('Lead');
-    await assertRecordVisible(ctx, 'leads', before, tx, 'EDIT');
+    const before = await assertLeadInScope(ctx, id, tx, 'EDIT');
 
     let duplicateOfId: string | null = null;
     if (input.status === 'DUPLICATE' && input.duplicateOfId) {
       if (input.duplicateOfId === id)
         throw Invalid([{ field: 'duplicateOfId', code: 'self', message: 'A lead cannot duplicate itself.' }]);
-      const other = await tx.lead.findFirst({
-        where: { tenantId: ctx.tenantId, id: input.duplicateOfId },
-        select: { id: true },
-      });
-      if (!other) throw NotFound('Lead');
-      duplicateOfId = other.id;
+      // The original has to be one the caller may see; any id in the workspace
+      // could otherwise be named, and 404-versus-200 told which ids were real.
+      duplicateOfId = (await assertLeadInScope(ctx, input.duplicateOfId, tx, 'VIEW')).id;
     }
 
     const after = await tx.lead.update({

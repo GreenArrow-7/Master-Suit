@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { Forbidden } from '@/lib/errors';
 import { entityRoute } from '@/lib/nav/entityRoute';
 import type { Ctx } from '@/lib/security/rbac';
+import { listFeed } from '@/services/notifications/feed';
 
 /**
  * A notification feed belongs to a person, not to a machine.
@@ -42,6 +43,8 @@ const listQuery = z.object({
  *
  * `module` stays declared, because the kernel still keys audit and rate limits
  * on it.
+ *
+ * Unread HIGH/URGENT rows come first; see services/notifications/feed.ts.
  */
 export const GET = route(
   { module: 'notifications', action: 'VIEW', selfService: true, query: listQuery },
@@ -54,11 +57,7 @@ export const GET = route(
     if (query.unread) return { unreadCount: await prisma.notification.count({ where: unreadWhere }) };
 
     const [rows, unreadCount, workspace] = await Promise.all([
-      prisma.notification.findMany({
-        where: { tenantId: ctx.tenantId, userId: ctx.actor.id },
-        orderBy: { createdAt: 'desc' },
-        take: 30,
-      }),
+      listFeed(ctx.tenantId, ctx.actor.id, 30),
       prisma.notification.count({ where: unreadWhere }),
       // One row by primary key, alongside the feed rather than after them.
       prisma.tenant.findUnique({ where: { id: ctx.tenantId }, select: { slug: true } }),
