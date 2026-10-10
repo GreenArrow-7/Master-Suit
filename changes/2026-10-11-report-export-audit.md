@@ -10,7 +10,7 @@ a QR capture or a Meta Lead Ads form, an automatic assignment, a lead the
 recycling sweep returns to the pool, and a first-contact SLA breach. Two
 Lead Eagle write routes that recorded nothing now do: a document upload and the
 end of a live-microphone call. **One migration (99 in all):**
-`20261011000000_reports_export_grant`.
+`20261011000200_reports_export_grant`.
 
 **Why.** The Lead Eagle gap audit of 11 Oct, rows M2-07 and M2-08. Several
 reports carry lead names row by row, yet any role that could see reports could
@@ -25,7 +25,7 @@ to exist or to whom it went.
   as well as a `Ctx`; its row has `actorType` SYSTEM and no actor, IP or request.
 - `api/v1/reports/route.ts`: EXPORT asserted before the report runs when
   `format=csv`; the audit row after it. `sales/reports/page.tsx`: the button.
-- `prisma/migrations/20261011000000_reports_export_grant`: every role holding
+- `prisma/migrations/20261011000200_reports_export_grant`: every role holding
   `reports:VIEW` gets `reports:EXPORT` at the same scope, as listings took
   VIEW_SENSITIVE_FIELDS from leads in 20260808220000.
 - `services/leads/intake.ts` (`takeEnquiry`, shared by the portal and Google Ads

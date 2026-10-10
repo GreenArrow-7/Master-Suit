@@ -186,7 +186,7 @@ describe('report CSV export', () => {
  * The grant that keeps today's report viewers able to download, run as written
  * with one condition added: only this spec's workspace.
  */
-describe('the migration 20261011000000_reports_export_grant', () => {
+describe('the migration 20261011000200_reports_export_grant', () => {
   it('gives every role that views reports EXPORT at the same scope, and nothing to anyone else', async () => {
     const role = async (key: string, grants: [string, 'VIEW' | 'EXPORT', 'TEAM' | 'ORGANIZATION'][]) => {
       const created = await prisma.role.create({ data: { tenantId, key: `${key}-${suffix}`, name: key, rank: 50 } });
@@ -211,7 +211,7 @@ describe('the migration 20261011000000_reports_export_grant', () => {
     const other = await role('grant-other', [['leads', 'VIEW', 'ORGANIZATION']]);
 
     const sql = readFileSync(
-      path.join(__dirname, '..', '..', 'prisma', 'migrations', '20261011000000_reports_export_grant', 'migration.sql'),
+      path.join(__dirname, '..', '..', 'prisma', 'migrations', '20261011000200_reports_export_grant', 'migration.sql'),
       'utf8',
     ).replace('WHERE source."module"', `WHERE rp."tenantId" = '${tenantId}' AND source."module"`);
     await withPlatformTx((tx) => tx.$executeRawUnsafe(sql));
