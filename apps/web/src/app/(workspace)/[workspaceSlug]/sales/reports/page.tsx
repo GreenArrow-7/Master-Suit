@@ -1,5 +1,6 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
+import { can } from '@/lib/security/rbac';
 import { runReport, REPORT_KEYS, type ReportKey } from '@/services/leadership/reports';
 import EmptyState from '@/components/ui/EmptyState';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -130,9 +131,11 @@ export default async function ReportsPage({
           description={period}
           actions={
             <>
-              <a className="lf-btn lf-btn--secondary lf-btn--sm" href={`/api/v1/reports?${query}&format=csv`}>
-                Export CSV
-              </a>
+              {can(ctx, 'reports', 'EXPORT') && (
+                <a className="lf-btn lf-btn--secondary lf-btn--sm" href={`/api/v1/reports?${query}&format=csv`}>
+                  Export CSV
+                </a>
+              )}
               <SalesLink className="lf-btn lf-btn--secondary lf-btn--sm" href="/reports">
                 All reports
               </SalesLink>
