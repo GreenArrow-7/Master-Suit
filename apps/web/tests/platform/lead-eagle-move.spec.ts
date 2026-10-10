@@ -488,12 +488,18 @@ describe('moving a Lead Eagle company', () => {
           ...snap.activities,
           { ...note, userId: 'u-ghost' },
           { ...note, leadId: 'l-2', userId: 'u-removed' },
-          // On a merged duplicate (the reader leaves merged leads behind) and on deleted cold data.
+          // On a merged duplicate (the reader leaves merged leads behind), on deleted cold data, on nothing.
           { ...note, leadId: 'l-merged' },
           { ...note, leadId: null, dataRecordId: 'd-deleted', type: 'CALL' },
+          { ...note, leadId: null },
+          // On deleted cold data but also on a lead that moves: it moves onto the lead.
+          { ...note, dataRecordId: 'd-deleted' },
         ],
         enquiries: [...snap.enquiries, { ...snap.enquiries[0]!, leadId: 'l-merged' }],
         followUps: [...snap.followUps, { ...snap.followUps[0]!, leadId: 'l-merged' }],
+        // On a deleted project, and on a booking that stays behind (its listing has no price).
+        units: [...snap.units, { ...snap.units[0]!, id: 'un-2', projectId: 'p-deleted' }],
+        commissions: [...snap.commissions, { ...snap.commissions[0]!, bookingId: 'b-5' }],
       },
       { commit: false },
     );
@@ -503,12 +509,15 @@ describe('moving a Lead Eagle company', () => {
         '1 records are owned by people no longer in Lead Eagle; they move unowned.',
         '2 activities were logged by someone without an account here; they move without who logged them.',
         '1 stage changes were made by someone without an account here; they move without who made them.',
-        '3 activities and enquiries are on merged duplicates or deleted records, which stay behind; they are not moved.',
-        '1 follow-ups are on merged duplicates or deleted leads, which stay behind; they are not moved.',
+        '4 activities and enquiries are on merged duplicates, deleted records or no record; they stay behind.',
+        '1 follow-ups are on merged duplicates or deleted leads; they stay behind.',
+        '1 units are on projects that did not move; they stay behind.',
+        'A commission of AED 70000.00 is on booking BK-ME-b-5, which did not move; it stays behind.',
       ]),
     );
-    expect(report.counts['activities and enquiries']).toEqual({ source: 11, moved: 8 });
+    expect(report.counts['activities and enquiries']).toEqual({ source: 13, moved: 9 });
     expect(report.counts['follow-ups']).toEqual({ source: 3, moved: 2 });
+    expect(report.counts.units).toEqual({ source: 2, moved: 1 });
     expect(await moved()).toHaveLength(0);
   });
 
@@ -524,8 +533,11 @@ describe('moving a Lead Eagle company', () => {
         expect.stringContaining('owed to Outside referrer'),
         'Booking BK-ME-b-3 was confirmed but names no unit; it moves as a draft.',
         'Booking BK-ME-b-5 is on nothing that moved (its listing stayed behind); it is not moved.',
+        '1 stage changes were made by someone without an account here; they move without who made them.',
       ]),
     );
+    // Nothing else in this book is left behind or loses its person.
+    expect(report.problems.filter((p) => /stays? behind\.$|no longer in Lead Eagle|logged by/.test(p))).toEqual([]);
 
     const [aisha, omar] = await moved();
     expect(aisha).toMatchObject({
@@ -641,7 +653,12 @@ describe('moving a Lead Eagle company', () => {
     };
     const first = await moveCompany(tenantId, coldOnly, { commit: true });
     expect(first.counts['cold data']).toEqual({ source: 1, moved: 1 });
-    await expect(moveCompany(tenantId, coldOnly, { commit: true })).rejects.toThrow('was already moved');
+    // Flat, so the workspace's own Audit log prints it as text.
+    const row = await prisma.platformAuditEvent.findFirstOrThrow({ where: { tenantId, objectId: 'le-company-2' } });
+    expect(row.metadata).toEqual({ slug: 'cold-only', leads: 0 });
+    await expect(moveCompany(tenantId, coldOnly, { commit: true })).rejects.toThrow(
+      /was already moved into this workspace \(audit record of \d{4}-\d{2}-\d{2}\)/,
+    );
     expect(await prisma.dataRecord.count({ where: { tenantId, fullName: 'Cold Only Record' } })).toBe(1);
   });
 });

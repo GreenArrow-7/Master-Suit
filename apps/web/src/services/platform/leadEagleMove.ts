@@ -292,11 +292,16 @@ export async function moveCompany(
   const already = await prisma.lead.count({
     where: { tenantId, customData: { path: ['leadEagle', 'company'], equals: snap.company.id } },
   });
-  const recorded = await prisma.platformAuditEvent.count({
+  // ponytail: the row lives only as long as PLATFORM_AUDIT_RETENTION_DAYS keeps it (default: for ever), and
+  // a re-run after undoing a move by hand needs it removed; a durable marker on the moved rows if that bites.
+  const recorded = await prisma.platformAuditEvent.findFirst({
     where: { tenantId, event: MOVED_EVENT, objectId: snap.company.id },
+    select: { occurredAt: true },
   });
-  if (already || recorded) {
-    throw new Error(`${snap.company.slug} was already moved into this workspace (${already} leads).`);
+  if (already) throw new Error(`${snap.company.slug} was already moved into this workspace (${already} leads).`);
+  if (recorded) {
+    const on = recorded.occurredAt.toISOString().slice(0, 10);
+    throw new Error(`${snap.company.slug} was already moved into this workspace (audit record of ${on}).`);
   }
 
   // People, by email. Never created: an account is the owner's to invite.
@@ -493,7 +498,8 @@ export async function moveCompany(
             continue;
           }
           const leadId = a.leadId ? leadMap.get(a.leadId) : undefined;
-          if (a.dataRecordId || !leadId) {
+          // On a deleted record, it still moves onto its lead if it names one that moved.
+          if (!leadId) {
             leftBehind += 1;
             continue;
           }
@@ -566,7 +572,7 @@ export async function moveCompany(
         }
         if (leftBehind) {
           problems.push(
-            `${leftBehind} activities and enquiries are on merged duplicates or deleted records, which stay behind; they are not moved.`,
+            `${leftBehind} activities and enquiries are on merged duplicates, deleted records or no record; they stay behind.`,
           );
         }
 
@@ -606,7 +612,7 @@ export async function moveCompany(
         }
         if (followUpsLeftBehind) {
           problems.push(
-            `${followUpsLeftBehind} follow-ups are on merged duplicates or deleted leads, which stay behind; they are not moved.`,
+            `${followUpsLeftBehind} follow-ups are on merged duplicates or deleted leads; they stay behind.`,
           );
         }
 
@@ -709,6 +715,7 @@ export async function moveCompany(
         const unitMap = new Map<Id, Id>();
         for (const u of snap.units) {
           const projectId = projectMap.get(u.projectId);
+          // The reader reads live units, of live projects or deleted ones.
           if (!projectId) continue;
           const created = await tx.unitInventory.create({
             data: {
@@ -728,6 +735,11 @@ export async function moveCompany(
           unitMap.set(u.id, created.id);
         }
         tally('units', snap.units.length, unitMap.size);
+        if (unitMap.size < snap.units.length) {
+          problems.push(
+            `${snap.units.length - unitMap.size} units are on projects that did not move; they stay behind.`,
+          );
+        }
 
         const listingMap = new Map<Id, Id>();
         const references = new Set(
@@ -850,7 +862,13 @@ export async function moveCompany(
         for (const c of snap.commissions) {
           const booking = bookingMap.get(c.bookingId);
           const userId = owned(c.userId);
-          if (!booking) continue;
+          if (!booking) {
+            const reference = snap.bookings.find((b) => b.id === c.bookingId)?.reference ?? c.bookingId;
+            problems.push(
+              `A commission of AED ${c.amount} is on booking ${reference}, which did not move; it stays behind.`,
+            );
+            continue;
+          }
           if (!userId) {
             problems.push(
               `A commission of AED ${c.amount} on a booking is owed to ${c.externalName ?? 'someone without an account'}; it is not moved.`,
@@ -916,7 +934,8 @@ export async function moveCompany(
             objectType: 'lead_eagle_company',
             objectId: snap.company.id,
             tenantId,
-            metadata: { slug: snap.company.slug, counts },
+            // Flat: the workspace's own Audit log prints each value as text.
+            metadata: { slug: snap.company.slug, leads: snap.leads.length },
           },
           tx,
         );
