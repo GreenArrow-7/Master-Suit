@@ -33,7 +33,7 @@ did the same to the departing employee's workspace account.
 - `admin/users/HandOver.tsx`: the step, the deactivate form and button;
   `UserRowActions.tsx`, `users/page.tsx`, `users/[userId]/page.tsx` use them.
 - `services/distribution/triage.ts`, `prisma/schema.prisma`, migration
-  `20261011000000_triage_owner_deactivated`: triage reason `OWNER_DEACTIVATED`.
+  `20261011000100_triage_owner_deactivated`: triage reason `OWNER_DEACTIVATED`.
 - `lib/security/visibility.ts`: `visibilityWhere` takes `db` for use inside a
   transaction; `services/distribution/assignLead.ts` exports `activeRule`.
 
