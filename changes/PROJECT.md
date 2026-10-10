@@ -36,7 +36,9 @@ Node 22 or newer (CI uses 24).
   tenants goes through `withPlatformTx`, nothing else. Inside `withTx`, query
   through its `tx` only: the global client there runs on another connection
   with no tenant set, where row-level security returns nothing — a permission
-  or field rule read that way silently reads as "no rule".
+  or field rule read that way silently reads as "no rule". The same guard
+  hides soft-deleted rows only of the model queried: an `include` of a model
+  with `deletedAt` filters it itself.
 - **One record, several screens.** Real Estate reuses Sales' rows (`Lead`,
   `Call`, `SiteVisit`, `Booking`, `Project`, `Listing`, `UnitInventory`);
   `realty/` and `lead-eagle/` pages are one-line re-exports of `sales/` pages,
@@ -55,6 +57,8 @@ Node 22 or newer (CI uses 24).
   `atLeast(ctx, module, action, scope)` (`src/lib/security/rbac.ts`). HR's
   predicates are in `src/services/hr/access.ts`. A manager's authority over
   people stops at their reporting line (`reportingLine`, `src/services/hr/leave.ts`).
+  A task is read under `tasks` wherever it shows, a lead's page included, and
+  a follow-up under `leads` (`src/services/leads/nextFollowUp.ts`).
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
   P2002 answers 409 and P2025 404, a zod failure 422 — let the database say
   "already exists" or "not found" instead of reading first.
