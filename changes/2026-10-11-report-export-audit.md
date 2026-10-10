@@ -5,8 +5,9 @@
 naming the report and its date range. The reports screen shows Export CSV only
 to a role that may use it. The writes no person makes now leave an AuditLog
 row with no actor (the Audit Log shows "System") and the machine in
-`metadata.source`: a lead created or enquired on again by a portal, Google Ads
-or a QR capture, an automatic assignment, and a first-contact SLA breach. Two
+`metadata.source`: a lead created or enquired on again by a portal, Google Ads,
+a QR capture or a Meta Lead Ads form, an automatic assignment, a lead the
+recycling sweep returns to the pool, and a first-contact SLA breach. Two
 Lead Eagle write routes that recorded nothing now do: a document upload and the
 end of a live-microphone call. **One migration (99 in all):**
 `20261011000000_reports_export_grant`.
@@ -33,9 +34,21 @@ to exist or to whom it went.
   `sourceDetail` as source, or as the person when the caller passes `actor`.
 - `api/v1/cold-data/[id]/convert/route.ts`: passes `actor`; its kernel
   `auditEvent` (object `leads`, no record id) is gone, so one row, naming the lead.
+- `services/meta/applyEvent.ts` (`applyLeadgen`, the Meta webhook worker): the
+  same two rows, source `facebook:<form id>`, each in the write's transaction.
+  No product module gates this path (route, worker or the Integrations screen),
+  so a Lead-Eagle-only workspace can receive Lead Ads leads.
 - `services/distribution/assignLead.ts`: OWNER_CHANGED on `ownerId`, source
   `distribution`, with the rule's name, in the assignment's transaction.
-- `services/sla/checkLeadFirstContact.ts`: RECORD_UPDATED on `slaState`, source `sla`.
+- `services/leads/recycle.ts`: OWNER_CHANGED to null, source `recycle`, with the
+  threshold, per lead, in the sweep's transaction.
+- `services/sla/checkLeadFirstContact.ts`: RECORD_UPDATED on `slaState`, source
+  `sla`. The breach and its row commit together, and only the update that moved
+  the state writes the row, so a retry after a failed insert still records it
+  and a duplicate job does not record it twice.
+- `admin/audit/page.tsx`: a field-change row also shows what it recorded beside
+  the change (`source`, the distribution rule), so every System row names its
+  machine on screen.
 - `api/v1/documents/route.ts`: RECORD_CREATED on `documents` with the lead and
   the scan verdict, rejected uploads included.
 - `api/v1/calls/[id]/live-audio/route.ts`: CALL_COMPLETED on finalise, as the
@@ -46,10 +59,13 @@ to exist or to whom it went.
 grants EXPORT to every role that holds VIEW, and an administrator can withdraw
 it in the role editor. A role made afterwards with VIEW only sees the report
 without the button and gets 403 on the file. Each download adds an Export
-Requested row (object Report). The Audit Log gains System rows for portal, ad
-and QR leads, repeat enquiries, automatic assignments and SLA breaches, and
+Requested row (object Report). The report as JSON (`format=json`, the screen's
+own data) still needs only VIEW and is not audited, for a person or an API key.
+The Audit Log gains System rows for portal, ad, Meta Lead Ads and QR leads,
+repeat enquiries, automatic assignments, recycled leads and SLA breaches, and
 person rows for document uploads and live-microphone calls ending. A cold-data
-"Make lead" row now names the lead.
+"Make lead" row now names the lead. Field-change rows show their source and rule
+after the change.
 
 **Verified.** `tests/sales/lead-eagle-reports.spec.ts` (3 new cases: VIEW-only
 403 on the file, 200 on JSON, no button; an EXPORT role's download writes one
@@ -62,18 +78,29 @@ rendered for the admin shows both by "System" with the source; repeat enquiry;
 SLA breach; cold data one row as the person; document upload; live-mic
 finalise). On the old code all 9 fail: 8 on their assertions, the migration case
 on the missing file; the button case alone fails on "Export CSV" with only the
-old page restored. Also green: `tests/sales` (629 in 47 files),
-`tests/permission` and `tests/unit` (1,510, 2 POSIX-only skips on Windows),
-`tests/security` (656), `tests/hr` and `tests/identity` (492),
-`tests/tenant/audit-retention.spec.ts`; tsc, eslint, prettier; the migration
-applied on the rig.
+old page restored. Review follow-up: the Meta Lead Ads case (created, then the
+same person again), the SLA retry case (the audit insert fails once: the breach
+is rolled back, and the retry records one row), the recycle row
+(`tests/tenant/lead-recycle.spec.ts`) and the System OWNER_CHANGED row showing
+`source=distribution` on the page all fail on the code before it. Pins that pass
+either side: the SLA check run twice writes one row; a rejected (INFECTED)
+upload answers 422 and is audited; the migration leaves a wider EXPORT and a
+refused one alone (an overwriting `ON CONFLICT DO UPDATE` fails it). Also
+green after the follow-up: `tests/sales` (632 in 47 files), `tests/permission`
+and `tests/unit` (1,510, 2 POSIX-only skips on Windows), `tests/security` with
+`tests/tenant/lead-recycle.spec.ts` (665 in 53); before it, `tests/hr` and
+`tests/identity` (492) and `tests/tenant/audit-retention.spec.ts`; tsc, eslint,
+prettier; the migration applied on the rig.
 
 **Non-GET API handlers declaring no `auditEvent`** (77, from a scan of every
 `route.ts`; `{}` marks a path segment):
 
 - Lead Eagle, fixed here: POST `documents`, POST `calls/{id}/live-audio`.
   Lead writes now audited by the intake: POST `public/capture`, POST
-  `webhooks/leads/{key}` (in the worker), POST `cold-data/{id}/convert`.
+  `webhooks/leads/{key}` (in the worker), POST `cold-data/{id}/convert`. Lead
+  Ads leads now audited in the Meta worker: POST `webhooks/meta/{key}` (its
+  WhatsApp and comment events write messages and social comments, not leads,
+  and are left open below).
 - Lead Eagle, audited in their service or route body: POST `leads/triage/{id}/assign`,
   PUT `calls/{id}/recording/media`.
 - Lead Eagle, write nothing (drafts and hints): POST `calls/{id}/coach`,
@@ -84,8 +111,8 @@ applied on the rig.
   action by action): POST/DELETE
   `workspaces/{slug}/identity/{action}`, POST `identity/self/{action}`,
   `roles/{action}`, `hr/self/{action}`, `hr/actions/{action}`; POST `hr/documents/upload` (HRMS).
-- Machines outside Lead Eagle's live paths: POST `webhooks/telephony`,
-  `webhooks/telephony/{key}`, `webhooks/telephony/{key}/answer`, `webhooks/meta/{key}`.
+- Telephony, which no workspace has connected yet: POST `webhooks/telephony`,
+  `webhooks/telephony/{key}`, `webhooks/telephony/{key}/answer`.
 - Sales, or Sales and Real Estate: POST `assistant`, `campaigns/{id}/members`,
   `campaigns/{id}/qualifications`, `campaigns/{id}/talking-points`,
   `practice/{id}`, `practice/transcribe`, `targets/progress`,
@@ -106,14 +133,25 @@ applied on the rig.
 
 **Left open.**
 
-- Machine writers still without an AuditLog row: the lead recycling sweep
-  (`services/leads/recycle.ts`, owner back to the pool, a history row only),
-  the telephony webhooks' call updates (no telephony is connected yet),
-  Meta social leads (Sales), public form leads (Sales and Real Estate
-  marketing), and automation actions (`update_field`, `add_tag`,
-  `create_task`). Each is one `audit({ tenantId, source }, …)`.
+- Machine writers still without an AuditLog row: the telephony webhooks' call
+  updates (no telephony is connected yet), public form leads (forms are created
+  under Sales), Meta comments and messages (a social comment is created and
+  auto-assigned with its own assignment history; messages are stored as
+  conversations), and automation actions (`update_field`, `add_tag`,
+  `create_task`). The engine runs an action as the automation's creator
+  (`ctxForUser`), so whether its row names that person or System with the
+  automation as source is the owner's call.
+- The report as JSON needs only VIEW and is not audited, so a VIEW-only role
+  (or API key) can still read the same rows the CSV gate guards, unrecorded.
+  The brief asked only for the file; auditing JSON pulls by API key is the
+  owner's call.
 - The report CSV still answers an API key that holds `reports:EXPORT`; the two
   list exports are browser-only (`sessionOnly`). The route also serves JSON, so
   making the file session-only is a check in the handler, not the route flag.
+- The grant migration keeps the file for every role that views reports today.
+  A narrower option for the owner: grant only where the role also holds
+  `leads:EXPORT` (the gate for downloading lead names and phones) or is the
+  Company Administrator.
+- On the Audit Log, an owner change still shows the user ids, not names.
 - The demo seed's Sales Director, managers and reps hold `reports:VIEW` without
   EXPORT, so a freshly seeded workspace shows them no Export CSV button.

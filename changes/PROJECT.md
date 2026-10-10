@@ -58,11 +58,13 @@ Node 22 or newer (CI uses 24).
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
   P2002 answers 409 and P2025 404, a zod failure 422 — let the database say
   "already exists" or "not found" instead of reading first.
-- **Audit.** Every write leaves an AuditLog row: the route's `auditEvent`, or
-  `audit(ctx, …)` (`src/lib/security/audit.ts`) where the route cannot say
-  enough. A write no person makes (a webhook, a worker) calls
-  `audit({ tenantId, source }, …)` and shows as System. A file out of the
-  building needs EXPORT, not VIEW, and writes `EXPORT_REQUESTED`.
+- **Audit.** The rule for new code: every write should leave an AuditLog row,
+  through the route's `auditEvent`, or `audit(ctx, …)`
+  (`src/lib/security/audit.ts`) where the route cannot say enough. A write no
+  person makes (a webhook, a worker) calls `audit({ tenantId, source }, …)` and
+  shows as System. Not all existing writes do yet; the known gaps are listed in
+  `changes/2026-10-11-report-export-audit.md`. A file out of the building needs
+  EXPORT, not VIEW, and writes `EXPORT_REQUESTED`.
 - **Attendance is not HR.** Check-in, the attendance record and attendance
   requests work in every workspace; everything else in HR needs HRMS.
 - **Background jobs.** One `JOBS` table in `src/workers/jobs.ts`, keyed by queue;
