@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { can, type Action, type Ctx } from '@/lib/security/rbac';
+import { eventListScope } from '@/lib/security/record-scope';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { obligationAccess, obligationWhere, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import type { EntityType } from '@/lib/nav/entityRoute';
@@ -695,7 +696,7 @@ export const TOOLS: ToolDef[] = [
       const until = new Date(now.getTime() + Math.min(Number(args.days) || 7, 60) * 864e5);
       const [events, calls] = await Promise.all([
         prisma.event.findMany({
-          where: { tenantId: ctx.tenantId, deletedAt: null, startAt: { gte: now, lte: until } },
+          where: { tenantId: ctx.tenantId, deletedAt: null, startAt: { gte: now, lte: until }, ...eventListScope(ctx) },
           orderBy: { startAt: 'asc' },
           take: 10,
           select: { id: true, title: true, startAt: true, location: true, eventType: true },
@@ -734,9 +735,9 @@ export const TOOLS: ToolDef[] = [
       /**
        * Events are the one part of this snapshot that is not the actor's own
        * work: follow-ups, tasks and calls are filtered to `ctx.actor.id`, and
-       * leads go through `leadScope`, but the workspace calendar is workspace-
-       * wide. It used to be read under the `leads:VIEW` gate alone — the same
-       * tenant-only query `getCalendar` had, and the same bypass.
+       * leads go through `leadScope`, and events through `eventListScope`, as
+       * the Events list. It used to be read under the `leads:VIEW` gate alone —
+       * the same tenant-only query `getCalendar` had, and the same bypass.
        *
        * Requiring `events:VIEW` for the whole tool would take somebody's day
        * away over a section of it, so the permission decides what is in the
@@ -786,6 +787,7 @@ export const TOOLS: ToolDef[] = [
                 tenantId: ctx.tenantId,
                 deletedAt: null,
                 startAt: { gte: todayStart, lte: new Date(now.getTime() + 3 * 864e5) },
+                ...eventListScope(ctx),
               },
               orderBy: { startAt: 'asc' },
               take: 4,

@@ -1,6 +1,7 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { can } from '@/lib/security/rbac';
+import { eventListScope } from '@/lib/security/record-scope';
 import { prisma } from '@/lib/db';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -29,6 +30,9 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['events', 'VIEW'] });
 
   const where: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };
+  // The list route's rule (GET /api/v1/events): below TEAM, the events you host,
+  // created or were invited to.
+  Object.assign(where, eventListScope(ctx));
   if (params.tab === 'upcoming') where.startAt = { gte: new Date() };
   else if (params.tab === 'DRAFT' || params.tab === 'COMPLETED' || params.tab === 'CANCELLED')
     where.status = params.tab;
