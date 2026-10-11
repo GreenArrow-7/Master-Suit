@@ -28,6 +28,8 @@ export interface VisibilityOptions {
   ownerField?: string;
   /** Include ownerless records. Requires ASSIGN at TEAM or wider — see docs/01 §2. */
   includeUnassigned?: boolean;
+  /** Inside `withTx`, its `tx` — see the note on VisibilityDb. */
+  db?: VisibilityDb;
 }
 
 export async function visibilityWhere(
@@ -43,7 +45,7 @@ export async function visibilityWhere(
   if (scope === 'ORGANIZATION') return base;
   if (scope === 'NONE') throw Forbidden();
 
-  const ownerIds = await resolveOwnerIds(ctx, scope);
+  const ownerIds = await resolveOwnerIds(ctx, scope, opts.db);
   const clauses: Record<string, unknown>[] = [{ [ownerField]: { in: ownerIds } }];
 
   const mayClaim = ['ASSIGN', 'REASSIGN'].some((a) => {

@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-11 | [Deactivating or removing a member hands their open work on](2026-10-11-user-deactivate-hand-over.md) | #161 | users, Lead Eagle |
 | 2026-10-11 | [A Lead Eagle workspace starts with five roles, not one](2026-10-11-lead-eagle-starter-roles.md) | #160 | Lead Eagle, roles, security |
 | 2026-10-11 | [Report CSVs needed only VIEW and left no trace; machine writes to leads left no audit row](2026-10-11-report-export-audit.md) | #159 | security, Lead Eagle |
 | 2026-10-11 | [A lead's main phone and email can be masked per role](2026-10-11-lead-contact-masking.md) | #158 | security, Lead Eagle |

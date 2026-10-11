@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { prisma, withTx } from '@/lib/db';
+import { prisma, withTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { audit } from '@/lib/security/audit';
 import { assessEligibility, lockAndVerify, policyFromRule, redactForSales, type Eligibility } from './eligibility';
@@ -56,9 +56,9 @@ const RULE_SELECT = {
   respectWorkingHours: true,
 } satisfies Prisma.DistributionRuleSelect;
 
-/** The workspace's first active round-robin rule for leads. */
-const activeRule = (tenantId: string) =>
-  prisma.distributionRule.findFirst({
+/** The workspace's first active round-robin rule for leads. Inside `withTx`, pass its `tx`. */
+export const activeRule = (tenantId: string, db: Pick<TxClient, 'distributionRule'> = prisma) =>
+  db.distributionRule.findFirst({
     where: { tenantId, objectType: 'LEAD', isActive: true, method: 'ROUND_ROBIN', deletedAt: null },
     orderBy: { position: 'asc' },
     select: RULE_SELECT,

@@ -304,6 +304,10 @@ enum LeadTriageReason {
   /// set `historyUnknown`, because their `openedAt` is when reconciliation found
   /// them and not when the customer started waiting.
   PRE_EXISTING
+
+  /// Handed back to the queue when its owner was deactivated or removed. Not a
+  /// failed assignment: an administrator chose the queue over a named colleague.
+  OWNER_DEACTIVATED
 }
 
 enum OutboxStatus {

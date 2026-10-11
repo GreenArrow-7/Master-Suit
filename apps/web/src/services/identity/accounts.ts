@@ -33,7 +33,14 @@ import { isPrivilegedPlatformRole } from '@/lib/auth/platform-policy';
 import { writePrimaryPassword } from '@/services/identity/platformCredentials';
 import { assertNotReused, recordPreviousPassword } from './passwordHistory';
 import { audit } from '@/lib/security/audit';
-import type { Ctx } from '@/lib/security/rbac';
+import { can, type Ctx } from '@/lib/security/rbac';
+import {
+  activeMemberWhere,
+  countOpenWork,
+  handOverOpenWork,
+  mayHandOverWorkOf,
+  type HandOver,
+} from '@/services/leads/assign';
 
 /** Rank 10 is `company_admin`/`org_admin`; anything at or above it administers the workspace. */
 export const ADMIN_ROLE_RANK = 10;
@@ -392,8 +399,18 @@ export async function unlockUser(ctx: Ctx, userId: string) {
  * Suspends or restores an account. Suspension revokes every live session at the
  * same time — an account you have decided to stop trusting must not keep working
  * until its cookie happens to expire.
+ *
+ * Suspension also hands the account's open leads, follow-ups and tasks on, in
+ * the same transaction — see `handOverOpenWork`. Left behind, they sat with a
+ * SUSPENDED owner: invisible to colleagues and absent from the Allocation queue.
  */
-export async function setUserActive(ctx: Ctx, userId: string, active: boolean, reason?: string) {
+export async function setUserActive(
+  ctx: Ctx,
+  userId: string,
+  active: boolean,
+  reason?: string,
+  handOver: HandOver = {},
+) {
   const target = await loadTarget(ctx, userId);
   assertMayAdminister(ctx, target);
 
@@ -404,12 +421,13 @@ export async function setUserActive(ctx: Ctx, userId: string, active: boolean, r
   }
 
   const status = active ? 'ACTIVE' : 'SUSPENDED';
-  await withTx(ctx.tenantId, async (tx) => {
+  const handedOver = await withTx(ctx.tenantId, async (tx) => {
     await tx.user.update({ where: { tenantId: ctx.tenantId, id: target.id }, data: { status } });
     await tx.workspaceMembership.update({
       where: { id: loginOf(target).id },
       data: { status: active ? 'ACTIVE' : 'SUSPENDED' },
     });
+    return active ? null : handOverOpenWork(ctx, tx, target, handOver, 'deactivated');
   });
 
   if (!active) await revokeAllSessions(target.id, undefined, 'ACCOUNT_SUSPENDED');
@@ -421,7 +439,31 @@ export async function setUserActive(ctx: Ctx, userId: string, active: boolean, r
     newValue: { status },
     metadata: { action: active ? 'account.restored' : 'account.suspended', reason },
   });
-  return { userId: target.id, status };
+  return { userId: target.id, status, handedOver };
+}
+
+/**
+ * What the deactivate/remove dialog needs before it asks: the account's open
+ * work, whether this caller may hand it over (`mayHandOver`, so the dialog says
+ * so before submit rather than after), and the active members it may go to.
+ * Only for someone who may deactivate or remove, behind the same rank ladder as
+ * those actions: users:VIEW alone does not read a colleague's workload.
+ */
+export async function openWorkOf(ctx: Ctx, userId: string) {
+  if (!can(ctx, 'users', 'MANAGE_USERS') && !can(ctx, 'users', 'DELETE')) throw Forbidden();
+  const target = await loadTarget(ctx, userId);
+  assertMayAdminister(ctx, target);
+  const [work, mayHandOver, members] = await Promise.all([
+    countOpenWork(prisma, ctx.tenantId, target.id),
+    mayHandOverWorkOf(ctx, target.id),
+    prisma.user.findMany({
+      where: { ...activeMemberWhere(ctx.tenantId), id: { not: target.id } },
+      select: { id: true, fullName: true },
+      orderBy: { fullName: 'asc' },
+      take: 500,
+    }),
+  ]);
+  return { ...work, mayHandOver, members };
 }
 
 /**
@@ -443,12 +485,15 @@ export async function setUserActive(ctx: Ctx, userId: string, active: boolean, r
  * employment is offboarding's job, and doing it silently from the user
  * directory would destroy records nobody asked to lose.
  *
+ * Open work is handed on in the same transaction, as on suspension
+ * (`handOverOpenWork`); closed leads and finished work keep naming the person.
+ *
  * Deactivating is the reversible neighbour of this and usually the right
  * choice — `setUserActive(ctx, id, false)`. This exists for the account that
  * should never have been created: the duplicate, the test account, the
  * contractor who never started.
  */
-export async function deleteUser(ctx: Ctx, userId: string, reason?: string) {
+export async function deleteUser(ctx: Ctx, userId: string, reason?: string, handOver: HandOver = {}) {
   const target = await loadTarget(ctx, userId);
   // Same ladder as suspension: never yourself, never at or above your own rank.
   assertMayAdminister(ctx, target);
@@ -473,17 +518,19 @@ export async function deleteUser(ctx: Ctx, userId: string, reason?: string) {
   }
 
   const removedAt = new Date();
-  await withTx(ctx.tenantId, async (tx) => {
-    await tx.user.update({
-      where: { tenantId: ctx.tenantId, id: target.id },
-      // DEACTIVATED as well as deleted: `status` is what the login path reads,
-      // so a half-applied delete still refuses the sign-in.
-      data: { deletedAt: removedAt, status: 'DEACTIVATED' },
-    });
+  const handedOver = await withTx(ctx.tenantId, async (tx) => {
+    // DEACTIVATED as well as deleted: `status` is what the login path reads.
+    // Written first, and `deletedAt` only after the hand-over: this takes the
+    // User row lock before the hand-over locks leads, and a BRANCH or REGION
+    // reach check lists users, which the tenant guard hides once deleted.
+    await tx.user.update({ where: { tenantId: ctx.tenantId, id: target.id }, data: { status: 'DEACTIVATED' } });
     await tx.workspaceMembership.update({
       where: { id: membership.id },
       data: { status: 'REMOVED', removedAt },
     });
+    const work = await handOverOpenWork(ctx, tx, target, handOver, 'removed');
+    await tx.user.update({ where: { tenantId: ctx.tenantId, id: target.id }, data: { deletedAt: removedAt } });
+    return work;
   });
 
   await revokeAllSessions(target.id, undefined, 'ACCOUNT_REMOVED');
@@ -495,7 +542,7 @@ export async function deleteUser(ctx: Ctx, userId: string, reason?: string) {
     newValue: { status: 'DEACTIVATED', deletedAt: removedAt.toISOString() },
     metadata: { action: 'account.removed', reason },
   });
-  return { userId: target.id, removed: true };
+  return { userId: target.id, removed: true, handedOver };
 }
 
 /** Signs an account out everywhere without changing anything else about it. */

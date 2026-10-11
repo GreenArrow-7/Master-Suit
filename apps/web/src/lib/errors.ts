@@ -11,6 +11,8 @@ export class AppError extends Error {
     message: string,
     readonly errors: FieldError[] = [],
     readonly expose = true,
+    /** RFC 9457 extension members: what a caller needs to act on the refusal without parsing `detail`. */
+    readonly extensions: Record<string, unknown> = {},
   ) {
     super(message);
     this.name = 'AppError';
@@ -18,6 +20,7 @@ export class AppError extends Error {
 
   toProblem(requestId: string) {
     return {
+      ...this.extensions,
       type: `https://docs.leadflow.example/errors/${this.code}`,
       title: TITLES[this.status] ?? 'Error',
       status: this.status,
@@ -43,7 +46,8 @@ const TITLES: Record<number, string> = {
 
 export const Unauthorized = (m = 'Sign in to continue.') => new AppError(401, 'unauthorized', m);
 export const Forbidden = (m = 'Your role does not allow this action.') => new AppError(403, 'forbidden', m);
-export const Conflict = (m: string) => new AppError(409, 'conflict', m);
+export const Conflict = (m: string, extensions?: Record<string, unknown>) =>
+  new AppError(409, 'conflict', m, [], true, extensions);
 
 /**
  * Carries the methods that *are* allowed, because RFC 9110 requires a 405 to
