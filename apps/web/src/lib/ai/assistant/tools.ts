@@ -1,9 +1,12 @@
 import { prisma } from '@/lib/db';
 import { can, type Action, type Ctx } from '@/lib/security/rbac';
+import { eventListScope } from '@/lib/security/record-scope';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { obligationAccess, obligationWhere, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import type { EntityType } from '@/lib/nav/entityRoute';
 import { redact } from '../redact';
+import { applyFieldSecurity, loadFieldRules } from '@/lib/security/fieldSecurity';
+import { contactSearch, LEAD_SENSITIVE_FIELDS, maskCallNumbers } from '@/services/leads/createLead';
 
 /**
  * The CRM tool layer the assistant model calls.
@@ -125,13 +128,25 @@ const leadBrief = (l: any, due?: ReadonlyMap<string, Date>) => ({
   lastActivityAt: fmtDate(l.lastActivityAt),
 });
 
-/** The viewer's own next obligation for a bounded set of leads. */
-async function dueFor(ctx: Ctx, rows: { id: string }[]) {
-  return scopedNextFollowUp(
-    ctx.tenantId,
-    rows.map((r) => r.id),
-    await obligationAccess(ctx, 'scope'),
-  );
+/**
+ * How each of a bounded set of leads reads to the asker: their own next
+ * obligation, and the contact details masked exactly as on their screens
+ * (leads:VIEW_SENSITIVE_FIELDS) — a masked number is not the answer to "what is
+ * her number" just because the question was typed.
+ */
+async function briefer(ctx: Ctx, rows: { id: string }[]) {
+  const [due, rules] = await Promise.all([
+    obligationAccess(ctx, 'scope').then((access) =>
+      scopedNextFollowUp(
+        ctx.tenantId,
+        rows.map((r) => r.id),
+        access,
+      ),
+    ),
+    loadFieldRules(ctx, 'LEAD'),
+  ]);
+  return (l: Record<string, unknown>) =>
+    leadBrief(applyFieldSecurity(ctx, 'LEAD', rules, l, LEAD_SENSITIVE_FIELDS), due);
 }
 
 const LEAD_SELECT = {
@@ -217,8 +232,7 @@ export const TOOLS: ToolDef[] = [
         where.OR = [
           { fullName: { contains: args.q, mode: 'insensitive' } },
           { company: { contains: args.q, mode: 'insensitive' } },
-          { email: { contains: args.q, mode: 'insensitive' } },
-          { phone: { contains: args.q } },
+          ...contactSearch(ctx, await loadFieldRules(ctx, 'LEAD'), String(args.q)),
         ];
       }
       if (args.stage) where.stage = { name: { contains: args.stage, mode: 'insensitive' } };
@@ -231,9 +245,9 @@ export const TOOLS: ToolDef[] = [
         take: limit,
         select: LEAD_SELECT,
       });
-      const dueMap = await dueFor(ctx, rows);
+      const brief = await briefer(ctx, rows);
       return {
-        data: { count: rows.length, capped: rows.length === limit, leads: rows.map((r) => leadBrief(r, dueMap)) },
+        data: { count: rows.length, capped: rows.length === limit, leads: rows.map((r) => brief(r)) },
         sources: rows.slice(0, 6).map((l) => ({ label: `Lead · ${l.fullName}`, type: 'lead' as const, id: l.id })),
       };
     },
@@ -248,7 +262,7 @@ export const TOOLS: ToolDef[] = [
       const lead = await findLead(ctx, args);
       if (!lead) return { data: { error: 'No matching lead found in the CRM.' } };
       return {
-        data: leadBrief(lead, await dueFor(ctx, [lead])),
+        data: (await briefer(ctx, [lead]))(lead),
         sources: [{ label: `Lead · ${lead.fullName}`, type: 'lead' as const, id: lead.id }],
       };
     },
@@ -695,7 +709,7 @@ export const TOOLS: ToolDef[] = [
       const until = new Date(now.getTime() + Math.min(Number(args.days) || 7, 60) * 864e5);
       const [events, calls] = await Promise.all([
         prisma.event.findMany({
-          where: { tenantId: ctx.tenantId, deletedAt: null, startAt: { gte: now, lte: until } },
+          where: { tenantId: ctx.tenantId, deletedAt: null, startAt: { gte: now, lte: until }, ...eventListScope(ctx) },
           orderBy: { startAt: 'asc' },
           take: 10,
           select: { id: true, title: true, startAt: true, location: true, eventType: true },
@@ -710,7 +724,8 @@ export const TOOLS: ToolDef[] = [
       return {
         data: {
           events: events.map((e) => ({ title: e.title, at: fmtDate(e.startAt), where: e.location, type: e.eventType })),
-          scheduledCalls: calls.map((c) => ({ id: c.id, number: c.recipientNumber })),
+          // A call to a lead holds the lead's number, read as its phone reads to this role.
+          scheduledCalls: (await maskCallNumbers(ctx, calls)).map((c) => ({ id: c.id, number: c.recipientNumber })),
         },
         sources: [
           { label: 'Calendar', type: 'calendar' as const },
@@ -734,9 +749,9 @@ export const TOOLS: ToolDef[] = [
       /**
        * Events are the one part of this snapshot that is not the actor's own
        * work: follow-ups, tasks and calls are filtered to `ctx.actor.id`, and
-       * leads go through `leadScope`, but the workspace calendar is workspace-
-       * wide. It used to be read under the `leads:VIEW` gate alone — the same
-       * tenant-only query `getCalendar` had, and the same bypass.
+       * leads go through `leadScope`, and events through `eventListScope`, as
+       * the Events list. It used to be read under the `leads:VIEW` gate alone —
+       * the same tenant-only query `getCalendar` had, and the same bypass.
        *
        * Requiring `events:VIEW` for the whole tool would take somebody's day
        * away over a section of it, so the permission decides what is in the
@@ -786,6 +801,7 @@ export const TOOLS: ToolDef[] = [
                 tenantId: ctx.tenantId,
                 deletedAt: null,
                 startAt: { gte: todayStart, lte: new Date(now.getTime() + 3 * 864e5) },
+                ...eventListScope(ctx),
               },
               orderBy: { startAt: 'asc' },
               take: 4,
@@ -796,14 +812,14 @@ export const TOOLS: ToolDef[] = [
           where: { tenantId: ctx.tenantId, callerId: ctx.actor.id, deletedAt: null, createdAt: { gte: todayStart } },
         }),
       ]);
-      const dashDue = await dueFor(ctx, [...breached, ...hot]);
+      const brief = await briefer(ctx, [...breached, ...hot]);
       return {
         data: {
           overdueFollowUps: overdueFups.map((f) => ({ title: f.title, due: fmtDate(f.dueAt) })),
           followUpsDueToday: todayFups,
           overdueTasks,
-          slaBreachedLeads: breached.map((l) => leadBrief(l, dashDue)),
-          hottestLeads: hot.map((l) => leadBrief(l, dashDue)),
+          slaBreachedLeads: breached.map((l) => brief(l)),
+          hottestLeads: hot.map((l) => brief(l)),
           // Omitted rather than empty: an empty list reads as "nothing on the
           // calendar", which is a different and wrong answer.
           ...(mayReadEvents ? { upcomingEvents: events.map((e) => ({ title: e.title, at: fmtDate(e.startAt) })) } : {}),
@@ -864,7 +880,7 @@ export const TOOLS: ToolDef[] = [
       ]);
       return {
         data: {
-          profile: leadBrief(lead, await dueFor(ctx, [lead])),
+          profile: (await briefer(ctx, [lead]))(lead),
           recentActivity: activities.map((a) => ({
             at: fmtDate(a.occurredAt),
             kind: a.type.name,

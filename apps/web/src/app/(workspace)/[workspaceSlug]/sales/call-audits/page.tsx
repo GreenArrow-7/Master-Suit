@@ -6,6 +6,7 @@ import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
+import { maskCallNumbers } from '@/services/leads/createLead';
 
 export const metadata = { title: 'Call Audits' };
 
@@ -31,7 +32,7 @@ export default async function CallAuditsPage() {
     callWhere.callerId = ctx.actor.id;
   }
 
-  const audits = await prisma.callAudit.findMany({
+  const found = await prisma.callAudit.findMany({
     where: {
       tenantId: ctx.tenantId,
       call: callWhere,
@@ -42,6 +43,7 @@ export default async function CallAuditsPage() {
       call: {
         select: {
           id: true,
+          leadId: true,
           recipientNumber: true,
           caller: { select: { fullName: true } },
           startedAt: true,
@@ -50,6 +52,12 @@ export default async function CallAuditsPage() {
       },
     },
   });
+  // A seller sees audits of their own calls: a lead's number reads as its phone does.
+  const calls = await maskCallNumbers(
+    ctx,
+    found.map((a) => a.call),
+  );
+  const audits = found.map((a, i) => ({ ...a, call: calls[i]! }));
 
   return (
     <>

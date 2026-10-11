@@ -19,6 +19,7 @@ import { addDays, daysBetween, expirySeverity, gratuityUae, noticePayInLieu, toD
 import { employeeRecordScope, isHrAdmin, myEmployee, requireEmployee } from './leave';
 import { mayReadSensitiveDocuments } from './access';
 import { getHrPolicy } from './settings';
+import { handOverOpenWork, type HandOver } from '@/services/leads/assign';
 import { EMPLOYEE_WITH_PERSON, MEMBERSHIP_PUBLIC } from './publicSelect';
 
 export type ChecklistPhase = 'ONBOARDING' | 'OFFBOARDING';
@@ -476,8 +477,19 @@ export async function settlementFor(
  * live visa, and on settlement confirmation so the exit is not recorded before
  * the money is. Revokes every session and withdraws biometric consent in the
  * same transaction — biometric data has no lawful basis once employment ends.
+ *
+ * The workspace account's open leads, follow-ups and tasks are handed on in the
+ * same transaction too, exactly as when Admin > Users deactivates or removes
+ * someone (`handOverOpenWork`): refused with 409 and the counts unless
+ * `handOver` says where they go, so the exit never leaves work with an account
+ * nobody can sign in to.
  */
-export async function finaliseExit(ctx: Ctx, employeeId: string, confirmSettlementPaid: boolean) {
+export async function finaliseExit(
+  ctx: Ctx,
+  employeeId: string,
+  confirmSettlementPaid: boolean,
+  handOver: HandOver = {},
+) {
   requireHr(ctx);
   const employee = await prisma.employeeProfile.findFirst({
     where: { tenantId: ctx.tenantId, id: employeeId, deletedAt: null },
@@ -544,6 +556,13 @@ export async function finaliseExit(ctx: Ctx, employeeId: string, confirmSettleme
         where: { tenantId: ctx.tenantId, id: employee.membership.salesUserId },
         data: { status: 'DEACTIVATED' },
       });
+      await handOverOpenWork(
+        ctx,
+        tx,
+        { id: employee.membership.salesUserId, fullName: employee.membership.platformUser.fullName },
+        handOver,
+        'removed',
+      );
     }
 
     // No lawful basis to keep biometrics after employment ends.

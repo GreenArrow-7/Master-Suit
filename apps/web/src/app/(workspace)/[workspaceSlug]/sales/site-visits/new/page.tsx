@@ -3,6 +3,8 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { can } from '@/lib/security/rbac';
+import { loadFieldRules } from '@/lib/security/fieldSecurity';
+import { asLeadPhone } from '@/services/leads/createLead';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 
 export const metadata = { title: 'Request a visit' };
@@ -23,7 +25,7 @@ export default async function NewSiteVisitPage() {
   // the second was refused the page instead of offered a shorter form.
   const canReadLeads = can(ctx, 'leads', 'VIEW');
 
-  const [leads, projects, listings] = await Promise.all([
+  const [leads, projects, listings, leadRules] = await Promise.all([
     canReadLeads
       ? visibilityWhere(ctx, 'leads', 'VIEW').then((scope) =>
           prisma.lead.findMany({
@@ -46,6 +48,7 @@ export default async function NewSiteVisitPage() {
       orderBy: { updatedAt: 'desc' },
       take: 200,
     }),
+    loadFieldRules(ctx, 'LEAD'),
   ]);
 
   return (
@@ -82,7 +85,12 @@ export default async function NewSiteVisitPage() {
             label: 'Client',
             type: 'select',
             required: true,
-            options: leads.map((l) => ({ value: l.id, label: l.phone ? `${l.fullName} · ${l.phone}` : l.fullName })),
+            // The number tells two clients of one name apart; masked for a role
+            // that sees it masked on the lead.
+            options: leads.map((l) => {
+              const phone = asLeadPhone(ctx, leadRules, l.phone);
+              return { value: l.id, label: phone ? `${l.fullName} · ${phone}` : l.fullName };
+            }),
           },
           {
             name: 'projectId',

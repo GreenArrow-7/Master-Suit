@@ -19,7 +19,7 @@
  * the case it matters — an account that has already been taken over.
  */
 import { randomInt } from 'node:crypto';
-import { prisma, withTx } from '@/lib/db';
+import { prisma, withTx, type TxClient } from '@/lib/db';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import {
   assertPasswordPolicy,
@@ -33,7 +33,14 @@ import { isPrivilegedPlatformRole } from '@/lib/auth/platform-policy';
 import { writePrimaryPassword } from '@/services/identity/platformCredentials';
 import { assertNotReused, recordPreviousPassword } from './passwordHistory';
 import { audit } from '@/lib/security/audit';
-import type { Ctx } from '@/lib/security/rbac';
+import { can, type Ctx } from '@/lib/security/rbac';
+import {
+  activeMemberWhere,
+  countOpenWork,
+  handOverOpenWork,
+  mayHandOverWorkOf,
+  type HandOver,
+} from '@/services/leads/assign';
 
 /** Rank 10 is `company_admin`/`org_admin`; anything at or above it administers the workspace. */
 export const ADMIN_ROLE_RANK = 10;
@@ -45,6 +52,69 @@ export async function passwordPolicy(tenantId: string): Promise<PasswordPolicy> 
   });
   const stored = (settings?.passwordPolicy ?? {}) as Partial<PasswordPolicy>;
   return { ...DEFAULT_POLICY, ...stored };
+}
+
+const CANNOT_BE_ADDED =
+  'That email belongs to an account that cannot be added. Ask the platform owner, or use a different address.';
+
+/**
+ * The identity behind `email` if a workspace may take it on, or null when there
+ * is none. Every path that attaches an existing identity to a workspace sets it
+ * ACTIVE — Add user, Invite → accept, and `createWorkspace` (the console's
+ * wizard and self-serve sign-up) — so each reads it through here and none can
+ * drift: a suspension or deactivation is the platform owner's to lift, from the
+ * console, and an erasure in flight must not gain a membership its executor
+ * never saw (that shows as `deletedAt` only at the last step). Inside a
+ * transaction, pass its `tx`, and set the identity ACTIVE with `activateIdentity`.
+ *
+ * `neutral` is for a workspace administrator (Add user, Invite), who may type
+ * anyone's email: they learn that the address cannot be added, not whether its
+ * owner is suspended or has asked to be erased. The person themselves (accept,
+ * sign-up) and the platform owner (the wizard) are told why.
+ */
+export async function assertIdentityReusable(
+  db: TxClient | typeof prisma,
+  email: string,
+  { neutral = false }: { neutral?: boolean } = {},
+) {
+  const identity = await db.platformUser.findUnique({
+    where: { normalizedEmail: email },
+    select: { id: true, deletedAt: true, status: true },
+  });
+  if (!identity) return null;
+  const refuse = (why: string) => Conflict(neutral ? CANNOT_BE_ADDED : why);
+  if (identity.deletedAt) throw refuse('That email belongs to a deleted account, which cannot be reused.');
+  const erasing = await db.accountDeletionRequest.findFirst({
+    where: { platformUserId: identity.id, status: { in: ['REQUESTED', 'BLOCKED', 'IN_PROGRESS'] } },
+    select: { id: true },
+  });
+  if (erasing) {
+    throw refuse(
+      'That account is being deleted. Its owner can withdraw the request; otherwise use a different address.',
+    );
+  }
+  if (identity.status === 'SUSPENDED' || identity.status === 'DEACTIVATED') {
+    throw refuse(
+      'That email belongs to a suspended or deactivated account. Ask the platform owner to restore it, or use a different address.',
+    );
+  }
+  return identity;
+}
+
+/**
+ * Sets an identity `assertIdentityReusable` passed ACTIVE, unless the platform
+ * owner has suspended, deactivated or deleted it since. The guard's read and
+ * this write are two statements, and an unconditional write would undo a
+ * suspension committed between them; this one waits for it and then matches
+ * nothing.
+ */
+export async function activateIdentity(tx: TxClient, id: string, data: { fullName?: string } = {}) {
+  const { count } = await tx.platformUser.updateMany({
+    where: { id, deletedAt: null, status: { in: ['INVITED', 'ACTIVE'] } },
+    data: { ...data, status: 'ACTIVE' },
+  });
+  if (!count) throw Conflict(CANNOT_BE_ADDED);
+  return { id };
 }
 
 /**
@@ -329,8 +399,18 @@ export async function unlockUser(ctx: Ctx, userId: string) {
  * Suspends or restores an account. Suspension revokes every live session at the
  * same time — an account you have decided to stop trusting must not keep working
  * until its cookie happens to expire.
+ *
+ * Suspension also hands the account's open leads, follow-ups and tasks on, in
+ * the same transaction — see `handOverOpenWork`. Left behind, they sat with a
+ * SUSPENDED owner: invisible to colleagues and absent from the Allocation queue.
  */
-export async function setUserActive(ctx: Ctx, userId: string, active: boolean, reason?: string) {
+export async function setUserActive(
+  ctx: Ctx,
+  userId: string,
+  active: boolean,
+  reason?: string,
+  handOver: HandOver = {},
+) {
   const target = await loadTarget(ctx, userId);
   assertMayAdminister(ctx, target);
 
@@ -341,12 +421,13 @@ export async function setUserActive(ctx: Ctx, userId: string, active: boolean, r
   }
 
   const status = active ? 'ACTIVE' : 'SUSPENDED';
-  await withTx(ctx.tenantId, async (tx) => {
+  const handedOver = await withTx(ctx.tenantId, async (tx) => {
     await tx.user.update({ where: { tenantId: ctx.tenantId, id: target.id }, data: { status } });
     await tx.workspaceMembership.update({
       where: { id: loginOf(target).id },
       data: { status: active ? 'ACTIVE' : 'SUSPENDED' },
     });
+    return active ? null : handOverOpenWork(ctx, tx, target, handOver, 'deactivated');
   });
 
   if (!active) await revokeAllSessions(target.id, undefined, 'ACCOUNT_SUSPENDED');
@@ -358,7 +439,31 @@ export async function setUserActive(ctx: Ctx, userId: string, active: boolean, r
     newValue: { status },
     metadata: { action: active ? 'account.restored' : 'account.suspended', reason },
   });
-  return { userId: target.id, status };
+  return { userId: target.id, status, handedOver };
+}
+
+/**
+ * What the deactivate/remove dialog needs before it asks: the account's open
+ * work, whether this caller may hand it over (`mayHandOver`, so the dialog says
+ * so before submit rather than after), and the active members it may go to.
+ * Only for someone who may deactivate or remove, behind the same rank ladder as
+ * those actions: users:VIEW alone does not read a colleague's workload.
+ */
+export async function openWorkOf(ctx: Ctx, userId: string) {
+  if (!can(ctx, 'users', 'MANAGE_USERS') && !can(ctx, 'users', 'DELETE')) throw Forbidden();
+  const target = await loadTarget(ctx, userId);
+  assertMayAdminister(ctx, target);
+  const [work, mayHandOver, members] = await Promise.all([
+    countOpenWork(prisma, ctx.tenantId, target.id),
+    mayHandOverWorkOf(ctx, target.id),
+    prisma.user.findMany({
+      where: { ...activeMemberWhere(ctx.tenantId), id: { not: target.id } },
+      select: { id: true, fullName: true },
+      orderBy: { fullName: 'asc' },
+      take: 500,
+    }),
+  ]);
+  return { ...work, mayHandOver, members };
 }
 
 /**
@@ -380,12 +485,15 @@ export async function setUserActive(ctx: Ctx, userId: string, active: boolean, r
  * employment is offboarding's job, and doing it silently from the user
  * directory would destroy records nobody asked to lose.
  *
+ * Open work is handed on in the same transaction, as on suspension
+ * (`handOverOpenWork`); closed leads and finished work keep naming the person.
+ *
  * Deactivating is the reversible neighbour of this and usually the right
  * choice — `setUserActive(ctx, id, false)`. This exists for the account that
  * should never have been created: the duplicate, the test account, the
  * contractor who never started.
  */
-export async function deleteUser(ctx: Ctx, userId: string, reason?: string) {
+export async function deleteUser(ctx: Ctx, userId: string, reason?: string, handOver: HandOver = {}) {
   const target = await loadTarget(ctx, userId);
   // Same ladder as suspension: never yourself, never at or above your own rank.
   assertMayAdminister(ctx, target);
@@ -410,17 +518,19 @@ export async function deleteUser(ctx: Ctx, userId: string, reason?: string) {
   }
 
   const removedAt = new Date();
-  await withTx(ctx.tenantId, async (tx) => {
-    await tx.user.update({
-      where: { tenantId: ctx.tenantId, id: target.id },
-      // DEACTIVATED as well as deleted: `status` is what the login path reads,
-      // so a half-applied delete still refuses the sign-in.
-      data: { deletedAt: removedAt, status: 'DEACTIVATED' },
-    });
+  const handedOver = await withTx(ctx.tenantId, async (tx) => {
+    // DEACTIVATED as well as deleted: `status` is what the login path reads.
+    // Written first, and `deletedAt` only after the hand-over: this takes the
+    // User row lock before the hand-over locks leads, and a BRANCH or REGION
+    // reach check lists users, which the tenant guard hides once deleted.
+    await tx.user.update({ where: { tenantId: ctx.tenantId, id: target.id }, data: { status: 'DEACTIVATED' } });
     await tx.workspaceMembership.update({
       where: { id: membership.id },
       data: { status: 'REMOVED', removedAt },
     });
+    const work = await handOverOpenWork(ctx, tx, target, handOver, 'removed');
+    await tx.user.update({ where: { tenantId: ctx.tenantId, id: target.id }, data: { deletedAt: removedAt } });
+    return work;
   });
 
   await revokeAllSessions(target.id, undefined, 'ACCOUNT_REMOVED');
@@ -432,7 +542,7 @@ export async function deleteUser(ctx: Ctx, userId: string, reason?: string) {
     newValue: { status: 'DEACTIVATED', deletedAt: removedAt.toISOString() },
     metadata: { action: 'account.removed', reason },
   });
-  return { userId: target.id, removed: true };
+  return { userId: target.id, removed: true, handedOver };
 }
 
 /** Signs an account out everywhere without changing anything else about it. */
@@ -719,14 +829,10 @@ export async function createStaffAccount(ctx: Ctx, input: NewStaffAccount) {
     // A person who already signs in elsewhere keeps their own password: being
     // added to a second workspace is not authority to reset the credential
     // guarding the first.
-    const existing = await tx.platformUser.findUnique({
-      where: { normalizedEmail: email },
-      select: { id: true, deletedAt: true },
-    });
-    if (existing?.deletedAt) throw Conflict('That email belonged to a removed account. Use a different address.');
+    const existing = await assertIdentityReusable(tx, email, { neutral: true });
 
     const platformUser = existing
-      ? await tx.platformUser.update({ where: { id: existing.id }, data: { status: 'ACTIVE' } })
+      ? await activateIdentity(tx, existing.id)
       : await tx.platformUser.create({
           data: {
             email,

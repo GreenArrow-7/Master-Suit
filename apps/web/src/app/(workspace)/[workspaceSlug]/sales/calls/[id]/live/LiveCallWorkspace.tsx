@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useModuleBase } from '@/components/workspace/SalesLink';
+import { dialable } from '@/components/workspace/CallLink';
 import Badge from '@/components/ui/Badge';
 import { DateTimeInput } from '@/components/forms/DateInput';
 import type { LeadCallContext } from '@/services/leads/callContext';
@@ -491,10 +492,10 @@ export default function LiveCallWorkspace({
             style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-vermillion)', alignSelf: 'center' }}
           >
             {placeError}
-            {call.recipientNumber && (
+            {dialable(call.recipientNumber) && (
               <>
                 {' '}
-                <a href={`tel:${call.recipientNumber}`}>Call from this phone instead (no AI assistance)</a>
+                <a href={`tel:${dialable(call.recipientNumber)}`}>Call from this phone instead (no AI assistance)</a>
               </>
             )}
           </span>

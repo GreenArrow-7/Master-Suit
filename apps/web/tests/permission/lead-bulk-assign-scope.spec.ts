@@ -48,6 +48,20 @@ describe('bulk assignment', () => {
     expect(history[0]).toMatchObject({ toOwnerId: h.repA1.id, reason: 'bulk_assignment' });
   });
 
+  it('moves an unassigned lead for a manager who may claim it', async () => {
+    const { stageId } = await prisma.lead.findFirstOrThrow({ where: { tenantId: h.tenantId, id: h.repA1.leadId } });
+    const pool = await prisma.lead.create({
+      data: { tenantId: h.tenantId, reference: 'POOL-1', fullName: 'Pool lead', stageId },
+    });
+    expect((await send([pool.id], h.teamManagerA.cookie)).body).toEqual({ assigned: 1 });
+    expect(await ownerOf(pool.id)).toBe(h.repA1.id);
+  });
+
+  it('answers an owner who is not in the workspace with 404, not a server error', async () => {
+    const body = { leadIds: [h.repA1.leadId], ownerId: MISSING };
+    expect((await post(assign, '/api/v1/leads/assign', body, h.teamManagerA.cookie)).status).toBe(404);
+  });
+
   it('lets the director move a lead in another region', async () => {
     const res = await send([h.repOtherRegion.leadId], h.director.cookie);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -56,5 +70,42 @@ describe('bulk assignment', () => {
 
   it('refuses a rep without ASSIGN', async () => {
     expect((await send([h.repA1.leadId], h.repA1.cookie)).status).toBe(403);
+  });
+
+  // A suspended account signs nobody in: a lead handed to one sits where no
+  // colleague at OWN scope sees it and the Allocation queue does not list it.
+  it('refuses to hand leads to a suspended account', async () => {
+    await prisma.user.update({ where: { tenantId: h.tenantId, id: h.repB1.id }, data: { status: 'SUSPENDED' } });
+    try {
+      const res = await post(
+        assign,
+        '/api/v1/leads/assign',
+        { leadIds: [h.repSubTeam.leadId], ownerId: h.repB1.id },
+        h.director.cookie,
+      );
+      expect(res.status, JSON.stringify(res.body)).toBe(404);
+      expect(await ownerOf(h.repSubTeam.leadId)).toBe(h.repSubTeam.id);
+    } finally {
+      await prisma.user.update({ where: { tenantId: h.tenantId, id: h.repB1.id }, data: { status: 'ACTIVE' } });
+    }
+  });
+
+  // The platform console suspends the membership and leaves the workspace User
+  // ACTIVE; that person cannot sign in either.
+  it('refuses an owner whose workspace access is suspended', async () => {
+    const membership = { tenantId: h.tenantId, salesUserId: h.repB1.id };
+    await prisma.workspaceMembership.updateMany({ where: membership, data: { status: 'SUSPENDED' } });
+    try {
+      const res = await post(
+        assign,
+        '/api/v1/leads/assign',
+        { leadIds: [h.repSubTeam.leadId], ownerId: h.repB1.id },
+        h.director.cookie,
+      );
+      expect(res.status, JSON.stringify(res.body)).toBe(404);
+      expect(await ownerOf(h.repSubTeam.leadId)).toBe(h.repSubTeam.id);
+    } finally {
+      await prisma.workspaceMembership.updateMany({ where: membership, data: { status: 'ACTIVE' } });
+    }
   });
 });

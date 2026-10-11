@@ -9,6 +9,8 @@ import { geminiCredential } from '@/lib/ai/gemini';
 import { env } from '@/lib/env';
 import { resolveTelephony } from '@/lib/integrations/telephony/resolve';
 import { liveAudioMode } from '@/lib/integrations/telephony/liveAudio';
+import { loadFieldRules } from '@/lib/security/fieldSecurity';
+import { asLeadPhone } from '@/services/leads/createLead';
 import LiveCallWorkspace from './LiveCallWorkspace';
 
 export const metadata = { title: 'Live Call' };
@@ -43,6 +45,11 @@ export default async function LiveCallPage({
   // The full pre-call briefing: profile, open requirement, last-call recap and
   // matching inventory — the same context the live coach prompt carries.
   const context = call.leadId ? await leadCallContext(ctx.tenantId, call.leadId) : null;
+  // The lead's number, here and as the number the call goes to, reads as the
+  // lead's phone does for this role. Placing the call still works when it is
+  // masked: the provider dials the stored number, server-side.
+  const leadRules = call.leadId ? await loadFieldRules(ctx, 'LEAD') : null;
+  if (context && leadRules) context.lead.phone = asLeadPhone(ctx, leadRules, context.lead.phone);
   // The workspace's own key when it has one, the deployment's otherwise — the
   // same resolution the coach itself uses, so the banner cannot contradict it.
   const credential = await geminiCredential(ctx.tenantId).catch(() => null);
@@ -66,7 +73,7 @@ export default async function LiveCallPage({
         id: call.id,
         status: call.status,
         direction: call.direction,
-        recipientNumber: call.recipientNumber,
+        recipientNumber: leadRules ? asLeadPhone(ctx, leadRules, call.recipientNumber) : call.recipientNumber,
         notes: call.notes,
         agentName: call.caller.fullName,
       }}

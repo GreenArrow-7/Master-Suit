@@ -221,3 +221,55 @@ describe('handing one record to an agent', () => {
     expect((await record('0507770005')).ownerId).toBe(agent.id);
   });
 });
+
+/**
+ * A list hand-over by someone below organisation-wide lead access moves the
+ * records they work (coldDataScope), not the whole list: a team lead's "assign
+ * list" moved every agent's records in it, and their unassigned ones.
+ */
+describe('a list hand-over below organisation-wide access', () => {
+  it('moves only the assigner’s own records of the list', async () => {
+    const LIST5 = 'Expo Jun';
+    const role = await prisma.role.create({
+      data: { tenantId, key: 'team-lead-cold', name: 'Cold Team Lead', rank: 40, defaultScope: 'TEAM' },
+    });
+    await grantPermissions(
+      tenantId,
+      role.id,
+      [
+        ['leads', 'VIEW'],
+        ['leads', 'ASSIGN'],
+      ],
+      'TEAM',
+    );
+    const lead = await createWorkspaceUser({
+      tenantId,
+      roleId: role.id,
+      email: `team-lead@cold-${tenantId}.test`,
+      fullName: 'Cold Team Lead',
+    });
+    const add = (fullName: string, ownerId: string | null) =>
+      prisma.dataRecord.create({ data: { tenantId, fullName, batch: LIST5, ownerId }, select: { id: true } });
+    const own = await add('Team lead’s own', lead.id);
+    const colleagues = await add('Someone else’s', fixture.a.userId);
+    const loose = await add('Nobody’s yet', null);
+
+    const res = await post(
+      assignList,
+      '/api/v1/cold-data/assign',
+      { batch: LIST5, ownerId: agent.id },
+      await createSessionToken(tenantId, lead.id),
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.assigned).toBe(1);
+    const owners = await prisma.dataRecord.findMany({
+      where: { tenantId, id: { in: [own.id, colleagues.id, loose.id] } },
+      select: { id: true, ownerId: true },
+    });
+    expect(Object.fromEntries(owners.map((row) => [row.id, row.ownerId]))).toEqual({
+      [own.id]: agent.id,
+      [colleagues.id]: fixture.a.userId,
+      [loose.id]: null,
+    });
+  });
+});

@@ -82,25 +82,37 @@ export const SECRET_KEYS: ReadonlySet<string> = new Set([
  */
 type AuditCapable = Pick<typeof prisma, 'auditLog'>;
 
-export async function audit(ctx: Ctx, input: AuditInput, tx: AuditCapable = prisma) {
+/**
+ * A write no person made: a portal delivery, the distribution worker, the SLA
+ * clock. Its row has no actor (the Audit Log shows "System") and names the
+ * machine in `metadata.source`.
+ */
+export interface SystemActor {
+  tenantId: string;
+  source: string;
+}
+
+export async function audit(ctx: Ctx | SystemActor, input: AuditInput, tx: AuditCapable = prisma) {
   if (input.fieldKey && SECRET_KEYS.has(input.fieldKey)) return;
+  const person = 'actor' in ctx ? ctx : null;
+  const metadata = person ? input.metadata : { ...input.metadata, source: (ctx as SystemActor).source };
 
   await tx.auditLog.create({
     data: {
       tenantId: ctx.tenantId,
-      actorUserId: ctx.apiKeyId ? null : ctx.actor.id,
-      actorApiKeyId: ctx.apiKeyId ?? null,
-      actorType: ctx.apiKeyId ? 'API_KEY' : 'USER',
+      actorUserId: person && !person.apiKeyId ? person.actor.id : null,
+      actorApiKeyId: person?.apiKeyId ?? null,
+      actorType: !person ? 'SYSTEM' : person.apiKeyId ? 'API_KEY' : 'USER',
       event: input.event,
       objectType: input.objectType ?? null,
       recordId: input.recordId ?? null,
       fieldKey: input.fieldKey ?? null,
       previousValue: redact(input.previousValue) as Prisma.InputJsonValue,
       newValue: redact(input.newValue) as Prisma.InputJsonValue,
-      metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
-      ipAddress: ctx.ip,
-      userAgent: ctx.userAgent,
-      requestId: ctx.requestId,
+      metadata: (metadata ?? {}) as Prisma.InputJsonValue,
+      ipAddress: person?.ip ?? null,
+      userAgent: person?.userAgent ?? null,
+      requestId: person?.requestId ?? null,
     },
   });
 }

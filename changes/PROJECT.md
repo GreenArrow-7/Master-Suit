@@ -36,7 +36,9 @@ Node 22 or newer (CI uses 24).
   tenants goes through `withPlatformTx`, nothing else. Inside `withTx`, query
   through its `tx` only: the global client there runs on another connection
   with no tenant set, where row-level security returns nothing — a permission
-  or field rule read that way silently reads as "no rule".
+  or field rule read that way silently reads as "no rule". The same guard
+  hides soft-deleted rows only of the model queried: an `include` of a model
+  with `deletedAt` filters it itself.
 - **One record, several screens.** Real Estate reuses Sales' rows (`Lead`,
   `Call`, `SiteVisit`, `Booking`, `Project`, `Listing`, `UnitInventory`);
   `realty/` and `lead-eagle/` pages are one-line re-exports of `sales/` pages,
@@ -51,13 +53,46 @@ Node 22 or newer (CI uses 24).
   that must work without that module is re-exported from outside its folder.
 - **Permissions.** Roles live in the database. A new workspace gets one role,
   Company Admin, holding every permission; the admin builds the others in the
-  role editor. Scopes run OWN < TEAM < BRANCH < REGION < ORGANIZATION; check with
-  `atLeast(ctx, module, action, scope)` (`src/lib/security/rbac.ts`). HR's
-  predicates are in `src/services/hr/access.ts`. A manager's authority over
+  role editor. Lead Eagle's arrival adds five editable starter roles (Manager,
+  Team Lead, Agent, Telecaller, Viewer; `src/services/platform/provisioning.ts`).
+  Scopes run OWN < TEAM < BRANCH < REGION < ORGANIZATION; check with
+  `atLeast(ctx, module, action, scope)` (`src/lib/security/rbac.ts`). A record
+  loaded by id is checked with `assertRecordInScope`
+  (`src/lib/security/record-scope.ts`): out of scope answers 404, like a
+  missing id. HR's predicates are in `src/services/hr/access.ts`. A manager's authority over
   people stops at their reporting line (`reportingLine`, `src/services/hr/leave.ts`).
+  A task is read under `tasks` wherever it shows, a lead's page included, and
+  a follow-up under `leads` (`src/services/leads/nextFollowUp.ts`); a task is
+  changed only where `tasks:VIEW` and `leads:EDIT` both reach its owner. A
+  record loaded by id outside the caller's scope answers 404, as a missing id
+  does (`src/lib/security/record-scope.ts`). Every read of events, screens and
+  the assistant included, adds `eventListScope(ctx)`.
+- **Identities.** A workspace path that attaches an existing platform identity
+  (Add user, invite and accept, a new workspace) takes it through
+  `assertIdentityReusable` and sets it ACTIVE with `activateIdentity`
+  (`src/services/identity/accounts.ts`): a suspended, deactivated, deleted or
+  erasing account answers 409, with one neutral message to a workspace
+  administrator. A suspended or deactivated one comes back only through the
+  platform console's reactivate, an erasing one when its owner withdraws the
+  request, a deleted one never.
+- **Sensitive fields.** A lead's phone numbers and email are masked for a role
+  without `leads:VIEW_SENSITIVE_FIELDS` (`LEAD_SENSITIVE_FIELDS`,
+  `src/services/leads/createLead.ts`). A screen or route that shows a lead or a
+  number it holds serialises it through `applyFieldSecurity`, `asLeadPhone` or
+  `maskCallNumbers` (a call's lead side), and builds `tel:` and `wa.me` links
+  with `dialable()`, which refuses a mask. A notification names the lead, not
+  its number. Still outside it: the campaign dialer, event invitees, cold data
+  and the inbox (`changes/2026-10-11-lead-contact-masking.md`).
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
   P2002 answers 409 and P2025 404, a zod failure 422 — let the database say
   "already exists" or "not found" instead of reading first.
+- **Audit.** The rule for new code: every write should leave an AuditLog row,
+  through the route's `auditEvent`, or `audit(ctx, …)`
+  (`src/lib/security/audit.ts`) where the route cannot say enough. A write no
+  person makes (a webhook, a worker) calls `audit({ tenantId, source }, …)` and
+  shows as System. Not all existing writes do yet; the known gaps are listed in
+  `changes/2026-10-11-report-export-audit.md`. A file out of the building needs
+  EXPORT, not VIEW, and writes `EXPORT_REQUESTED`.
 - **Attendance is not HR.** Check-in, the attendance record and attendance
   requests work in every workspace; everything else in HR needs HRMS.
 - **Background jobs.** One `JOBS` table in `src/workers/jobs.ts`, keyed by queue;

@@ -16,6 +16,7 @@ import CoachingNotes, { type CoachingNoteView } from './CoachingNotes';
 import RequirementSuggestion, { type DetectedRequirementView } from './RequirementSuggestion';
 import TemperaturePanel from './TemperaturePanel';
 import { temperatureFromAnalysis } from '@/lib/ai/temperature';
+import { maskCallNumbers } from '@/services/leads/createLead';
 
 export const metadata = { title: 'Call Detail' };
 
@@ -99,6 +100,9 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
   ]);
 
   if (!call) notFound();
+  // A call to a lead went to the lead's number: masked as the lead's phone is for
+  // this role, and then CallLink has nothing to dial.
+  const [{ recipientNumber: number }] = await maskCallNumbers(ctx, [call]);
 
   // The Call row stores leadId without a Prisma relation; one scoped lookup
   // names the customer, which is what a call detail is about.
@@ -155,13 +159,12 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
                 {lead.fullName}
               </SalesLink>
             ) : (
-              (call.recipientNumber ?? 'Unknown number')
+              (number ?? 'Unknown number')
             )}
           </h1>
           <p style={{ margin: '4px 0 0', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
             {call.direction.toLowerCase()} call
-            {call.recipientNumber && lead ? ` · ${call.recipientNumber}` : ''} ·{' '}
-            {call.caller?.fullName ?? 'Unknown caller'}
+            {number && lead ? ` · ${number}` : ''} · {call.caller?.fullName ?? 'Unknown caller'}
             {call.startedAt &&
               ` · ${call.startedAt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`}
           </p>
@@ -174,7 +177,7 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
               at the bottom of the page. Follow-up and WhatsApp stay where they
               are, further down: they are what you do after the call, not instead
               of it. One definition of the button, shared with the list. */}
-          <CallLink number={call.recipientNumber} className="lf-btn lf-btn--sm" />
+          <CallLink number={number} className="lf-btn lf-btn--sm" />
           {['SCHEDULED', 'RINGING', 'IN_PROGRESS'].includes(call.status) && (
             <SalesLink className="lf-btn lf-btn--sm" href={`/calls/${call.id}/live`}>
               Open live workspace

@@ -25,27 +25,57 @@ export async function loadFieldRules(ctx: Ctx, objectType: string): Promise<Map<
   return new Map(rows.map((r) => [r.fieldKey, r as FieldRule]));
 }
 
+/** A record's sensitive fields, each with how it reads to a role that may not see it. */
+export type SensitiveFields = Readonly<Record<string, MaskStrategy>>;
+
+/**
+ * The role editor grants VIEW_SENSITIVE_FIELDS on a module (`leads`), and the
+ * serialiser names an object type (`LEAD`). Lower-casing the type checked
+ * `lead:VIEW_SENSITIVE_FIELDS`, which no role can be given, so the switch
+ * reached nobody and a sensitive field was withheld from every role.
+ */
+const MODULE_OF: Readonly<Record<string, string>> = {
+  LEAD: 'leads',
+  CONTACT: 'contacts',
+  ACCOUNT: 'accounts',
+  OPPORTUNITY: 'opportunities',
+};
+
+/**
+ * Whether this role reads `field` as stored, neither masked nor absent. A rule
+ * row decides first; a sensitive field with no rule follows VIEW_SENSITIVE_FIELDS.
+ */
+export function seesField(
+  ctx: Ctx,
+  objectType: string,
+  rules: Map<string, FieldRule>,
+  field: string,
+  sensitiveFields: SensitiveFields = {},
+): boolean {
+  const rule = rules.get(field);
+  if (rule) return rule.canView;
+  if (!Object.hasOwn(sensitiveFields, field)) return true;
+  return can(ctx, MODULE_OF[objectType] ?? objectType.toLowerCase(), 'VIEW_SENSITIVE_FIELDS');
+}
+
 export function applyFieldSecurity<T extends Record<string, unknown>>(
   ctx: Ctx,
   objectType: string,
   rules: Map<string, FieldRule>,
   record: T,
-  sensitiveFields: readonly string[] = [],
+  sensitiveFields: SensitiveFields = {},
 ): Partial<T> {
-  const bypass = can(ctx, objectType.toLowerCase(), 'VIEW_SENSITIVE_FIELDS');
   const out: Record<string, unknown> = {};
 
   for (const [k, v] of Object.entries(record)) {
-    const rule = rules.get(k);
-
-    if (!bypass && sensitiveFields.includes(k) && !rule?.canView) continue;
-    if (rule && !rule.canView) {
-      if (rule.maskStrategy && rule.maskStrategy !== 'HIDE') {
-        out[k] = mask(v, rule.maskStrategy);
-      }
-      continue; // HIDE, or no strategy: the key is absent entirely
+    if (seesField(ctx, objectType, rules, k, sensitiveFields)) {
+      out[k] = v;
+      continue;
     }
-    out[k] = v;
+    const rule = rules.get(k);
+    const strategy = rule ? (rule.maskStrategy ?? 'HIDE') : sensitiveFields[k];
+    // HIDE, or a rule with no strategy: the key is absent entirely.
+    if (strategy && strategy !== 'HIDE') out[k] = mask(v, strategy);
   }
   return out as Partial<T>;
 }
@@ -65,8 +95,13 @@ export function stripUneditableFields<T extends Record<string, unknown>>(rules: 
  * Filtering or sorting on a hidden field would let a caller recover the masked value
  * by binary search. Reject it rather than silently ignoring the clause.
  */
-export function assertFilterableFields(rules: Map<string, FieldRule>, fields: readonly string[]) {
-  const blocked = fields.filter((f) => rules.get(f)?.canView === false);
+export function assertFilterableFields(
+  rules: Map<string, FieldRule>,
+  fields: readonly string[],
+  /** Further fields this role sees masked — the sensitive ones, see `seesField`. */
+  withheld: (field: string) => boolean = () => false,
+) {
+  const blocked = fields.filter((f) => rules.get(f)?.canView === false || withheld(f));
   if (blocked.length) {
     throw new AppError(
       403,
@@ -82,10 +117,17 @@ function mask(value: unknown, strategy: MaskStrategy): string | null {
   switch (strategy) {
     case 'MASK_ALL':
       return '•'.repeat(Math.min(s.length, 9));
-    case 'MASK_PARTIAL':
-      return s.length <= 4
-        ? '•'.repeat(s.length)
-        : `${s.slice(0, 5)}${'•'.repeat(Math.max(s.length - 7, 1))}${s.slice(-2)}`;
+    case 'MASK_PARTIAL': {
+      if (s.length <= 6) return '•'.repeat(s.length);
+      // A phone number keeps its country code (a "+" and at most three digits)
+      // and its last two digits, separators as typed: "+971 50 123 4567" reads
+      // "+971 •• ••• ••67". A local "0501234567" keeps no prefix — there it is
+      // the operator code, and a lead can be found by its whole number, so each
+      // digit left showing is one fewer to guess. Anything else (an IBAN) keeps
+      // the first four and the last two.
+      const head = /^\+?[\d\s().-]+$/.test(s) ? (s.match(/^\+\d{1,3}/)?.[0] ?? '') : s.slice(0, 4);
+      return `${head}${s.slice(head.length, -2).replace(/[^\s().-]/g, '•')}${s.slice(-2)}`;
+    }
     case 'MASK_EMAIL': {
       const [local, domain] = s.split('@');
       if (!domain) return '•'.repeat(s.length);

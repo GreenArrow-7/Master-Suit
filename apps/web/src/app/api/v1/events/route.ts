@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { createGoogleCalendarEvent } from '@/lib/integrations/calendar';
 import { connectionCredentials } from '@/lib/integrations/connection';
-import { eventScopeFilter, seesWholeWorkspace } from '@/lib/security/record-scope';
+import { eventListScope } from '@/lib/security/record-scope';
 
 const createBody = z
   .object({
@@ -90,7 +90,7 @@ export const GET = route(
     // Below TEAM scope an event is yours when you host it, created it, or were
     // invited to it. The list used to return every event in the workspace while
     // the code around it assumed a scope; see lib/security/record-scope.ts.
-    if (!seesWholeWorkspace(ctx, 'events')) Object.assign(where, eventScopeFilter(ctx.actor.id));
+    Object.assign(where, eventListScope(ctx));
     if (query.status) where.status = query.status;
     if (query.upcoming === 'true') where.startAt = { gte: new Date() };
     if (query.campaignId) where.campaignId = query.campaignId;

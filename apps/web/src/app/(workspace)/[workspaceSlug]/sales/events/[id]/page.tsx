@@ -4,7 +4,10 @@ import { prisma } from '@/lib/db';
 import { notFound } from 'next/navigation';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
+import { mergeWhere } from '@/lib/api/where';
 import { can } from '@/lib/security/rbac';
+import { eventListScope, seesWholeWorkspace } from '@/lib/security/record-scope';
+import { visibilityWhere } from '@/lib/security/visibility';
 import EventActions from './EventActions';
 import RsvpControl from './RsvpControl';
 
@@ -24,27 +27,46 @@ export default async function EventDetailPage({ params: paramsPromise }: { param
   const params = await paramsPromise;
   const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['events', 'VIEW'] });
 
+  // GET /api/v1/events/{id}'s rule: below TEAM, an event you host, created or
+  // were invited to. Anything else is not found, as a missing id is.
   const event = await prisma.event.findFirst({
-    where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
+    where: {
+      id: params.id,
+      tenantId: ctx.tenantId,
+      deletedAt: null,
+      ...eventListScope(ctx),
+    },
     include: {
       invitees: { orderBy: { createdAt: 'desc' }, take: 200 },
       _count: { select: { invitees: true } },
     },
   });
   if (!event) notFound();
+  // Circulating it and recording RSVPs check the event at EDIT (assertEventInScope):
+  // below TEAM, only its host or creator. An invitee reads it.
+  const mayEdit =
+    can(ctx, 'events', 'EDIT') &&
+    (seesWholeWorkspace(ctx, 'events', 'EDIT') || [event.hostId, event.createdById].includes(ctx.actor.id));
 
   // A meeting held for this event is an ordinary Call carrying eventId, so its
-  // consent, recording, transcript and Gemini summary come from the call pipeline.
-  const meetings = await prisma.call.findMany({
-    where: { tenantId: ctx.tenantId, eventId: event.id, deletedAt: null },
-    orderBy: { createdAt: 'desc' },
-    take: 20,
-    include: {
-      analysis: { select: { status: true, summary: true, nextSteps: true, topicsMissed: true } },
-      recording: { select: { id: true, durationSecs: true } },
-      caller: { select: { fullName: true } },
-    },
-  });
+  // consent, recording, transcript and Gemini summary come from the call pipeline,
+  // and are shown under the calls list's rule: each row links to a call page
+  // that applies it.
+  const meetings = can(ctx, 'calls', 'VIEW')
+    ? await prisma.call.findMany({
+        where: mergeWhere(await visibilityWhere(ctx, 'calls', 'VIEW', { ownerField: 'callerId' }), {
+          eventId: event.id,
+          deletedAt: null,
+        }),
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        include: {
+          analysis: { select: { status: true, summary: true, nextSteps: true, topicsMissed: true } },
+          recording: { select: { id: true, durationSecs: true } },
+          caller: { select: { fullName: true } },
+        },
+      })
+    : [];
   const summarised = meetings.filter((m) => m.analysis?.status === 'COMPLETED' && m.analysis.summary);
 
   const confirmed = event.invitees.filter((i) => i.rsvpStatus === 'CONFIRMED' || i.rsvpStatus === 'ATTENDED').length;
@@ -118,7 +140,7 @@ export default async function EventDetailPage({ params: paramsPromise }: { param
         </div>
       </div>
 
-      {can(ctx, 'events', 'EDIT') && <EventActions eventId={event.id} />}
+      {mayEdit && <EventActions eventId={event.id} />}
 
       {meetings.length > 0 && (
         <section className="lf-card" style={{ padding: 'var(--lf-space-5)', marginBottom: 'var(--lf-space-4)' }}>
@@ -219,7 +241,7 @@ export default async function EventDetailPage({ params: paramsPromise }: { param
                       <Badge tone={RSVP_TONE[inv.rsvpStatus]}>{inv.rsvpStatus.toLowerCase().replace(/_/g, ' ')}</Badge>
                     </td>
                     <td>
-                      {can(ctx, 'events', 'EDIT') ? (
+                      {mayEdit ? (
                         <RsvpControl
                           eventId={event.id}
                           inviteeId={inv.id}
