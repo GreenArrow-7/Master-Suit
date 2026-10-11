@@ -7,6 +7,9 @@ import { Invalid, NotFound } from '@/lib/errors';
 import { sendMail } from '@/lib/mailer';
 import { draftFollowUpEmail } from '@/lib/ai/followUpEmail';
 import { assertCallInScope } from '@/lib/security/record-scope';
+import { applyFieldSecurity, loadFieldRules } from '@/lib/security/fieldSecurity';
+import type { Ctx } from '@/lib/security/rbac';
+import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -37,16 +40,29 @@ async function recipientFor(tenantId: string, call: { contactId: string | null; 
       where: { id: call.contactId, tenantId, deletedAt: null },
       select: { fullName: true, email: true, emailOptOut: true },
     });
-    if (contact?.email) return { name: contact.fullName, email: contact.email, optedOut: contact.emailOptOut };
+    if (contact?.email) {
+      return { name: contact.fullName, email: contact.email, optedOut: contact.emailOptOut, lead: false };
+    }
   }
   if (call.leadId) {
     const lead = await prisma.lead.findFirst({
       where: { id: call.leadId, tenantId, deletedAt: null },
       select: { fullName: true, email: true, emailOptOut: true },
     });
-    if (lead?.email) return { name: lead.fullName, email: lead.email, optedOut: lead.emailOptOut };
+    if (lead?.email) return { name: lead.fullName, email: lead.email, optedOut: lead.emailOptOut, lead: true };
   }
   return null;
+}
+
+/**
+ * The address as this caller reads it. A lead's email is masked for a role
+ * without leads:VIEW_SENSITIVE_FIELDS; the send still goes to the stored one.
+ */
+async function shownTo(ctx: Ctx, recipient: { email: string; lead: boolean } | null) {
+  if (!recipient?.lead) return recipient?.email ?? null;
+  const rules = await loadFieldRules(ctx, 'LEAD');
+  const shown = applyFieldSecurity(ctx, 'LEAD', rules, { email: recipient.email }, LEAD_SENSITIVE_FIELDS);
+  return (shown.email as string | undefined) ?? null;
 }
 
 async function loadContext(tenantId: string, callId: string) {
@@ -88,7 +104,7 @@ export const POST = route(
     return {
       ...draft,
       /** Rendered read-only in the composer; the rep cannot retarget the send. */
-      to: recipient?.email ?? null,
+      to: await shownTo(ctx, recipient),
       recipientName: recipient?.name ?? null,
       optedOut: recipient?.optedOut ?? false,
     };
@@ -169,7 +185,7 @@ export const PUT = route(
 
     await logActivity(ctx.tenantId, ctx.actor.id, call, body.subject);
 
-    return { id: communication.id, status: 'SENT', to: recipient.email };
+    return { id: communication.id, status: 'SENT', to: await shownTo(ctx, recipient) };
   },
 );
 

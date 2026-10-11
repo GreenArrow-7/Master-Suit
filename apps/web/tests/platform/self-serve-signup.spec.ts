@@ -168,4 +168,21 @@ describe('self-serve sign-up', () => {
       expect((await prisma.signupRequest.findFirstOrThrow({ where: { email } })).consumedAt).toBeNull();
     }
   });
+
+  it('does not give an account being erased a new workspace', async () => {
+    await setTrialDays(14);
+    const email = `erasing@signup-${suffix}.test`;
+    const held = await prisma.platformUser.create({
+      data: { email, normalizedEmail: email, fullName: 'Leaving', status: 'ACTIVE' },
+    });
+    await prisma.accountDeletionRequest.create({ data: { platformUserId: held.id } });
+    const slug = `erasing-co-${suffix}`;
+    made.push(slug); // removed afterwards should it ever be made
+    expect((await ask(slug, email)).status).toBe(200);
+    const refused = await confirm(tokenFor(email));
+    expect(refused.status).toBe(409);
+    expect(refused.body.detail).toMatch(/being deleted/);
+    expect(await prisma.tenant.count({ where: { slug } })).toBe(0);
+    expect(await prisma.workspaceMembership.count({ where: { platformUserId: held.id } })).toBe(0);
+  });
 });

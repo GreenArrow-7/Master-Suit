@@ -3,6 +3,13 @@ import { Conflict, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
 import { can } from '@/lib/security/rbac';
+import {
+  applyFieldSecurity,
+  loadFieldRules,
+  seesField,
+  type FieldRule,
+  type SensitiveFields,
+} from '@/lib/security/fieldSecurity';
 import { findDuplicates } from './findDuplicates';
 import { normalizePhone } from './normalizePhone';
 import { nextReference } from '../shared/reference';
@@ -10,7 +17,65 @@ import { enqueue } from '@/lib/queue';
 import { notifyCrm } from '../crm/notify';
 import { recordTargetProgress } from '../targets/progress';
 
-export const LEAD_SENSITIVE_FIELDS = ['secondaryEmail', 'secondaryPhone', 'addressLine', 'postalCode'] as const;
+/**
+ * A lead's contact details, and how each reads to a role without
+ * `leads:VIEW_SENSITIVE_FIELDS` — the switch in the role editor. The main phone
+ * and email joined in M2-06; masked rather than removed, because an absent
+ * number reads as "none on file" and sends somebody hunting for one.
+ */
+export const LEAD_SENSITIVE_FIELDS = {
+  phone: 'MASK_PARTIAL',
+  phoneNormalized: 'MASK_PARTIAL',
+  whatsappNumber: 'MASK_PARTIAL',
+  secondaryPhone: 'MASK_PARTIAL',
+  email: 'MASK_EMAIL',
+  secondaryEmail: 'MASK_EMAIL',
+  addressLine: 'HIDE',
+  postalCode: 'HIDE',
+} as const satisfies SensitiveFields;
+
+/**
+ * A lead's number kept outside the lead row — one of its other numbers
+ * (LeadPhone), the number a call to it went to — read exactly as the lead's own
+ * `phone` reads to this role.
+ */
+export const asLeadPhone = (ctx: Ctx, rules: Map<string, FieldRule>, value: string | null): string | null =>
+  (applyFieldSecurity(ctx, 'LEAD', rules, { phone: value }, LEAD_SENSITIVE_FIELDS).phone as string | null) ?? null;
+
+/**
+ * The email and phone clauses of a lead search. A role that sees them masked
+ * finds a lead by the whole value only: a few fragment searches would read a
+ * masked number back digit by digit, while the whole value tells the searcher
+ * nothing they did not type.
+ */
+export function contactSearch(ctx: Ctx, rules: Map<string, FieldRule>, q: string) {
+  const sees = (field: 'phone' | 'email') => seesField(ctx, 'LEAD', rules, field, LEAD_SENSITIVE_FIELDS);
+  const number = normalizePhone(q);
+  return [
+    sees('email')
+      ? { email: { contains: q, mode: 'insensitive' as const } }
+      : { email: { equals: q.trim(), mode: 'insensitive' as const } },
+    ...(sees('phone') ? [{ phone: { contains: q } }] : number ? [{ phoneNormalized: number }] : []),
+  ];
+}
+
+/**
+ * Calls on their way out. A call with a lead holds the lead's number — the one
+ * dialled, or on an inbound call the one that rang in (`callerNumber`) — and it
+ * reads as the lead's phone does. The other side is the workspace's own line.
+ */
+export async function maskCallNumbers<
+  T extends { leadId: string | null; recipientNumber: string | null; direction?: string; callerNumber?: string | null },
+>(ctx: Ctx, calls: T[]): Promise<T[]> {
+  if (!calls.some((call) => call.leadId)) return calls;
+  const rules = await loadFieldRules(ctx, 'LEAD');
+  return calls.map((call) => {
+    if (!call.leadId) return call;
+    return call.direction === 'INBOUND'
+      ? { ...call, callerNumber: asLeadPhone(ctx, rules, call.callerNumber ?? null) }
+      : { ...call, recipientNumber: asLeadPhone(ctx, rules, call.recipientNumber) };
+  });
+}
 
 export interface CreateLeadInput {
   fullName: string;

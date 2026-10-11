@@ -28,7 +28,7 @@ const BATCH_LIMIT = 200;
 export const POST = route(
   { module: 'calls', productModule: SALES_OR_REALTY, action: 'CREATE', params, body, auditEvent: 'CALL_STARTED' },
   async ({ ctx, params, body }) => {
-    await assertEventInScope(ctx, params.id);
+    await assertEventInScope(ctx, params.id, 'VIEW');
     const event = await prisma.event.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });

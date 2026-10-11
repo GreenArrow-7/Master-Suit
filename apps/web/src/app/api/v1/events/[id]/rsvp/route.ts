@@ -18,7 +18,7 @@ const body = z
 export const POST = route(
   { module: 'events', productModule: SALES_OR_REALTY, action: 'EDIT', params, body },
   async ({ ctx, params, body: { inviteeId, rsvpStatus, channel } }) => {
-    await assertEventInScope(ctx, params.id);
+    await assertEventInScope(ctx, params.id, 'EDIT');
     const invitee = await prisma.eventInvitee.findFirst({
       where: { id: inviteeId, eventId: params.id, tenantId: ctx.tenantId },
     });

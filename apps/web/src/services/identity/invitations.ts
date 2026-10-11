@@ -18,7 +18,7 @@ import { assertMayAdministerRole, type Ctx } from '@/lib/security/rbac';
 import { audit, platformAudit } from '@/lib/security/audit';
 import { hashPassword, assertPasswordPolicy } from '@/lib/auth/password';
 import { sendMail } from '@/lib/mailer';
-import { passwordPolicy } from './accounts';
+import { activateIdentity, assertIdentityReusable, passwordPolicy } from './accounts';
 import { buildChecklist, isAgent } from '@/services/hr/lifecycle';
 import { resolvePolicy } from '@/services/hr/settings';
 
@@ -82,6 +82,8 @@ export async function inviteUser(ctx: Ctx, input: InviteInput) {
     select: { id: true },
   });
   if (alreadyHere) throw Conflict('That person is already a member of this workspace.');
+  // Told now rather than at acceptance, which checks again.
+  await assertIdentityReusable(prisma, email, { neutral: true });
 
   await assertSeatAvailable(ctx);
 
@@ -232,31 +234,13 @@ export async function acceptInvitation(token: string, input: { password: string;
   const result = await withTx(invitation.tenantId, async (tx) => {
     // An existing identity keeps its own password: the person already has one
     // for another workspace, and an invitation to a second is not authority to
-    // change the credential that guards the first.
-    const existing = await tx.platformUser.findUnique({
-      where: { normalizedEmail: email },
-      select: { id: true, deletedAt: true },
-    });
-    if (existing?.deletedAt) throw invalid();
-    // An erasure in flight is not visible as `deletedAt`: that is written in the last
-    // step. While a request is REQUESTED or BLOCKED the identity is still fully ACTIVE
-    // (that is the withdrawal window); once processing starts it is DEACTIVATED. In
-    // neither state should acceptance go through — it would attach a fresh membership
-    // the executor's snapshot never saw, and during processing it would also set the
-    // identity back to ACTIVE with the request still recorded as COMPLETED. The check
-    // is on the request row, not on status, so it holds across all three.
-    if (existing) {
-      const pending = await tx.accountDeletionRequest.findFirst({
-        where: { platformUserId: existing.id, status: { in: ['REQUESTED', 'BLOCKED', 'IN_PROGRESS'] } },
-        select: { id: true },
-      });
-      if (pending) {
-        throw Conflict('This account is being deleted. Withdraw that request before accepting an invitation.');
-      }
-    }
+    // change the credential that guards the first. Acceptance sets it ACTIVE, so
+    // a deleted, erasing, suspended or deactivated one is refused here, checked
+    // again because the platform owner may act after the invitation went out.
+    const existing = await assertIdentityReusable(tx, email);
 
     const platformUser = existing
-      ? await tx.platformUser.update({ where: { id: existing.id }, data: { status: 'ACTIVE' } })
+      ? await activateIdentity(tx, existing.id)
       : await tx.platformUser.create({
           data: {
             email,

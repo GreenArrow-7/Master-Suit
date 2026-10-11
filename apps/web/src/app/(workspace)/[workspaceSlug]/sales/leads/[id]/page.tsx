@@ -3,10 +3,10 @@ import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { emptyFollowUpLabel, obligationAccess, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
-import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
-import { can } from '@/lib/security/rbac';
+import { loadFieldRules, applyFieldSecurity, seesField } from '@/lib/security/fieldSecurity';
+import { can, scopeFor } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
-import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
+import { asLeadPhone, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import StageRail from '@/components/ui/StageRail';
 import LeadDetail from './LeadDetail';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -15,7 +15,16 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['leads', 'VIEW'] });
 
-  const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
+  const [scope, taskScope] = await Promise.all([
+    visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true }),
+    // A Task is read under `tasks`, not `leads` (services/leads/nextFollowUp.ts):
+    // the Tasks tab lists what the viewer's Tasks page would, and a role with no
+    // `tasks` grant sees none. Completing one also takes `leads:EDIT` over its
+    // owner (PATCH /tasks/{id}), which no seeded role lacks where it sees the task.
+    scopeFor(ctx, 'tasks', 'VIEW') === 'NONE'
+      ? { id: { in: [] } }
+      : visibilityWhere(ctx, 'tasks', 'VIEW', { ownerField: 'ownerId' }),
+  ]);
   // One round trip, not three: the lookups and field rules depend only on ctx,
   // so they run alongside the lead fetch instead of after it.
   const leadPromise = prisma.lead.findFirst({
@@ -29,7 +38,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         include: { type: { select: { name: true, key: true } } },
       },
       tasks: {
-        where: { status: { in: ['OPEN', 'IN_PROGRESS'] } },
+        // The tenant guard's soft-delete filter reaches the lead, not what it includes.
+        where: { ...taskScope, deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS'] } },
         orderBy: { dueAt: 'asc' },
         take: 20,
         include: { type: true },
@@ -87,9 +97,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const scopedDue = await scopedNextFollowUp(ctx.tenantId, [lead.id], personalAccess);
 
   const safe = applyFieldSecurity(ctx, 'LEAD', rules, lead, LEAD_SENSITIVE_FIELDS) as typeof lead;
-  // The other numbers follow the main one: a role that may not see `phone`, or
-  // sees it masked, sees none of them.
-  const phoneVisible = safe.phone === lead.phone;
+  // The other numbers follow the main one: masked where it is masked, absent
+  // where it is hidden.
+  const sees = (field: 'phone' | 'email') => seesField(ctx, 'LEAD', rules, field, LEAD_SENSITIVE_FIELDS);
+  const phoneVisible = sees('phone');
 
   // Serialize dates to ISO strings for the client component
   const serializedLead = {
@@ -99,7 +110,13 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     email: safe.email,
     phone: safe.phone,
     phoneNormalized: phoneVisible ? lead.phoneNormalized : null,
-    phones: phoneVisible ? lead.phones : null,
+    phones: phoneVisible
+      ? lead.phones
+      : safe.phone === undefined
+        ? null
+        : lead.phones.map((p) => ({ ...p, raw: asLeadPhone(ctx, rules, p.raw) ?? '', normalized: '' })),
+    // Masked contact details are shown, never dialled, mailed or edited.
+    contactMasked: { phone: !phoneVisible, email: !sees('email') },
     company: lead.company,
     jobTitle: lead.jobTitle,
     industry: lead.industry,
