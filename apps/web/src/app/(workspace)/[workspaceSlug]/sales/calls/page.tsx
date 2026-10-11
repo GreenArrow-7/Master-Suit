@@ -13,6 +13,8 @@ import ColumnEditor from '@/components/workspace/ColumnEditor';
 import Pager from '@/components/workspace/Pager';
 import { columnsFor } from '@/lib/grid/resolve';
 import { can } from '@/lib/security/rbac';
+import { loadFieldRules } from '@/lib/security/fieldSecurity';
+import { asLeadPhone } from '@/services/leads/createLead';
 
 export const metadata = { title: 'Calls' };
 
@@ -89,11 +91,19 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
   // Notes are free text about the conversation; a monitoring grant without
   // sensitive scope gets the call without them (they are otherwise in the payload).
   const sensitive = await hasSensitiveAccess(ctx);
-  const gridRows = calls.map((call) => ({
-    ...call,
-    notes: sensitive ? call.notes : null,
-    lead: call.leadId ? (leadById.get(call.leadId) ?? null) : null,
-  }));
+  // A call to a lead went to the lead's number, so it reads as the lead's phone
+  // does for this role — masked without leads:VIEW_SENSITIVE_FIELDS, and then
+  // the row's Call button has nothing to dial (CallLink refuses a masked number).
+  const leadRules = await loadFieldRules(ctx, 'LEAD');
+  const gridRows = calls.map((call) => {
+    const lead = call.leadId ? (leadById.get(call.leadId) ?? null) : null;
+    return {
+      ...call,
+      notes: sensitive ? call.notes : null,
+      recipientNumber: call.leadId ? asLeadPhone(ctx, leadRules, call.recipientNumber) : call.recipientNumber,
+      lead: lead && { ...lead, phone: asLeadPhone(ctx, leadRules, lead.phone) },
+    };
+  });
 
   const todayTotal = stats.reduce((s, r) => s + r._count, 0);
   const todayConnected = stats

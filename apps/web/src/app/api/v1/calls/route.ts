@@ -7,6 +7,8 @@ import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { assertLeadCallable } from '@/lib/security/record-scope';
 import { notifyAboutCall } from '@/services/crm/notify';
+import { maskCallNumbers } from '@/services/leads/createLead';
+import { Invalid } from '@/lib/errors';
 
 const createBody = z
   .object({
@@ -29,6 +31,19 @@ export const POST = route(
   async ({ ctx, body }) => {
     // The call lists, stamps and notifies on its lead: one the caller may call.
     if (body.leadId) await assertLeadCallable(ctx, body.leadId);
+    // A role that sees the lead's number masked sends the masked string back:
+    // the call goes to the lead's stored number instead — a call placed by lead
+    // id, which is the point of masking for a telecaller.
+    if (body.leadId && body.recipientNumber.includes('•')) {
+      const lead = await prisma.lead.findFirst({
+        where: { tenantId: ctx.tenantId, id: body.leadId },
+        select: { phone: true },
+      });
+      if (!lead?.phone) {
+        throw Invalid([{ field: 'recipientNumber', code: 'missing', message: 'This lead has no number to call.' }]);
+      }
+      body.recipientNumber = lead.phone;
+    }
     const call = await prisma.call.create({
       data: {
         tenantId: ctx.tenantId,
@@ -40,10 +55,11 @@ export const POST = route(
 
     // Reaches the lead's owner when somebody else booked the call for them; the
     // actor is filtered out, so scheduling your own call is silent.
-    await notifyAboutCall(ctx, call, 'call.scheduled', `Call scheduled with ${call.recipientNumber}`);
+    await notifyAboutCall(ctx, call, 'call.scheduled', 'Call scheduled with');
     await touchLead(ctx.tenantId, call.leadId);
 
-    return call;
+    // The number as this caller may see it.
+    return (await maskCallNumbers(ctx, [call]))[0];
   },
 );
 
@@ -101,7 +117,8 @@ export const GET = route(
 
     // Call notes are free text about the conversation. The call itself — who,
     // when, how long, the outcome — is monitoring metadata; the notes are not.
-    if (!(await hasSensitiveAccess(ctx))) return { data: data.map((call) => ({ ...call, notes: null })) };
-    return { data };
+    const masked = await maskCallNumbers(ctx, data);
+    if (!(await hasSensitiveAccess(ctx))) return { data: masked.map((call) => ({ ...call, notes: null })) };
+    return { data: masked };
   },
 );

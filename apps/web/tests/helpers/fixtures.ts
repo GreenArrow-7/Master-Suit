@@ -134,7 +134,19 @@ export interface Fixture {
   cleanup: () => Promise<void>;
 }
 
-const ALL_ACTIONS = ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'ASSIGN', 'EXPORT', 'IMPORT'] as const;
+// VIEW_SENSITIVE_FIELDS: every role that reads leads holds it on production
+// (migration 20261011000000_lead_contact_sensitive), or sees a lead's phone and
+// email masked. tests/permission/field-security.spec.ts covers a role without it.
+const ALL_ACTIONS = [
+  'VIEW',
+  'CREATE',
+  'EDIT',
+  'DELETE',
+  'ASSIGN',
+  'EXPORT',
+  'IMPORT',
+  'VIEW_SENSITIVE_FIELDS',
+] as const;
 const MODULES = ['leads', 'calls', 'events', 'campaigns', 'accounts', 'contacts', 'opportunities', 'tasks'] as const;
 
 /** An admin role holding every permission at ORGANIZATION scope. */

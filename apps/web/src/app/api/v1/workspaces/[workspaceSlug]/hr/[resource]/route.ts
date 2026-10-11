@@ -408,8 +408,15 @@ async function createDefaultEmployeeRole(tx: TxClient, tenantId: string, key: st
   });
   const permissions = await tx.permission.findMany({
     where: {
-      module: { in: ['leads', 'activities', 'tasks', 'calls', 'employee'] },
-      action: { in: ['VIEW', 'CREATE', 'EDIT'] },
+      OR: [
+        {
+          module: { in: ['leads', 'activities', 'tasks', 'calls', 'employee'] },
+          action: { in: ['VIEW', 'CREATE', 'EDIT'] },
+        },
+        // A role that works leads sees their phone and email: without this the
+        // numbers read masked (M2-06), as on every role that read leads before it.
+        { module: 'leads', action: 'VIEW_SENSITIVE_FIELDS' },
+      ],
     },
   });
   await tx.rolePermission.createMany({

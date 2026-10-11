@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
 import { NotFound, Conflict } from '@/lib/errors';
+import { can } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { findDuplicates } from '@/services/leads/findDuplicates';
 import { normalizePhone } from '@/services/leads/normalizePhone';
@@ -115,7 +116,16 @@ export const POST = route(
         where: { id: enquiry.id, tenantId: ctx.tenantId },
         data: { linkedLeadId: duplicate.id, status: 'CONVERTED', convertedAt: new Date() },
       });
-      return { leadId: duplicate.id, reference: duplicate.reference, linkedToExisting: true };
+      // Linked whoever owns it, since the duplicate rules span the workspace;
+      // its id and reference come back only when the caller may open it (cold
+      // data's Make lead).
+      const open = await prisma.lead.findFirst({ where: { ...visible, id: duplicate.id }, select: { id: true } });
+      return {
+        leadId: open ? duplicate.id : null,
+        reference: open ? duplicate.reference : null,
+        linkedToExisting: true,
+        visible: !!open,
+      };
     }
 
     const stage = body.stageId
@@ -142,7 +152,8 @@ export const POST = route(
           // They asked a public question rather than submitting a form, so this
           // is not the implied consent a lead form gives.
           consentStatus: 'UNKNOWN',
-          ownerId: body.ownerId ?? enquiry.ownerId ?? null,
+          // Handing it to someone else takes ASSIGN, as in `createLead`.
+          ownerId: (can(ctx, 'leads', 'ASSIGN') ? body.ownerId : undefined) ?? enquiry.ownerId ?? null,
           customData: { socialEnquiry: attribution },
         },
         select: { id: true, reference: true },

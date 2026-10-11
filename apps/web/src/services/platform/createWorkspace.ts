@@ -1,8 +1,8 @@
 import type { SubscriptionPlan } from '@prisma/client';
 import { withPlatformTx } from '@/lib/db';
-import { Conflict } from '@/lib/errors';
 import type { ProductModuleKey } from '@/lib/modules/catalogue';
 import { platformAudit } from '@/lib/security/audit';
+import { activateIdentity, assertIdentityReusable } from '@/services/identity/accounts';
 import { provisionLeadWork } from '@/services/platform/provisioning';
 
 /**
@@ -209,28 +209,14 @@ export async function createWorkspace(
     // consultant administering two customers — produced an administrator who
     // could not sign in with the password the platform owner had just typed
     // and communicated. Say which of the two happened instead of guessing.
-    const existingIdentity = await tx.platformUser.findUnique({
-      where: { normalizedEmail: adminEmail },
-      select: { id: true, deletedAt: true, status: true },
-    });
-    if (existingIdentity?.deletedAt) {
-      throw Conflict('That email belongs to a deleted account. Restore it or use a different address.');
-    }
-    // Making a workspace must not undo a suspension. The update below sets the
-    // identity ACTIVE (an invited one has now proved its address), and since
-    // self-serve sign-up runs through here, a suspended or deactivated person
-    // could otherwise sign up with their own email and be back in.
-    if (existingIdentity && (existingIdentity.status === 'SUSPENDED' || existingIdentity.status === 'DEACTIVATED')) {
-      throw Conflict(
-        'That email belongs to a suspended or deactivated account. Ask the platform owner to restore it, or use a different address.',
-      );
-    }
+    //
+    // Making a workspace must not undo a suspension: the update below sets the
+    // identity ACTIVE (an invited one has now proved its address), and
+    // self-serve sign-up runs through here.
+    const existingIdentity = await assertIdentityReusable(tx, adminEmail);
     const reusedExistingIdentity = Boolean(existingIdentity);
     const platformUser = existingIdentity
-      ? await tx.platformUser.update({
-          where: { id: existingIdentity.id },
-          data: { fullName: body.primaryAdminName, status: 'ACTIVE' },
-        })
+      ? await activateIdentity(tx, existingIdentity.id, { fullName: body.primaryAdminName })
       : await tx.platformUser.create({
           data: {
             email: adminEmail,

@@ -40,7 +40,7 @@ const BATCH_LIMIT = 100;
 export const POST = route(
   { module: 'events', productModule: SALES_OR_REALTY, action: 'EDIT', params, body, auditEvent: 'RECORD_UPDATED' },
   async ({ ctx, params, body }) => {
-    await assertEventInScope(ctx, params.id);
+    await assertEventInScope(ctx, params.id, 'EDIT');
     const event = await prisma.event.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });

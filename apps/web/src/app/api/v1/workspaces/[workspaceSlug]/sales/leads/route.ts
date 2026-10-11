@@ -4,6 +4,8 @@ import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { requireWorkspace } from '@/lib/workspace';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { applyFieldSecurity, loadFieldRules } from '@/lib/security/fieldSecurity';
+import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 
 const paramsSchema = z.object({ workspaceSlug: z.string().min(2).max(64) });
 
@@ -14,12 +16,17 @@ export const GET = route(
     // Same row filter as /api/v1/leads — this legacy path previously returned
     // every lead in the tenant regardless of the caller's scope.
     const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
-    return prisma.lead.findMany({
-      where: { ...scope, deletedAt: null },
-      include: { stage: true, owner: { select: { id: true, fullName: true, email: true } } },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
+    const [leads, rules] = await Promise.all([
+      prisma.lead.findMany({
+        where: { ...scope, deletedAt: null },
+        include: { stage: true, owner: { select: { id: true, fullName: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+      loadFieldRules(ctx, 'LEAD'),
+    ]);
+    // Through the serialiser like /api/v1/leads: this path returned whole rows.
+    return leads.map((lead) => applyFieldSecurity(ctx, 'LEAD', rules, lead, LEAD_SENSITIVE_FIELDS));
   },
 );
 

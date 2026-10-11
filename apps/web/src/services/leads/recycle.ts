@@ -1,5 +1,6 @@
 import { withPlatformTx } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { audit } from '@/lib/security/audit';
 import { OPEN_LEADS_WHERE } from './closeOut';
 
 /**
@@ -170,6 +171,22 @@ async function recycleWorkspace(tenantId: string, days: number, now: Date): Prom
         reason: `Recycled to the pool after ${days} days without activity`,
       })),
     });
+    // The counterpart of assignLead's row: an owner taken away by no person.
+    for (const lead of candidates) {
+      await audit(
+        { tenantId, source: 'recycle' },
+        {
+          event: 'OWNER_CHANGED',
+          objectType: 'lead',
+          recordId: lead.id,
+          fieldKey: 'ownerId',
+          previousValue: lead.ownerId,
+          newValue: null,
+          metadata: { afterDays: days },
+        },
+        tx,
+      );
+    }
 
     /**
      * The previous owner is told, because a record vanishing from your list
