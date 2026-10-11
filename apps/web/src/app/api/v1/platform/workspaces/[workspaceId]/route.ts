@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { invalidateEntitlements, LEAD_MODULES } from '@/lib/security/entitlements';
+import { invalidateEntitlements } from '@/lib/security/entitlements';
 import { provisionLeadWork } from '@/services/platform/provisioning';
 import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
@@ -69,6 +69,11 @@ export const PATCH = bareRoute(
     const newModuleEnd = onTrial ? (body.trialEndsAt ?? current.trialEndsAt) : null;
 
     const workspace = await withPlatformTx(async (tx) => {
+      // What was live before this save: Lead Eagle's starter roles come with its arrival only.
+      const before = await tx.moduleEntitlement.findMany({
+        where: { tenantId: current.id, state: { not: 'CANCELED' } },
+        select: { module: true },
+      });
       const updated = await tx.tenant.update({
         where: { id: current.id },
         data: {
@@ -138,9 +143,12 @@ export const PATCH = bareRoute(
         }
         // Switching on a module that works leads in a workspace that never had one
         // (an HR-only workspace adding Lead Eagle) needs the same starting lists.
-        if (body.enabledModules.some((module) => (LEAD_MODULES as readonly string[]).includes(module))) {
-          await provisionLeadWork(tx, current.id);
-        }
+        await provisionLeadWork(
+          tx,
+          current.id,
+          body.enabledModules,
+          before.map((row) => row.module),
+        );
       }
       if (body.revokeSessions) {
         await tx.platformSession.updateMany({

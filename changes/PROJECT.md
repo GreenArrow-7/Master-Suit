@@ -53,9 +53,13 @@ Node 22 or newer (CI uses 24).
   that must work without that module is re-exported from outside its folder.
 - **Permissions.** Roles live in the database. A new workspace gets one role,
   Company Admin, holding every permission; the admin builds the others in the
-  role editor. Scopes run OWN < TEAM < BRANCH < REGION < ORGANIZATION; check with
-  `atLeast(ctx, module, action, scope)` (`src/lib/security/rbac.ts`). HR's
-  predicates are in `src/services/hr/access.ts`. A manager's authority over
+  role editor. Lead Eagle's arrival adds five editable starter roles (Manager,
+  Team Lead, Agent, Telecaller, Viewer; `src/services/platform/provisioning.ts`).
+  Scopes run OWN < TEAM < BRANCH < REGION < ORGANIZATION; check with
+  `atLeast(ctx, module, action, scope)` (`src/lib/security/rbac.ts`). A record
+  loaded by id is checked with `assertRecordInScope`
+  (`src/lib/security/record-scope.ts`): out of scope answers 404, like a
+  missing id. HR's predicates are in `src/services/hr/access.ts`. A manager's authority over
   people stops at their reporting line (`reportingLine`, `src/services/hr/leave.ts`).
   A task is read under `tasks` wherever it shows, a lead's page included, and
   a follow-up under `leads` (`src/services/leads/nextFollowUp.ts`); a task is

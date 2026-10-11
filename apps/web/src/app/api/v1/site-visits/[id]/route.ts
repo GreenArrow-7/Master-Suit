@@ -3,8 +3,8 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
 import { Conflict, NotFound } from '@/lib/errors';
-import { assertRecordVisible } from '@/lib/security/visibility';
-import { VISIT_STATUSES, amendCompleted, transition, verify } from '@/services/visits/lifecycle';
+import { assertRecordInScope } from '@/lib/security/record-scope';
+import { VISIT_STATUSES, amendCompleted, findVisitInScope, transition, verify } from '@/services/visits/lifecycle';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -20,7 +20,7 @@ export const GET = route(
       },
     });
     if (!visit) throw NotFound('Site visit');
-    await assertRecordVisible(ctx, 'visits', visit, prisma, 'VIEW');
+    await assertRecordInScope(ctx, 'visits', visit, prisma, 'VIEW', 'Site visit');
     return visit;
   },
 );
@@ -110,12 +110,7 @@ export const PATCH = route(
     }
 
     return withTx(ctx.tenantId, async (tx) => {
-      const visit = await tx.siteVisit.findFirst({
-        where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
-        select: { id: true, tenantId: true, ownerId: true, status: true },
-      });
-      if (!visit) throw NotFound('Site visit');
-      await assertRecordVisible(ctx, 'visits', visit, tx);
+      const visit = await findVisitInScope(ctx, tx, params.id, 'EDIT');
 
       // The acceptance criterion. A completed visit is evidence, and evidence is
       // amended with a reason on the record, not edited in place.
@@ -146,12 +141,7 @@ export const DELETE = route(
   { module: 'visits', productModule: LEAD_MODULES, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) =>
     withTx(ctx.tenantId, async (tx) => {
-      const visit = await tx.siteVisit.findFirst({
-        where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
-        select: { id: true, tenantId: true, ownerId: true, status: true },
-      });
-      if (!visit) throw NotFound('Site visit');
-      await assertRecordVisible(ctx, 'visits', visit, tx, 'DELETE');
+      const visit = await findVisitInScope(ctx, tx, params.id, 'DELETE');
 
       if (['CHECKED_IN', 'COMPLETED'].includes(visit.status)) {
         throw Conflict('This visit has already happened. Complete it and record the outcome instead.');

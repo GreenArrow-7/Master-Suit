@@ -7,7 +7,9 @@ import { verifyPassword } from '@/lib/auth/password';
 import { settingCacheKey } from '@/lib/platform-settings';
 import { POST as requestSignup } from '@/app/api/v1/public/signup/route';
 import { POST as confirmSignup } from '@/app/api/v1/public/signup/confirm/route';
-import { post } from '../helpers/request';
+import { GET as listRoles } from '@/app/api/v1/workspaces/[workspaceSlug]/roles/[action]/route';
+import { get, post } from '../helpers/request';
+import { createSessionToken } from '../helpers/session';
 
 /**
  * Self-serve sign-up (Lead Eagle plan, gap 8): closed until the platform owner
@@ -126,6 +128,27 @@ describe('self-serve sign-up', () => {
     expect(await prisma.leadStage.count({ where: { tenantId: tenant.id, isDefault: true } })).toBe(1);
     const identity = await prisma.platformUser.findFirstOrThrow({ where: { normalizedEmail: email } });
     expect(await verifyPassword(identity.passwordHash!, PASSWORD)).toBe(true);
+
+    // Admin > Roles, as the new administrator sees it: Lead Eagle's five starter roles beside theirs (M2-03).
+    const admin = await prisma.user.findFirstOrThrow({ where: { tenantId: tenant.id, email } });
+    const roles = await get(
+      listRoles,
+      `/api/v1/workspaces/${slug}/roles/roles`,
+      await createSessionToken(tenant.id, admin.id),
+      {
+        workspaceSlug: slug,
+        action: 'roles',
+      },
+    );
+    expect(roles.status).toBe(200);
+    expect(roles.body.map((role: { name: string; defaultScope: string }) => [role.name, role.defaultScope])).toEqual([
+      ['Company Administrator', 'ORGANIZATION'],
+      ['Manager', 'ORGANIZATION'],
+      ['Team Lead', 'TEAM'],
+      ['Agent', 'OWN'],
+      ['Telecaller', 'OWN'],
+      ['Viewer', 'ORGANIZATION'],
+    ]);
   });
 
   it('makes one workspace per link', async () => {
