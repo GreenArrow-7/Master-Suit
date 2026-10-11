@@ -29,12 +29,14 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-11 | [Release 8370b22](2026-10-11-release-8370b22.md) | #157–#162 | release |
 | 2026-10-11 | [Lead Eagle move tool: the report names the people and rows it drops](2026-10-11-move-tool-orphans.md) | #162 | Lead Eagle, platform |
 | 2026-10-11 | [Deactivating or removing a member hands their open work on](2026-10-11-user-deactivate-hand-over.md) | #161 | users, Lead Eagle |
 | 2026-10-11 | [A Lead Eagle workspace starts with five roles, not one](2026-10-11-lead-eagle-starter-roles.md) | #160 | Lead Eagle, roles, security |
 | 2026-10-11 | [Report CSVs needed only VIEW and left no trace; machine writes to leads left no audit row](2026-10-11-report-export-audit.md) | #159 | security, Lead Eagle |
 | 2026-10-11 | [A lead's main phone and email can be masked per role](2026-10-11-lead-contact-masking.md) | #158 | security, Lead Eagle |
 | 2026-10-11 | [A workspace could bring back a suspended account; lead work, events and Sales lead routes reached past record scope](2026-10-11-identity-guard-and-record-scope.md) | #157 | security, Lead Eagle |
+| 2026-10-10 | [Release b28d2b7](2026-10-10-release-b28d2b7.md) | #151–#155 | release |
 | 2026-10-10 | [Lead writes outside your scope answered 'forbidden'; bulk assign ignored scope; Make lead opened a lead you cannot see](2026-10-10-lead-record-scope.md) | #155 | security, Lead Eagle |
 | 2026-10-10 | [Cold data: assign one record; Make lead opens only what you may see; notes shown](2026-10-10-cold-data-assign-and-make-lead.md) | #155 | Lead Eagle |
 | 2026-10-10 | [The lead grid said only how many bulk moves failed, never why](2026-10-10-lead-grid-bulk-reasons.md) | #155 | Lead Eagle |
