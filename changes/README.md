@@ -29,7 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
-| 2026-10-11 | [Admin > Roles showed no scopes; a screen outside the plan went to the dashboard without a word](2026-10-11-roles-scope-and-module-pages.md) | — | fix, roles, Lead Eagle |
+| 2026-10-11 | [Admin > Roles showed no scopes; a screen outside the plan went to the dashboard without a word](2026-10-11-roles-scope-and-module-pages.md) | #168 | fix, roles, Lead Eagle |
 | 2026-10-11 | [TEAM scope meant the whole workspace for calls and events; work could be handed to anyone](2026-10-11-record-scope-team.md) | #165 | security |
 | 2026-10-11 | [Release f9c0c1a](2026-10-11-release-f9c0c1a.md) | #145, #163 | release |
 | 2026-10-08 | [Records could name any contact, call or event in the workspace](2026-10-08-record-attach-scope.md) | #145 | security |
