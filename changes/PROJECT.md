@@ -52,8 +52,13 @@ Node 22 or newer (CI uses 24).
   for any module. A layout asserting a module covers everything beneath it, so a screen
   that must work without that module is re-exported from outside its folder.
   A module layout (`workspaceOwns`) shows `NotInPlan` for a module the plan
-  lacks, never a silent redirect, and the API's refusal names every module of
-  the set ("Sales or Real Estate is not enabled for this company.").
+  lacks, never a silent redirect. `NotInPlan` sends the viewer to the same
+  screen under a product the plan has (`sameScreenElsewhere`,
+  `src/lib/nav/realtyShared.ts`), else names every product that carries it; the
+  API's refusal names every module of the set ("Sales or Real Estate is not
+  enabled for this company."). Next still renders the page beneath `NotInPlan`,
+  so every page in a module folder asserts its module itself
+  (`tests/permission/page-access.spec.ts`).
 - **Permissions.** Roles live in the database. A new workspace gets one role,
   Company Admin, holding every permission; the admin builds the others in the
   role editor. Lead Eagle's arrival adds five editable starter roles (Manager,
