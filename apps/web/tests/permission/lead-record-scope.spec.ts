@@ -65,6 +65,7 @@ import { POST as createTask } from '@/app/api/v1/tasks/route';
 import { DELETE as deleteTask, PATCH as patchTask } from '@/app/api/v1/tasks/[id]/route';
 import { POST as createWorkspaceLead } from '@/app/api/v1/workspaces/[workspaceSlug]/sales/leads/route';
 import DashboardPage from '@/app/(workspace)/[workspaceSlug]/dashboard/page';
+import CalendarPage from '@/app/(workspace)/[workspaceSlug]/sales/calendar/page';
 import CallAuditsPage from '@/app/(workspace)/[workspaceSlug]/sales/call-audits/page';
 import CallActions from '@/app/(workspace)/[workspaceSlug]/sales/calls/[id]/CallActions';
 import CoachingNotes from '@/app/(workspace)/[workspaceSlug]/sales/calls/[id]/CoachingNotes';
@@ -978,6 +979,24 @@ describe('the lists and screens of events and calls', () => {
     }
     await expect(openEvent(await anEvent(h.repB1.id))).rejects.toThrow(/;404$/);
     await expect(openEvent(await anEvent(h.repA2.id))).resolves.toBeTruthy();
+  });
+
+  it('the calendar draws the team’s events and calls, not another team’s', async () => {
+    const [ours, theirs] = [await anEvent(h.repA2.id), await anEvent(h.repB1.id)];
+    const [ourCall, theirCall] = [await aCall(h.repA2.id), await aCall(h.repB1.id)];
+    cookieJar.value = h.teamManagerA.cookie;
+    const month = (at: Date) => `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}`;
+    const drawn = async (at: Date) => {
+      const tree = await CalendarPage({ searchParams: Promise.resolve({ month: month(at) }) });
+      const items = elements(tree).find((el) => Array.isArray(el.props.items))?.props.items as { id: string }[];
+      return items.map((item) => item.id);
+    };
+    const events = await drawn(startAt);
+    expect(events).toContain(`event-${ours}`);
+    expect(events).not.toContain(`event-${theirs}`);
+    const calls = await drawn(new Date());
+    expect(calls).toContain(`call-${ourCall}`);
+    expect(calls).not.toContain(`call-${theirCall}`);
   });
 
   it('the dashboard counts the calls and audits the Calls and Call Audits pages list', async () => {

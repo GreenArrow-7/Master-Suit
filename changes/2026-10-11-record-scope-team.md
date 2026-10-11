@@ -161,7 +161,7 @@ target is not checked against the caller's scope").
   agent naming a colleague on the legacy create, an event's host or callers).
   The other 35 cover what already worked (the team's own, the director, most
   of an agent's refusals) and pass on both.
-- After review, `lead-record-scope.spec.ts` grew to 313 cases. The by-id
+- After review, `lead-record-scope.spec.ts` grew to 314 cases. The by-id
   table and the fifteen assignment routes run for a team, a branch and a
   regional manager, each against someone just outside their scope and someone
   inside it. Every other route under `calls/{id}` (26 rows: analysis, audit,
@@ -174,16 +174,18 @@ target is not checked against the caller's scope").
   offers no writes there. An agent at OWN holding ASSIGN is refused every
   assignment route like an unknown user; `leads:EDIT` at TEAM without ASSIGN
   is refused for tasks and follow-ups. Activities by id cover the lead-owner
-  and the logger branch. The dashboard's call panel, Smart Views' picker and
-  Social Leads' two lists are rendered.
+  and the logger branch. The dashboard's call panel, Smart Views' picker,
+  Social Leads' two lists and the calendar's events and calls are rendered.
 - Fail-before for the review's fixes, with `apps/web/src` stashed back to the
-  branch as first reviewed (b24e232a): 11 of the 313 fail, each on what its fix adds:
-  the recording upload ("expected 422 to be 404" with consent, "expected 403
-  to be 404" without, for each of the three managers), coaching by a reader
-  ("expected 200 to be 404"), the call page ("actions: undefined"), the
-  dashboard ("Calls today": 1 for another team's call), Smart Views ("to not
-  include" the other team's rep) and Social Leads (no `assignees`). Against
-  main's source, 177 of the 313 fail, every `calls/{id}` row among them.
+  branch as first reviewed (b24e232a): 11 of the first 313 fail, each on what
+  its fix adds: the recording upload ("expected 422 to be 404" with consent,
+  "expected 403 to be 404" without, for each of the three managers), coaching
+  by a reader ("expected 200 to be 404"), the call page ("actions:
+  undefined"), the dashboard ("Calls today": 1 for another team's call),
+  Smart Views ("to not include" the other team's rep) and Social Leads (no
+  `assignees`). Against main's source, 177 of those 313 fail, every
+  `calls/{id}` row among them; the calendar case, added last, fails there too
+  ("to not include" the other team's event).
 - Also green: `tests/permission`, `tests/sales`, `tests/ai` (75 files, 1,414
   tests); `tests/security`, `integration`, `unit`, `identity`, `platform`,
   `tenant` (155 files, 2,160 tests, 2 skipped); `tsc`; eslint and prettier on
