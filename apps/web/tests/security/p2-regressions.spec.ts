@@ -262,19 +262,22 @@ describe('P2-14: every route group has a loading state', () => {
 describe('P2-15: the People module is gated by a layout, not by each page', () => {
   const source = readFileSync('src/app/(workspace)/[workspaceSlug]/people/layout.tsx', 'utf8');
 
-  it('checks the HRMS entitlement and redirects rather than throwing', () => {
+  it('checks the HRMS entitlement and shows a page rather than throwing', () => {
     expect(source).toContain("module: 'HRMS'");
+    // A workspace without HR gets the plan page (M2-05), which redirects only
+    // when the plan has the screen elsewhere; other refusals still redirect.
+    expect(source).toContain('<NotInPlan slug={workspaceSlug} module="HRMS" />');
     expect(source).toContain('redirect(');
     // Mirrors sales/layout.tsx, so a page added later inherits the gate instead
     // of having to remember it. The Sales gate is asserted by what it does
-    // rather than by one spelling of it: it names its module and it redirects.
-    // It no longer calls `resolveWorkspacePage({ module, permission })`, because
-    // the only permission it had to pass — SELF_SERVICE — is refused outright
-    // for a monitoring session, which closed every CRM screen to platform
-    // monitoring. See tests/security/platform-crm-monitoring.spec.ts.
+    // rather than by one spelling of it: it names its module and shows the plan
+    // page. It no longer calls `resolveWorkspacePage({ module, permission })`,
+    // because the only permission it had to pass — SELF_SERVICE — is refused
+    // outright for a monitoring session, which closed every CRM screen to
+    // platform monitoring. See tests/security/platform-crm-monitoring.spec.ts.
     const sales = readFileSync('src/app/(workspace)/[workspaceSlug]/sales/layout.tsx', 'utf8');
     expect(sales).toMatch(/'SALES'/);
-    expect(sales).toContain('redirect(');
+    expect(sales).toContain('<NotInPlan slug={workspaceSlug} module="SALES" />');
   });
 });
 

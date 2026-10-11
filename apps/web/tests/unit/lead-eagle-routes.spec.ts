@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { LEAD_EAGLE_SHARED_ROOTS, leadEagleEquivalent } from '@/lib/nav/realtyShared';
+import { LEAD_EAGLE_SHARED_ROOTS, sameScreenElsewhere } from '@/lib/nav/realtyShared';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 
@@ -36,9 +36,7 @@ describe('Lead Eagle is a module', () => {
   });
 
   it('gates its URLs on its own entitlement', () => {
-    expect(read(path.join(APP, 'lead-eagle', 'layout.tsx'))).toContain(
-      "requestWorkspace(ctx, workspaceSlug, 'LEAD_EAGLE')",
-    );
+    expect(read(path.join(APP, 'lead-eagle', 'layout.tsx'))).toContain("workspaceOwns(workspaceSlug, 'LEAD_EAGLE')");
   });
 });
 
@@ -96,6 +94,8 @@ describe('the APIs admit Lead Eagle for lead work and nothing else', () => {
 });
 
 describe('a /sales/ link reaches a Lead-Eagle-only workspace', () => {
+  const leadEagleEquivalent = (url: string) => new Map(sameScreenElsewhere(url)).get('LEAD_EAGLE') ?? null;
+
   it('maps lead work to the same screen under Lead Eagle, and nothing else', () => {
     expect(leadEagleEquivalent('/acme/sales/leads/42?tab=calls')).toBe('/acme/lead-eagle/leads/42?tab=calls');
     expect(leadEagleEquivalent('/acme/sales/follow-ups')).toBe('/acme/lead-eagle/follow-ups');
@@ -103,11 +103,11 @@ describe('a /sales/ link reaches a Lead-Eagle-only workspace', () => {
     expect(leadEagleEquivalent('/acme/sales/opportunities/7')).toBeNull();
   });
 
-  it('the Sales layout tries Real Estate first, then Lead Eagle', () => {
-    const layout = read(path.join(APP, 'sales', 'layout.tsx'));
-    expect(layout.indexOf("'REAL_ESTATE', realtyEquivalent")).toBeLessThan(
-      layout.indexOf("'LEAD_EAGLE', leadEagleEquivalent"),
-    );
+  it('a /sales/ link tries Real Estate first, then Lead Eagle', () => {
+    expect(sameScreenElsewhere('/acme/sales/leads/42').map(([product]) => product)).toEqual([
+      'REAL_ESTATE',
+      'LEAD_EAGLE',
+    ]);
   });
 
   it('lead-eagle is a module root for module-relative links', () => {

@@ -84,6 +84,19 @@ describe('structural: no workspace page can skip the access check', () => {
     const offenders = workspacePages().filter((page) => /\bresolveCtx\s*\(/.test(accessSource(page)));
     expect(offenders).toEqual([]);
   });
+
+  it('every page in a module folder asserts a module itself, since the layout’s plan page does not stop it', () => {
+    // A module layout without the product shows NotInPlan instead of its
+    // children, but Next still renders the page beneath, unseen, into the
+    // response. Only these mirror a screen outside People that every plan has.
+    const everyPlan = ['people/check-in', 'people/roles', 'people/security', 'people/users/new'];
+    const offenders = workspacePages()
+      .map((page) => page.split(path.sep).join('/'))
+      .filter((page) => /^\[workspaceSlug\]\/(sales|realty|lead-eagle|people)\//.test(page))
+      .filter((page) => !/\bmodule\s*[:,}]/.test(accessSource(page)))
+      .map((page) => page.replace(/^\[workspaceSlug\]\/|\/page\.tsx$/g, ''));
+    expect(offenders).toEqual(everyPlan);
+  });
 });
 
 /**

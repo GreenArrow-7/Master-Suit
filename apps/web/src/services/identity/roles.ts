@@ -63,11 +63,23 @@ async function isAdminCapable(tenantId: string, roleId: string) {
 // ── H05: roles and the permission matrix ───────────────────────────────────
 
 export async function listRoles(ctx: Ctx) {
-  const roles = await prisma.role.findMany({
-    where: { tenantId: ctx.tenantId },
-    include: { _count: { select: { users: true, permissions: true } } },
-    orderBy: { rank: 'asc' },
-  });
+  const [roles, grants] = await Promise.all([
+    prisma.role.findMany({
+      where: { tenantId: ctx.tenantId },
+      include: { _count: { select: { users: true, permissions: true } } },
+      orderBy: { rank: 'asc' },
+    }),
+    prisma.rolePermission.findMany({
+      where: { tenantId: ctx.tenantId, granted: true },
+      select: { roleId: true, scope: true },
+      distinct: ['roleId', 'scope'],
+    }),
+  ]);
+  // `defaultScope` only seeds new grants; access follows each grant's own scope.
+  const widest = new Map<string, Scope>();
+  for (const { roleId, scope } of grants) {
+    if (SCOPE_RANK[scope] > SCOPE_RANK[widest.get(roleId) ?? 'NONE']) widest.set(roleId, scope);
+  }
   return roles.map((role) => ({
     id: role.id,
     key: role.key,
@@ -75,6 +87,8 @@ export async function listRoles(ctx: Ctx) {
     description: role.description,
     rank: role.rank,
     defaultScope: role.defaultScope,
+    /** The widest scope any of its grants reaches, or null when it grants nothing. */
+    widestScope: widest.get(role.id) ?? null,
     isSystem: role.isSystem,
     isActive: role.isActive,
     users: role._count.users,

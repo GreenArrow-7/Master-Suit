@@ -2463,12 +2463,17 @@ a:hover {
 }
 .lf-roles__row-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
 .lf-roles__row-head strong {
   font-size: var(--lf-text-sm);
   font-weight: 600;
+}
+.lf-roles__scope {
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink-3);
 }
 .lf-roles__default {
   padding: 1px 7px;
