@@ -15,7 +15,7 @@ const params = z.object({ id: z.string().cuid() });
 export const GET = route(
   { module: 'calls', productModule: LEAD_MODULES, action: 'VIEW', params },
   async ({ ctx, params }) => {
-    await assertCallInScope(ctx, params.id);
+    await assertCallInScope(ctx, params.id, 'VIEW');
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
       include: {
@@ -67,7 +67,7 @@ export const PATCH = route(
     auditEvent: 'CALL_COMPLETED',
   },
   async ({ ctx, params, body }) => {
-    await assertCallInScope(ctx, params.id);
+    await assertCallInScope(ctx, params.id, 'EDIT');
     const existing = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });
@@ -132,7 +132,7 @@ export const PATCH = route(
 export const DELETE = route(
   { module: 'calls', productModule: LEAD_MODULES, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) => {
-    await assertCallInScope(ctx, params.id);
+    await assertCallInScope(ctx, params.id, 'DELETE');
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
       select: { id: true },

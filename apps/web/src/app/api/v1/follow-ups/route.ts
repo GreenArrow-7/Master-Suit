@@ -22,7 +22,7 @@ export const POST = route(
   async ({ ctx, body }) => {
     // It shows on its call's page: a call the caller may see. Before the
     // transaction, because the helper reads through the global client.
-    if (body.callId) await assertCallInScope(ctx, body.callId);
+    if (body.callId) await assertCallInScope(ctx, body.callId, 'VIEW');
     // Same contract as a task: the lead is locked and its stored aggregate
     // recomputed in the transaction that creates the obligation.
     return withTx(ctx.tenantId, async (tx) => {

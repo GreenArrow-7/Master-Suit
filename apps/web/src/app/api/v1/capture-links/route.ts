@@ -2,9 +2,9 @@ import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { NotFound } from '@/lib/errors';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { can } from '@/lib/security/rbac';
+import { assertAssignableUser } from '@/lib/security/record-scope';
 
 /**
  * QR capture links (Lead Eagle plan, gap 4). Agents make their own — the one at
@@ -31,13 +31,7 @@ export const POST = route(
   },
   async ({ ctx, body }) => {
     const ownerId = can(ctx, 'leads', 'ASSIGN') ? (body.ownerId ?? null) : ctx.actor.id;
-    if (ownerId && ownerId !== ctx.actor.id) {
-      const agent = await prisma.user.findFirst({
-        where: { tenantId: ctx.tenantId, id: ownerId, status: 'ACTIVE' },
-        select: { id: true },
-      });
-      if (!agent) throw NotFound('User');
-    }
+    if (ownerId && ownerId !== ctx.actor.id) await assertAssignableUser(ctx, prisma, 'leads', 'ASSIGN', ownerId);
     // Readable, and unguessable enough: the page behind it is a blank form.
     const slug = body.label
       .toLowerCase()

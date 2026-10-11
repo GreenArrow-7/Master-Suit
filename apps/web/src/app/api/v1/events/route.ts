@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { createGoogleCalendarEvent } from '@/lib/integrations/calendar';
 import { connectionCredentials } from '@/lib/integrations/connection';
-import { eventListScope } from '@/lib/security/record-scope';
+import { assertAssignableUser, eventListScope } from '@/lib/security/record-scope';
 
 const createBody = z
   .object({
@@ -37,6 +37,8 @@ export const POST = route(
     auditEvent: 'RECORD_CREATED',
   },
   async ({ ctx, body }) => {
+    // The host owns the event: yourself, or someone your events:ASSIGN scope reaches.
+    if (body.hostId) await assertAssignableUser(ctx, prisma, 'events', 'ASSIGN', body.hostId);
     const event = await prisma.event.create({
       data: { tenantId: ctx.tenantId, createdById: ctx.actor.id, ...body },
     });
@@ -87,10 +89,9 @@ export const GET = route(
   { module: 'events', productModule: SALES_OR_REALTY, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     const where: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };
-    // Below TEAM scope an event is yours when you host it, created it, or were
-    // invited to it. The list used to return every event in the workspace while
-    // the code around it assumed a scope; see lib/security/record-scope.ts.
-    Object.assign(where, eventListScope(ctx));
+    // An event hosted or created by someone in your scope, or one you were
+    // invited to; see lib/security/record-scope.ts.
+    Object.assign(where, await eventListScope(ctx));
     if (query.status) where.status = query.status;
     if (query.upcoming === 'true') where.startAt = { gte: new Date() };
     if (query.campaignId) where.campaignId = query.campaignId;

@@ -2,9 +2,8 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { withTx } from '@/lib/db';
-import { NotFound, Invalid, Conflict } from '@/lib/errors';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
-import { assertLeadInScope, assertOwnerInScope } from '@/lib/security/record-scope';
+import { NotFound, Conflict } from '@/lib/errors';
+import { assertAssignableUser, assertLeadInScope, assertOwnerInScope } from '@/lib/security/record-scope';
 import { lockLeads, recomputeNextFollowUp } from '@/services/leads/nextFollowUp';
 
 const params = z.object({ id: z.string().cuid() });
@@ -48,15 +47,7 @@ export const PATCH = route(
 
       // Reassigning to another person needs the same reach creating for them does.
       if (body.ownerId && body.ownerId !== task.ownerId) {
-        const scope = scopeFor(ctx, 'leads', 'EDIT');
-        if (SCOPE_RANK[scope] < SCOPE_RANK.TEAM && body.ownerId !== ctx.actor.id) {
-          throw Invalid([{ field: 'ownerId', code: 'forbidden', message: 'You cannot reassign this task.' }]);
-        }
-        const target = await tx.user.findFirst({
-          where: { tenantId: ctx.tenantId, id: body.ownerId, status: 'ACTIVE', deletedAt: null },
-          select: { id: true },
-        });
-        if (!target) throw Invalid([{ field: 'ownerId', code: 'not_found', message: 'That teammate was not found.' }]);
+        await assertAssignableUser(ctx, tx, 'leads', 'ASSIGN', body.ownerId);
       }
 
       if (body.leadId) await assertLeadInScope(ctx, body.leadId, tx, 'EDIT');

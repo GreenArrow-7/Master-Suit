@@ -3,14 +3,14 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { NotFound, Invalid } from '@/lib/errors';
+import { Invalid } from '@/lib/errors';
 import { demoScript, coachTick, heuristicHints, nextBestQuestion, detectStage } from '@/lib/ai/liveCoach';
 import { leadCallContext, contextPromptBlock, budgetMatchHint } from '@/services/leads/callContext';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
 import { liveChannel } from '@/lib/integrations/telephony/stream';
 import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
-import { seesWholeWorkspace } from '@/lib/security/record-scope';
+import { assertCallInScope } from '@/lib/security/record-scope';
 
 /**
  * Relay mode: the call is live at a telephony vendor and the realtime engine
@@ -88,12 +88,7 @@ const params = z.object({ id: z.string().cuid() });
 export const GET = route(
   { module: 'calls', productModule: LEAD_MODULES, action: 'EDIT', params },
   async ({ ctx, params, req }) => {
-    const call = await prisma.call.findFirst({
-      where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
-    });
-    if (!call) throw NotFound('Call');
-
-    if (call.callerId !== ctx.actor.id && !seesWholeWorkspace(ctx, 'calls', 'EDIT')) throw NotFound('Call');
+    const call = await assertCallInScope(ctx, params.id, 'EDIT');
 
     if (!['SCHEDULED', 'RINGING', 'IN_PROGRESS'].includes(call.status)) {
       throw Invalid([

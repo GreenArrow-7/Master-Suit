@@ -709,7 +709,12 @@ export const TOOLS: ToolDef[] = [
       const until = new Date(now.getTime() + Math.min(Number(args.days) || 7, 60) * 864e5);
       const [events, calls] = await Promise.all([
         prisma.event.findMany({
-          where: { tenantId: ctx.tenantId, deletedAt: null, startAt: { gte: now, lte: until }, ...eventListScope(ctx) },
+          where: {
+            tenantId: ctx.tenantId,
+            deletedAt: null,
+            startAt: { gte: now, lte: until },
+            ...(await eventListScope(ctx)),
+          },
           orderBy: { startAt: 'asc' },
           take: 10,
           select: { id: true, title: true, startAt: true, location: true, eventType: true },
@@ -801,7 +806,7 @@ export const TOOLS: ToolDef[] = [
                 tenantId: ctx.tenantId,
                 deletedAt: null,
                 startAt: { gte: todayStart, lte: new Date(now.getTime() + 3 * 864e5) },
-                ...eventListScope(ctx),
+                ...(await eventListScope(ctx)),
               },
               orderBy: { startAt: 'asc' },
               take: 4,

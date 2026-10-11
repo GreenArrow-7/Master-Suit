@@ -4,6 +4,7 @@ import { prisma, withTx } from '@/lib/db';
 import { NotFound, Conflict } from '@/lib/errors';
 import { can } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { assertAssignableUser } from '@/lib/security/record-scope';
 import { findDuplicates } from '@/services/leads/findDuplicates';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { nextReference } from '@/services/shared/reference';
@@ -58,6 +59,10 @@ export const POST = route(
     });
     if (!enquiry) throw NotFound('Social enquiry');
     if (enquiry.linkedLeadId) throw Conflict('This enquiry is already linked to a customer.');
+    // A named owner (with ASSIGN, as below) is someone the caller's scope reaches.
+    if (body.ownerId && can(ctx, 'leads', 'ASSIGN')) {
+      await assertAssignableUser(ctx, prisma, 'leads', 'ASSIGN', body.ownerId);
+    }
 
     const phoneNormalized = body.phone ? normalizePhone(body.phone) : null;
     const email = body.email?.toLowerCase() ?? null;

@@ -3,6 +3,7 @@ import { Conflict, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
 import { can } from '@/lib/security/rbac';
+import { assertAssignableUser } from '@/lib/security/record-scope';
 import {
   applyFieldSecurity,
   loadFieldRules,
@@ -117,7 +118,9 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
   if (!stage) throw NotFound('Lead stage');
 
   // A user without ASSIGN cannot hand the lead to someone else; it stays theirs.
+  // With it, only to someone their ASSIGN scope reaches (404 otherwise).
   const ownerId = input.ownerId && can(ctx, 'leads', 'ASSIGN') ? input.ownerId : ctx.actor.id;
+  if (ownerId !== ctx.actor.id) await assertAssignableUser(ctx, prisma, 'leads', 'ASSIGN', ownerId);
 
   const lead = await withTx(ctx.tenantId, async (tx) => {
     const reference = await nextReference(tx, ctx.tenantId, 'LEAD');

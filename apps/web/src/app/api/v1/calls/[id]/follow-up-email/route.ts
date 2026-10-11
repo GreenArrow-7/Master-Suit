@@ -84,7 +84,7 @@ async function loadContext(tenantId: string, callId: string) {
 export const POST = route(
   { module: 'calls', productModule: LEAD_MODULES, action: 'EDIT', params },
   async ({ ctx, params }) => {
-    await assertCallInScope(ctx, params.id);
+    await assertCallInScope(ctx, params.id, 'EDIT');
     const { call, analysis, transcript, companyName } = await loadContext(ctx.tenantId, params.id);
     const recipient = await recipientFor(ctx.tenantId, call);
 
@@ -131,7 +131,7 @@ export const PUT = route(
     rateLimit: { max: 20, windowSeconds: 300 },
   },
   async ({ ctx, params, body }) => {
-    await assertCallInScope(ctx, params.id);
+    await assertCallInScope(ctx, params.id, 'EDIT');
     const { call } = await loadContext(ctx.tenantId, params.id);
     const recipient = await recipientFor(ctx.tenantId, call);
 

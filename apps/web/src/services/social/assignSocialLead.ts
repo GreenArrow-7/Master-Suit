@@ -11,6 +11,7 @@ import { logger } from '@/lib/logger';
 import { Forbidden, NotFound, Conflict } from '@/lib/errors';
 import { assertPermission, scopeFor } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { assignableUserWhere } from '@/lib/security/record-scope';
 import { nextDistributionOwner } from '@/services/distribution/assignLead';
 import { DEFAULT_POLICY, lockAndVerify } from '@/services/distribution/eligibility';
 import type { Ctx } from '@/lib/security/rbac';
@@ -60,7 +61,8 @@ export async function assignSocialLead(ctx: Ctx, input: AssignInput) {
      * instead; see the transaction below.
      */
     const target = await prisma.user.findFirst({
-      where: { tenantId: ctx.tenantId, id: input.toUserId, status: 'ACTIVE', deletedAt: null },
+      // Someone the caller's leads:ASSIGN scope reaches; any active user was taken.
+      where: { ...(await assignableUserWhere(ctx, 'leads', 'ASSIGN')), id: input.toUserId },
       select: { id: true },
     });
     if (!target) throw NotFound('User');

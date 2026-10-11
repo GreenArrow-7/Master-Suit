@@ -3,7 +3,7 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { notFound, redirect } from 'next/navigation';
 import { headers } from 'next/headers';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { callScope } from '@/lib/security/record-scope';
 import { leadCallContext } from '@/services/leads/callContext';
 import { geminiCredential } from '@/lib/ai/gemini';
 import { env } from '@/lib/env';
@@ -23,14 +23,12 @@ export default async function LiveCallPage({
   const params = await paramsPromise;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['calls', 'EDIT'] });
 
+  // The live routes' rule (calls EDIT): outside the caller's scope is not found.
   const call = await prisma.call.findFirst({
-    where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
+    where: { ...(await callScope(ctx, 'EDIT')), id: params.id, deletedAt: null },
     include: { caller: { select: { id: true, fullName: true } }, consent: true },
   });
   if (!call) notFound();
-
-  const scope = scopeFor(ctx, 'calls', 'EDIT');
-  if (call.callerId !== ctx.actor.id && SCOPE_RANK[scope] < SCOPE_RANK.TEAM) notFound();
 
   // A finished call has no live session — its story lives on the detail page.
   // Under whichever product the viewer came through: a Real Estate or Lead Eagle

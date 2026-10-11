@@ -1,5 +1,6 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { assignableUsers } from '@/lib/security/record-scope';
 import {
   emptyFollowUpLabel,
   obligationAccess,
@@ -213,12 +214,9 @@ export default async function SmartViewsPage({
     }),
     prisma.lead.count({ where }),
     // LeadGrid needs the same context here as on the leads list, or its stage,
-    // owner and follow-up controls render with nothing to choose from.
-    prisma.user.findMany({
-      where: { tenantId: ctx.tenantId, status: 'ACTIVE', deletedAt: null },
-      orderBy: { fullName: 'asc' },
-      select: { id: true, fullName: true },
-    }),
+    // owner and follow-up controls render with nothing to choose from. Its
+    // assign menu lists whom the bulk assign accepts, as on the leads list.
+    assignableUsers(ctx, 'leads', 'ASSIGN'),
     prisma.taskType.findMany({
       where: { tenantId: ctx.tenantId, isActive: true },
       orderBy: { name: 'asc' },

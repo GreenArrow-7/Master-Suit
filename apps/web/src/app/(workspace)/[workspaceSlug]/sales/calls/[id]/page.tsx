@@ -17,6 +17,7 @@ import RequirementSuggestion, { type DetectedRequirementView } from './Requireme
 import TemperaturePanel from './TemperaturePanel';
 import { temperatureFromAnalysis } from '@/lib/ai/temperature';
 import { maskCallNumbers } from '@/services/leads/createLead';
+import { assertCallInScope, callScope } from '@/lib/security/record-scope';
 
 export const metadata = { title: 'Call Detail' };
 
@@ -45,10 +46,13 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
   // of the conversation is a separate authorisation, the same one the
   // transcript and recording routes declare. See lib/auth/sensitive-access.ts.
   const sensitive = await hasSensitiveAccess(ctx);
+  // GET /api/v1/calls/{id}'s rule: a call outside the caller's scope is not
+  // found, as a missing id is.
+  const scope = await callScope(ctx, 'VIEW');
 
   const [call, analysis, audits, followUps, objectionMatches, coachingNotes] = await Promise.all([
     prisma.call.findFirst({
-      where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
+      where: { ...scope, id: params.id, deletedAt: null },
       include: {
         caller: { select: { id: true, fullName: true } },
         consent: true,
@@ -135,10 +139,19 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
   const canSuggestRequirement = openRequirement ? can(ctx, 'requirements', 'EDIT') : can(ctx, 'requirements', 'CREATE');
 
   const hasConsent = call.consent?.consentGiven && !call.consent.withdrawnAt;
-  // Wildcard-granted to administrator roles only; QA reviews, admins erase.
-  const canDeleteAudits = can(ctx, 'calls', 'DELETE');
-  // The same authority removes the call itself (ported from the BUG-011 fix, 74b4616).
-  const canDeleteCall = canDeleteAudits;
+  // A call's writes check it at their own action, so its controls are offered
+  // only where that same check passes: reading a colleague's call is not
+  // changing it.
+  const mayDo = async (action: 'EDIT' | 'DELETE') =>
+    can(ctx, 'calls', action) &&
+    (await assertCallInScope(ctx, call.id, action).then(
+      () => true,
+      () => false,
+    ));
+  // DELETE is wildcard-granted to administrator roles only; QA reviews, admins
+  // erase, the call itself too (ported from the BUG-011 fix, 74b4616).
+  const [mayEdit, canDeleteCall] = await Promise.all([mayDo('EDIT'), mayDo('DELETE')]);
+  const canDeleteAudits = canDeleteCall;
 
   return (
     <>
@@ -178,7 +191,7 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
               are, further down: they are what you do after the call, not instead
               of it. One definition of the button, shared with the list. */}
           <CallLink number={number} className="lf-btn lf-btn--sm" />
-          {['SCHEDULED', 'RINGING', 'IN_PROGRESS'].includes(call.status) && (
+          {mayEdit && ['SCHEDULED', 'RINGING', 'IN_PROGRESS'].includes(call.status) && (
             <SalesLink className="lf-btn lf-btn--sm" href={`/calls/${call.id}/live`}>
               Open live workspace
             </SalesLink>
@@ -300,7 +313,7 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
               createdAt: n.createdAt.toISOString(),
               author: n.author,
             }))}
-            canCoach={atLeast(ctx, 'calls', 'VIEW', 'TEAM') && call.callerId !== ctx.actor.id}
+            canCoach={mayEdit && atLeast(ctx, 'calls', 'VIEW', 'TEAM') && call.callerId !== ctx.actor.id}
             viewerId={ctx.actor.id}
             repId={call.callerId}
           />
@@ -476,11 +489,12 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
             hasTranscript={!!call.transcript}
             hasAnalysis={!!analysis}
             hasRecording={!!call.recording}
+            canEdit={mayEdit}
           />
 
-          <FollowUpComposer callId={params.id} />
+          {mayEdit && <FollowUpComposer callId={params.id} />}
 
-          <WhatsAppFollowUp callId={params.id} />
+          {mayEdit && <WhatsAppFollowUp callId={params.id} />}
 
           {/* Consent details */}
           {call.consent && (

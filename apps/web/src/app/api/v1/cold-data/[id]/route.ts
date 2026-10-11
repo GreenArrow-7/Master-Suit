@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { Forbidden, NotFound } from '@/lib/errors';
+import { Forbidden } from '@/lib/errors';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { can } from '@/lib/security/rbac';
+import { assertAssignableUser } from '@/lib/security/record-scope';
 import { coldDataScope } from '@/services/leads/coldData';
 
 /** Working a record: what the call found, a note, and (with ASSIGN) whose it is. */
@@ -24,13 +25,7 @@ export const PATCH = route(
   },
   async ({ ctx, params, body }) => {
     if (body.ownerId !== undefined && !can(ctx, 'leads', 'ASSIGN')) throw Forbidden('Your role cannot assign records.');
-    if (body.ownerId) {
-      const agent = await prisma.user.findFirst({
-        where: { tenantId: ctx.tenantId, id: body.ownerId, status: 'ACTIVE' },
-        select: { id: true },
-      });
-      if (!agent) throw NotFound('User');
-    }
+    if (body.ownerId) await assertAssignableUser(ctx, prisma, 'leads', 'ASSIGN', body.ownerId);
     // Converted records are history: their lead is where the work happens now.
     return prisma.dataRecord.update({
       where: { ...coldDataScope(ctx), id: params.id, convertedLeadId: null },

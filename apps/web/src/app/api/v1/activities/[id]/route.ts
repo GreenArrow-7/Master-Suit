@@ -2,30 +2,31 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { AppError, NotFound } from '@/lib/errors';
-import type { Ctx } from '@/lib/security/rbac';
-import { seesWholeWorkspace } from '@/lib/security/record-scope';
-import { assertRecordVisible } from '@/lib/security/visibility';
+import { NotFound } from '@/lib/errors';
+import { scopeFor, SCOPE_RANK, type Ctx } from '@/lib/security/rbac';
+import { resolveOwnerIds } from '@/lib/security/visibility';
 
 const params = z.object({ id: z.string().cuid() });
 
 /**
- * Yours when you logged it. At TEAM scope and wider, also one on a lead in your
- * scope — or, with no lead, one logged by someone in it: `seesWholeWorkspace`
- * alone let a team manager change every activity in the workspace by its id.
- * Not found either way, so a refusal does not confirm the activity exists.
+ * Yours when you logged it. At TEAM scope and wider, also one logged by someone
+ * in your scope or on a lead someone in it owns: the activities list reads them
+ * by who logged them, a lead's timeline by the lead. An activity on an
+ * unassigned lead logged outside your scope is ORGANIZATION's only. Not found
+ * either way, so a refusal does not confirm the activity exists.
  */
 async function assertActivityInScope(ctx: Ctx, id: string, action: 'EDIT' | 'DELETE') {
-  const activity = await prisma.activity.findFirst({ where: { tenantId: ctx.tenantId, id }, include: { lead: true } });
+  const activity = await prisma.activity.findFirst({
+    where: { tenantId: ctx.tenantId, id },
+    select: { ownerId: true, lead: { select: { ownerId: true } } },
+  });
   if (!activity) throw NotFound('Activity');
   if (activity.ownerId === ctx.actor.id) return;
-  if (!seesWholeWorkspace(ctx, 'leads', action)) throw NotFound('Activity');
-  try {
-    await assertRecordVisible(ctx, 'leads', activity.lead ?? activity, prisma, action);
-  } catch (err) {
-    if (err instanceof AppError && err.status === 403) throw NotFound('Activity');
-    throw err;
-  }
+  const scope = scopeFor(ctx, 'leads', action);
+  if (scope === 'ORGANIZATION') return;
+  const owners = SCOPE_RANK[scope] >= SCOPE_RANK.TEAM ? await resolveOwnerIds(ctx, scope) : [];
+  if (!owners.some((owner) => owner === activity.ownerId || owner === activity.lead?.ownerId))
+    throw NotFound('Activity');
 }
 
 const patchBody = z

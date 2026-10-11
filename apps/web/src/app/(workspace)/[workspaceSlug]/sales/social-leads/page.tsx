@@ -2,6 +2,7 @@ import { resolveWorkspacePage } from '@/lib/workspace-page';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { assignableUsers } from '@/lib/security/record-scope';
 import { can } from '@/lib/security/rbac';
 import { socialSlaState, socialSlaTarget, queueRank } from '@/services/social/sla';
 import { replyCapability } from '@/lib/integrations/meta/replyCapability';
@@ -177,15 +178,18 @@ export default async function SocialLeadsPage({
     } as Prisma.SocialCommentWhereInput,
   });
 
-  // Only people who can actually take work. Listing every User row would offer
-  // suspended accounts as destinations.
-  const [users, teams] = await Promise.all([
+  // Two lists: `users` names who assigned, took or answered an enquiry, whoever
+  // they are; `assignees` is only whom this caller may hand one to, as the
+  // assign route checks. Listing every User row there would offer suspended
+  // accounts and people outside the caller's scope as destinations.
+  const [users, assignees, teams] = await Promise.all([
     prisma.user.findMany({
       where: { tenantId: ctx.tenantId, status: 'ACTIVE', deletedAt: null },
       orderBy: { fullName: 'asc' },
       take: 200,
       select: { id: true, fullName: true },
     }),
+    assignableUsers(ctx, 'leads', 'ASSIGN'),
     prisma.team.findMany({
       where: { tenantId: ctx.tenantId },
       orderBy: { name: 'asc' },
@@ -256,7 +260,7 @@ export default async function SocialLeadsPage({
         workspaceSlug={workspaceSlug}
         canAssign={can(ctx, 'leads', 'ASSIGN')}
         me={ctx.actor.id}
-        options={{ users, teams }}
+        options={{ users, assignees, teams }}
         summary={{
           new: byStatus.NEW ?? 0,
           high: highCount,

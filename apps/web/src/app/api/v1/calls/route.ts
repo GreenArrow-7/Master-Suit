@@ -3,9 +3,8 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { touchLead } from '@/services/leads/touch';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
-import { assertContactInScope, assertEventInScope, assertLeadCallable } from '@/lib/security/record-scope';
+import { assertContactInScope, assertEventInScope, assertLeadCallable, callScope } from '@/lib/security/record-scope';
 import { notifyAboutCall } from '@/services/crm/notify';
 import { maskCallNumbers } from '@/services/leads/createLead';
 import { Invalid } from '@/lib/errors';
@@ -94,14 +93,9 @@ const listQuery = z
 export const GET = route(
   { module: 'calls', productModule: LEAD_MODULES, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
-    const scope = scopeFor(ctx, 'calls', 'VIEW');
-    const where: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };
-
-    if (SCOPE_RANK[scope] < SCOPE_RANK.TEAM) {
-      where.callerId = ctx.actor.id;
-    } else if (query.callerId) {
-      where.callerId = query.callerId;
-    }
+    // The Calls page's rule: TEAM scope is the team's calls, not the workspace's.
+    const where: Record<string, unknown> = { ...(await callScope(ctx, 'VIEW')), deletedAt: null };
+    if (query.callerId) where.callerId = query.callerId;
 
     if (query.status) where.status = query.status;
     if (query.outcome) where.outcome = query.outcome;

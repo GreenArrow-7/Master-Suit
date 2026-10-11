@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { NotFound } from '@/lib/errors';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
+import { assertAssignableUser } from '@/lib/security/record-scope';
 import { coldDataScope } from '@/services/leads/coldData';
 
 /**
@@ -19,13 +19,7 @@ export const POST = route(
     auditEvent: 'RECORD_UPDATED',
   },
   async ({ ctx, body }) => {
-    if (body.ownerId) {
-      const agent = await prisma.user.findFirst({
-        where: { tenantId: ctx.tenantId, id: body.ownerId, status: 'ACTIVE' },
-        select: { id: true },
-      });
-      if (!agent) throw NotFound('User');
-    }
+    if (body.ownerId) await assertAssignableUser(ctx, prisma, 'leads', 'ASSIGN', body.ownerId);
     const { count } = await prisma.dataRecord.updateMany({
       where: { ...coldDataScope(ctx), batch: body.batch, convertedLeadId: null },
       data: { ownerId: body.ownerId },

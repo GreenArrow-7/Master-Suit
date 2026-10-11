@@ -1,7 +1,8 @@
 import { prisma, type TxClient } from '@/lib/db';
-import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, Invalid } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import { scopeFor, type Ctx } from '@/lib/security/rbac';
+import { assertAssignableUser, assignableUserWhere } from '@/lib/security/record-scope';
 import { resolveOwnerIds, visibilityWhere } from '@/lib/security/visibility';
 import { activeRule } from '@/services/distribution/assignLead';
 import { openTriageEntry } from '@/services/distribution/triage';
@@ -16,9 +17,11 @@ import { OPEN_STATUSES } from './nextFollowUp';
  * one that does not exist, simply does not count. Writing history for every
  * requested id used to reassign across teams and 500 on an unknown id.
  *
- * The new owner must be an active member (`activeMemberWhere`). A suspended,
- * removed or invited account signs nobody in, so a lead handed to one sits where
- * no colleague at OWN scope sees it and the Allocation queue does not list it.
+ * The new owner must be an active member the caller's ASSIGN scope reaches
+ * (`assertAssignableUser`), 404 otherwise. A suspended, removed or invited
+ * account signs nobody in, so a lead handed to one sits where no colleague at
+ * OWN scope sees it and the Allocation queue does not list it; and from TEAM up
+ * any active user in the workspace was taken.
  *
  * Returns the ids that moved. Inside `withTx`, pass its `tx`.
  */
@@ -29,13 +32,7 @@ export async function assignLeads(
   ownerId: string | null,
   reason: string,
 ): Promise<string[]> {
-  if (ownerId) {
-    const owner = await tx.user.findFirst({
-      where: { ...activeMemberWhere(ctx.tenantId), id: ownerId },
-      select: { id: true },
-    });
-    if (!owner) throw NotFound('User');
-  }
+  if (ownerId) await assertAssignableUser(ctx, tx, 'leads', 'ASSIGN', ownerId);
 
   const scope = await visibilityWhere(ctx, 'leads', 'ASSIGN', { includeUnassigned: true, db: tx });
   const leads = await tx.lead.findMany({
@@ -60,19 +57,6 @@ export async function assignLeads(
   });
   return ids;
 }
-
-/**
- * Who may be handed work: an ACTIVE, undeleted account whose workspace access
- * is active too. The platform console suspends a membership and leaves the
- * workspace User ACTIVE, and that person cannot sign in either. An account with
- * no membership row is not blocked, as in `assessEligibility`.
- */
-export const activeMemberWhere = (tenantId: string) => ({
-  tenantId,
-  deletedAt: null,
-  status: 'ACTIVE' as const,
-  NOT: { workspaceMembership: { is: { status: { not: 'ACTIVE' as const } } } },
-});
 
 /**
  * Whether the caller's leads:ASSIGN scope reaches `userId`. Every record a
@@ -181,9 +165,10 @@ export async function handOverOpenWork(
     throw Forbidden(`${from.fullName}'s work is outside what you may assign. Ask someone who can assign it.`);
   }
 
+  // Someone the caller may hand work to (`assignableUserWhere`), as the dialog lists them.
   const to = handOver.toUserId
     ? await tx.user.findFirst({
-        where: { ...activeMemberWhere(ctx.tenantId), id: handOver.toUserId },
+        where: { ...(await assignableUserWhere(ctx, 'leads', 'ASSIGN', tx)), id: handOver.toUserId },
         select: { id: true },
       })
     : null;

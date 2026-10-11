@@ -28,7 +28,7 @@ const params = z.object({ id: z.string().cuid() });
 export const POST = route(
   { module: 'calls', productModule: LEAD_MODULES, action: 'EDIT', params, auditEvent: 'AI_ANALYSIS_COMPLETED' },
   async ({ ctx, params }) => {
-    await assertCallInScope(ctx, params.id);
+    await assertCallInScope(ctx, params.id, 'EDIT');
     const [call, transcript, existing] = await Promise.all([
       prisma.call.findFirst({ where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null } }),
       prisma.transcript.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } }),
@@ -59,7 +59,7 @@ export const POST = route(
 export const GET = route(
   { module: 'calls', productModule: LEAD_MODULES, action: 'VIEW', params, sensitive: 'AI call analyses' },
   async ({ ctx, params }) => {
-    await assertCallInScope(ctx, params.id);
+    await assertCallInScope(ctx, params.id, 'VIEW');
     const analysis = await prisma.aIAnalysis.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },
     });
@@ -104,7 +104,7 @@ export const PATCH = route(
     auditEvent: 'RECORD_UPDATED',
   },
   async ({ ctx, params, body }) => {
-    await assertCallInScope(ctx, params.id);
+    await assertCallInScope(ctx, params.id, 'EDIT');
     const analysis = await prisma.aIAnalysis.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },
     });

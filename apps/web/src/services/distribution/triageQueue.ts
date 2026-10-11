@@ -202,6 +202,11 @@ export async function assignFromTriage(input: ManualAssignInput): Promise<Manual
   if (!entry) throw NotFound('Queue entry');
 
   // Scope: the actor must be able to see this lead, not merely hold the verb.
+  // ponytail: no assignable-person check on `toUserId` (record-scope.ts's
+  // `assertAssignableUser`). Below ORGANIZATION this rule leaves out unassigned
+  // leads, and every waiting lead is unassigned, so only ORGANIZATION places
+  // one, and there everyone active is assignable. Adding `includeUnassigned`
+  // here opens placement to team leads: add that check in the same change.
   const leadWhere = await visibilityWhere(ctx, 'leads', 'ASSIGN');
   const visible = await prisma.lead.findFirst({
     where: { ...leadWhere, id: entry.leadId, deletedAt: null },

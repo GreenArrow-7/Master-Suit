@@ -2,9 +2,8 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { withTx } from '@/lib/db';
-import { NotFound, Invalid, Conflict } from '@/lib/errors';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
-import { assertLeadInScope, assertOwnerInScope } from '@/lib/security/record-scope';
+import { NotFound, Conflict } from '@/lib/errors';
+import { assertAssignableUser, assertLeadInScope, assertOwnerInScope } from '@/lib/security/record-scope';
 import { recordTargetProgress } from '@/services/targets/progress';
 import { lockLeads, recomputeNextFollowUp } from '@/services/leads/nextFollowUp';
 
@@ -41,17 +40,10 @@ export const PATCH = route(
       // A rep may only work their own queue; TEAM reach and above, the queues of
       // people in their scope.
       await assertOwnerInScope(ctx, tx, 'leads', 'EDIT', followUp.ownerId, 'Follow-up');
-      const scope = scopeFor(ctx, 'leads', 'EDIT');
 
+      // The new owner: yourself, or someone your leads:ASSIGN scope reaches.
       if (body.ownerId && body.ownerId !== followUp.ownerId) {
-        if (SCOPE_RANK[scope] < SCOPE_RANK.TEAM && body.ownerId !== ctx.actor.id) {
-          throw Invalid([{ field: 'ownerId', code: 'forbidden', message: 'You cannot reassign this follow-up.' }]);
-        }
-        const target = await tx.user.findFirst({
-          where: { tenantId: ctx.tenantId, id: body.ownerId, status: 'ACTIVE', deletedAt: null },
-          select: { id: true },
-        });
-        if (!target) throw Invalid([{ field: 'ownerId', code: 'not_found', message: 'That teammate was not found.' }]);
+        await assertAssignableUser(ctx, tx, 'leads', 'ASSIGN', body.ownerId);
       }
 
       // A new due date on an open item is a reschedule; completing stamps the time.

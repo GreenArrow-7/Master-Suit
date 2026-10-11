@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { requireWorkspace } from '@/lib/workspace';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { assertAssignableUser } from '@/lib/security/record-scope';
 import { applyFieldSecurity, loadFieldRules } from '@/lib/security/fieldSecurity';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 
@@ -53,12 +54,8 @@ export const POST = route(
       where: { tenantId: ctx.tenantId, deletedAt: null, isDefault: true },
     });
     if (!stage) throw NotFound('Default lead stage');
-    if (body.ownerId) {
-      const owner = await prisma.user.findFirst({
-        where: { tenantId: ctx.tenantId, id: body.ownerId, deletedAt: null, status: 'ACTIVE' },
-      });
-      if (!owner) throw NotFound('Lead owner');
-    }
+    // Yourself, or someone your leads:ASSIGN scope reaches: any active user was taken.
+    if (body.ownerId) await assertAssignableUser(ctx, prisma, 'leads', 'ASSIGN', body.ownerId);
     // Timestamp-based reference: the previous count+1 raced under concurrent
     // creates against the unique index.
     return prisma.lead.create({

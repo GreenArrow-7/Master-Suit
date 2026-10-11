@@ -25,7 +25,7 @@ export const POST = route(
     auditEvent: 'CONSENT_RECORDED',
   },
   async ({ ctx, params, body }) => {
-    await assertCallInScope(ctx, params.id);
+    await assertCallInScope(ctx, params.id, 'EDIT');
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });
@@ -64,7 +64,7 @@ export const POST = route(
 export const DELETE = route(
   { module: 'calls', productModule: LEAD_MODULES, action: 'EDIT', params, auditEvent: 'CONSENT_WITHDRAWN' },
   async ({ ctx, params }) => {
-    await assertCallInScope(ctx, params.id);
+    await assertCallInScope(ctx, params.id, 'EDIT');
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });

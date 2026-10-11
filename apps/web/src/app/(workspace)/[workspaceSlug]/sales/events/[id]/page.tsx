@@ -6,7 +6,7 @@ import Badge, { type Tone } from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import { mergeWhere } from '@/lib/api/where';
 import { can } from '@/lib/security/rbac';
-import { eventListScope, seesWholeWorkspace } from '@/lib/security/record-scope';
+import { assertEventInScope, eventListScope } from '@/lib/security/record-scope';
 import { visibilityWhere } from '@/lib/security/visibility';
 import EventActions from './EventActions';
 import RsvpControl from './RsvpControl';
@@ -27,14 +27,15 @@ export default async function EventDetailPage({ params: paramsPromise }: { param
   const params = await paramsPromise;
   const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['events', 'VIEW'] });
 
-  // GET /api/v1/events/{id}'s rule: below TEAM, an event you host, created or
-  // were invited to. Anything else is not found, as a missing id is.
+  // GET /api/v1/events/{id}'s rule: an event hosted or created by someone in
+  // your scope, or one you were invited to. Anything else is not found, as a
+  // missing id is.
   const event = await prisma.event.findFirst({
     where: {
       id: params.id,
       tenantId: ctx.tenantId,
       deletedAt: null,
-      ...eventListScope(ctx),
+      ...(await eventListScope(ctx)),
     },
     include: {
       invitees: { orderBy: { createdAt: 'desc' }, take: 200 },
@@ -42,11 +43,14 @@ export default async function EventDetailPage({ params: paramsPromise }: { param
     },
   });
   if (!event) notFound();
-  // Circulating it and recording RSVPs check the event at EDIT (assertEventInScope):
-  // below TEAM, only its host or creator. An invitee reads it.
+  // Circulating it and recording RSVPs check the event at EDIT: offered only
+  // where that same check passes. An invitee reads it.
   const mayEdit =
     can(ctx, 'events', 'EDIT') &&
-    (seesWholeWorkspace(ctx, 'events', 'EDIT') || [event.hostId, event.createdById].includes(ctx.actor.id));
+    (await assertEventInScope(ctx, event.id, 'EDIT').then(
+      () => true,
+      () => false,
+    ));
 
   // A meeting held for this event is an ordinary Call carrying eventId, so its
   // consent, recording, transcript and Gemini summary come from the call pipeline,

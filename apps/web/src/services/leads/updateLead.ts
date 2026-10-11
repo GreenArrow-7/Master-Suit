@@ -1,7 +1,7 @@
 import { withTx } from '@/lib/db';
 import { AppError, NotFound } from '@/lib/errors';
 import { auditDiff } from '@/lib/security/audit';
-import { assertLeadInScope } from '@/lib/security/record-scope';
+import { assertAssignableUser, assertLeadInScope } from '@/lib/security/record-scope';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { enqueue } from '@/lib/queue';
 import { notifyCrm } from '../crm/notify';
@@ -55,6 +55,11 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
 
   const updated = await withTx(ctx.tenantId, async (tx) => {
     const before = await assertLeadInScope(ctx, id, tx, 'EDIT');
+    // The new owner: someone the scope of the action that allows the change reaches.
+    if (input.ownerId && input.ownerId !== before.ownerId) {
+      const action = can(ctx, 'leads', 'ASSIGN') ? 'ASSIGN' : 'REASSIGN';
+      await assertAssignableUser(ctx, tx, 'leads', action, input.ownerId);
+    }
 
     if (input.stageId && input.stageId !== before.stageId) {
       const stage = await tx.leadStage.findFirst({ where: { tenantId: ctx.tenantId, id: input.stageId } });

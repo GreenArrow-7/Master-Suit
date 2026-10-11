@@ -28,7 +28,7 @@ export const POST = route(
     auditEvent: 'RECORD_CREATED',
   },
   async ({ ctx, params, body }) => {
-    await assertCallInScope(ctx, params.id);
+    await assertCallInScope(ctx, params.id, 'EDIT');
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });
@@ -60,7 +60,7 @@ export const GET = route(
     sensitive: 'call recordings',
   },
   async ({ ctx, params }) => {
-    await assertCallInScope(ctx, params.id);
+    await assertCallInScope(ctx, params.id, 'VIEW');
     const recording = await prisma.recording.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },
     });
