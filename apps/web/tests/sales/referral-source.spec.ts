@@ -1,0 +1,57 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { prisma } from '@/lib/db';
+import { POST as createLead } from '@/app/api/v1/leads/route';
+import { runReport } from '@/services/leadership/reports';
+import { buildActor, buildCtx } from '../helpers/ctx';
+import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
+import { post } from '../helpers/request';
+
+/**
+ * Referral as a lead source (audit row M6-15): a lead records who referred it,
+ * and the source reports show Referral beside the portals and forms.
+ */
+let fixture: Fixture;
+let tenantId: string;
+
+beforeAll(async () => {
+  fixture = await seedTwoTenants();
+  tenantId = fixture.a.tenantId;
+});
+
+afterAll(async () => {
+  await fixture.cleanup();
+});
+
+describe('Referral as a lead source', () => {
+  it('records who referred the lead', async () => {
+    const res = await post(
+      createLead,
+      '/api/v1/leads',
+      { fullName: 'Referred Buyer', phone: '0501112233', source: 'REFERRAL', sourceDetail: 'Ahmed Al Mansoori' },
+      fixture.a.cookie,
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, id: res.body.id } });
+    expect(lead).toMatchObject({ source: 'REFERRAL', sourceDetail: 'Ahmed Al Mansoori' });
+  });
+
+  it('refuses a referral that names nobody', async () => {
+    const res = await post(
+      createLead,
+      '/api/v1/leads',
+      { fullName: 'Nobody Referred', source: 'REFERRAL' },
+      fixture.a.cookie,
+    );
+    expect(res.status).toBe(422);
+    expect(await prisma.lead.count({ where: { tenantId, fullName: 'Nobody Referred' } })).toBe(0);
+  });
+
+  it('shows Referral in the source reports', async () => {
+    const ctx = buildCtx(buildActor({ id: fixture.a.userId, tenantId, grants: [['reports', 'VIEW']] }));
+    const range = { from: new Date(Date.now() - 86_400_000), to: new Date(Date.now() + 86_400_000) };
+    const toBooking = await runReport(ctx, 'source-to-booking', range);
+    expect(toBooking.rows.find((r) => r.source === 'Referral')).toMatchObject({ leads: 1, bookings: 0 });
+    const analysis = await runReport(ctx, 'source-analysis', range);
+    expect(analysis.rows.find((r) => r.source === 'referral')).toMatchObject({ leads: 1 });
+  });
+});

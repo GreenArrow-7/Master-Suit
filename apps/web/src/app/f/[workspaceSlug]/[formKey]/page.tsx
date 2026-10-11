@@ -12,10 +12,14 @@ export const metadata = { title: 'Get in touch' };
  */
 export default async function PublicFormPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspaceSlug: string; formKey: string }>;
+  searchParams: Promise<{ embed?: string }>;
 }) {
   const { workspaceSlug, formKey } = await params;
+  // Framed inside another site's page by /embed.js: the card alone, no page around it.
+  const embed = (await searchParams).embed === '1';
 
   const tenant = await prisma.tenant.findFirst({
     where: { slug: workspaceSlug, status: 'ACTIVE', deletedAt: null },
@@ -32,14 +36,14 @@ export default async function PublicFormPage({
   return (
     <main
       style={{
-        minHeight: '100dvh',
+        minHeight: embed ? undefined : '100dvh',
         display: 'grid',
-        placeItems: 'center',
-        padding: 'var(--lf-space-5)',
-        background: 'var(--lf-surface-2)',
+        placeItems: embed ? 'start' : 'center',
+        padding: embed ? 0 : 'var(--lf-space-5)',
+        background: embed ? 'transparent' : 'var(--lf-surface-2)',
       }}
     >
-      <div className="lf-card" style={{ width: 'min(460px, 100%)', padding: 'var(--lf-space-6)' }}>
+      <div className="lf-card" style={{ width: embed ? '100%' : 'min(460px, 100%)', padding: 'var(--lf-space-6)' }}>
         <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-2)' }}>
           {tenant.displayName}
         </div>

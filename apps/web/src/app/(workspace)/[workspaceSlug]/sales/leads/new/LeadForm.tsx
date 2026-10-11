@@ -26,6 +26,8 @@ export default function LeadForm() {
   const [country, setCountry] = useState('');
   const [city, setCity] = useState('');
   const [priority, setPriority] = useState('MEDIUM');
+  const [source, setSource] = useState('MANUAL');
+  const [referrer, setReferrer] = useState('');
   const [busy, setBusy] = useState(false);
   const { fieldErrors, formError, setFormError, reset, clear, validateRequired, applyProblem } = useFormErrors();
 
@@ -40,7 +42,8 @@ export default function LeadForm() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           fullName,
-          source: 'MANUAL',
+          source,
+          ...(source === 'REFERRAL' && referrer ? { sourceDetail: referrer } : {}),
           priority,
           ...(email ? { email } : {}),
           ...(phone ? { phone } : {}),
@@ -181,6 +184,36 @@ export default function LeadForm() {
           <option value="URGENT">Urgent</option>
         </select>
       </Field>
+
+      <Field label="Source" htmlFor="source" error={fieldErrors.source}>
+        <select
+          id="source"
+          name="source"
+          className="lf-input"
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+        >
+          <option value="MANUAL">Manual</option>
+          <option value="REFERRAL">Referral</option>
+        </select>
+      </Field>
+
+      {source === 'REFERRAL' && (
+        <Field label="Referred by" htmlFor="sourceDetail" required error={fieldErrors.sourceDetail}>
+          <input
+            id="sourceDetail"
+            name="sourceDetail"
+            className="lf-input"
+            value={referrer}
+            placeholder="A client, a partner, a colleague"
+            required
+            onChange={(e) => {
+              setReferrer(e.target.value);
+              clear('sourceDetail');
+            }}
+          />
+        </Field>
+      )}
 
       <div style={{ display: 'flex', gap: 'var(--lf-space-3)', marginTop: 'var(--lf-space-2)' }}>
         <button className="lf-btn" type="submit" disabled={busy}>

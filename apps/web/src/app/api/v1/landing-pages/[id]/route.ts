@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -10,7 +11,7 @@ const patchBody = z.object({ state: z.enum(['PUBLISHED', 'PAUSED', 'ARCHIVED']) 
 export const PATCH = route(
   {
     module: 'landingpages',
-    productModule: 'SALES',
+    productModule: LEAD_MODULES,
     action: 'MANAGE_CONFIGURATION',
     params,
     body: patchBody,

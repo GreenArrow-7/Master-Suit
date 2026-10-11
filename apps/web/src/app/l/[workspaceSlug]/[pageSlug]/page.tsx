@@ -74,6 +74,7 @@ export default async function PublicLandingPage({
             <LeadForm
               workspace={workspaceSlug}
               formKey={form.key}
+              page={pageSlug}
               fields={form.fields.map((field) => ({
                 key: field.key,
                 label: field.label,

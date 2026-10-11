@@ -68,7 +68,12 @@ const config: NextConfig = {
   // module warning when the application uses ioredis.
   serverExternalPackages: ['@node-rs/argon2', '@prisma/client', 'pino', 'bullmq'],
   async headers() {
-    return [{ source: '/:path*', headers: securityHeaders }];
+    return [
+      { source: '/:path*', headers: securityHeaders },
+      // The embeddable snippet: fetched by every visit to a brokerage's own
+      // site, so browsers keep it for an hour.
+      { source: '/embed.js', headers: [{ key: 'Cache-Control', value: 'public, max-age=3600' }] },
+    ];
   },
   experimental: {
     /**

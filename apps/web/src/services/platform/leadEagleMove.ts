@@ -271,7 +271,8 @@ function recordSource(source: string | null): RecordSource {
   if (/property ?finder|bayut|dubizzle|portal/.test(name)) return 'MARKETPLACE';
   if (/meta|facebook|instagram|google|ads?\b/.test(name)) return 'AD_LEAD_FORM';
   if (/website|form|landing/.test(name)) return 'PUBLIC_FORM';
-  if (/walk|referr|manual/.test(name)) return 'MANUAL';
+  if (/referr/.test(name)) return 'REFERRAL';
+  if (/walk|manual/.test(name)) return 'MANUAL';
   return 'IMPORT';
 }
 

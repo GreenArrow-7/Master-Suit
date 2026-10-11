@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-12 | [Lead Eagle gets website forms, landing pages, an embed snippet and a Referral source](2026-10-12-intake-forms-landing-embed.md) | — | Lead Eagle, lead intake |
 | 2026-10-11 | [Team leads see their team's follow-ups and tasks](2026-10-11-team-follow-ups-tasks.md) | #167 | security, Lead Eagle |
 | 2026-10-11 | [TEAM scope meant the whole workspace for calls and events; work could be handed to anyone](2026-10-11-record-scope-team.md) | #165 | security |
 | 2026-10-11 | [Release f9c0c1a](2026-10-11-release-f9c0c1a.md) | #145, #163 | release |

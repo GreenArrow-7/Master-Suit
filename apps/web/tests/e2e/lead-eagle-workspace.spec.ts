@@ -151,6 +151,19 @@ test.describe('Lead Eagle, from the platform portal to a lead', () => {
       ]);
     });
 
+    await test.step('its menu offers Forms and Landing Pages; a form is published with its embed code (M6-06, M6-09, M6-07)', async () => {
+      await page.goto(at('/lead-eagle/forms'));
+      await expect(page.getByRole('heading', { name: 'Forms' })).toBeVisible();
+      await expect(
+        page.getByRole('navigation', { name: 'Lead Sources screens' }).getByRole('link', { name: 'Landing Pages' }),
+      ).toBeVisible();
+      const res = await page.request.post('/api/v1/forms', { data: { name: `Eagle enquiry ${run}`, publish: true } });
+      expect(res.status(), await res.text()).toBeLessThan(300);
+      await page.reload();
+      await expect(page.getByText(`Eagle enquiry ${run}`)).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Copy embed code' })).toBeVisible();
+    });
+
     await test.step('an Agent cannot open a colleague’s site visit, on the page or the API', async () => {
       const tenantId = (await prisma.tenant.findUniqueOrThrow({ where: { slug: eagle.slug }, select: { id: true } }))
         .id;

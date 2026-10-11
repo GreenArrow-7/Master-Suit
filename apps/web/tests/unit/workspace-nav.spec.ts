@@ -361,6 +361,9 @@ describe('Lead Eagle: its own menu only where it is the whole CRM', () => {
     ]);
     expect(areas(nav)).not.toContain('realty-clients');
     expect(at(nav, `/${SLUG}/lead-eagle/leads/42`)).toBe('le-leads / Leads');
+    // Its own lead sources (M6-06, M6-09): the website forms and landing pages.
+    expect(tabsOf(nav, 'le-sources')).toEqual(['Forms', 'Landing Pages']);
+    expect(at(nav, `/${SLUG}/lead-eagle/landing-pages`)).toBe('le-sources / Landing Pages');
   });
 
   it('offers no money or marketing screens', () => {

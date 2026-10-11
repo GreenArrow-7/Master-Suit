@@ -693,6 +693,31 @@ function definitions(slug: string): SectionDef[] {
           ],
         },
         {
+          // The website forms and landing pages are lead sources, not marketing
+          // (M6-06, M6-09): the same screens Sales has under Lead Sources.
+          key: 'le-sources',
+          label: 'Lead Sources',
+          icon: 'document',
+          tabs: [
+            {
+              label: 'Forms',
+              href: le('/forms'),
+              permission: 'forms',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'web forms website embed snippet',
+            },
+            {
+              label: 'Landing Pages',
+              href: le('/landing-pages'),
+              permission: 'landingpages',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'campaign page',
+            },
+          ],
+        },
+        {
           key: 'le-inventory',
           label: 'Inventory',
           icon: 'company',
@@ -801,8 +826,22 @@ function definitions(slug: string): SectionDef[] {
           label: 'Lead Sources',
           icon: 'document',
           tabs: [
-            { label: 'Forms', href: s('/forms'), permission: 'forms', module: S, keywords: 'web forms' },
-            { label: 'Landing Pages', href: s('/landing-pages'), permission: 'landingpages', module: S },
+            {
+              label: 'Forms',
+              href: s('/forms'),
+              permission: 'forms',
+              module: S,
+              keywords: 'web forms',
+              // A workspace with Sales and Lead Eagle browses Lead Eagle's address here.
+              aliases: [le('/forms')],
+            },
+            {
+              label: 'Landing Pages',
+              href: s('/landing-pages'),
+              permission: 'landingpages',
+              module: S,
+              aliases: [le('/landing-pages')],
+            },
             {
               label: 'Social Sources',
               href: s('/social-leads'),

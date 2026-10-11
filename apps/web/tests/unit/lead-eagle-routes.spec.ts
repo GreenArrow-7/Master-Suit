@@ -40,6 +40,10 @@ describe('Lead Eagle is a module', () => {
       "requestWorkspace(ctx, workspaceSlug, 'LEAD_EAGLE')",
     );
   });
+
+  it('shares the website forms and landing pages, its own lead sources (M6-06, M6-09)', () => {
+    expect(LEAD_EAGLE_SHARED_ROOTS).toEqual(expect.arrayContaining(['forms', 'landing-pages']));
+  });
 });
 
 describe('the Lead Eagle routes re-export the Sales pages for lead work', () => {

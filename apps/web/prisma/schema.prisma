@@ -167,6 +167,7 @@ enum RecordSource {
   CHAT
   MARKETPLACE
   AUTOMATION
+  REFERRAL
 }
 
 enum TaskCategory {
