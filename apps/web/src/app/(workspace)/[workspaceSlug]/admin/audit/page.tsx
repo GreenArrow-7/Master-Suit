@@ -278,23 +278,25 @@ export default async function Page({
   );
 }
 
-/** A one-line summary: the field that changed, or whatever else the action recorded. */
+/**
+ * A one-line summary: the field that changed, then whatever else the action
+ * recorded (a System row's `source`, the distribution rule).
+ */
 function describe(row: {
   fieldKey: string | null;
   previousValue: unknown;
   newValue: unknown;
   metadata: unknown;
 }): string {
-  if (row.fieldKey) {
-    return `${row.fieldKey}: ${truncate(JSON.stringify(row.previousValue) ?? 'null')} → ${truncate(JSON.stringify(row.newValue) ?? 'null')}`;
-  }
+  const change =
+    row.fieldKey &&
+    `${row.fieldKey}: ${truncate(JSON.stringify(row.previousValue) ?? 'null')} → ${truncate(JSON.stringify(row.newValue) ?? 'null')}`;
   const metadata = { ...(row.metadata as Record<string, unknown> | null) };
   delete metadata.action;
-  const parts = Object.entries(metadata).filter(([, value]) => value !== null && value !== undefined);
-  return parts.length
-    ? parts
-        .map(([key, value]) => `${key}=${truncate(String(value))}`)
-        .join(' · ')
-        .slice(0, 120)
-    : '—';
+  const recorded = Object.entries(metadata)
+    .filter(([, value]) => value !== null && value !== undefined)
+    .map(([key, value]) => `${key}=${truncate(String(value))}`)
+    .join(' · ')
+    .slice(0, 120);
+  return [change, recorded].filter(Boolean).join(' · ') || '—';
 }

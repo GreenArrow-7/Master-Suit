@@ -19,7 +19,7 @@
  * the case it matters — an account that has already been taken over.
  */
 import { randomInt } from 'node:crypto';
-import { prisma, withTx } from '@/lib/db';
+import { prisma, withTx, type TxClient } from '@/lib/db';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import {
   assertPasswordPolicy,
@@ -52,6 +52,69 @@ export async function passwordPolicy(tenantId: string): Promise<PasswordPolicy> 
   });
   const stored = (settings?.passwordPolicy ?? {}) as Partial<PasswordPolicy>;
   return { ...DEFAULT_POLICY, ...stored };
+}
+
+const CANNOT_BE_ADDED =
+  'That email belongs to an account that cannot be added. Ask the platform owner, or use a different address.';
+
+/**
+ * The identity behind `email` if a workspace may take it on, or null when there
+ * is none. Every path that attaches an existing identity to a workspace sets it
+ * ACTIVE — Add user, Invite → accept, and `createWorkspace` (the console's
+ * wizard and self-serve sign-up) — so each reads it through here and none can
+ * drift: a suspension or deactivation is the platform owner's to lift, from the
+ * console, and an erasure in flight must not gain a membership its executor
+ * never saw (that shows as `deletedAt` only at the last step). Inside a
+ * transaction, pass its `tx`, and set the identity ACTIVE with `activateIdentity`.
+ *
+ * `neutral` is for a workspace administrator (Add user, Invite), who may type
+ * anyone's email: they learn that the address cannot be added, not whether its
+ * owner is suspended or has asked to be erased. The person themselves (accept,
+ * sign-up) and the platform owner (the wizard) are told why.
+ */
+export async function assertIdentityReusable(
+  db: TxClient | typeof prisma,
+  email: string,
+  { neutral = false }: { neutral?: boolean } = {},
+) {
+  const identity = await db.platformUser.findUnique({
+    where: { normalizedEmail: email },
+    select: { id: true, deletedAt: true, status: true },
+  });
+  if (!identity) return null;
+  const refuse = (why: string) => Conflict(neutral ? CANNOT_BE_ADDED : why);
+  if (identity.deletedAt) throw refuse('That email belongs to a deleted account, which cannot be reused.');
+  const erasing = await db.accountDeletionRequest.findFirst({
+    where: { platformUserId: identity.id, status: { in: ['REQUESTED', 'BLOCKED', 'IN_PROGRESS'] } },
+    select: { id: true },
+  });
+  if (erasing) {
+    throw refuse(
+      'That account is being deleted. Its owner can withdraw the request; otherwise use a different address.',
+    );
+  }
+  if (identity.status === 'SUSPENDED' || identity.status === 'DEACTIVATED') {
+    throw refuse(
+      'That email belongs to a suspended or deactivated account. Ask the platform owner to restore it, or use a different address.',
+    );
+  }
+  return identity;
+}
+
+/**
+ * Sets an identity `assertIdentityReusable` passed ACTIVE, unless the platform
+ * owner has suspended, deactivated or deleted it since. The guard's read and
+ * this write are two statements, and an unconditional write would undo a
+ * suspension committed between them; this one waits for it and then matches
+ * nothing.
+ */
+export async function activateIdentity(tx: TxClient, id: string, data: { fullName?: string } = {}) {
+  const { count } = await tx.platformUser.updateMany({
+    where: { id, deletedAt: null, status: { in: ['INVITED', 'ACTIVE'] } },
+    data: { ...data, status: 'ACTIVE' },
+  });
+  if (!count) throw Conflict(CANNOT_BE_ADDED);
+  return { id };
 }
 
 /**
@@ -766,14 +829,10 @@ export async function createStaffAccount(ctx: Ctx, input: NewStaffAccount) {
     // A person who already signs in elsewhere keeps their own password: being
     // added to a second workspace is not authority to reset the credential
     // guarding the first.
-    const existing = await tx.platformUser.findUnique({
-      where: { normalizedEmail: email },
-      select: { id: true, deletedAt: true },
-    });
-    if (existing?.deletedAt) throw Conflict('That email belonged to a removed account. Use a different address.');
+    const existing = await assertIdentityReusable(tx, email, { neutral: true });
 
     const platformUser = existing
-      ? await tx.platformUser.update({ where: { id: existing.id }, data: { status: 'ACTIVE' } })
+      ? await activateIdentity(tx, existing.id)
       : await tx.platformUser.create({
           data: {
             email,

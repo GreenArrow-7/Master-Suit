@@ -8,6 +8,7 @@ import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { notifyAboutCall } from '@/services/crm/notify';
 import { recordTargetProgress } from '@/services/targets/progress';
 import { assertCallInScope } from '@/lib/security/record-scope';
+import { maskCallNumbers } from '@/services/leads/createLead';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -24,8 +25,9 @@ export const GET = route(
       },
     });
     if (!call) throw NotFound('Call');
+    const [masked] = await maskCallNumbers(ctx, [call]);
     // Free-text notes about the conversation follow the sensitive authorisation.
-    return (await hasSensitiveAccess(ctx)) ? call : { ...call, notes: null };
+    return (await hasSensitiveAccess(ctx)) ? masked : { ...masked, notes: null };
   },
 );
 
@@ -79,7 +81,6 @@ export const PATCH = route(
      * A PATCH that touches notes on a MISSED call must not re-announce it.
      */
     if (body.status && body.status !== existing.status) {
-      const label = updated.recipientNumber;
       /**
        * Target progress rides the same transition as the notification: the
        * status change is the moment the work becomes countable. Credited to
@@ -109,19 +110,13 @@ export const PATCH = route(
         await recordTargetProgress(ctx, updated.callerId, 'CALLS_CONNECTED');
       }
       if (body.status === 'MISSED') {
-        await notifyAboutCall(ctx, updated, 'call.missed', `Missed call from ${label}`, updated.notes ?? undefined);
+        await notifyAboutCall(ctx, updated, 'call.missed', 'Missed call from', updated.notes ?? undefined);
       } else if (body.status === 'COMPLETED') {
-        await notifyAboutCall(
-          ctx,
-          updated,
-          'call.completed',
-          `Call completed with ${label}`,
-          updated.notes ?? undefined,
-        );
+        await notifyAboutCall(ctx, updated, 'call.completed', 'Call completed with', updated.notes ?? undefined);
       }
     }
 
-    return updated;
+    return (await maskCallNumbers(ctx, [updated]))[0];
   },
 );
 

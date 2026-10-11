@@ -16,6 +16,8 @@ const prisma = {
   leadStage: { findFirst: vi.fn() },
   conversation: { upsert: vi.fn() },
   communication: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+  // The lead's audit row; tests/sales/lead-audit-trail.spec.ts checks it on a real database.
+  auditLog: { create: vi.fn() },
 };
 const findDuplicates = vi.fn();
 const enqueue = vi.fn();

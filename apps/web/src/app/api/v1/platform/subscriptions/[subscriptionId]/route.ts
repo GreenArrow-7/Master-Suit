@@ -5,6 +5,7 @@ import { NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
 import { platformAudit } from '@/lib/security/audit';
+import { provisionLeadWork } from '@/services/platform/provisioning';
 import { bareRoute } from '@/lib/api/handler';
 
 const updateSchema = z
@@ -61,6 +62,10 @@ export const PATCH = bareRoute(
       if (plan) {
         const planModules = plan.planModules.filter((m: any) => m.enabled).map((m: any) => m.module);
         await tx.tenant.update({ where: { id: current.tenantId }, data: { planCode: plan.code } });
+        const before = await tx.moduleEntitlement.findMany({
+          where: { tenantId: current.tenantId, state: { not: 'CANCELED' } },
+          select: { module: true },
+        });
         // Modules not in the new plan end now; ones it adds start now.
         await tx.moduleEntitlement.deleteMany({
           where: { tenantId: current.tenantId, module: { notIn: planModules } },
@@ -82,6 +87,14 @@ export const PATCH = bareRoute(
             create: { subscriptionId: current.id, module: moduleKey, state: body.state ?? updated.state },
           });
         }
+        // A plan that brings a module that works leads brings what a lead needs,
+        // as the workspace editor does; and Lead Eagle its starter roles.
+        await provisionLeadWork(
+          tx,
+          current.tenantId,
+          planModules,
+          before.map((row) => row.module),
+        );
       } else if (body.state) {
         await tx.moduleEntitlement.updateMany({
           where: { tenantId: current.tenantId },
