@@ -51,6 +51,9 @@ Node 22 or newer (CI uses 24).
   for lead work, `SALES_OR_REALTY` for money and marketing, `PRODUCT_MODULE_KEYS`
   for any module. A layout asserting a module covers everything beneath it, so a screen
   that must work without that module is re-exported from outside its folder.
+  A module layout (`workspaceOwns`) shows `NotInPlan` for a module the plan
+  lacks, never a silent redirect, and the API's refusal names every module of
+  the set ("Sales or Real Estate is not enabled for this company.").
 - **Permissions.** Roles live in the database. A new workspace gets one role,
   Company Admin, holding every permission; the admin builds the others in the
   role editor. Lead Eagle's arrival adds five editable starter roles (Manager,
