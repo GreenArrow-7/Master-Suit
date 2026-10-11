@@ -69,12 +69,18 @@ Node 22 or newer (CI uses 24).
   caller's resolved owners (`resolveOwnerIds`), never the whole workspace, in a
   list and by id alike: every read of calls adds `callScope(ctx, action)` (a
   call is its caller's), every read of events `eventListScope(ctx, action)`
-  (host or creator; an invitee reads), screens and the assistant included.
+  (host or creator; an invitee reads), screens, counts and the assistant
+  included. A call's or event's write checks it at the route's own action, and
+  a page offers that write only where the same check passes.
   Whoever names a new owner for work (a task, follow-up, lead, cold record,
   capture link, social enquiry, an event's host or callers, a hand-over) is
   checked with `assertAssignableUser` / `assignableUserWhere`: an active
   member inside the caller's ASSIGN scope, 404 (or the route's own unknown-user
-  answer) otherwise. Every picker of people lists `assignableUsers`.
+  answer) otherwise. A picker of people lists `assignableUsers`; a screen that
+  also names people (who assigned or replied) keeps a separate list for that.
+  The allocation queue's manual placement is the exception: only ORGANIZATION
+  reaches a waiting lead, and its picker lists every active agent with their
+  eligibility.
 - **Identities.** A workspace path that attaches an existing platform identity
   (Add user, invite and accept, a new workspace) takes it through
   `assertIdentityReusable` and sets it ACTIVE with `activateIdentity`

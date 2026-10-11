@@ -17,11 +17,17 @@ target is not checked against the caller's scope").
   the Calls page beside them showed the team's. `seesWholeWorkspace` (TEAM or
   wider) let the coach, live and live-audio routes do the same.
 - `assertCallInScope` defaulted to VIEW, so a call's writes (PATCH, consent,
-  analysis, audit, transcript, recording, dial, follow-up email and WhatsApp)
-  checked a scope the caller may only read with.
+  analysis, audit, transcript, recording, dial, follow-up email and WhatsApp,
+  a coaching note) checked a scope the caller may only read with. A recording
+  upload (`PUT calls/{id}/recording/media`) checked nothing about the call:
+  with `calls:EDIT` at any scope, an agent at OWN included, it replaced the
+  recording of any consented call in the workspace and re-ran its
+  transcription and audit, and a call without consent answered 403.
 - The call page and the live call page loaded a call by id and workspace only.
-  The call audits page treated TEAM as the workspace. Coaching notes answered
-  403 for a call outside scope, which confirmed it existed.
+  The call audits page treated TEAM as the workspace, and the dashboard's call
+  panel counted the workspace's calls and audits beside links to those pages.
+  Coaching notes answered 403 for a call outside scope, which confirmed it
+  existed.
 - From TEAM up, tasks, follow-ups, bulk assign, lead create and PATCH, cold
   data, capture links, social enquiries and the hand-over took any active user
   in the workspace as the new owner. The legacy lead create
@@ -39,8 +45,12 @@ target is not checked against the caller's scope").
   `eventScopeFilter` are gone; `activeMemberWhere` moved here from
   `services/leads/assign.ts`.
 - Calls: `api/v1/calls` (list), every `calls/[id]` route (its own action),
-  `coach`, `live`, `live-audio`, `coaching`; `sales/calls/[id]/page.tsx`,
-  `sales/calls/[id]/live/page.tsx`, `sales/call-audits/page.tsx`.
+  `recording/media` (PUT), `coach`, `live`, `live-audio`, `coaching` (POST
+  and PATCH at EDIT); `sales/calls/[id]/page.tsx` (its write controls, live
+  link and delete only where the call's EDIT or DELETE check passes;
+  `CallActions` takes `canEdit`), `sales/calls/[id]/live/page.tsx`,
+  `sales/call-audits/page.tsx`, the dashboard's call panel
+  (`dashboard/page.tsx`).
 - Events: `api/v1/events` (list, and the host on create), the Events page, an
   event's page (its Circulate and RSVP controls follow `assertEventInScope` at
   EDIT), the calendar, the assistant's `getCalendar` and `getMyDay`,
@@ -54,9 +64,14 @@ target is not checked against the caller's scope").
   hand-over), `workspaces/[workspaceSlug]/sales/leads`, `capture-links` and
   `capture-links/[id]`, `cold-data/assign` and `cold-data/[id]`,
   `services/social/assignSocialLead.ts`, `social-leads/[id]/convert`.
-- Pickers from `assignableUsers`: the leads grid's bulk assign, a lead's owner
-  menu, the Tasks page, QR capture, cold data, social enquiries and the
-  hand-over dialog (`services/identity/accounts.ts` `openWorkOf`).
+- Pickers from `assignableUsers`: the leads grid's bulk assign on Leads and
+  on Smart Views, a lead's owner menu, the Tasks page, QR capture, cold data,
+  social enquiries and the hand-over dialog (`services/identity/accounts.ts`
+  `openWorkOf`). Social enquiries pass the picker as `assignees` and keep the
+  workspace's active people as `users`, which names who assigned, took or
+  answered an enquiry (`components/workspace/SocialLeadList.tsx`).
+- `services/distribution/triageQueue.ts`: a note at the allocation queue's
+  manual placement on why it has no assignable-person check (Left open).
 - Tests: `tests/permission/lead-record-scope.spec.ts`,
   `tests/permission/user-delete.spec.ts`; updated
   `tests/permission/conversation-intelligence.spec.ts` (403 → 404) and
@@ -71,12 +86,27 @@ target is not checked against the caller's scope").
   or region, and events they were invited to. Another's answers 404 like a
   missing id, the call and event pages show the not-found page, and the Calls
   API, call audits, the Events page, the calendar and the assistant leave them
-  out. The Calls page already showed the team's.
+  out. The Calls page already showed the team's. The dashboard's call panel
+  (calls today, audits awaiting review, reviewed audits, the average score,
+  and the "awaiting review" item) counts the same calls; it counted the
+  workspace's for every role with `calls:VIEW`, agents at OWN included.
+- An inbound call from a number no lead or contact carries is recorded against
+  the top-ranked active user (normally an administrator), so below
+  ORGANIZATION nobody reaches it by id, in the Calls API or on the live screen.
+  The Calls page already left it out.
 - A call's writes check the route's own action: the seeded Marketing Manager
-  (VIEW at ORGANIZATION, EDIT at TEAM) reads every call and event but changes
-  only the team's; the Marketing Executive (VIEW TEAM, EDIT OWN) changes only
-  their own calls. Service Manager, Service Agent and Read-only read their branch's or
-  team's calls and events, not the workspace's.
+  (VIEW at ORGANIZATION, EDIT at TEAM) reads every call and event but changes,
+  coaches on and uploads to only the team's; the Marketing Executive (VIEW
+  TEAM, EDIT OWN) changes only their own calls and can no longer write
+  coaching notes on a teammate's. Service Manager, Service Agent and Read-only
+  read their branch's or team's calls and events, not the workspace's.
+- A recording upload reaches only a call the uploader may change: before,
+  anyone with `calls:EDIT`, agents at OWN included, could replace any consented
+  call's recording by its id.
+- The call page offers its writes (consent, outcome, recording and transcript
+  upload, analysis, follow-up email and WhatsApp, coaching, the live
+  workspace, delete) only where that call's own check passes; a viewer who may
+  only read it keeps "Create Follow-up", which is checked at VIEW.
 - Coaching notes on a call outside scope answer 404, not 403.
 - Lead activities by id from TEAM up: one logged by someone in your scope, or
   on a lead someone in it owns. One on an unassigned lead logged by someone
@@ -89,16 +119,23 @@ target is not checked against the caller's scope").
   unknown member and give it for one out of scope too. Tasks and follow-ups
   answered 422 ("That teammate was not found.", "You can only create tasks for
   yourself.") and now answer 404. The Tasks page offers other assignees on
-  `leads:ASSIGN` at TEAM or wider (was `leads:EDIT`); seeded roles hold both
-  at the same scope.
-- Pickers offer only those members; an administrator without `leads:ASSIGN`
-  (seeded HR and IT administrators) is offered nobody but themselves in the
-  hand-over dialog, which already refuses them.
+  `leads:ASSIGN` at TEAM or wider (was `leads:EDIT`).
+- A role that edits leads at TEAM or wider without `leads:ASSIGN` loses
+  handing work on entirely. Among seeded roles that is the Marketing Manager
+  (`leads` EDIT at TEAM, no ASSIGN; its `events` and `calls` mirror that): it
+  could give a task or follow-up to any active user and name anyone as an
+  event's host or caller, and now only itself; the Tasks page no longer shows
+  it an assignee picker. Custom roles of that shape lose the same.
+- Pickers offer only those members (Smart Views' bulk assign too); an
+  administrator without `leads:ASSIGN` (seeded HR and IT administrators) is
+  offered nobody but themselves in the hand-over dialog, which already refuses
+  them. Social enquiries still name everyone in their history and replies.
 - ORGANIZATION scope (Super and Organization Administrators, Sales Director,
   Call QA, Analyst, Executive read-only, the Lead Eagle Manager) sees no
   change. Agents at OWN see no change, except that they can no longer name a
   colleague as a lead's owner on the legacy create route, an event's host, or
-  an event's callers.
+  an event's callers, nor upload over a colleague's recording, and their
+  dashboard counts their own calls.
 
 **Verified.** On the rig's scratch database:
 
@@ -124,25 +161,55 @@ target is not checked against the caller's scope").
   agent naming a colleague on the legacy create, an event's host or callers).
   The other 35 cover what already worked (the team's own, the director, most
   of an agent's refusals) and pass on both.
-- Also green: `tests/permission`, `tests/sales`, `tests/ai` (75 files, 1,195
-  tests, after the two updates above); `tests/identity`, `integration`,
-  `platform`, `security`, `unit`, `tenant`, `hr/recruitment`,
-  `hr/admin-account-and-face` (157 files, 2,194 tests, 2 skipped);
-  `hr/checkout-work-gate`; `tsc`; eslint and prettier on the changed files.
-  The browser specs that touch these screens skip on this rig without the
-  demo login; none asserts a list or picker this changes for its ORGANIZATION
-  administrator.
+- After review, `lead-record-scope.spec.ts` grew to 313 cases. The by-id
+  table and the fifteen assignment routes run for a team, a branch and a
+  regional manager, each against someone just outside their scope and someone
+  inside it. Every other route under `calls/{id}` (26 rows: analysis, audit,
+  coach, coaching, consent, dial, follow-up email and WhatsApp, live,
+  live-audio, recording, recording media GET and PUT, temperature, transcript,
+  DELETE) is run against a call carrying consent, a recording, a transcript,
+  an analysis, an audit and a note, and answers a missing id's 404 with the
+  row unchanged. A role reading the team's calls and changing its own is
+  refused PATCH, consent and coaching on a teammate's call, and its call page
+  offers no writes there. An agent at OWN holding ASSIGN is refused every
+  assignment route like an unknown user; `leads:EDIT` at TEAM without ASSIGN
+  is refused for tasks and follow-ups. Activities by id cover the lead-owner
+  and the logger branch. The dashboard's call panel, Smart Views' picker and
+  Social Leads' two lists are rendered.
+- Fail-before for the review's fixes, with `apps/web/src` stashed back to the
+  branch as first reviewed (b24e232a): 11 of the 313 fail, each on what its fix adds:
+  the recording upload ("expected 422 to be 404" with consent, "expected 403
+  to be 404" without, for each of the three managers), coaching by a reader
+  ("expected 200 to be 404"), the call page ("actions: undefined"), the
+  dashboard ("Calls today": 1 for another team's call), Smart Views ("to not
+  include" the other team's rep) and Social Leads (no `assignees`). Against
+  main's source, 177 of the 313 fail, every `calls/{id}` row among them.
+- Also green: `tests/permission`, `tests/sales`, `tests/ai` (75 files, 1,414
+  tests); `tests/security`, `integration`, `unit`, `identity`, `platform`,
+  `tenant` (155 files, 2,160 tests, 2 skipped); `tsc`; eslint and prettier on
+  the changed files. Browser, on the rig's dev server: `admin-deletes`,
+  `entity-navigation`, `lead-contact-masking`, `workspace-navigation`,
+  `lead-eagle-workspace` (18 passed) and `every-route` (4 passed). The specs
+  that need the demo login (`record-scope`, `user-deactivate-hand-over`) skip
+  on this rig.
 
 **Left open.**
 
-- The dashboard's call-quality panel counts the workspace's calls and audits
-  for anyone with `calls:VIEW`: numbers, not rows.
 - The allocation queue's manual placement (`leads/triage/{id}/assign`) checks
   the lead under `visibilityWhere(leads, ASSIGN)` without unassigned leads, and
-  every waiting lead is unassigned, so only ORGANIZATION scope can place one,
-  where everyone is assignable. If it opens to team leads, add
-  `assertAssignableUser` there. Allocation's ALLOCATE and ROUTE hand the pool
-  out under `allocation:APPROVE` and route across teams by design.
+  every waiting lead is unassigned (the claim also requires
+  `ownerId IS NULL`), so only ORGANIZATION scope can place one, where everyone
+  active is assignable. `assertAssignableUser` there today would only turn its 422 for
+  a deactivated person ("That person cannot take a lead", pinned by
+  `lead-triage.spec.ts`) into a 404. If placement opens to team leads, add it
+  in the same change; a note at the check says so. Allocation's ALLOCATE and
+  ROUTE hand the pool out under `allocation:APPROVE` and route across teams by
+  design.
+- For the owner: should a role with `leads:EDIT` at TEAM but no ASSIGN (the
+  seeded Marketing Manager) keep handing tasks and follow-ups to its team,
+  under its EDIT scope? Should inbound calls from unknown numbers go to an
+  answering agent rather than the top-ranked administrator, so managers see
+  them?
 - Cold data's convert names no owner: the lead goes to the record's owner,
   whom an assign route already checked, or the caller.
 - Other records with an owner (accounts, contacts, opportunities,
