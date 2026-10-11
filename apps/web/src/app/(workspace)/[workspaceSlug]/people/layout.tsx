@@ -11,7 +11,9 @@ import { resolveWorkspacePage, SELF_SERVICE, workspaceOwns } from '@/lib/workspa
  * nothing would say so. The gate belongs somewhere a new file inherits it
  * rather than somewhere a new file has to remember it.
  *
- * A workspace without HRMS gets `NotInPlan`; any other refusal (a monitoring
+ * A workspace without HRMS gets `NotInPlan`, which sends check-in, attendance,
+ * its requests and work locations to their every-plan addresses at the
+ * workspace root (lib/nav/realtyShared.ts); any other refusal (a monitoring
  * session, which self-service screens refuse) still goes to the dashboard.
  */
 export default async function PeopleLayout({

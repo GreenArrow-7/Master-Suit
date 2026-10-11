@@ -90,18 +90,20 @@ test.describe('Lead Eagle, from the platform portal to a lead', () => {
       expect(refused.status()).toBe(403);
     });
 
-    await test.step('a /sales/ link lands on the same screen under Lead Eagle', async () => {
-      await page.goto(at(`/sales/leads/${leadId}`));
-      await expect(page).toHaveURL(new RegExp(`/${eagle.slug}/lead-eagle/leads/${leadId}`));
+    await test.step('a /sales/ or /realty/ link lands on the same screen under Lead Eagle', async () => {
+      for (const folder of ['sales', 'realty']) {
+        await page.goto(at(`/${folder}/leads/${leadId}`));
+        await expect(page).toHaveURL(new RegExp(`/${eagle.slug}/lead-eagle/leads/${leadId}`));
+      }
     });
 
     await test.step('the money and marketing registers are not part of it, and the screen says so (M2-05)', async () => {
       // Each screen stays where it was asked for and names the products that
-      // carry it; it used to go to the dashboard without a word.
+      // carry it, as the API does; it used to go to the dashboard without a word.
       for (const [path, says] of [
-        ['/realty/collections', 'Collections is part of Real Estate.'],
+        ['/realty/collections', 'Collections is part of Sales or Real Estate.'],
         ['/sales/events', 'Events is part of Sales or Real Estate.'],
-        ['/realty/events', 'Events is part of Real Estate.'],
+        ['/realty/events', 'Events is part of Sales or Real Estate.'],
       ]) {
         await page.goto(at(path!));
         await expect(page.getByRole('heading', { name: says })).toBeVisible();
@@ -117,6 +119,23 @@ test.describe('Lead Eagle, from the platform portal to a lead', () => {
       const events = await page.request.get('/api/v1/events');
       expect(events.status()).toBe(403);
       expect((await events.json()).detail).toBe('Sales or Real Estate is not enabled for this company.');
+    });
+
+    await test.step('a link followed from that page is decided afresh, not left under the old heading', async () => {
+      // The bell opens a record with router.push, and a soft navigation does not
+      // run the /sales/ layout again: the plan page has to notice the URL move.
+      const push = (url: string) =>
+        page.evaluate(
+          (to) => (window as unknown as { next: { router: { push(u: string): void } } }).next.router.push(to),
+          url,
+        );
+      await page.goto(at('/sales/events'));
+      await expect(page.getByRole('heading', { name: 'Events is part of Sales or Real Estate.' })).toBeVisible();
+      await push(at('/sales/opportunities'));
+      await expect(page.getByRole('heading', { name: 'Opportunities is part of Sales.' })).toBeVisible();
+      await push(at(`/sales/leads/${leadId}`));
+      await expect(page).toHaveURL(new RegExp(`/${eagle.slug}/lead-eagle/leads/${leadId}$`));
+      await expect(page.getByText(`Eagle Lead ${run}`).first()).toBeVisible();
     });
 
     await test.step('Admin > Roles lists Lead Eagle’s starter roles beside the administrator, each with its scope (M2-03)', async () => {

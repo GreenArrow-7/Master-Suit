@@ -1,7 +1,4 @@
-import { redirect } from 'next/navigation';
-import { headers } from 'next/headers';
 import NotInPlan from '@/components/workspace/NotInPlan';
-import { leadEagleEquivalent, realtyEquivalent } from '@/lib/nav/realtyShared';
 import { workspaceOwns } from '@/lib/workspace-page';
 
 /**
@@ -30,9 +27,10 @@ import { workspaceOwns } from '@/lib/workspace-page';
  * phone, the assistant — are built as `/sales/...` (lib/nav/entityRoute.ts).
  * A workspace that bought only Real Estate owns the same registers under
  * `/realty/`, and one that bought Lead Eagle owns most of them under
- * `/lead-eagle/`, so it is sent to the same screen there — Real Estate first,
- * the fuller of the two. A screen neither carries for it gets `NotInPlan`,
- * naming every product that does.
+ * `/lead-eagle/`, so `NotInPlan` sends it to the same screen there (Real Estate
+ * first, the fuller of the two, via lib/nav/realtyShared.ts) and names every
+ * product that carries a screen neither has for it. The Real Estate and Lead
+ * Eagle layouts do the same through it.
  */
 export default async function SalesLayout({
   children,
@@ -43,16 +41,5 @@ export default async function SalesLayout({
 }) {
   const { workspaceSlug } = await params;
   if (await workspaceOwns(workspaceSlug, 'SALES')) return children;
-
-  const header = await headers();
-  const url = `${header.get('x-pathname') ?? ''}${header.get('x-search') ?? ''}`;
-  const elsewhere = [
-    ['REAL_ESTATE', realtyEquivalent(url)],
-    ['LEAD_EAGLE', leadEagleEquivalent(url)],
-  ] as const;
-  for (const [module, target] of elsewhere) {
-    if (target && (await workspaceOwns(workspaceSlug, module))) redirect(target);
-  }
-  const carriers = elsewhere.filter(([, target]) => target).map(([module]) => module);
-  return <NotInPlan slug={workspaceSlug} module={['SALES', ...carriers]} />;
+  return <NotInPlan slug={workspaceSlug} module="SALES" />;
 }

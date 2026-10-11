@@ -15,9 +15,9 @@ import type { ReactElement } from 'react';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 // The module layouts read the session and the URL from the request headers, set per case.
-const jar = vi.hoisted(() => ({ cookie: '', path: '/' }));
+const jar = vi.hoisted(() => ({ cookie: '', path: '/', search: '' }));
 vi.mock('next/headers', () => ({
-  headers: async () => new Headers({ cookie: jar.cookie, 'x-pathname': jar.path }),
+  headers: async () => new Headers({ cookie: jar.cookie, 'x-pathname': jar.path, 'x-search': jar.search }),
   cookies: async () => ({ get: () => undefined }),
 }));
 
@@ -37,6 +37,7 @@ import { GET as eventsList } from '@/app/api/v1/events/route';
 import SalesLayout from '@/app/(workspace)/[workspaceSlug]/sales/layout';
 import RealtyLayout from '@/app/(workspace)/[workspaceSlug]/realty/layout';
 import PeopleLayout from '@/app/(workspace)/[workspaceSlug]/people/layout';
+import LeadEagleLayout from '@/app/(workspace)/[workspaceSlug]/lead-eagle/layout';
 import { createSessionToken } from '../helpers/session';
 import { get, post } from '../helpers/request';
 import type { Grants } from '../helpers/fixtures';
@@ -246,9 +247,11 @@ describe('Lead Eagle reaches lead work, and neither Sales-only nor money registe
  * Estate is not enabled" for events, which Sales or Real Estate carry.
  */
 describe('a screen or route outside the plan says which products carry it', () => {
-  const open = (w: Workspace, path: string, cookie = w.cookie) => {
+  const open = (w: Workspace, url: string, cookie = w.cookie) => {
+    const [path, search = ''] = url.split('?');
     jar.cookie = cookie;
     jar.path = `/${w.slug}${path}`;
+    jar.search = search && `?${search}`;
     return { children: 'the screen', params: Promise.resolve({ workspaceSlug: w.slug }) };
   };
   const text = (node: unknown): string => {
@@ -258,23 +261,87 @@ describe('a screen or route outside the plan says which products carry it', () =
       return text((node as ReactElement<{ children?: unknown }>).props.children);
     return '';
   };
-  /** What a layout puts on screen, its own server component resolved. */
-  const shown = async (node: unknown) => {
+  const elements = (node: unknown): ReactElement<Record<string, unknown>>[] => {
+    if (Array.isArray(node)) return node.flatMap(elements);
+    if (!node || typeof node !== 'object' || !('props' in node)) return [];
+    const el = node as ReactElement<Record<string, unknown>>;
+    return [el, ...elements(el.props.children)];
+  };
+  /** A layout's output with its own server component resolved. */
+  const rendered = async (node: unknown) => {
     const el = node as ReactElement<Record<string, unknown>>;
     const render = el?.type as unknown as (props: unknown) => Promise<unknown>;
-    return text(typeof render === 'function' ? await render(el.props) : node);
+    return typeof render === 'function' ? await render(el.props) : node;
+  };
+  /** What a layout puts on screen. */
+  const shown = async (node: unknown) => text(await rendered(node));
+  /** Where a layout sends the viewer, or null when it shows something. */
+  const sentTo = async (layout: Promise<unknown>) => {
+    try {
+      await rendered(await layout);
+      return null;
+    } catch (error) {
+      const digest = String((error as { digest?: unknown }).digest ?? '');
+      if (!digest.startsWith('NEXT_REDIRECT')) throw error;
+      return digest.split(';')[2];
+    }
   };
 
   it('Events in a Lead-Eagle-only workspace: a page naming Sales or Real Estate, not the dashboard', async () => {
-    for (const path of ['/sales/events', '/sales/events/some-event']) {
-      const page = await shown(await SalesLayout(open(leadEagleOnly, path)));
+    for (const path of ['/sales/events', '/sales/events/some-event', '/realty/events']) {
+      const Layout = path.startsWith('/sales/') ? SalesLayout : RealtyLayout;
+      const page = await shown(await Layout(open(leadEagleOnly, path)));
+      // Real Estate's folder names Sales too, as the API does: either carries events.
       expect(page).toContain('Events is part of Sales or Real Estate.');
       expect(page).toContain('This workspace’s plan does not include it.');
       expect(page).toContain('Back to the dashboard');
       expect(page).toContain('platform provider');
     }
-    const realty = await shown(await RealtyLayout(open(leadEagleOnly, '/realty/events')));
-    expect(realty).toContain('Events is part of Real Estate.');
+  });
+
+  it('the page carries the path it was decided for, so a link followed beneath the layout is decided again', async () => {
+    // Soft navigation does not run a shared layout again (TopBar's bell uses
+    // router.push), so the page itself has to notice the URL moving under it.
+    const page = await rendered(await SalesLayout(open(leadEagleOnly, '/sales/events')));
+    expect(elements(page).some((el) => el.props.path === `/${leadEagleOnly.slug}/sales/events`)).toBe(true);
+  });
+
+  const at = (w: Workspace, path: string) => `/${w.slug}${path}`;
+
+  it('the same screen under a product the plan has opens there, from whichever folder the link named', async () => {
+    expect(await sentTo(SalesLayout(open(leadEagleOnly, '/sales/leads/42?tab=calls')))).toBe(
+      at(leadEagleOnly, '/lead-eagle/leads/42?tab=calls'),
+    );
+    expect(await sentTo(RealtyLayout(open(leadEagleOnly, '/realty/leads/42')))).toBe(
+      at(leadEagleOnly, '/lead-eagle/leads/42'),
+    );
+    expect(await sentTo(RealtyLayout(open(salesOnly, '/realty/events')))).toBe(at(salesOnly, '/sales/events'));
+    expect(await sentTo(LeadEagleLayout(open(salesOnly, '/lead-eagle/leads')))).toBe(at(salesOnly, '/sales/leads'));
+    expect(await sentTo(LeadEagleLayout(open(realtyOnly, '/lead-eagle/properties')))).toBe(
+      at(realtyOnly, '/realty/properties'),
+    );
+  });
+
+  it('People’s check-in, attendance and work locations, on every plan at the workspace root, go there', async () => {
+    // Not "Check in is part of HR": the old check-in address is on home screens.
+    expect(await sentTo(PeopleLayout(open(salesOnly, '/people/check-in')))).toBe(at(salesOnly, '/check-in'));
+    expect(await sentTo(PeopleLayout(open(salesOnly, '/people/attendance')))).toBe(at(salesOnly, '/attendance'));
+    expect(await sentTo(PeopleLayout(open(salesOnly, '/people/requests')))).toBe(at(salesOnly, '/attendance/requests'));
+    expect(await sentTo(PeopleLayout(open(realtyOnly, '/people/work-locations')))).toBe(
+      at(realtyOnly, '/admin/work-locations'),
+    );
+    expect(await sentTo(PeopleLayout(open(realtyOnly, '/people/employees/e1/face')))).toBe(
+      at(realtyOnly, '/admin/work-locations/e1/face'),
+    );
+  });
+
+  it('Lead Eagle’s folder, in a workspace with no lead product, names every product that has leads', async () => {
+    expect(await shown(await LeadEagleLayout(open(hrOnly, '/lead-eagle/leads')))).toContain(
+      'Leads is part of Sales, Real Estate or Lead Eagle.',
+    );
+    expect(await shown(await LeadEagleLayout(open(salesOnly, '/lead-eagle/properties')))).toContain(
+      'Properties is part of Real Estate or Lead Eagle.',
+    );
   });
 
   it('the hint about changing the plan is for an administrator only', async () => {
@@ -294,11 +361,9 @@ describe('a screen or route outside the plan says which products carry it', () =
     );
   });
 
-  it('a screen another product carries still opens there, and an entitled one opens', async () => {
-    await expect(SalesLayout(open(leadEagleOnly, '/sales/leads'))).rejects.toMatchObject({
-      digest: expect.stringContaining(`/${leadEagleOnly.slug}/lead-eagle/leads`),
-    });
+  it('an entitled workspace gets its screen', async () => {
     expect(await SalesLayout(open(salesOnly, '/sales/events'))).toBe('the screen');
+    expect(await LeadEagleLayout(open(leadEagleOnly, '/lead-eagle/leads'))).toBe('the screen');
     expect(await PeopleLayout(open(hrOnly, '/people/leave'))).toBe('the screen');
   });
 

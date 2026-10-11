@@ -1,9 +1,12 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { can } from '@/lib/security/rbac';
 import { moduleNames } from '@/lib/security/entitlements';
-import { requestCtx } from '@/lib/workspace-page';
-import type { ProductModuleKey } from '@/lib/modules/catalogue';
+import { sameScreenElsewhere } from '@/lib/nav/realtyShared';
+import { requestCtx, workspaceOwns } from '@/lib/workspace-page';
+import { PRODUCT_MODULE_KEYS, type ProductModuleKey } from '@/lib/modules/catalogue';
+import RecheckOnNavigate from './RecheckOnNavigate';
 
 /**
  * What a module layout shows for a screen the workspace's plan does not include.
@@ -13,24 +16,39 @@ import type { ProductModuleKey } from '@/lib/modules/catalogue';
  * a broken link. Like forbidden.tsx it renders inside the workspace shell, and
  * it is not an error: nothing failed, the plan simply lacks the product.
  *
- * The screen is named from the URL (`/{slug}/sales/site-visits/…` → "Site
- * visits"); a module root has no name of its own and is "This screen".
+ * When the plan has the same screen under another folder (a `/sales/` record
+ * link in a Lead Eagle workspace, an old bookmark of People's check-in), it sends
+ * the viewer there instead; otherwise it names every product that carries the
+ * screen. The screen is named from the URL (`/{slug}/sales/site-visits/…` →
+ * "Site visits"); a module root has no name of its own and is "This screen".
+ *
+ * The layout above stays mounted while this shows, and Next still renders the
+ * page beneath it (unseen), so each page asserts its own module as well.
  */
 export default async function NotInPlan({
   slug,
   module,
 }: {
   slug: string;
-  /** The products that carry this screen; any one would open it. */
+  /** The product of the folder the layout gates; any other that carries the screen is added from the URL. */
   module: ProductModuleKey | readonly ProductModuleKey[];
 }) {
+  const header = await headers();
+  const path = header.get('x-pathname') ?? '';
+  const elsewhere = sameScreenElsewhere(`${path}${header.get('x-search') ?? ''}`);
+  for (const [product, target] of elsewhere) {
+    if (!product || (await workspaceOwns(slug, product))) redirect(target);
+  }
+
   const ctx = await requestCtx();
-  const root = ((await headers()).get('x-pathname') ?? '').split('/')[3];
+  const root = path.split('/')[3];
   const screen = root ? `${root[0]!.toUpperCase()}${root.slice(1).replaceAll('-', ' ')}` : 'This screen';
-  const names = moduleNames(module);
+  const carriers = new Set<ProductModuleKey | null>([[module].flat(), elsewhere.map(([product]) => product)].flat());
+  const names = moduleNames(PRODUCT_MODULE_KEYS.filter((key) => carriers.has(key)));
 
   return (
     <div className="lf-empty" style={{ maxWidth: 520, margin: '10vh auto', textAlign: 'center' }}>
+      <RecheckOnNavigate path={path} />
       <h1 className="lf-h2" style={{ margin: 0 }}>
         {screen} is part of {names}.
       </h1>

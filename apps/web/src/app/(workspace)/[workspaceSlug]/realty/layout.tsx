@@ -6,8 +6,11 @@ import { workspaceOwns } from '@/lib/workspace-page';
  *
  * The workspace layout above has already established the session and the chrome;
  * this refuses the module itself, so a workspace not entitled to REAL_ESTATE
- * cannot reach these screens by typing the URL — it gets `NotInPlan` instead.
- * Hiding the navigation is not authorisation, and this is the half that is.
+ * cannot reach these screens by typing the URL — it gets `NotInPlan` instead,
+ * which sends it to the same screen under Sales or Lead Eagle when the plan has
+ * one there. Hiding the navigation is not authorisation, and neither is this
+ * alone: Next still renders the page beneath `NotInPlan`, unseen, so each page
+ * asserts its module too (tests/permission/page-access.spec.ts).
  *
  * Entitlement only — deliberately not a permission, for the reason the Sales
  * layout records: asking `SELF_SERVICE` here would refuse a monitoring session

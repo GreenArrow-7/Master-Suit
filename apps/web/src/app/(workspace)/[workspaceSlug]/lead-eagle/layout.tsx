@@ -7,8 +7,9 @@ import { workspaceOwns } from '@/lib/workspace-page';
  *
  * The workspace layout above has established the session and the chrome; this
  * refuses the module, so a workspace not entitled to LEAD_EAGLE cannot reach
- * these screens by typing the URL. Every page beneath still asserts its own
- * permission.
+ * these screens by typing the URL: `NotInPlan` sends it to the same screen under
+ * Sales or Real Estate when the plan has one there, and otherwise says so.
+ * Every page beneath still asserts its own module and permission.
  */
 export default async function LeadEagleLayout({
   children,
