@@ -29,12 +29,15 @@ export default function SendShortlist({
   contactId,
   requirementId,
   clientName,
+  proposalsModule,
   matches,
 }: {
   leadId: string | null;
   contactId: string | null;
   requirementId: string;
   clientName: string;
+  /** Which module owns the proposal screens; lead-eagle/ has none. */
+  proposalsModule: 'sales' | 'realty';
   matches: MatchOption[];
 }) {
   const router = useRouter();
@@ -68,7 +71,9 @@ export default function SendShortlist({
       });
       const result = (await response.json().catch(() => ({}))) as { id?: string; detail?: string; title?: string };
       if (!response.ok || !result.id) throw new Error(result.detail ?? result.title ?? 'That did not work.');
-      router.push(`${base}/proposals/${result.id}`);
+      // Under /lead-eagle/ the draft opens where proposals live; elsewhere the layout already admitted the module.
+      const owner = base.endsWith('/lead-eagle') ? base.replace(/lead-eagle$/, proposalsModule) : base;
+      router.push(`${owner}/proposals/${result.id}`);
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : 'That did not work.');
       setBusy(false);

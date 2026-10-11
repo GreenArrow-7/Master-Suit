@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
+import DateInput from '@/components/forms/DateInput';
 import PageHeader from '@/components/ui/PageHeader';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import type { AiControlData } from './data';
@@ -196,13 +197,7 @@ function Tokenomics({ data, send, busy }: SectionProps) {
             <input className="lf-input" name="outputPerM" type="number" step="0.000001" min="0" required />
           </Field>
           <Field label="In force from">
-            <input
-              className="lf-input"
-              name="effectiveFrom"
-              type="date"
-              required
-              defaultValue={new Date().toISOString().slice(0, 10)}
-            />
+            <DateInput name="effectiveFrom" required defaultValue={new Date()} />
           </Field>
           <button type="submit" className="lf-btn" disabled={busy}>
             Save price

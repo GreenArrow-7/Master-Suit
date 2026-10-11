@@ -7,6 +7,7 @@ import ExportCsv from '@/components/workspace/ExportCsv';
 import { csvCell } from '@/lib/csv';
 import SalesLink from '@/components/workspace/SalesLink';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
+import DateInput from '@/components/forms/DateInput';
 
 export const metadata = { title: 'Face recognition activity' };
 
@@ -220,13 +221,13 @@ export default async function Page({
           <label className="lf-label" htmlFor="fa-from">
             From
           </label>
-          <input id="fa-from" className="lf-input" type="date" name="from" defaultValue={iso(from)} />
+          <DateInput id="fa-from" name="from" defaultValue={iso(from)} />
         </div>
         <div className="lf-field" style={{ margin: 0 }}>
           <label className="lf-label" htmlFor="fa-to">
             To
           </label>
-          <input id="fa-to" className="lf-input" type="date" name="to" defaultValue={iso(to)} />
+          <DateInput id="fa-to" name="to" defaultValue={iso(to)} />
         </div>
         <button className="lf-btn" type="submit">
           Search

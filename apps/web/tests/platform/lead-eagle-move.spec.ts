@@ -1,14 +1,31 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+const cookieJar = vi.hoisted(() => ({ value: '' }));
+vi.mock('next/headers', () => ({
+  headers: async () => new Headers({ cookie: cookieJar.value, 'x-pathname': '/' }),
+  cookies: async () => ({
+    get: (name: string) => {
+      const match = cookieJar.value.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+      return match ? { name, value: match[1] } : undefined;
+    },
+  }),
+}));
+
 import { prisma } from '@/lib/db';
 import { moveCompany, type LeadEagleCompany } from '@/services/platform/leadEagleMove';
-import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
+import CollectionsPage from '@/app/(workspace)/[workspaceSlug]/sales/collections/page';
+import LeadDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
+import ColdDataPage from '@/app/(workspace)/[workspaceSlug]/sales/cold-data/page';
+import { grantPermissions, seedTwoTenants, type Fixture } from '../helpers/fixtures';
+import { pageText } from '../helpers/render';
 
 /**
  * Moving a standalone Lead Eagle company into a workspace (Lead Eagle plan,
  * phase 5): what the reader hands over, written into the real database. The
  * reader itself is proven by the dry run against a copy of the standalone
  * database; this pins the writing — mapping, ownership, the dry run that keeps
- * nothing, and the refusal to move a company twice.
+ * nothing, and the refusal to move a company twice — and that the screens a
+ * person then opens (Collections, a lead's page, Cold data) show what moved.
  */
 let fixture: Fixture;
 let tenantId: string;
@@ -244,7 +261,7 @@ const snapshot = (): LeadEagleCompany => ({
       notes: null,
       status: 'JUNK',
       batch: null,
-      ownerId: null,
+      ownerId: 'u-ghost',
       convertedLeadId: null,
       convertedAt: null,
       createdAt: '2026-07-29T09:00:00Z',
@@ -418,9 +435,21 @@ beforeAll(async () => {
   fixture = await seedTwoTenants();
   tenantId = fixture.a.tenantId;
   adminEmail = `admin@${fixture.a.slug}.test`;
+  // The fixture admin holds leads and tasks, not the money screens.
+  const { roleId } = await prisma.user.findFirstOrThrow({
+    where: { tenantId, id: fixture.a.userId },
+    select: { roleId: true },
+  });
+  await grantPermissions(tenantId, roleId, [
+    ['collections', 'VIEW'],
+    ['bookings', 'VIEW'],
+  ]);
+  cookieJar.value = fixture.a.cookie;
 });
 
 afterAll(async () => {
+  // The record of each move outlives the workspace (tenantId set null); this one need not.
+  await prisma.platformAuditEvent.deleteMany({ where: { tenantId } });
   await fixture.cleanup();
 });
 
@@ -433,6 +462,63 @@ describe('moving a Lead Eagle company', () => {
     expect(report.counts.bookings).toEqual({ source: 5, moved: 4 });
     expect(await moved()).toHaveLength(0);
     expect(await prisma.leadStage.count({ where: { tenantId } })).toBe(stagesBefore);
+
+    // Real Estate is for what Lead Eagle's own menu lacks: Collections and
+    // Commissions. Projects and listings have Lead Eagle screens of their own.
+    expect(report.needsRealEstate).toBe(true);
+    expect(report.problems).toContainEqual(expect.stringContaining('bookings or commissions'));
+    const noMoney = await moveCompany(tenantId, { ...snapshot(), bookings: [], commissions: [] }, { commit: false });
+    expect(noMoney.needsRealEstate).toBe(false);
+    expect(noMoney.problems.some((p) => p.includes('--enable-real-estate'))).toBe(false);
+  });
+
+  it('reports every person a row loses and every row that stays behind', async () => {
+    const snap = snapshot();
+    const note = { ...snap.activities[0]!, summary: 'A note' };
+    const report = await moveCompany(
+      tenantId,
+      {
+        ...snap,
+        // Owned by someone deleted in Lead Eagle, so not among its users.
+        leads: [
+          ...snap.leads,
+          { ...snap.leads[1]!, id: 'l-3', reference: 'LE-0003', primaryPhone: '0501110004', ownerId: 'u-removed' },
+        ],
+        activities: [
+          ...snap.activities,
+          { ...note, userId: 'u-ghost' },
+          { ...note, leadId: 'l-2', userId: 'u-removed' },
+          // On a merged duplicate (the reader leaves merged leads behind), on deleted cold data, on nothing.
+          { ...note, leadId: 'l-merged' },
+          { ...note, leadId: null, dataRecordId: 'd-deleted', type: 'CALL' },
+          { ...note, leadId: null },
+          // On deleted cold data but also on a lead that moves: it moves onto the lead.
+          { ...note, dataRecordId: 'd-deleted' },
+        ],
+        enquiries: [...snap.enquiries, { ...snap.enquiries[0]!, leadId: 'l-merged' }],
+        followUps: [...snap.followUps, { ...snap.followUps[0]!, leadId: 'l-merged' }],
+        // On a deleted project, and on a booking that stays behind (its listing has no price).
+        units: [...snap.units, { ...snap.units[0]!, id: 'un-2', projectId: 'p-deleted' }],
+        commissions: [...snap.commissions, { ...snap.commissions[0]!, bookingId: 'b-5' }],
+      },
+      { commit: false },
+    );
+    expect(report.problems).toEqual(
+      expect.arrayContaining([
+        'ghost@nowhere.test owns 2 records but has no account here; they move unowned.',
+        '1 records are owned by people no longer in Lead Eagle; they move unowned.',
+        '2 activities were logged by someone without an account here; they move without who logged them.',
+        '1 stage changes were made by someone without an account here; they move without who made them.',
+        '4 activities and enquiries are on merged duplicates, deleted records or no record; they stay behind.',
+        '1 follow-ups are on merged duplicates or deleted leads; they stay behind.',
+        '1 units are on projects that did not move; they stay behind.',
+        'A commission of AED 70000.00 is on booking BK-ME-b-5, which did not move; it stays behind.',
+      ]),
+    );
+    expect(report.counts['activities and enquiries']).toEqual({ source: 13, moved: 9 });
+    expect(report.counts['follow-ups']).toEqual({ source: 3, moved: 2 });
+    expect(report.counts.units).toEqual({ source: 2, moved: 1 });
+    expect(await moved()).toHaveLength(0);
   });
 
   it('moves the book, matching people by email and reporting what needs a person', async () => {
@@ -440,14 +526,18 @@ describe('moving a Lead Eagle company', () => {
     expect(report.committed).toBe(true);
     expect(report.problems).toEqual(
       expect.arrayContaining([
-        'ghost@nowhere.test owns 1 leads but has no account here; they move unowned.',
+        'ghost@nowhere.test owns 2 records but has no account here; they move unowned.',
+        `1 follow-ups have no owner with an account; they are given to ${adminEmail}.`,
         'Listing LS-ME-2 has no price, which a listing here needs; it is not moved.',
         expect.stringContaining('Booking BK-ME-2 has no owner'),
         expect.stringContaining('owed to Outside referrer'),
         'Booking BK-ME-b-3 was confirmed but names no unit; it moves as a draft.',
         'Booking BK-ME-b-5 is on nothing that moved (its listing stayed behind); it is not moved.',
+        '1 stage changes were made by someone without an account here; they move without who made them.',
       ]),
     );
+    // Nothing else in this book is left behind or loses its person.
+    expect(report.problems.filter((p) => /stays? behind\.$|no longer in Lead Eagle|logged by/.test(p))).toEqual([]);
 
     const [aisha, omar] = await moved();
     expect(aisha).toMatchObject({
@@ -509,8 +599,66 @@ describe('moving a Lead Eagle company', () => {
     expect(realEstate?.state).toBe('ACTIVE');
   });
 
+  // The screens, rendered as the workspace's admin, after the commit above.
+  it('lists moved drafts and cancellations on Collections', async () => {
+    const text = await pageText(CollectionsPage());
+    const notConfirmed = await prisma.booking.findMany({
+      where: { tenantId, status: { not: 'CONFIRMED' } },
+      select: { reference: true },
+    });
+    expect(notConfirmed).toHaveLength(3);
+    for (const b of notConfirmed) expect(text).toContain(b.reference);
+    expect(text).toContain('Draft');
+    expect(text).toContain('Cancelled');
+  });
+
+  it("shows a moved lead's source detail and stage history on its page", async () => {
+    const [aisha, omar] = await moved();
+    const a = await pageText(LeadDetailPage({ params: Promise.resolve({ id: aisha!.id }) }));
+    expect(a).toContain('Portal / Bayut · Marina launch');
+    // Omar has no activities: the instant is the moved status change's, and
+    // reaches the page only through its stage history, with its stored time.
+    const o = await pageText(LeadDetailPage({ params: Promise.resolve({ id: omar!.id }) }));
+    expect(o).toContain('2026-08-05T09:00:00.000Z');
+    expect(o).toContain('Not interested');
+  });
+
+  it('shows the migrated calls on the cold-data list', async () => {
+    // The default list steps converted records aside; the filter brings them back.
+    const text = await pageText(ColdDataPage({ searchParams: Promise.resolve({ status: 'CONVERTED' }) }));
+    expect(text).toContain('Expo card\nRang from the expo list');
+  });
+
   it('refuses to move the same company twice', async () => {
     await expect(moveCompany(tenantId, snapshot(), { commit: true })).rejects.toThrow('was already moved');
     expect(await moved()).toHaveLength(2);
+  });
+
+  it('moves a company with no leads once, and refuses it the second time', async () => {
+    const snap = snapshot();
+    const coldOnly: LeadEagleCompany = {
+      ...snap,
+      company: { id: 'le-company-2', slug: 'cold-only', name: 'Cold Only' },
+      leads: [],
+      activities: [],
+      enquiries: [],
+      followUps: [],
+      dataRecords: [{ ...snap.dataRecords[1]!, fullName: 'Cold Only Record', phone: '0501110010' }],
+      captureLinks: [],
+      projects: [],
+      units: [],
+      listings: [],
+      bookings: [],
+      commissions: [],
+    };
+    const first = await moveCompany(tenantId, coldOnly, { commit: true });
+    expect(first.counts['cold data']).toEqual({ source: 1, moved: 1 });
+    // Flat, so the workspace's own Audit log prints it as text.
+    const row = await prisma.platformAuditEvent.findFirstOrThrow({ where: { tenantId, objectId: 'le-company-2' } });
+    expect(row.metadata).toEqual({ slug: 'cold-only', leads: 0 });
+    await expect(moveCompany(tenantId, coldOnly, { commit: true })).rejects.toThrow(
+      /was already moved into this workspace \(audit record of \d{4}-\d{2}-\d{2}\)/,
+    );
+    expect(await prisma.dataRecord.count({ where: { tenantId, fullName: 'Cold Only Record' } })).toBe(1);
   });
 });

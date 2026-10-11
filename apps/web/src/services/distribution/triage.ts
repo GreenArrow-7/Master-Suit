@@ -32,7 +32,9 @@ export type TriageReason =
   | 'NO_ELIGIBLE_AGENT'
   | 'ALL_AT_CAPACITY'
   /** Found by reconciliation. Its history is unknown; see `historyUnknown`. */
-  | 'PRE_EXISTING';
+  | 'PRE_EXISTING'
+  /** Handed back when its owner was deactivated or removed (services/leads/assign.ts). */
+  | 'OWNER_DEACTIVATED';
 
 /** What the queue shows under "why automatic assignment failed". */
 export interface TriageDetail {
@@ -49,6 +51,8 @@ export interface TriageDetail {
    * today" rather than implying the refusals are why it was never assigned.
    */
   assessedAt?: string;
+  /** Who held it before it was handed back, for `OWNER_DEACTIVATED`. */
+  formerOwnerName?: string;
 }
 
 export interface OpenTriageInput {
@@ -268,6 +272,8 @@ export function explainReason(reason: TriageReason, detail: TriageDetail | null)
     }
     case 'PRE_EXISTING':
       return 'Unassigned before the queue existed — original reason not recorded';
+    case 'OWNER_DEACTIVATED':
+      return `Handed back when ${detail?.formerOwnerName ?? 'its owner'} was deactivated`;
     case 'NO_ELIGIBLE_AGENT':
     default: {
       const n = detail?.candidates?.length ?? 0;

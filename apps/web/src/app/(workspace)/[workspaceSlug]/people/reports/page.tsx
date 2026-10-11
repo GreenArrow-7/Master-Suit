@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
+import DateInput from '@/components/forms/DateInput';
 import { availableReports, runReport, type ReportGroup } from '@/services/hr/reports';
 
 const GROUP_LABELS: Record<ReportGroup, string> = {
@@ -117,11 +118,11 @@ export default async function Page({
                   <input type="hidden" name="report" value={selected.key} />
                   <label className="lf-field">
                     <span className="lf-label">From</span>
-                    <input className="lf-input" type="date" name="from" defaultValue={query.from} />
+                    <DateInput name="from" defaultValue={query.from} />
                   </label>
                   <label className="lf-field">
                     <span className="lf-label">To</span>
-                    <input className="lf-input" type="date" name="to" defaultValue={query.to} />
+                    <DateInput name="to" defaultValue={query.to} />
                   </label>
                   <button className="lf-btn lf-btn--ghost" type="submit">
                     Apply

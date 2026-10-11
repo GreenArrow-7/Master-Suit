@@ -7,7 +7,9 @@ import { verifyPassword } from '@/lib/auth/password';
 import { settingCacheKey } from '@/lib/platform-settings';
 import { POST as requestSignup } from '@/app/api/v1/public/signup/route';
 import { POST as confirmSignup } from '@/app/api/v1/public/signup/confirm/route';
-import { post } from '../helpers/request';
+import { GET as listRoles } from '@/app/api/v1/workspaces/[workspaceSlug]/roles/[action]/route';
+import { get, post } from '../helpers/request';
+import { createSessionToken } from '../helpers/session';
 
 /**
  * Self-serve sign-up (Lead Eagle plan, gap 8): closed until the platform owner
@@ -126,6 +128,27 @@ describe('self-serve sign-up', () => {
     expect(await prisma.leadStage.count({ where: { tenantId: tenant.id, isDefault: true } })).toBe(1);
     const identity = await prisma.platformUser.findFirstOrThrow({ where: { normalizedEmail: email } });
     expect(await verifyPassword(identity.passwordHash!, PASSWORD)).toBe(true);
+
+    // Admin > Roles, as the new administrator sees it: Lead Eagle's five starter roles beside theirs (M2-03).
+    const admin = await prisma.user.findFirstOrThrow({ where: { tenantId: tenant.id, email } });
+    const roles = await get(
+      listRoles,
+      `/api/v1/workspaces/${slug}/roles/roles`,
+      await createSessionToken(tenant.id, admin.id),
+      {
+        workspaceSlug: slug,
+        action: 'roles',
+      },
+    );
+    expect(roles.status).toBe(200);
+    expect(roles.body.map((role: { name: string; defaultScope: string }) => [role.name, role.defaultScope])).toEqual([
+      ['Company Administrator', 'ORGANIZATION'],
+      ['Manager', 'ORGANIZATION'],
+      ['Team Lead', 'TEAM'],
+      ['Agent', 'OWN'],
+      ['Telecaller', 'OWN'],
+      ['Viewer', 'ORGANIZATION'],
+    ]);
   });
 
   it('makes one workspace per link', async () => {
@@ -151,5 +174,38 @@ describe('self-serve sign-up', () => {
     const identity = await prisma.platformUser.findFirstOrThrow({ where: { normalizedEmail: email } });
     expect(await verifyPassword(identity.passwordHash!, PASSWORD)).toBe(true);
     expect(await prisma.workspaceMembership.count({ where: { platformUserId: identity.id } })).toBe(2);
+  });
+
+  it('does not bring back a suspended or deactivated account, and gives the link back', async () => {
+    for (const status of ['SUSPENDED', 'DEACTIVATED'] as const) {
+      const email = `${status.toLowerCase()}@signup-${suffix}.test`;
+      await prisma.platformUser.create({
+        data: { email, normalizedEmail: email, fullName: 'Old Account', status },
+      });
+      const slug = `${status.toLowerCase()}-co-${suffix}`;
+      expect((await ask(slug, email)).status).toBe(200);
+      const refused = await confirm(tokenFor(email));
+      expect(refused.status).toBe(409);
+      expect((await prisma.platformUser.findFirstOrThrow({ where: { normalizedEmail: email } })).status).toBe(status);
+      expect(await prisma.tenant.count({ where: { slug } })).toBe(0);
+      expect((await prisma.signupRequest.findFirstOrThrow({ where: { email } })).consumedAt).toBeNull();
+    }
+  });
+
+  it('does not give an account being erased a new workspace', async () => {
+    await setTrialDays(14);
+    const email = `erasing@signup-${suffix}.test`;
+    const held = await prisma.platformUser.create({
+      data: { email, normalizedEmail: email, fullName: 'Leaving', status: 'ACTIVE' },
+    });
+    await prisma.accountDeletionRequest.create({ data: { platformUserId: held.id } });
+    const slug = `erasing-co-${suffix}`;
+    made.push(slug); // removed afterwards should it ever be made
+    expect((await ask(slug, email)).status).toBe(200);
+    const refused = await confirm(tokenFor(email));
+    expect(refused.status).toBe(409);
+    expect(refused.body.detail).toMatch(/being deleted/);
+    expect(await prisma.tenant.count({ where: { slug } })).toBe(0);
+    expect(await prisma.workspaceMembership.count({ where: { platformUserId: held.id } })).toBe(0);
   });
 });

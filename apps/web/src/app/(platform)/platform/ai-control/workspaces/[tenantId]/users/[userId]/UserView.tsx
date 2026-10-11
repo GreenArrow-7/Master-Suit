@@ -2,7 +2,9 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import DateInput from '@/components/forms/DateInput';
 import PageHeader from '@/components/ui/PageHeader';
+import { toDateValue } from '@/lib/dates';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import Badge from '@/components/ui/Badge';
 import type { UserDetail } from '@/services/ai/console';
@@ -44,6 +46,16 @@ export default function UserView(data: UserDetail) {
 
   const s = data.state;
   const inherited = s.chain.filter((c) => c.source !== 'user');
+  // The window of this account's own override; an inherited budget's is not ours to save.
+  const own = s.overridden ? s.budget : null;
+  const ownWindow = `${toDateValue(own?.effectiveFrom)}|${toDateValue(own?.effectiveTo)}`;
+  const [from, setFrom] = useState(toDateValue(own?.effectiveFrom));
+  const [fromWindow, setFromWindow] = useState(ownWindow);
+  // Reset/Disable refresh the page without remounting; follow the override that is there now.
+  if (fromWindow !== ownWindow) {
+    setFromWindow(ownWindow);
+    setFrom(toDateValue(own?.effectiveFrom));
+  }
 
   return (
     <div className="lf-page-stack">
@@ -171,10 +183,10 @@ export default function UserView(data: UserDetail) {
             <input name="hardLimit" type="checkbox" defaultChecked={s.budget?.hardLimit ?? false} />
           </Field>
           <Field label="From (optional)">
-            <input className="lf-input" name="from" type="date" />
+            <DateInput key={ownWindow} name="from" defaultValue={own?.effectiveFrom} onChange={setFrom} />
           </Field>
           <Field label="Until (optional)">
-            <input className="lf-input" name="to" type="date" />
+            <DateInput key={ownWindow} name="to" defaultValue={own?.effectiveTo} min={from || undefined} />
           </Field>
           <Field label="Reason (for the audit log)">
             <input className="lf-input" name="reason" placeholder="why this changed" />

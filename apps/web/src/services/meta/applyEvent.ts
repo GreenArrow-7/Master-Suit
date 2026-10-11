@@ -20,6 +20,7 @@ import { applySocialComment } from '@/services/social/applySocialComment';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { nextReference } from '@/services/shared/reference';
 import { withTx } from '@/lib/db';
+import { audit } from '@/lib/security/audit';
 import type { NormalizedMetaEvent } from '@/lib/integrations/meta/events';
 import { graphGet } from '@/lib/integrations/meta/send';
 
@@ -105,6 +106,8 @@ async function applyLeadgen(tenantId: string, connectionId: string, event: Norma
     // a separate Graph call against the ad, which is not done here.
     receivedAt: new Date().toISOString(),
   };
+  // No person made this write: the Audit Log shows System, and the form as its source.
+  const by = { tenantId, source: `facebook:${event.lead?.formId ?? 'leadgen'}` };
 
   if (existing) {
     /**
@@ -121,12 +124,24 @@ async function applyLeadgen(tenantId: string, connectionId: string, event: Norma
       where: { id: existing.id, tenantId },
       select: { customData: true },
     });
-    await prisma.lead.update({
-      where: { id: existing.id, tenantId },
-      data: {
-        lastActivityAt: event.occurredAt,
-        customData: { ...((current?.customData ?? {}) as Record<string, unknown>), metaLeadgen: attribution },
-      },
+    await withTx(tenantId, async (tx) => {
+      await tx.lead.update({
+        where: { id: existing.id, tenantId },
+        data: {
+          lastActivityAt: event.occurredAt,
+          customData: { ...((current?.customData ?? {}) as Record<string, unknown>), metaLeadgen: attribution },
+        },
+      });
+      await audit(
+        by,
+        {
+          event: 'RECORD_UPDATED',
+          objectType: 'lead',
+          recordId: existing.id,
+          metadata: { action: 'lead.enquired_again' },
+        },
+        tx,
+      );
     });
     logger.info({ tenantId, leadId: existing.id, leadgenId }, 'meta lead attached to existing customer');
     return { leadId: existing.id, created: false };
@@ -174,7 +189,7 @@ async function applyLeadgen(tenantId: string, connectionId: string, event: Norma
   if (!fallbackStage) throw new Error('tenant has no default lead stage');
 
   const lead = await withTx(tenantId, async (tx) => {
-    return tx.lead.create({
+    const created = await tx.lead.create({
       data: {
         tenantId,
         reference: await nextReference(tx, tenantId, 'LEAD'),
@@ -193,7 +208,7 @@ async function applyLeadgen(tenantId: string, connectionId: string, event: Norma
         // when the rule names neither.
         ownerId: routing?.assignedUserId ?? null,
         teamId: routing?.assignedTeamId ?? null,
-        sourceDetail: `facebook:${event.lead?.formId ?? 'leadgen'}`,
+        sourceDetail: by.source,
         // They completed a lead form asking to be contacted.
         consentStatus: 'IMPLIED',
         // customData, not campaignId: Lead.campaignId is a foreign key to a CRM
@@ -202,6 +217,8 @@ async function applyLeadgen(tenantId: string, connectionId: string, event: Norma
       },
       select: { id: true },
     });
+    await audit(by, { event: 'RECORD_CREATED', objectType: 'lead', recordId: created.id }, tx);
+    return created;
   });
 
   if (routing) {

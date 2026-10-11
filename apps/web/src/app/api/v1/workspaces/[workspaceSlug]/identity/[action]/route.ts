@@ -10,6 +10,7 @@ import {
   listAccounts,
   resetUserPassword,
   revokeUserSessions,
+  openWorkOf,
   setManager,
   setUserActive,
   unlockUser,
@@ -45,6 +46,7 @@ const paramsSchema = z.object({
     'invitation-revoke',
     'account-create',
     'account-delete',
+    'account-work',
   ]),
 });
 
@@ -66,6 +68,9 @@ export const GET = route(
         return listInvitations(ctx);
       case 'account':
         return accountDetail(ctx, query.userId ?? ctx.actor.id);
+      // What the deactivate/remove dialog asks about: open work and who may take it.
+      case 'account-work':
+        return openWorkOf(ctx, id.parse(query.userId));
       default:
         throw MethodNotAllowed('POST');
     }
@@ -117,11 +122,22 @@ export const POST = route(
         const input = z.object({ userId: id }).parse(body);
         return unlockUser(ctx, input.userId);
       }
+      // Deactivating someone who still owns open work names where it goes:
+      // `handOverTo` a member, and/or `leadsToQueue`. Without it, a 409.
       case 'account-active': {
         const input = z
-          .object({ userId: id, active: z.coerce.boolean(), reason: z.string().max(300).optional() })
+          .object({
+            userId: id,
+            active: z.coerce.boolean(),
+            reason: z.string().max(300).optional(),
+            handOverTo: id.optional(),
+            leadsToQueue: z.boolean().optional(),
+          })
           .parse(body);
-        return setUserActive(ctx, input.userId, input.active, input.reason);
+        return setUserActive(ctx, input.userId, input.active, input.reason, {
+          toUserId: input.handOverTo,
+          leadsToQueue: input.leadsToQueue,
+        });
       }
       case 'account-role': {
         const input = z.object({ userId: id, roleId: id }).parse(body);
@@ -182,18 +198,26 @@ export const POST = route(
  *
  * `userId` travels in the query because the kernel only parses a body for
  * POST/PATCH/PUT — a DELETE body would arrive empty and the id would read as
- * missing.
+ * missing. So do `handOverTo` and `leadsToQueue`, as on `account-active`.
  */
 export const DELETE = route(
   {
     module: 'users',
     action: 'DELETE',
     params: paramsSchema,
-    query: z.object({ userId: id, reason: z.string().max(300).optional() }),
+    query: z.object({
+      userId: id,
+      reason: z.string().max(300).optional(),
+      handOverTo: id.optional(),
+      leadsToQueue: z.enum(['true', 'false']).optional(),
+    }),
   },
   async ({ ctx, params, query }) => {
     await requireWorkspace(ctx, params.workspaceSlug);
     if (params.action !== 'account-delete') throw MethodNotAllowed('POST');
-    return deleteUser(ctx, query.userId, query.reason);
+    return deleteUser(ctx, query.userId, query.reason, {
+      toUserId: query.handOverTo,
+      leadsToQueue: query.leadsToQueue === 'true',
+    });
   },
 );

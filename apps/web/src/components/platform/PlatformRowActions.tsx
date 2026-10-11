@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import DateInput from '@/components/forms/DateInput';
 
 export interface PlatformEditField {
   name: string;
@@ -36,9 +37,8 @@ export default function PlatformRowActions({
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<'idle' | 'editing' | 'confirming'>('idle');
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(fields.map((field) => [field.name, field.value ?? ''])),
-  );
+  const savedValues = () => Object.fromEntries(fields.map((field) => [field.name, field.value ?? '']));
+  const [values, setValues] = useState<Record<string, string>>(savedValues);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,7 +66,26 @@ export default function PlatformRowActions({
 
   if (mode === 'editing') {
     return (
-      <div style={{ display: 'grid', gap: 8, minWidth: 220 }}>
+      // A form, so the browser stops Save on a half-typed or cleared date and
+      // says why, instead of the date being skipped without a word.
+      <form
+        style={{ display: 'grid', gap: 8, minWidth: 220 }}
+        onSubmit={(event) => {
+          event.preventDefault();
+          // Only send what changed; empty strings mean "leave alone" for
+          // dates and text, so a blank field never nulls a value by accident.
+          const changes: Record<string, unknown> = {};
+          for (const field of fields) {
+            const next = values[field.name];
+            if (next !== (field.value ?? '') && next !== '') changes[field.name] = next;
+          }
+          if (Object.keys(changes).length === 0) {
+            setMode('idle');
+            return;
+          }
+          void send('PATCH', changes);
+        }}
+      >
         {fields.map((field) => (
           <label key={field.name} style={{ display: 'grid', gap: 2, fontSize: 'var(--lf-text-xs)' }}>
             <span className="lf-eyebrow">{field.label}</span>
@@ -82,6 +101,13 @@ export default function PlatformRowActions({
                   </option>
                 ))}
               </select>
+            ) : field.type === 'date' ? (
+              // A saved date cannot be cleared from here (blank means "leave alone").
+              <DateInput
+                required={Boolean(field.value)}
+                value={values[field.name]}
+                onChange={(value) => setValues((prev) => ({ ...prev, [field.name]: value }))}
+              />
             ) : (
               <input
                 className="lf-input"
@@ -98,32 +124,22 @@ export default function PlatformRowActions({
           </div>
         )}
         <div style={{ display: 'flex', gap: 6 }}>
-          <button
-            type="button"
-            className="lf-btn"
-            disabled={busy}
-            onClick={() => {
-              // Only send what changed; empty strings mean "leave alone" for
-              // dates and text, so a blank field never nulls a value by accident.
-              const changes: Record<string, unknown> = {};
-              for (const field of fields) {
-                const next = values[field.name];
-                if (next !== (field.value ?? '') && next !== '') changes[field.name] = next;
-              }
-              if (Object.keys(changes).length === 0) {
-                setMode('idle');
-                return;
-              }
-              void send('PATCH', changes);
-            }}
-          >
+          <button type="submit" className="lf-btn" disabled={busy}>
             {busy ? 'Saving…' : 'Save'}
           </button>
-          <button type="button" className="lf-btn lf-btn--secondary" disabled={busy} onClick={() => setMode('idle')}>
+          <button
+            type="button"
+            className="lf-btn lf-btn--secondary"
+            disabled={busy}
+            onClick={() => {
+              setValues(savedValues());
+              setMode('idle');
+            }}
+          >
             Cancel
           </button>
         </div>
-      </div>
+      </form>
     );
   }
 

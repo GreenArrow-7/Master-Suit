@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Field from '@/components/forms/Field';
+import { DateTimeInput } from '@/components/forms/DateInput';
 
 /**
  * Create a task: on the Tasks page, or on a lead's Tasks tab with `leadId`.
@@ -52,7 +53,10 @@ export default function TaskComposer({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.title || !form.typeId || !form.dueAt) return;
+    if (!form.title || !form.typeId || !form.dueAt) {
+      setError(!form.title ? 'Enter a title.' : !form.typeId ? 'Choose a type.' : 'Enter a due date and time.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -151,13 +155,11 @@ export default function TaskComposer({
           </select>
         </Field>
 
-        <Field label="Due" htmlFor="t-due">
-          <input
+        <Field label="Due" htmlFor="t-due" required>
+          <DateTimeInput
             id="t-due"
-            className="lf-input"
-            type="datetime-local"
             value={form.dueAt}
-            onChange={set('dueAt')}
+            onChange={(dueAt) => setForm((f) => ({ ...f, dueAt }))}
             required
           />
         </Field>

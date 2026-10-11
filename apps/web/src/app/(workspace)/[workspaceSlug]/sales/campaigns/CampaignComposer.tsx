@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Field from '@/components/forms/Field';
+import DateInput from '@/components/forms/DateInput';
 
 /**
  * Create a campaign — the front door the module was missing. Wires to
@@ -51,9 +52,10 @@ export default function CampaignComposer() {
       [k]: e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value,
     }));
 
-  async function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!form.name) return;
+    // A half-typed date, or an end before the start, stops here on its field instead of being dropped.
+    if (!form.name || !e.currentTarget.reportValidity()) return;
     setBusy(true);
     setError(null);
     try {
@@ -162,11 +164,16 @@ export default function CampaignComposer() {
         </div>
 
         <Field label="Starts" htmlFor="c-start">
-          <input id="c-start" className="lf-input" type="date" value={form.startDate} onChange={set('startDate')} />
+          <DateInput id="c-start" value={form.startDate} onChange={(v) => setForm((f) => ({ ...f, startDate: v }))} />
         </Field>
 
         <Field label="Ends" htmlFor="c-end">
-          <input id="c-end" className="lf-input" type="date" value={form.endDate} onChange={set('endDate')} />
+          <DateInput
+            id="c-end"
+            value={form.endDate}
+            min={form.startDate || undefined}
+            onChange={(v) => setForm((f) => ({ ...f, endDate: v }))}
+          />
         </Field>
 
         <Field label="Budget (AED)" htmlFor="c-budget">
@@ -175,6 +182,7 @@ export default function CampaignComposer() {
             className="lf-input"
             type="number"
             min={0}
+            step="any"
             value={form.budget}
             onChange={set('budget')}
           />

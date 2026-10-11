@@ -61,6 +61,12 @@ Response back untouched, with `sessionOnly`: a browser session may export, an
 API key may not. The generic route asserts EXPORT on the resource's own module
 inside the handler, since only the resource names it.
 
+The report CSV asserts `reports:EXPORT` in its handler too, because the same
+route serves the report as JSON under VIEW, and audits the report and its date
+range (since 11 Oct; it needed only VIEW before). It is not session-only. The
+JSON form carries the same rows, needs only VIEW and is not audited, so the
+gate covers the file, not the data.
+
 ## Checks
 
 `tests/unit/csv.spec.ts` (14) and the CSV block of `tests/sales/reports.spec.ts`:

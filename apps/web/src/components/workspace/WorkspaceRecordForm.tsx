@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authFetch } from '@/lib/auth/client';
+import DateInput, { DateTimeInput } from '@/components/forms/DateInput';
 
 export type FormField = {
   name: string;
@@ -96,6 +97,15 @@ export default function WorkspaceRecordForm({
                   </option>
                 ))}
               </select>
+            ) : field.type === 'date' ? (
+              <DateInput name={field.name} required={field.required} defaultValue={field.defaultValue} />
+            ) : field.type === 'datetime-local' ? (
+              <DateTimeInput
+                name={field.name}
+                required={field.required}
+                defaultValue={field.defaultValue}
+                aria-label={field.label}
+              />
             ) : (
               <input
                 className="lf-input"

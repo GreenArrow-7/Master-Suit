@@ -11,10 +11,15 @@
  * and the last active platform owner must not be able to disarm themselves.
  */
 import { randomBytes } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { prisma } from '@/lib/db';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { prisma, withPlatformTx } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
+import { mockOutbox } from '@/lib/mailer';
 import { clear as clearLimit, limits } from '@/lib/security/ratelimit';
+import { createStaffAccount } from '@/services/identity/accounts';
+import { acceptInvitation, inviteUser } from '@/services/identity/invitations';
+import { buildActor, buildCtx } from '../helpers/ctx';
+import { createWorkspaceUser } from '../helpers/fixtures';
 import { createPlatformSessionToken } from '../helpers/session';
 import { post } from '../helpers/request';
 import { POST as actions } from '@/app/api/v1/platform/users/[userId]/actions/route';
@@ -272,6 +277,150 @@ describe('account standing and membership', () => {
     );
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect((await signIn(`rec.user.${suffix}@platform.test`, REPLACEMENT)).status).toBe(200);
+  });
+});
+
+/**
+ * A platform suspension is the owner's to lift, from this console. Add user and
+ * Invite → accept set an existing identity ACTIVE when they attach it to a
+ * workspace, so a workspace administrator could undo it (sign-up was closed by
+ * #152). The console's own reactivation is the case above.
+ */
+describe('a suspended or deactivated identity on the workspace paths', () => {
+  let adminCtx: ReturnType<typeof buildCtx>;
+  let staffRoleId = '';
+  const HELD = ['SUSPENDED', 'DEACTIVATED'] as const;
+  /** Every standing in which a workspace may not take an identity on. */
+  const REFUSED = [...HELD, 'ERASING', 'DELETED'] as const;
+  /** An administrator may type anyone's email, so is told only this, whatever the reason. */
+  const CANNOT_BE_ADDED = /^That email belongs to an account that cannot be added\./;
+  const emailFor = (path: string, status: string) => `rec.${path}.${status.toLowerCase()}.${suffix}@platform.test`;
+  const identity = async (email: string, standing: (typeof REFUSED)[number] | 'ACTIVE') => {
+    const held = await prisma.platformUser.create({
+      data: {
+        email,
+        normalizedEmail: email,
+        fullName: 'Held Account',
+        status: standing === 'SUSPENDED' || standing === 'DEACTIVATED' ? standing : 'ACTIVE',
+        deletedAt: standing === 'DELETED' ? new Date() : null,
+      },
+    });
+    // REQUESTED: the withdrawal window, in which the identity is still ACTIVE.
+    if (standing === 'ERASING') await prisma.accountDeletionRequest.create({ data: { platformUserId: held.id } });
+    return held;
+  };
+  const standing = async (id: string) => ({
+    status: (await prisma.platformUser.findUniqueOrThrow({ where: { id } })).status,
+    memberships: await prisma.workspaceMembership.count({ where: { platformUserId: id } }),
+  });
+  const addUser = (email: string, tag: string) =>
+    createStaffAccount(adminCtx, {
+      fullName: 'Held Account',
+      employeeNumber: `HELD-${tag}-${suffix}`,
+      email,
+      roleId: staffRoleId,
+      joinedOn: '2026-01-05',
+      status: 'ACTIVE',
+      attendanceEligible: false,
+    });
+
+  beforeAll(async () => {
+    const adminRole = await prisma.role.create({
+      data: { tenantId, key: `rec-admin-${suffix}`, name: 'Admin', rank: 10 },
+    });
+    staffRoleId = (
+      await prisma.role.create({ data: { tenantId, key: `rec-staff-${suffix}`, name: 'Staff', rank: 60 } })
+    ).id;
+    const admin = await createWorkspaceUser({
+      tenantId,
+      roleId: adminRole.id,
+      email: `rec.admin.${suffix}@platform.test`,
+      fullName: 'Recovery Admin',
+    });
+    adminCtx = buildCtx(
+      buildActor({ id: admin.id, tenantId, roleId: adminRole.id, roleRank: 10, grants: [['users', 'MANAGE_USERS']] }),
+    );
+  });
+
+  it.each(REFUSED)(
+    'Add user with a %s identity’s email answers 409, says only that, and attaches nothing',
+    async (s) => {
+      const email = emailFor('add', s);
+      const held = await identity(email, s);
+      await expect(addUser(email, s)).rejects.toMatchObject({
+        status: 409,
+        message: expect.stringMatching(CANNOT_BE_ADDED),
+      });
+      expect(await standing(held.id)).toEqual({ status: held.status, memberships: 0 });
+    },
+  );
+
+  it('a suspension committed while Add user is under way is not undone', async () => {
+    const email = emailFor('race', 'SUSPENDED');
+    const held = await identity(email, 'ACTIVE');
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let holding!: (pid: number) => void;
+    const holder = new Promise<number>((resolve) => (holding = resolve));
+    // The console's suspension, held open: Add user reads the committed ACTIVE
+    // row, and its write then waits on this one.
+    const suspension = withPlatformTx(
+      async (tx) => {
+        await tx.platformUser.update({ where: { id: held.id }, data: { status: 'SUSPENDED' } });
+        holding((await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`)[0]!.pid);
+        await released;
+      },
+      { timeoutMs: 30_000 },
+    );
+    const pid = await holder;
+    const outcome = addUser(email, 'RACE').then(
+      () => 'added',
+      (err: unknown) => err,
+    );
+    await vi.waitFor(
+      async () => {
+        const [row] = await prisma.$queryRaw<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM pg_stat_activity WHERE ${pid}::int = ANY(pg_blocking_pids(pid))`;
+        expect(row!.n).toBeGreaterThan(0);
+      },
+      { timeout: 20_000, interval: 25 },
+    );
+    release();
+    await suspension;
+
+    expect(await outcome).toMatchObject({ status: 409 });
+    expect(await standing(held.id)).toEqual({ status: 'SUSPENDED', memberships: 0 });
+  }, 60_000);
+
+  it.each(HELD)(
+    'accepting an invitation once the identity is %s answers 409, says why, and adds no membership',
+    async (status) => {
+      const email = emailFor('accept', status);
+      const held = await identity(email, 'ACTIVE');
+      await inviteUser(adminCtx, { email, fullName: 'Held Account', roleId: staffRoleId });
+      const token = decodeURIComponent(mockOutbox.lastTo(email)!.body.match(/accept-invite\?token=([^\s]+)/)![1]);
+      // The platform owner acts after the invitation went out.
+      await prisma.platformUser.update({ where: { id: held.id }, data: { status } });
+
+      await expect(acceptInvitation(token, { password: 'ChosenByMeAlone-2026' })).rejects.toMatchObject({
+        status: 409,
+        message: expect.stringMatching(/suspended or deactivated/),
+      });
+      expect(await standing(held.id)).toEqual({ status, memberships: 0 });
+      const invitation = await prisma.workspaceInvitation.findFirstOrThrow({ where: { tenantId, email } });
+      expect(invitation.acceptedAt).toBeNull();
+    },
+  );
+
+  it.each(REFUSED)('refuses to invite a %s identity at all, says only that, and mails nothing', async (s) => {
+    const email = emailFor('invite', s);
+    await identity(email, s);
+    await expect(inviteUser(adminCtx, { email, fullName: 'Held Account', roleId: staffRoleId })).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringMatching(CANNOT_BE_ADDED),
+    });
+    expect(await prisma.workspaceInvitation.count({ where: { tenantId, email } })).toBe(0);
+    expect(mockOutbox.lastTo(email)).toBeUndefined();
   });
 });
 

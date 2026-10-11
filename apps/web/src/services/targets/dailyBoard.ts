@@ -3,6 +3,7 @@ import { resolveOwnerIds } from '@/lib/security/visibility';
 import { scopeFor, SCOPE_RANK, type Ctx } from '@/lib/security/rbac';
 import { startOfLocalDay, workspaceTimezone } from '@/services/hr/attendance';
 import type { CallOutcome } from '@prisma/client';
+import { maskCallNumbers } from '@/services/leads/createLead';
 
 /**
  * The daily lead-target board: what each seller was asked to do today, what
@@ -297,26 +298,31 @@ export async function dailyCalls(
   const board = await dailyBoard(ctx, date);
   const visible = board.rows.some((r) => r.userId === userId);
   if (!visible) return { board: { ...board, rows: [] }, calls: [] };
-  const calls = await prisma.call.findMany({
-    where: {
-      tenantId: ctx.tenantId,
-      deletedAt: null,
-      callerId: userId,
-      createdAt: { gte: board.from, lte: board.to },
-      status: { in: ['COMPLETED', 'MISSED', 'FAILED'] },
-    },
-    orderBy: { createdAt: 'desc' },
-    select: {
-      id: true,
-      createdAt: true,
-      leadId: true,
-      recipientNumber: true,
-      status: true,
-      outcome: true,
-      durationSecs: true,
-      notes: true,
-    },
-  });
+  // A seller reads their own day here, so a call to a lead shows the lead's
+  // number as its phone reads to them.
+  const calls = await maskCallNumbers(
+    ctx,
+    await prisma.call.findMany({
+      where: {
+        tenantId: ctx.tenantId,
+        deletedAt: null,
+        callerId: userId,
+        createdAt: { gte: board.from, lte: board.to },
+        status: { in: ['COMPLETED', 'MISSED', 'FAILED'] },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        createdAt: true,
+        leadId: true,
+        recipientNumber: true,
+        status: true,
+        outcome: true,
+        durationSecs: true,
+        notes: true,
+      },
+    }),
+  );
   const leadIds = [...new Set(calls.flatMap((c) => (c.leadId ? [c.leadId] : [])))];
   const names = new Map(
     (

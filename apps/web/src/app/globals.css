@@ -6059,3 +6059,101 @@ a.lf-kpi:hover {
     padding: 0;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Date field (components/forms/DateInput.tsx)
+   ═══════════════════════════════════════════════════════════════════════════
+   A typed field with the calendar button beside it. The button is covered by a
+   transparent native date input, so a tap on a phone opens the browser's own
+   picker and a click on a desktop opens it through showPicker. Beside, not on
+   top: a tap on the typed field never opens the calendar by surprise. */
+.lf-date {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.lf-date__box {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+  min-width: 0;
+}
+/* Beats .lf-card .lf-input { width: 100% } from forms-mobile.css. */
+.lf-date .lf-date__box > input.lf-date__text {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
+}
+.lf-date__pick {
+  position: relative;
+  flex: 0 0 auto;
+  width: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius-sm, 6px);
+  background: var(--lf-surface);
+}
+.lf-date__button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--lf-ink-2);
+  cursor: pointer;
+}
+.lf-date__button:hover:not(:disabled) {
+  background: var(--lf-surface-2);
+  color: var(--lf-ink);
+}
+.lf-date__button:focus-visible {
+  outline: none;
+  box-shadow: var(--lf-focus);
+}
+.lf-date__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+input.lf-date__native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+input.lf-date__native::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  cursor: pointer;
+}
+.lf-date__message {
+  font-size: var(--lf-text-xs);
+  color: var(--lf-danger, #b00020);
+}
+.lf-date__text[aria-invalid='true'] {
+  border-color: var(--lf-danger, #b00020);
+}
+.lf-datetime {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(96px, 128px);
+  gap: 8px;
+  align-items: start;
+  min-width: 0;
+}
+.lf-datetime__time {
+  width: 100%;
+  box-sizing: border-box;
+}

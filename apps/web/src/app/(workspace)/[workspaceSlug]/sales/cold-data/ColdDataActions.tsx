@@ -37,6 +37,7 @@ export function RecordActions({
   const [error, setError] = useState<string | null>(null);
   // Held here, so the pick shows at once rather than snapping back until the refresh lands.
   const [outcome, setOutcome] = useState<string>(status);
+  const [attached, setAttached] = useState(false);
   const run = async (write: () => Promise<void>) => {
     setBusy(true);
     setError(null);
@@ -49,6 +50,15 @@ export function RecordActions({
   };
 
   if (convertedLeadId) return <SalesLink href={`/leads/${convertedLeadId}`}>Converted — open the lead</SalesLink>;
+  // The page passes no id when the viewer cannot open the lead.
+  if (status === 'CONVERTED') return <span className="lf-hint">Converted — the lead is not yours to open</span>;
+  // No refresh: converted rows leave the list, and the sentence would go with them.
+  if (attached)
+    return (
+      <span className="lf-hint" role="status">
+        Already a lead you cannot open; the enquiry was added to it.
+      </span>
+    );
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
       <select
@@ -85,8 +95,9 @@ export function RecordActions({
           disabled={busy}
           onClick={() =>
             run(async () => {
-              const { leadId } = await send(`/api/v1/cold-data/${id}/convert`);
-              router.push(`${base}/leads/${leadId}`);
+              const { leadId, visible } = await send(`/api/v1/cold-data/${id}/convert`);
+              if (visible) router.push(`${base}/leads/${leadId}`);
+              else setAttached(true);
             })
           }
         >
@@ -102,11 +113,14 @@ export function RecordActions({
   );
 }
 
+type Agent = { id: string; fullName: string };
+
 /** Hand a list's unconverted contacts to one agent. */
-export function ListAssign({ list, agents }: { list: string; agents: { id: string; fullName: string }[] }) {
+export function ListAssign({ list, agents }: { list: string; agents: Agent[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
   return (
     <>
       <select
@@ -116,10 +130,13 @@ export function ListAssign({ list, agents }: { list: string; agents: { id: strin
         disabled={busy}
         style={{ fontSize: 'var(--lf-text-sm)', minWidth: 0 }}
         onChange={async (e) => {
+          const next = e.target.value;
           setBusy(true);
           setError(null);
+          setDone(null);
           try {
-            await send('/api/v1/cold-data/assign', { batch: list, ownerId: e.target.value || null });
+            const { assigned } = await send('/api/v1/cold-data/assign', { batch: list, ownerId: next || null });
+            setDone(next ? `${assigned} handed to ${nameOf(agents, next)}.` : `${assigned} unassigned.`);
             router.refresh();
           } catch (err) {
             setError((err as Error).message);
@@ -134,6 +151,83 @@ export function ListAssign({ list, agents }: { list: string; agents: { id: strin
           </option>
         ))}
       </select>
+      <Outcome done={done} error={error} />
+    </>
+  );
+}
+
+/** Whose record this is; only an assigner sees it, and a converted record keeps its text. */
+export function RecordAssign({
+  id,
+  ownerId,
+  ownerName,
+  agents,
+}: {
+  id: string;
+  ownerId: string | null;
+  ownerName: string | null;
+  agents: Agent[];
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  // Held here so the pick shows at once (same reason as RecordActions' outcome).
+  const [owner, setOwner] = useState(ownerId ?? '');
+  // A current owner who has left is not in `agents`; without this the control would read Unassigned.
+  const known = !ownerId || agents.some((a) => a.id === ownerId);
+  return (
+    <>
+      <select
+        className="lf-input"
+        aria-label="Agent"
+        value={owner}
+        disabled={busy}
+        style={{ fontSize: 'var(--lf-text-sm)', minWidth: 0 }}
+        onChange={async (e) => {
+          const next = e.target.value;
+          setOwner(next);
+          setBusy(true);
+          setError(null);
+          setDone(null);
+          try {
+            await send(`/api/v1/cold-data/${id}`, { ownerId: next || null }, 'PATCH');
+            setDone(next ? `Handed to ${nameOf(agents, next)}.` : 'Unassigned.');
+            router.refresh();
+          } catch (err) {
+            setOwner(ownerId ?? '');
+            setError((err as Error).message);
+          }
+          setBusy(false);
+        }}
+      >
+        <option value="">Unassigned</option>
+        {!known && (
+          <option value={ownerId!} disabled>
+            {ownerName ?? 'Former member'}
+          </option>
+        )}
+        {agents.map((agent) => (
+          <option key={agent.id} value={agent.id}>
+            {agent.fullName}
+          </option>
+        ))}
+      </select>
+      <Outcome done={done} error={error} />
+    </>
+  );
+}
+
+const nameOf = (agents: Agent[], id: string) => agents.find((a) => a.id === id)?.fullName;
+
+function Outcome({ done, error }: { done: string | null; error: string | null }) {
+  return (
+    <>
+      {done && (
+        <span className="lf-hint" role="status">
+          {done}
+        </span>
+      )}
       {error && (
         <span className="lf-hint lf-hint--error" role="alert">
           {error}

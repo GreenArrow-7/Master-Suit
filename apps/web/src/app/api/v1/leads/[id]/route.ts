@@ -2,11 +2,12 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { NotFound } from '@/lib/errors';
-import { loadFieldRules, applyFieldSecurity, stripUneditableFields } from '@/lib/security/fieldSecurity';
+import { Forbidden, NotFound } from '@/lib/errors';
+import { loadFieldRules, applyFieldSecurity, seesField, stripUneditableFields } from '@/lib/security/fieldSecurity';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { updateLead, deleteLead } from '@/services/leads/updateLead';
+import { assertLeadInScope } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -57,6 +58,16 @@ export const PATCH = route(
   },
   async ({ ctx, params, body }) => {
     const rules = await loadFieldRules(ctx, 'LEAD');
+    // A number or address this role sees masked is not theirs to overwrite: the
+    // rule the lead's other numbers follow (phones/route.ts). A lead outside
+    // their scope still answers 404 first, like a missing one.
+    const masked = (['phone', 'email'] as const).filter(
+      (field) => body[field] !== undefined && !seesField(ctx, 'LEAD', rules, field, LEAD_SENSITIVE_FIELDS),
+    );
+    if (masked.length) {
+      await assertLeadInScope(ctx, params.id, prisma, 'EDIT');
+      throw Forbidden(`Your role cannot change this lead’s ${masked.join(' or ')}.`);
+    }
     const safe = stripUneditableFields(rules, body);
     const lead = await updateLead(ctx, params.id, safe);
     return applyFieldSecurity(ctx, 'LEAD', rules, lead, LEAD_SENSITIVE_FIELDS);

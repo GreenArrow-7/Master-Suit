@@ -1,17 +1,19 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
-import { withTx, type TxClient } from '@/lib/db';
-import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
+import { prisma, withTx } from '@/lib/db';
+import { Conflict, Forbidden, Invalid } from '@/lib/errors';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
-import { loadFieldRules } from '@/lib/security/fieldSecurity';
+import { loadFieldRules, seesField } from '@/lib/security/fieldSecurity';
 import type { Ctx } from '@/lib/security/rbac';
-import { assertRecordVisible } from '@/lib/security/visibility';
+import { assertLeadInScope } from '@/lib/security/record-scope';
 import { normalizePhone } from '@/services/leads/normalizePhone';
+import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 
 /**
  * A lead's other numbers (LeadPhone), governed like `phone` itself: whoever may
- * edit the lead and its phone field may add or remove one. A number the lead
- * already has answers 409 from the unique index.
+ * edit the lead and see and edit its phone field may add or remove one — a role
+ * that sees the numbers masked (no `leads:VIEW_SENSITIVE_FIELDS`) may not. A
+ * number the lead already has answers 409 from the unique index.
  */
 const params = z.object({ id: z.string().cuid() });
 
@@ -19,17 +21,16 @@ const params = z.object({ id: z.string().cuid() });
  * Outside the transaction, deliberately: the global client inside `withTx` runs
  * on another pooled connection with no tenant set, where row-level security
  * returns no rules at all — and no rule reads as "allowed".
+ *
+ * A lead outside the caller's scope answers 404 first, exactly like a missing
+ * one; the role's refusal is for a lead they can reach.
  */
-async function assertMayEditPhones(ctx: Ctx) {
-  const rule = (await loadFieldRules(ctx, 'LEAD')).get('phone');
-  if (rule && !(rule.canView && rule.canEdit)) throw Forbidden('Your role cannot change this lead’s phone numbers.');
-}
-
-async function editableLead(ctx: Ctx, tx: TxClient, id: string) {
-  const lead = await tx.lead.findFirst({ where: { tenantId: ctx.tenantId, id } });
-  if (!lead) throw NotFound('Lead');
-  await assertRecordVisible(ctx, 'leads', lead, tx, 'EDIT');
-  return lead;
+async function assertMayEditPhones(ctx: Ctx, leadId: string) {
+  const rules = await loadFieldRules(ctx, 'LEAD');
+  const editable = rules.get('phone')?.canEdit ?? true;
+  if (seesField(ctx, 'LEAD', rules, 'phone', LEAD_SENSITIVE_FIELDS) && editable) return;
+  await assertLeadInScope(ctx, leadId, prisma, 'EDIT');
+  throw Forbidden('Your role cannot change this lead’s phone numbers.');
 }
 
 export const POST = route(
@@ -50,9 +51,9 @@ export const POST = route(
   async ({ ctx, params, body }) => {
     const normalized = normalizePhone(body.phone);
     if (!normalized) throw Invalid([{ field: 'phone', code: 'invalid', message: 'Enter a phone number.' }]);
-    await assertMayEditPhones(ctx);
+    await assertMayEditPhones(ctx, params.id);
     return withTx(ctx.tenantId, async (tx) => {
-      const lead = await editableLead(ctx, tx, params.id);
+      const lead = await assertLeadInScope(ctx, params.id, tx, 'EDIT');
       if (lead.phoneNormalized === normalized) throw Conflict('That is already this lead’s main number.');
       return tx.leadPhone.create({
         data: {
@@ -79,9 +80,9 @@ export const DELETE = route(
     auditEvent: 'RECORD_UPDATED',
   },
   async ({ ctx, params, query }) => {
-    await assertMayEditPhones(ctx);
+    await assertMayEditPhones(ctx, params.id);
     await withTx(ctx.tenantId, async (tx) => {
-      await editableLead(ctx, tx, params.id);
+      await assertLeadInScope(ctx, params.id, tx, 'EDIT');
       await tx.leadPhone.delete({ where: { id: query.phoneId, leadId: params.id, tenantId: ctx.tenantId } });
     });
     return { ok: true };

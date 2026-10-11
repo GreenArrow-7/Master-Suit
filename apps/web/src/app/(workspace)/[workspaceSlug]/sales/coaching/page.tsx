@@ -7,6 +7,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
 import PageHeader from '@/components/ui/PageHeader';
 import SalesLink from '@/components/workspace/SalesLink';
+import DateInput from '@/components/forms/DateInput';
 
 export const metadata = { title: 'Coaching' };
 
@@ -149,11 +150,11 @@ export default async function CoachingPage({
         </label>
         <label className="lf-field">
           <span className="lf-eyebrow">From</span>
-          <input type="date" name="from" defaultValue={searchParams.from ?? ''} className="lf-input" />
+          <DateInput key={searchParams.from ?? ''} name="from" defaultValue={searchParams.from} />
         </label>
         <label className="lf-field">
           <span className="lf-eyebrow">To</span>
-          <input type="date" name="to" defaultValue={searchParams.to ?? ''} className="lf-input" />
+          <DateInput key={searchParams.to ?? ''} name="to" defaultValue={searchParams.to} />
         </label>
         {/* Carried through the submit so filtering does not silently reset the view. */}
         {!analysedOnly && <input type="hidden" name="show" value="all" />}

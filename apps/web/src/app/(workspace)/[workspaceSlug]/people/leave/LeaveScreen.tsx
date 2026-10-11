@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Field from '@/components/forms/Field';
+import DateInput from '@/components/forms/DateInput';
 
 /**
  * The Leave screen, built to the reference: the balance cards with their
@@ -163,22 +164,19 @@ export default function LeaveScreen({
             </select>
           </Field>
           <Field label="First day" htmlFor="lv-from">
-            <input
+            <DateInput
               id="lv-from"
-              className="lf-input"
-              type="date"
               value={form.startDate}
-              onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
+              onChange={(value) => setForm((f) => ({ ...f, startDate: value }))}
               required
             />
           </Field>
           <Field label="Last day" htmlFor="lv-to">
-            <input
+            <DateInput
               id="lv-to"
-              className="lf-input"
-              type="date"
               value={form.endDate}
-              onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
+              min={form.startDate || undefined}
+              onChange={(value) => setForm((f) => ({ ...f, endDate: value }))}
             />
           </Field>
         </div>

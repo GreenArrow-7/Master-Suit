@@ -98,6 +98,9 @@ test.describe('Clicking a record opens that record', () => {
               title: `Social enquiry ${run}`,
               objectType: 'SOCIAL_COMMENT',
               recordId: 'rec-social',
+              // The one HIGH row: the bell and the Inbox must badge it, and
+              // only it — the other two stay at the MEDIUM default.
+              priority: 'HIGH',
             },
             ...(leadId
               ? [
@@ -159,12 +162,15 @@ test.describe('Clicking a record opens that record', () => {
     await page.goto(`/${workspace.slug}/sales/leads`);
     const feed = await page.request.get('/api/v1/notifications');
     expect(feed.ok(), await feed.text()).toBe(true);
-    const rows: { title: string; destination: string | null; actionUrl: string | null }[] = (await feed.json()).data;
+    const rows: { title: string; destination: string | null; actionUrl: string | null; priority: string }[] = (
+      await feed.json()
+    ).data;
     const find = (title: string) => rows.find((r) => r.title === title)!;
 
     expect(find(`Leave to approve ${run}`).destination).toBe(`/${workspace.slug}/people/leave`);
     expect(find(`Leave to approve ${run}`).actionUrl).toBeNull();
     expect(find(`Social enquiry ${run}`).destination).toBe(`/${workspace.slug}/sales/social-leads`);
+    expect(find(`Social enquiry ${run}`).priority).toBe('HIGH');
     if (leadId) {
       expect(find(`Automation ${run}`).destination).toBe(`/${workspace.slug}/sales/leads/${leadId}`);
     }
@@ -176,6 +182,15 @@ test.describe('Clicking a record opens that record', () => {
     });
 
     await page.getByRole('button', { name: /Notifications/ }).click();
+
+    // ── Priority is visible, not just carried ──────────────────────────────
+    // A HIGH row wears a badge; a MEDIUM one wears nothing. Position is not
+    // asserted here — the flow may have raised other unread HIGH rows for the
+    // admin — the vitest feed spec owns the ordering.
+    const bellRow = (title: string) => page.locator('.lf-noti-row', { hasText: title });
+    await expect(bellRow(`Social enquiry ${run}`).locator('.lf-badge')).toHaveText(/high/i);
+    await expect(bellRow(`Leave to approve ${run}`).locator('.lf-badge')).toHaveCount(0);
+
     // Opening the dropdown is not a navigation; anything recorded up to here is
     // the page the click starts from, which is not what this measures.
     visited.length = 0;
@@ -187,5 +202,11 @@ test.describe('Clicking a record opens that record', () => {
     // through the 404 page and nothing flashed an unrelated screen on the way —
     // the defect this replaces put every one of these on /not-found.
     expect(visited).toEqual([`/${workspace.slug}/people/leave`]);
+
+    // ── The Inbox shows the same badge ─────────────────────────────────────
+    await page.goto(`/${workspace.slug}/notifications`);
+    await expect(page.getByRole('row', { name: new RegExp(`Social enquiry ${run}`) }).locator('.lf-badge')).toHaveText(
+      /high/i,
+    );
   });
 });

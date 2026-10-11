@@ -1,7 +1,7 @@
 import { prisma, type TxClient } from '@/lib/db';
 import { AppError, NotFound } from '@/lib/errors';
-import { atLeast, can, type Action, type Ctx } from '@/lib/security/rbac';
-import { assertRecordVisible, visibilityWhere } from '@/lib/security/visibility';
+import { atLeast, can, scopeFor, type Action, type Ctx } from '@/lib/security/rbac';
+import { assertRecordVisible, resolveOwnerIds, visibilityWhere } from '@/lib/security/visibility';
 
 /**
  * Record scope for the routes that load one record by id.
@@ -35,23 +35,34 @@ export async function assertCallInScope(ctx: Ctx, callId: string, action: Action
 /**
  * The event equivalent. An event has no visibility column, so below TEAM scope
  * the rule is the one the records themselves carry: the event is yours when you
- * host it or created it, and an invitee may see the event they were invited to
- * (read only — the write routes keep their own checks).
+ * host it or created it, and an invitee may see the event they were invited to.
+ * Read only: at any other action the invitee clause drops out. The action is
+ * the route's own and has no default: a VIEW default let PATCH, DELETE, invite
+ * and RSVP reach an event its caller was only invited to.
  */
-export async function assertEventInScope(ctx: Ctx, eventId: string, action: Action = 'VIEW'): Promise<void> {
+export async function assertEventInScope(ctx: Ctx, eventId: string, action: Action): Promise<void> {
   if (atLeast(ctx, 'events', action, 'TEAM')) return;
   const visible = await prisma.event.findFirst({
-    where: { id: eventId, tenantId: ctx.tenantId, deletedAt: null, ...eventScopeFilter(ctx.actor.id) },
+    where: { id: eventId, tenantId: ctx.tenantId, deletedAt: null, ...eventScopeFilter(ctx.actor.id, action) },
     select: { id: true },
   });
   if (!visible) throw NotFound('Event');
 }
 
 /** The same rule as a `where` fragment, for the list route. */
-export function eventScopeFilter(actorId: string) {
-  return {
-    OR: [{ hostId: actorId }, { createdById: actorId }, { invitees: { some: { userId: actorId } } }],
-  };
+export function eventScopeFilter(actorId: string, action: Action = 'VIEW') {
+  const mine = [{ hostId: actorId }, { createdById: actorId }];
+  return { OR: action === 'VIEW' ? [...mine, { invitees: { some: { userId: actorId } } }] : mine };
+}
+
+/**
+ * What every read of events adds to its `where`: nothing at TEAM scope and
+ * above, `eventScopeFilter` below it. The list route had it; the Events page,
+ * an event's page, the calendar and the assistant read every event in the
+ * workspace.
+ */
+export function eventListScope(ctx: Ctx) {
+  return seesWholeWorkspace(ctx, 'events') ? {} : eventScopeFilter(ctx.actor.id);
 }
 
 /**
@@ -61,17 +72,35 @@ export function eventScopeFilter(actorId: string) {
  * `leadId` was otherwise the whole check — an agent at OWN scope could put a
  * call, visit or sale on any lead in the workspace and read its name back on
  * their own screens. Not found either way. Inside `withTx`, pass its `tx`.
+ * Returns the row for callers that go on to edit it: the lead's own by-id
+ * writes (PATCH, DELETE, close-out, phones, temperature) load through here
+ * too, so an out-of-scope id answers the same 404 as GET instead of a 403
+ * that confirmed the lead exists.
  */
 export async function assertLeadInScope(ctx: Ctx, leadId: string, db: TxClient | typeof prisma, action: Action) {
-  const lead = await db.lead.findFirst({
-    where: { tenantId: ctx.tenantId, id: leadId, deletedAt: null },
-    select: { tenantId: true, ownerId: true },
-  });
+  const lead = await db.lead.findFirst({ where: { tenantId: ctx.tenantId, id: leadId, deletedAt: null } });
   if (!lead) throw NotFound('Lead');
+  await assertRecordInScope(ctx, 'leads', lead, db, action, 'Lead');
+  return lead;
+}
+
+/**
+ * `assertRecordVisible` for a record a route loaded by id: out of scope answers
+ * the same 404 as a missing id (`label` names it), never a 403. Inside
+ * `withTx`, pass its `tx`.
+ */
+export async function assertRecordInScope(
+  ctx: Ctx,
+  module: string,
+  record: Parameters<typeof assertRecordVisible>[2],
+  db: TxClient | typeof prisma,
+  action: Action,
+  label: string,
+) {
   try {
-    await assertRecordVisible(ctx, 'leads', lead, db, action);
+    await assertRecordVisible(ctx, module, record, db, action);
   } catch (err) {
-    if (err instanceof AppError && err.status === 403) throw NotFound('Lead');
+    if (err instanceof AppError && err.status === 403) throw NotFound(label);
     throw err;
   }
 }
@@ -117,6 +146,31 @@ export async function assertContactInScope(ctx: Ctx, contactId: string) {
       select: { id: true },
     }));
   if (!contact) throw NotFound('Contact');
+}
+
+/**
+ * A task or follow-up by id: yours, or owned by someone your `module` scope for
+ * `action` covers. `tasks/{id}` checked nothing about the task, so `leads:EDIT`
+ * changed, completed or took any task in the workspace, and `tasks:DELETE`
+ * deleted it; `follow-ups/{id}` treated TEAM scope as the whole workspace. A
+ * record with no owner is listed only at ORGANIZATION scope, so only that
+ * reaches one here — `assertRecordVisible` would pass it for anyone. Not found
+ * either way.
+ */
+export async function assertOwnerInScope(
+  ctx: Ctx,
+  tx: TxClient,
+  module: string,
+  action: Action,
+  ownerId: string | null,
+  what: string,
+) {
+  if (ownerId === ctx.actor.id) return;
+  const scope = scopeFor(ctx, module, action);
+  if (scope === 'ORGANIZATION') return;
+  if (scope === 'NONE' || !ownerId || !(await resolveOwnerIds(ctx, scope, tx)).includes(ownerId)) {
+    throw NotFound(what);
+  }
 }
 
 /** True when the caller sees every record of this kind in the workspace. */

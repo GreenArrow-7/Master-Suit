@@ -1,9 +1,8 @@
 import type { SubscriptionPlan } from '@prisma/client';
 import { withPlatformTx } from '@/lib/db';
-import { Conflict } from '@/lib/errors';
 import type { ProductModuleKey } from '@/lib/modules/catalogue';
 import { platformAudit } from '@/lib/security/audit';
-import { LEAD_MODULES } from '@/lib/security/entitlements';
+import { activateIdentity, assertIdentityReusable } from '@/services/identity/accounts';
 import { provisionLeadWork } from '@/services/platform/provisioning';
 
 /**
@@ -210,19 +209,14 @@ export async function createWorkspace(
     // consultant administering two customers — produced an administrator who
     // could not sign in with the password the platform owner had just typed
     // and communicated. Say which of the two happened instead of guessing.
-    const existingIdentity = await tx.platformUser.findUnique({
-      where: { normalizedEmail: adminEmail },
-      select: { id: true, deletedAt: true },
-    });
-    if (existingIdentity?.deletedAt) {
-      throw Conflict('That email belongs to a deleted account. Restore it or use a different address.');
-    }
+    //
+    // Making a workspace must not undo a suspension: the update below sets the
+    // identity ACTIVE (an invited one has now proved its address), and
+    // self-serve sign-up runs through here.
+    const existingIdentity = await assertIdentityReusable(tx, adminEmail);
     const reusedExistingIdentity = Boolean(existingIdentity);
     const platformUser = existingIdentity
-      ? await tx.platformUser.update({
-          where: { id: existingIdentity.id },
-          data: { fullName: body.primaryAdminName, status: 'ACTIVE' },
-        })
+      ? await activateIdentity(tx, existingIdentity.id, { fullName: body.primaryAdminName })
       : await tx.platformUser.create({
           data: {
             email: adminEmail,
@@ -257,10 +251,9 @@ export async function createWorkspace(
         joinedOn: new Date(),
       },
     });
-    // Lead stages, activity and task types: every module that works leads needs them.
-    if (body.enabledModules.some((module) => (LEAD_MODULES as readonly string[]).includes(module))) {
-      await provisionLeadWork(tx, created.id);
-    }
+    // Lead stages, activity and task types for every module that works leads;
+    // Lead Eagle's starter roles.
+    await provisionLeadWork(tx, created.id, body.enabledModules);
     if (body.enabledModules.includes('SALES')) {
       /**
        * The default opportunity pipeline and its stages.

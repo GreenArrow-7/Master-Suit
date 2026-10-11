@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
 import { useModuleBase } from '@/components/workspace/SalesLink';
+import { dialable } from '@/components/workspace/CallLink';
 import Field from '@/components/forms/Field';
 import TaskComposer from '../../tasks/TaskComposer';
 import StageReason, { asksForReason } from '@/components/workspace/StageReason';
@@ -74,14 +75,18 @@ interface LeadData {
   phone: string | null;
   /** E.164, for wa.me — which refuses a number typed in local form. */
   phoneNormalized: string | null;
-  /** Null when the viewer's role may not see the main number either. */
+  /** Masked like the main number when it is masked; null when that is hidden. */
   phones: { id: string; raw: string; normalized: string; label: string | null; isWhatsapp: boolean }[] | null;
+  /** The viewer's role sees these masked: shown, never dialled, mailed or edited. */
+  contactMasked: { phone: boolean; email: boolean };
   company: string | null;
   jobTitle: string | null;
   industry: string | null;
   city: string | null;
   country: string | null;
   source: string;
+  /** Where exactly it came from, when known: a portal, a campaign. */
+  sourceDetail: string | null;
   consentStatus: string;
   priority: string;
   slaState: string;
@@ -102,6 +107,7 @@ interface LeadData {
   assignedWhy: string | null;
   owner: { fullName: string; email: string } | null;
   activities: Activity[];
+  stageChanges: { id: string; at: string; from: string | null; to: string; reason: string | null }[];
   tasks: TaskItem[];
   documents: Doc[];
 }
@@ -162,6 +168,9 @@ export default function LeadDetail({
 }: Props) {
   const router = useRouter();
   const base = useModuleBase();
+  // Null for no number and for a masked one alike: neither is dialled.
+  const tel = dialable(lead.phone);
+  const wa = waLink(lead.phoneNormalized ?? lead.phone);
   const [tab, setTab] = useState<Tab>('Overview');
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -285,8 +294,8 @@ export default function LeadDetail({
               <button key={t} className="lf-tab" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
                 {t}
                 {t === 'Tasks' && lead.tasks.length > 0 && <span className="lf-tab__count">{lead.tasks.length}</span>}
-                {t === 'Timeline' && lead.activities.length > 0 && (
-                  <span className="lf-tab__count">{lead.activities.length}</span>
+                {t === 'Timeline' && lead.activities.length + lead.stageChanges.length > 0 && (
+                  <span className="lf-tab__count">{lead.activities.length + lead.stageChanges.length}</span>
                 )}
               </button>
             ))}
@@ -330,27 +339,40 @@ export default function LeadDetail({
               >
                 Call with AI assistance
               </button>
+              {/* A masked number or address is never dialled, mailed or sent to
+                  WhatsApp: `dialable` refuses one, and the email is gated on the
+                  flag. The assisted call above still works — the server places
+                  it to the lead by id. */}
               <button
                 className="lf-btn lf-btn--secondary lf-btn--sm"
-                disabled={!lead.phone}
-                title={lead.phone ? `Phone ${lead.phone} from this device — no AI assistance` : 'No phone number'}
-                onClick={() => lead.phone && window.open(`tel:${lead.phone}`)}
+                disabled={!tel}
+                title={
+                  lead.contactMasked.phone && lead.phone
+                    ? MASKED_NOTE
+                    : lead.phone
+                      ? `Phone ${lead.phone} from this device — no AI assistance`
+                      : 'No phone number'
+                }
+                onClick={() => tel && window.open(`tel:${tel}`)}
               >
                 Phone
               </button>
               <button
                 className="lf-btn lf-btn--secondary lf-btn--sm"
-                disabled={!lead.email}
-                title={lead.email ? `Email ${lead.email}` : 'No email address'}
-                onClick={() => lead.email && window.open(`mailto:${lead.email}`)}
+                disabled={!lead.email || lead.contactMasked.email}
+                title={
+                  lead.contactMasked.email && lead.email
+                    ? MASKED_NOTE
+                    : lead.email
+                      ? `Email ${lead.email}`
+                      : 'No email address'
+                }
+                onClick={() => lead.email && !lead.contactMasked.email && window.open(`mailto:${lead.email}`)}
               >
                 Email
               </button>
-              {lead.phone && (
-                <button
-                  className="lf-btn lf-btn--secondary lf-btn--sm"
-                  onClick={() => window.open(waLink(lead.phoneNormalized ?? lead.phone!))}
-                >
+              {wa && (
+                <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => window.open(wa)}>
                   WhatsApp
                 </button>
               )}
@@ -613,15 +635,16 @@ function OverviewTab({
     setSaving(false);
   };
 
+  // A masked value is not offered for editing: saving it would write the dots.
   const fields: [string, string, keyof typeof form | null][] = [
-    ['Email', lead.email ?? '—', 'email'],
-    ['Phone', lead.phone ?? '—', 'phone'],
+    ['Email', lead.email ?? '—', lead.contactMasked.email ? null : 'email'],
+    ['Phone', lead.phone ?? '—', lead.contactMasked.phone ? null : 'phone'],
     ['Company', lead.company ?? '—', 'company'],
     ['Job title', lead.jobTitle ?? '—', 'jobTitle'],
     ['City', lead.city ?? '—', 'city'],
     ['Country', lead.country ?? '—', 'country'],
     ['Industry', lead.industry ?? '—', null],
-    ['Source', lead.source.replace(/_/g, ' ').toLowerCase(), null],
+    ['Source', [lead.source.replace(/_/g, ' ').toLowerCase(), lead.sourceDetail].filter(Boolean).join(' · '), null],
     ['Consent', lead.consentStatus.toLowerCase(), null],
     ['Created', fmtDate(lead.createdAt), null],
   ];
@@ -669,7 +692,7 @@ function OverviewTab({
           )}
         </dl>
         {lead.phones && (lead.phones.length > 0 || canEdit) && (
-          <OtherNumbers phones={lead.phones} leadId={lead.id} canEdit={canEdit} />
+          <OtherNumbers phones={lead.phones} leadId={lead.id} canEdit={canEdit && !lead.contactMasked.phone} />
         )}
         {editing && (
           <div style={{ display: 'flex', gap: 'var(--lf-space-2)', marginTop: 'var(--lf-space-4)' }}>
@@ -686,7 +709,14 @@ function OverviewTab({
   );
 }
 
-const waLink = (phone: string) => `https://wa.me/${phone.replace(/[^0-9]/g, '')}`;
+/** wa.me, or null for no number or a masked one. */
+const waLink = (phone: string | null) => {
+  const number = dialable(phone);
+  return number ? `https://wa.me/${number.replace(/[^0-9]/g, '')}` : null;
+};
+
+const MASKED_NOTE =
+  'Your role sees this masked. An administrator can allow it under Roles: leads, view sensitive fields.';
 
 /** A lead's numbers beyond the main one (LeadPhone), each with its WhatsApp flag. */
 function OtherNumbers({
@@ -729,10 +759,10 @@ function OtherNumbers({
             key={p.id}
             style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--lf-text-sm)' }}
           >
-            <a href={`tel:${p.raw}`}>{p.raw}</a>
+            {dialable(p.raw) ? <a href={`tel:${dialable(p.raw)}`}>{p.raw}</a> : <span>{p.raw}</span>}
             {p.label && <span style={{ color: 'var(--lf-ink-3)' }}>{p.label}</span>}
-            {p.isWhatsapp && (
-              <a href={waLink(p.normalized)} target="_blank" rel="noreferrer">
+            {p.isWhatsapp && waLink(p.normalized) && (
+              <a href={waLink(p.normalized)!} target="_blank" rel="noreferrer">
                 WhatsApp
               </a>
             )}
@@ -811,6 +841,28 @@ function TimelineTab({
   const [form, setForm] = useState({ typeId: activityTypes[0]?.id ?? '', outcome: '', notes: '', durationMins: '' });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Activities and stage changes, one timeline, newest first (ISO instants sort as text).
+  const entries = [
+    ...lead.activities.map((a) => ({
+      key: a.id,
+      at: a.occurredAt,
+      title: a.type.name,
+      kind: a.type.key.startsWith('call') ? 'call' : 'default',
+      outcome: a.outcome,
+      notes: a.notes,
+      durationSecs: a.durationSecs,
+    })),
+    ...lead.stageChanges.map((h) => ({
+      key: `stage-${h.id}`,
+      at: h.at,
+      title: h.from ? `Stage: ${h.from} → ${h.to}` : `Stage: ${h.to}`,
+      kind: 'default',
+      outcome: h.reason,
+      notes: null,
+      durationSecs: null,
+    })),
+  ].sort((x, y) => y.at.localeCompare(x.at));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -924,35 +976,31 @@ function TimelineTab({
         </form>
       )}
 
-      {lead.activities.length === 0 ? (
+      {entries.length === 0 ? (
         <p style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)', margin: 0 }}>
           Nothing recorded yet. Log a call or send an email to start the timeline.
         </p>
       ) : (
         <div className="lf-timeline">
-          {lead.activities.map((a) => (
-            <div
-              key={a.id}
-              className="lf-timeline__item"
-              data-kind={a.type.key.startsWith('call') ? 'call' : 'default'}
-            >
+          {entries.map((e) => (
+            <div key={e.key} className="lf-timeline__item" data-kind={e.kind}>
               <span className="lf-timeline__dot" aria-hidden="true" />
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--lf-space-3)' }}>
                 <strong style={{ fontSize: 'var(--lf-text-sm)', fontFamily: 'var(--lf-font-ui)', fontWeight: 600 }}>
-                  {a.type.name}
+                  {e.title}
                 </strong>
-                <span className="lf-timeline__time">{fmtDateTime(a.occurredAt)}</span>
-                {a.durationSecs != null && (
+                <span className="lf-timeline__time">{fmtDateTime(e.at)}</span>
+                {e.durationSecs != null && (
                   <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
-                    {Math.round(a.durationSecs / 60)}m
+                    {Math.round(e.durationSecs / 60)}m
                   </span>
                 )}
               </div>
-              {a.outcome && (
-                <div style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)', marginTop: 2 }}>{a.outcome}</div>
+              {e.outcome && (
+                <div style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)', marginTop: 2 }}>{e.outcome}</div>
               )}
-              {a.notes && (
-                <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)', marginTop: 2 }}>{a.notes}</div>
+              {e.notes && (
+                <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)', marginTop: 2 }}>{e.notes}</div>
               )}
             </div>
           ))}

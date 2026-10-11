@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useModuleBase } from '@/components/workspace/SalesLink';
+import { dialable } from '@/components/workspace/CallLink';
 import Badge from '@/components/ui/Badge';
+import { DateTimeInput } from '@/components/forms/DateInput';
 import type { LeadCallContext } from '@/services/leads/callContext';
 import { LIVE_AUDIO_NOTICE, vendorLabel, type LiveAudio } from '@/lib/integrations/telephony/liveAudio';
 import { recorderOptions } from '@/lib/media/recorderMimeType';
@@ -490,10 +492,10 @@ export default function LiveCallWorkspace({
             style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-vermillion)', alignSelf: 'center' }}
           >
             {placeError}
-            {call.recipientNumber && (
+            {dialable(call.recipientNumber) && (
               <>
                 {' '}
-                <a href={`tel:${call.recipientNumber}`}>Call from this phone instead (no AI assistance)</a>
+                <a href={`tel:${dialable(call.recipientNumber)}`}>Call from this phone instead (no AI assistance)</a>
               </>
             )}
           </span>
@@ -627,12 +629,9 @@ export default function LiveCallWorkspace({
                       </span>
                     ) : (
                       <span style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
-                        <input
-                          type="datetime-local"
-                          className="lf-input"
-                          style={{ padding: '2px 6px', fontSize: 'var(--lf-text-xs)', width: 170 }}
+                        <DateTimeInput
                           value={visitTimes[m.id] ?? ''}
-                          onChange={(e) => setVisitTimes((t) => ({ ...t, [m.id]: e.target.value }))}
+                          onChange={(when) => setVisitTimes((t) => ({ ...t, [m.id]: when }))}
                           aria-label={`Viewing time for ${m.title}`}
                         />
                         <button

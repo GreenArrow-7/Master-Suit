@@ -32,9 +32,10 @@ const TONE: Record<string, 'viridian' | 'brass' | 'vermillion' | 'slate'> = {
 /**
  * Money against sales.
  *
- * One row per confirmed booking: what the agency is owed, what has been
- * verified as received, what is still outstanding, and whether commission on
- * it may be paid. The legacy column names bookings that were once marked
+ * One row per booking: what the agency is owed, what has been verified as
+ * received, what is still outstanding, and whether commission on it may be
+ * paid. Drafts and cancellations are listed with their status, as nothing else
+ * lists them. The legacy column names bookings that were once marked
  * "collected" by a button press and have no verified receipt to show for it.
  */
 export default async function CollectionsPage() {
@@ -44,12 +45,13 @@ export default async function CollectionsPage() {
 
   const bookings = await prisma.booking.findMany({
     // `tenantId` stays at the top level: lib/db.ts pins the tenant from there and refuses a read without it.
-    where: { ...scope, AND: [moneyScope], deletedAt: null, status: 'CONFIRMED' },
+    where: { ...scope, AND: [moneyScope], deletedAt: null },
     orderBy: { bookingDate: 'desc' },
     take: 100,
     select: {
       id: true,
       reference: true,
+      status: true,
       currency: true,
       agencyFee: true,
       collectedAt: true,
@@ -80,7 +82,7 @@ export default async function CollectionsPage() {
       <ListHeader
         title="Collections"
         count={rows.length}
-        noun="confirmed sale"
+        noun="booking"
         capped={rows.length === 100}
         description="Agency-fee money against each confirmed sale. Commission is payable only when verified receipts cover the agreed fee in full."
         actions={
@@ -93,7 +95,7 @@ export default async function CollectionsPage() {
       />
       {rows.length === 0 ? (
         <section className="lf-card">
-          <EmptyState title="No confirmed sales yet" />
+          <EmptyState title="No bookings yet" />
         </section>
       ) : (
         <div className="lf-table-wrap">
@@ -119,6 +121,9 @@ export default async function CollectionsPage() {
                         <strong>{r.reference}</strong>
                       </SalesLink>
                       <span>{r.bookingDate.toISOString().slice(0, 10)}</span>
+                      {r.status !== 'CONFIRMED' ? (
+                        <Badge tone="slate">{r.status === 'DRAFT' ? 'Draft' : 'Cancelled'}</Badge>
+                      ) : null}
                     </td>
                     <td>{money(r.agencyFee, r.currency)}</td>
                     <td>{money(r.c.verified, r.currency)}</td>

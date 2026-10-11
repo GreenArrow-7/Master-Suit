@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { problemSummary } from '@/components/forms/useFormErrors';
 import Field from '@/components/forms/Field';
+import DateInput from '@/components/forms/DateInput';
+import { toDateValue } from '@/lib/dates';
 
 interface Option {
   id: string;
@@ -22,7 +24,6 @@ interface Created {
 }
 
 const EMPLOYMENT_TYPES = ['FULL_TIME', 'PART_TIME', 'CONTRACT', 'PROBATION', 'INTERN'];
-const today = () => new Date().toISOString().slice(0, 10);
 
 /**
  * The add-user form.
@@ -69,7 +70,7 @@ export default function NewUserForm({
     designationId: '',
     branchId: '',
     managerEmployeeId: '',
-    joinedOn: today(),
+    joinedOn: toDateValue(new Date()),
     employmentType: 'FULL_TIME',
     status: 'ACTIVE',
     // Only default this on when there is a location to assign. It used to
@@ -289,14 +290,7 @@ export default function NewUserForm({
           <label className="lf-label" data-required htmlFor="nu-joined">
             Joining date
           </label>
-          <input
-            id="nu-joined"
-            className="lf-input"
-            type="date"
-            value={form.joinedOn}
-            onChange={(e) => set('joinedOn', e.target.value)}
-            required
-          />
+          <DateInput id="nu-joined" value={form.joinedOn} onChange={(value) => set('joinedOn', value)} required />
         </div>
         <Field label="Employment type" htmlFor="nu-type">
           <select

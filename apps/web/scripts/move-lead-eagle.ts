@@ -8,8 +8,9 @@
  *
  * Without --commit it is a dry run: every write is made and checked inside one
  * transaction, then rolled back, and the report says what would move and what
- * needs a person first (users to invite, owners missing). Run it against a
- * copy, invite the people it names, then run it with --commit while the
+ * needs a person first (people without an account, owners missing). Run it
+ * against a copy, add the people it names to the workspace (Admin > Users),
+ * then run it with --commit while the
  * standalone app is read-only. The workspace must exist already — made in the
  * platform portal with Lead Eagle — and its users are matched by email.
  *

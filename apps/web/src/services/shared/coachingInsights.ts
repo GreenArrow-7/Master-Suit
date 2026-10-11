@@ -15,6 +15,7 @@
 import { prisma } from '@/lib/db';
 import { scopeFor, SCOPE_RANK, type Ctx } from '@/lib/security/rbac';
 import { resolveOwnerIds } from '@/lib/security/visibility';
+import { maskCallNumbers } from '@/services/leads/createLead';
 
 const WINDOW_MAX = 2000;
 
@@ -131,33 +132,37 @@ export async function coachingCounts(ctx: Ctx, filters: CoachingFilters) {
 export async function coachingCallList(ctx: Ctx, filters: CoachingFilters, limit = 50) {
   const where = await callWhere(ctx, filters);
 
-  const calls = await prisma.call.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-    take: limit,
-    select: {
-      id: true,
-      callerId: true,
-      leadId: true,
-      contactId: true,
-      recipientNumber: true,
-      outcome: true,
-      durationSecs: true,
-      startedAt: true,
-      endedAt: true,
-      createdAt: true,
-      caller: { select: { id: true, fullName: true } },
-      analysis: { select: { status: true, sentiment: true, talkRatio: true, summary: true } },
-      callAudits: {
-        where: { status: 'COMPLETED' },
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-        select: { overallScore: true, maxScore: true },
+  // A seller sees their own calls here: a lead's number reads as its phone does.
+  const calls = await maskCallNumbers(
+    ctx,
+    await prisma.call.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        callerId: true,
+        leadId: true,
+        contactId: true,
+        recipientNumber: true,
+        outcome: true,
+        durationSecs: true,
+        startedAt: true,
+        endedAt: true,
+        createdAt: true,
+        caller: { select: { id: true, fullName: true } },
+        analysis: { select: { status: true, sentiment: true, talkRatio: true, summary: true } },
+        callAudits: {
+          where: { status: 'COMPLETED' },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { overallScore: true, maxScore: true },
+        },
+        objectionMatches: { select: { addressed: true } },
+        _count: { select: { coachingNotes: true } },
       },
-      objectionMatches: { select: { addressed: true } },
-      _count: { select: { coachingNotes: true } },
-    },
-  });
+    }),
+  );
 
   const followUps = await followUpSentByCall(
     ctx.tenantId,

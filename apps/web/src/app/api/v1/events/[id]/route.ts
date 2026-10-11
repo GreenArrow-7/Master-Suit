@@ -10,7 +10,7 @@ const params = z.object({ id: z.string().cuid() });
 export const GET = route(
   { module: 'events', productModule: SALES_OR_REALTY, action: 'VIEW', params },
   async ({ ctx, params }) => {
-    await assertEventInScope(ctx, params.id);
+    await assertEventInScope(ctx, params.id, 'VIEW');
     const event = await prisma.event.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
       include: {
@@ -47,7 +47,7 @@ export const PATCH = route(
     auditEvent: 'RECORD_UPDATED',
   },
   async ({ ctx, params, body }) => {
-    await assertEventInScope(ctx, params.id);
+    await assertEventInScope(ctx, params.id, 'EDIT');
     return prisma.event.update({
       where: { id: params.id, tenantId: ctx.tenantId },
       data: { ...body, updatedById: ctx.actor.id },
@@ -58,7 +58,7 @@ export const PATCH = route(
 export const DELETE = route(
   { module: 'events', productModule: SALES_OR_REALTY, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) => {
-    await assertEventInScope(ctx, params.id);
+    await assertEventInScope(ctx, params.id, 'DELETE');
     await prisma.event.update({
       where: { id: params.id, tenantId: ctx.tenantId },
       data: { deletedAt: new Date(), updatedById: ctx.actor.id },

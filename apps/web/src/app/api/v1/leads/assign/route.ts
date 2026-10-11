@@ -1,7 +1,8 @@
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
-import { prisma } from '@/lib/db';
+import { withTx } from '@/lib/db';
+import { assignLeads } from '@/services/leads/assign';
 
 const body = z
   .object({
@@ -13,31 +14,7 @@ const body = z
 export const POST = route(
   { module: 'leads', productModule: LEAD_MODULES, action: 'ASSIGN', body, auditEvent: 'OWNER_CHANGED' },
   async ({ ctx, body: { leadIds, ownerId } }) => {
-    const owner = await prisma.user.findFirst({
-      where: { id: ownerId, tenantId: ctx.tenantId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!owner) throw new Error('Target user not found');
-
-    const now = new Date();
-
-    const [updated] = await prisma.$transaction([
-      prisma.lead.updateMany({
-        where: { id: { in: leadIds }, tenantId: ctx.tenantId },
-        data: { ownerId, assignedAt: now, updatedById: ctx.actor.id },
-      }),
-      // record assignment history for each lead
-      prisma.leadAssignmentHistory.createMany({
-        data: leadIds.map((leadId) => ({
-          tenantId: ctx.tenantId,
-          leadId,
-          toOwnerId: ownerId,
-          assignedById: ctx.actor.id,
-          reason: 'bulk_assignment',
-        })),
-      }),
-    ]);
-
-    return { assigned: updated.count };
+    const moved = await withTx(ctx.tenantId, (tx) => assignLeads(ctx, tx, leadIds, ownerId, 'bulk_assignment'));
+    return { assigned: moved.length };
   },
 );

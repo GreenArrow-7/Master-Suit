@@ -76,10 +76,17 @@ test.describe('Follow-up work on a phone', () => {
       await expect(rescheduleButton, 'the reschedule control is reachable on a phone').toBeVisible();
       await rescheduleButton.click();
 
+      // The shared date field: the date is typed as DD/MM/YYYY, the time beside it.
       const newDue = new Date(Date.now() + 5 * 86_400_000);
-      const dueField = page.getByLabel('New due date').first();
-      await expect(dueField, 'the date field appears on a phone').toBeVisible();
-      await dueField.fill(newDue.toISOString().slice(0, 16));
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const dateField = page.getByLabel('New due date, date').first();
+      await expect(dateField, 'the date field appears on a phone').toBeVisible();
+      await dateField.fill(`${pad(newDue.getDate())}/${pad(newDue.getMonth() + 1)}/${newDue.getFullYear()}`);
+      await page.getByLabel('New due date, time').first().fill('10:30');
+      const overflowOpen = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflowOpen, 'no horizontal scrolling with the reschedule controls open').toBeLessThanOrEqual(0);
       await page.getByRole('button', { name: 'Save' }).first().click();
 
       // The persisted outcome, not the optimistic one: reload and look again.

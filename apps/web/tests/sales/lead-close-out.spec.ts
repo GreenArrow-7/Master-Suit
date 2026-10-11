@@ -12,6 +12,8 @@ import { get, del, post } from '../helpers/request';
  * working lists, keeps its history, and can be reversed.
  */
 let h: Hierarchy;
+/** A second lead of repA1's: the only kind a rep at OWN scope may name as the original. */
+let ownDuplicate: string;
 
 beforeAll(async () => {
   h = await seedHierarchy();
@@ -24,6 +26,12 @@ beforeAll(async () => {
   await prisma.rolePermission.deleteMany({
     where: { tenantId: h.tenantId, roleId: rep.roleId, permission: { module: 'leads', action: 'DELETE' } },
   });
+  const { stageId } = await prisma.lead.findFirstOrThrow({ where: { tenantId: h.tenantId, id: h.repA1.leadId } });
+  ownDuplicate = (
+    await prisma.lead.create({
+      data: { tenantId: h.tenantId, reference: 'REPA1-DUP', fullName: 'repA1 duplicate', stageId, ownerId: h.repA1.id },
+    })
+  ).id;
 });
 afterAll(async () => {
   await h.cleanup();
@@ -57,7 +65,7 @@ describe('lead close-out versus delete', () => {
 
   it('duplicate records which lead it repeats, and reopen clears both', async () => {
     const rep = h.repA1;
-    const other = h.repA2.leadId;
+    const other = ownDuplicate;
     // Not visible to this rep, so not accepted as the original.
     const foreign = await post(
       closeOut,
@@ -66,7 +74,7 @@ describe('lead close-out versus delete', () => {
       rep.cookie,
       { id: rep.leadId },
     );
-    expect([200, 404]).toContain(foreign.status);
+    expect(foreign.status).toBe(404);
 
     const dup = await post(
       closeOut,
@@ -93,6 +101,6 @@ describe('lead close-out versus delete', () => {
       h.repA1.cookie,
       { id: h.repOtherRegion.leadId },
     );
-    expect([403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 });

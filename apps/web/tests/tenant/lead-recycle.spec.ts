@@ -128,6 +128,19 @@ describe('a workspace that opted in', () => {
     // In-app only: losing an unworked lead is not worth ringing a phone over.
     expect(notice?.channels).toEqual(['in_app']);
 
+    // And the Audit Log shows the owner taken away, by System, as the sweep.
+    expect(await prisma.auditLog.findMany({ where: { tenantId: pair.a.tenantId, recordId: lead.id } })).toMatchObject([
+      {
+        event: 'OWNER_CHANGED',
+        actorType: 'SYSTEM',
+        actorUserId: null,
+        fieldKey: 'ownerId',
+        previousValue: pair.a.userId,
+        newValue: null,
+        metadata: { source: 'recycle', afterDays: 30 },
+      },
+    ]);
+
     await prisma.lead.deleteMany({ where: { id: lead.id, tenantId: pair.a.tenantId } });
   });
 

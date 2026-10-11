@@ -6,7 +6,7 @@ import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { SIMPLE_NAMED_LEAD_FILTERS } from '@/lib/leads/namedFilters';
-import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
+import { contactSearch, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
 import LeadGrid from './LeadGrid';
 import EmptyState from '@/components/ui/EmptyState';
@@ -99,13 +99,14 @@ export default async function LeadsPage({
     : params.filter && FILTERS[params.filter]
       ? FILTERS[params.filter]!(now, ctx.actor.id)
       : {};
+  const rules = await loadFieldRules(ctx, 'LEAD');
   const search = params.q
     ? {
         OR: [
           { fullName: { contains: params.q, mode: 'insensitive' as const } },
           { company: { contains: params.q, mode: 'insensitive' as const } },
-          { email: { contains: params.q, mode: 'insensitive' as const } },
-          { phone: { contains: params.q } },
+          // Whole values only where the role sees them masked; see contactSearch.
+          ...contactSearch(ctx, rules, params.q),
           { reference: { contains: params.q, mode: 'insensitive' as const } },
         ],
       }
@@ -113,8 +114,6 @@ export default async function LeadsPage({
   // Closed-out leads (invalid, duplicate, archived) leave every working list and
   // are reached only through their own chip.
   const where = mergeWhere(scope, extra, search, params.filter === 'closed_out' ? null : OPEN_LEADS_WHERE);
-
-  const rules = await loadFieldRules(ctx, 'LEAD');
 
   const [rows, stages, users, taskTypes, setting] = await Promise.all([
     prisma.lead.findMany({

@@ -14,8 +14,12 @@ so this is the tool, proven on the seed company Meridian, ready for a real copy.
 - `src/services/platform/leadEagleMove.ts` — writes the snapshot into the workspace, in one transaction.
 
 **How to run it**
-1. In the platform portal, make the company's workspace with Lead Eagle, and
-   invite its people with the emails they use in Lead Eagle.
+1. In the platform portal, make the company's workspace with Lead Eagle (the
+   wizard creates its administrator). Inside the workspace the administrator
+   then adds its people with the emails they use in Lead Eagle: Admin >
+   Settings > Users > Add user, or People > Employees > Invite employee where
+   HR is enabled. A platform owner can do the same from Workspaces > Open after
+   'Take write access'.
 2. From `apps/web`, with `.env` pointing at YOUHAN ONE's database and the
    standalone's URL in the environment (never on the command line):
    `LEAD_EAGLE_DATABASE_URL=… npx tsx --env-file=.env scripts/move-lead-eagle.ts --company <lead eagle slug> --into <workspace slug>`
@@ -23,14 +27,17 @@ so this is the tool, proven on the seed company Meridian, ready for a real copy.
    back. Read the report: people without accounts, owners missing, what stays
    behind.
 3. Put the standalone app in read-only, then run it again with `--commit`, and
-   `--enable-real-estate` when the report says the company has projects,
-   listings or bookings (Lead Eagle's own menu does not show them).
+   `--enable-real-estate` when the report says the company has bookings or
+   commissions (Lead Eagle's own menu shows projects and listings under
+   Inventory, but not Collections or Commissions).
 4. A second `--commit` into the same workspace is refused.
 
 **Behaviour — what moves, and where**
 - People: matched by email, never created. Records of someone without an
   account move unowned; a follow-up or booking, which must have an owner, goes
-  to the workspace's first Company Admin. Both are reported.
+  to the workspace's first Company Admin. Both are counted and reported
+  (unowned records and follow-ups since
+  [10 Oct](2026-10-10-move-tool-gaps.md)).
 - Statuses → lead stages (by key; a stage of the same key is reused and gains
   the reasons); sub-statuses → the stage's reasons; a lead's sub-status (or
   lost reason) → its `stageReason`.

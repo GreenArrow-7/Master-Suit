@@ -12,7 +12,9 @@ import type { RecordSource } from '@prisma/client';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { enqueue } from '@/lib/queue';
+import { audit } from '@/lib/security/audit';
 import { assertAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitlements';
+import type { Ctx } from '@/lib/security/rbac';
 import { LEAD_SOURCES, parseEnquiry, type Enquiry, type LeadSourceKey } from '@/lib/integrations/leadSources';
 import { findDuplicates } from './findDuplicates';
 import { normalizePhone } from './normalizePhone';
@@ -56,6 +58,8 @@ export interface EnquiryOrigin {
   sourceDetail: string;
   /** Straight to this agent; none leaves it to distribution. */
   ownerId?: string | null;
+  /** The person who sent it in (cold data); none is the system, audited as `sourceDetail`. */
+  actor?: Ctx;
 }
 
 export async function takeEnquiry(
@@ -106,6 +110,7 @@ export async function takeEnquiry(
   });
   const timeline = (tx: TxClient, leadId: string) =>
     tx.activity.create({ data: { tenantId, typeId: noteType.id, leadId, notes: note, source: recordSource } });
+  const by = origin.actor ?? { tenantId, source: origin.sourceDetail };
 
   if (match) {
     await withTx(tenantId, async (tx) => {
@@ -121,6 +126,11 @@ export async function takeEnquiry(
       });
       await addPhones(tx, tenantId, lead.id, numbers, lead.phoneNormalized ?? main?.[0], label);
       await timeline(tx, lead.id);
+      await audit(
+        by,
+        { event: 'RECORD_UPDATED', objectType: 'lead', recordId: lead.id, metadata: { action: 'lead.enquired_again' } },
+        tx,
+      );
       // A repeat enquiry is the strongest buying signal there is; its owner hears of it.
       if (lead.ownerId) {
         await tx.notification.create({
@@ -177,6 +187,7 @@ export async function takeEnquiry(
     await addPhones(tx, tenantId, lead.id, numbers, main?.[0], label);
     await tx.leadStageHistory.create({ data: { tenantId, leadId: lead.id, toStageId: stage.id } });
     await timeline(tx, lead.id);
+    await audit(by, { event: 'RECORD_CREATED', objectType: 'lead', recordId: lead.id }, tx);
     return lead;
   });
 

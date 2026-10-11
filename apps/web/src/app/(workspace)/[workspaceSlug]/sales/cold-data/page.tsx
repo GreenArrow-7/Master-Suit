@@ -2,6 +2,7 @@ import type { DataStatus } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { can } from '@/lib/security/rbac';
+import { visibilityWhere } from '@/lib/security/visibility';
 import { requirePageAccess } from '@/lib/workspace-page';
 import ListHeader from '@/components/workspace/ListHeader';
 import EmptyState from '@/components/ui/EmptyState';
@@ -9,7 +10,7 @@ import SalesLink from '@/components/workspace/SalesLink';
 import { coldDataScope } from '@/services/leads/coldData';
 import LeadImport from '../leads/LeadImport';
 import { STATUS_LABEL } from '@/lib/leads/coldDataStatus';
-import { ListAssign, RecordActions } from './ColdDataActions';
+import { ListAssign, RecordActions, RecordAssign } from './ColdDataActions';
 
 export const metadata = { title: 'Cold data' };
 
@@ -49,6 +50,21 @@ export default async function ColdDataPage({
         })
       : [],
   ]);
+  // A converted record's lead may be another agent's: link only what the lead page would show.
+  const convertedIds = records.flatMap((r) => (r.convertedLeadId ? [r.convertedLeadId] : []));
+  const openable = new Set(
+    convertedIds.length
+      ? (
+          await prisma.lead.findMany({
+            where: {
+              ...(await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true })),
+              id: { in: convertedIds },
+            },
+            select: { id: true },
+          })
+        ).map((l) => l.id)
+      : [],
+  );
 
   const lists = new Map<string, Partial<Record<DataStatus, number>>>();
   for (const row of counts) lists.set(row.batch, { ...lists.get(row.batch), [row.status]: row._count._all });
@@ -144,16 +160,37 @@ export default async function ColdDataPage({
               <tbody>
                 {records.map((record) => (
                   <tr key={record.id}>
-                    <td>{record.fullName}</td>
+                    <td>
+                      {record.fullName}
+                      {record.notes && (
+                        <details>
+                          <summary className="lf-hint">Notes</summary>
+                          <div style={{ whiteSpace: 'pre-line', fontSize: 'var(--lf-text-xs)' }}>{record.notes}</div>
+                        </details>
+                      )}
+                    </td>
                     <td>{record.phone ? <a href={`tel:${record.phone}`}>{record.phone}</a> : '—'}</td>
                     <td>{record.company ?? '—'}</td>
                     <td>{record.batch}</td>
-                    <td>{record.owner?.fullName ?? 'Unassigned'}</td>
+                    <td>
+                      {canAssign && !record.convertedLeadId ? (
+                        <RecordAssign
+                          id={record.id}
+                          ownerId={record.ownerId}
+                          ownerName={record.owner?.fullName ?? null}
+                          agents={agents}
+                        />
+                      ) : (
+                        (record.owner?.fullName ?? 'Unassigned')
+                      )}
+                    </td>
                     <td>
                       <RecordActions
                         id={record.id}
                         status={record.status}
-                        convertedLeadId={record.convertedLeadId}
+                        convertedLeadId={
+                          record.convertedLeadId && openable.has(record.convertedLeadId) ? record.convertedLeadId : null
+                        }
                         canEdit={can(ctx, 'leads', 'EDIT')}
                         canConvert={can(ctx, 'leads', 'CREATE')}
                       />

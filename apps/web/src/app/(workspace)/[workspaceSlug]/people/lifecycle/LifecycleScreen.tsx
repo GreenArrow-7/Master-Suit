@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Field from '@/components/forms/Field';
+import DateInput from '@/components/forms/DateInput';
+import { toDateValue } from '@/lib/dates';
+import { useHydrated } from '@/lib/useHydrated';
 
 /**
  * People — joining and leaving, per the reference: the KPI row, the two mutually
@@ -62,6 +65,7 @@ export default function LifecycleScreen({
   initialMode?: Mode;
 }) {
   const router = useRouter();
+  const hydrated = useHydrated();
   const [mode, setMode] = useState<Mode>(initialMode);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; bad?: boolean } | null>(null);
@@ -69,7 +73,7 @@ export default function LifecycleScreen({
   const [onboardEmployee, setOnboardEmployee] = useState(people[0]?.employeeId ?? '');
   const [off, setOff] = useState({
     employeeId: people[0]?.employeeId ?? '',
-    noticeGivenOn: new Date().toISOString().slice(0, 10),
+    noticeGivenOn: toDateValue(new Date()),
     noticePeriodDays: '30',
     lastWorkingOn: '',
     separationType: 'RESIGNATION',
@@ -218,12 +222,12 @@ export default function LifecycleScreen({
               </select>
             </Field>
             <Field label="Notice given on" htmlFor="of-notice">
-              <input
+              {/* The server renders today in UTC; remount once hydrated so the field shows the browser's today, which is what off.noticeGivenOn holds. */}
+              <DateInput
+                key={hydrated ? 'browser' : 'server'}
                 id="of-notice"
-                className="lf-input"
-                type="date"
                 value={off.noticeGivenOn}
-                onChange={(e) => setOff((f) => ({ ...f, noticeGivenOn: e.target.value }))}
+                onChange={(value) => setOff((f) => ({ ...f, noticeGivenOn: value }))}
                 required
               />
             </Field>
@@ -239,12 +243,11 @@ export default function LifecycleScreen({
               />
             </Field>
             <Field label="Last working day (optional)" htmlFor="of-last">
-              <input
+              <DateInput
                 id="of-last"
-                className="lf-input"
-                type="date"
                 value={off.lastWorkingOn}
-                onChange={(e) => setOff((f) => ({ ...f, lastWorkingOn: e.target.value }))}
+                min={off.noticeGivenOn || undefined}
+                onChange={(value) => setOff((f) => ({ ...f, lastWorkingOn: value }))}
               />
             </Field>
             <Field label="Type" htmlFor="of-type">
