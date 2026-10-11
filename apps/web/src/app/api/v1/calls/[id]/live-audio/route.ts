@@ -3,7 +3,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { NotFound, Forbidden, Invalid } from '@/lib/errors';
+import { Forbidden, Invalid } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { getTranscriptionProvider, transcriptionProviderFor } from '@/lib/integrations/transcription';
@@ -11,7 +11,7 @@ import { coachTick, heuristicHints, detectStage, type CoachHint } from '@/lib/ai
 import { parseAmounts } from '@/lib/ai/simulated';
 import { leadCallContext, contextPromptBlock, budgetMatchHint } from '@/services/leads/callContext';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
-import { seesWholeWorkspace } from '@/lib/security/record-scope';
+import { assertCallInScope } from '@/lib/security/record-scope';
 import { audit } from '@/lib/security/audit';
 
 const params = z.object({ id: z.string().cuid() });
@@ -64,11 +64,7 @@ const query = z
 export const POST = route(
   { module: 'calls', productModule: LEAD_MODULES, action: 'EDIT', params, query },
   async ({ ctx, params, query, req }) => {
-    const call = await prisma.call.findFirst({
-      where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
-    });
-    if (!call) throw NotFound('Call');
-    if (call.callerId !== ctx.actor.id && !seesWholeWorkspace(ctx, 'calls', 'EDIT')) throw NotFound('Call');
+    const call = await assertCallInScope(ctx, params.id, 'EDIT');
 
     const consent = await prisma.recordingConsent.findFirst({
       where: { callId: call.id, tenantId: ctx.tenantId },

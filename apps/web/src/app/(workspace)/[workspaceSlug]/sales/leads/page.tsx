@@ -2,6 +2,7 @@ import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { mergeWhere } from '@/lib/api/where';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { assignableUsers } from '@/lib/security/record-scope';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
@@ -144,11 +145,8 @@ export default async function LeadsPage({
       orderBy: { position: 'asc' },
       select: { id: true, key: true, name: true, requiresReason: true, reasons: true },
     }),
-    prisma.user.findMany({
-      where: { tenantId: ctx.tenantId, status: 'ACTIVE', deletedAt: null },
-      orderBy: { fullName: 'asc' },
-      select: { id: true, fullName: true },
-    }),
+    // Bulk assign offers whom the API accepts.
+    assignableUsers(ctx, 'leads', 'ASSIGN'),
     prisma.taskType.findMany({
       where: { tenantId: ctx.tenantId, isActive: true },
       orderBy: { name: 'asc' },

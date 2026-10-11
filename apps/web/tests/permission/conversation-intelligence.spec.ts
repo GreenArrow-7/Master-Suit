@@ -109,7 +109,8 @@ describe('conversation intelligence RBAC', () => {
 
   it('refuses an OWN-scoped rep coaching on another rep’s call', async () => {
     // The kernel passes (the rep holds calls:EDIT); the handler must still
-    // refuse, because coaching is defined by seeing beyond your own calls.
+    // refuse, because coaching is defined by seeing beyond your own calls. A
+    // call outside the caller's scope answers as a missing one does.
     const denied = await post(
       addCoaching,
       `/api/v1/calls/${othersCallId}/coaching`,
@@ -117,7 +118,7 @@ describe('conversation intelligence RBAC', () => {
       ownRep.cookie,
       { id: othersCallId },
     );
-    expect(denied.status).toBe(403);
+    expect(denied.status).toBe(404);
   });
 
   it('lets the manager coach a rep’s call, and refuses self-coaching', async () => {

@@ -35,7 +35,7 @@ const body = z
 export const POST = route(
   { module: 'calls', productModule: LEAD_MODULES, action: 'EDIT', params, body, auditEvent: 'CALL_STARTED' },
   async ({ ctx, params, body }) => {
-    await assertCallInScope(ctx, params.id);
+    await assertCallInScope(ctx, params.id, 'EDIT');
     const [call, actor] = await Promise.all([
       prisma.call.findFirst({ where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null } }),
       prisma.user.findFirst({ where: { id: ctx.actor.id, tenantId: ctx.tenantId }, select: { phone: true } }),

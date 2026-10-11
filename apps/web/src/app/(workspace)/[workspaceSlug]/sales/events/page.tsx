@@ -30,9 +30,9 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['events', 'VIEW'] });
 
   const where: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };
-  // The list route's rule (GET /api/v1/events): below TEAM, the events you host,
-  // created or were invited to.
-  Object.assign(where, eventListScope(ctx));
+  // The list route's rule (GET /api/v1/events): the events hosted or created by
+  // someone in your scope, and those you were invited to.
+  Object.assign(where, await eventListScope(ctx));
   if (params.tab === 'upcoming') where.startAt = { gte: new Date() };
   else if (params.tab === 'DRAFT' || params.tab === 'COMPLETED' || params.tab === 'CANCELLED')
     where.status = params.tab;

@@ -248,6 +248,12 @@ describe('a list hand-over below organisation-wide access', () => {
       email: `team-lead@cold-${tenantId}.test`,
       fullName: 'Cold Team Lead',
     });
+    // The agent is in the team lead's team: a hand-over goes only to someone the
+    // assigner's own scope reaches.
+    const team = await prisma.team.create({ data: { tenantId, name: 'Cold calling', code: 'COLD' } });
+    await prisma.userTeam.createMany({
+      data: [lead.id, agent.id].map((userId) => ({ tenantId, userId, teamId: team.id })),
+    });
     const add = (fullName: string, ownerId: string | null) =>
       prisma.dataRecord.create({ data: { tenantId, fullName, batch: LIST5, ownerId }, select: { id: true } });
     const own = await add('Team lead’s own', lead.id);

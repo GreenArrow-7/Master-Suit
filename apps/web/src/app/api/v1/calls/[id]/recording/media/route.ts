@@ -35,7 +35,7 @@ export const GET = route(
     sensitive: 'call recordings',
   },
   async ({ ctx, params }) => {
-    await assertCallInScope(ctx, params.id);
+    await assertCallInScope(ctx, params.id, 'VIEW');
     const [call, recording, consent] = await Promise.all([
       // The parent call's own state. Every sibling route filters `deletedAt: null`;
       // this one did not, so once a call can be deleted its audio would still stream

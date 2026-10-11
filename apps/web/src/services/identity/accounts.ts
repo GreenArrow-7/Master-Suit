@@ -34,13 +34,8 @@ import { writePrimaryPassword } from '@/services/identity/platformCredentials';
 import { assertNotReused, recordPreviousPassword } from './passwordHistory';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
-import {
-  activeMemberWhere,
-  countOpenWork,
-  handOverOpenWork,
-  mayHandOverWorkOf,
-  type HandOver,
-} from '@/services/leads/assign';
+import { assignableUsers } from '@/lib/security/record-scope';
+import { countOpenWork, handOverOpenWork, mayHandOverWorkOf, type HandOver } from '@/services/leads/assign';
 
 /** Rank 10 is `company_admin`/`org_admin`; anything at or above it administers the workspace. */
 export const ADMIN_ROLE_RANK = 10;
@@ -445,7 +440,8 @@ export async function setUserActive(
 /**
  * What the deactivate/remove dialog needs before it asks: the account's open
  * work, whether this caller may hand it over (`mayHandOver`, so the dialog says
- * so before submit rather than after), and the active members it may go to.
+ * so before submit rather than after), and the members the caller may hand it
+ * to (`assignableUsers`, the rule the hand-over itself applies).
  * Only for someone who may deactivate or remove, behind the same rank ladder as
  * those actions: users:VIEW alone does not read a colleague's workload.
  */
@@ -456,14 +452,9 @@ export async function openWorkOf(ctx: Ctx, userId: string) {
   const [work, mayHandOver, members] = await Promise.all([
     countOpenWork(prisma, ctx.tenantId, target.id),
     mayHandOverWorkOf(ctx, target.id),
-    prisma.user.findMany({
-      where: { ...activeMemberWhere(ctx.tenantId), id: { not: target.id } },
-      select: { id: true, fullName: true },
-      orderBy: { fullName: 'asc' },
-      take: 500,
-    }),
+    assignableUsers(ctx, 'leads', 'ASSIGN'),
   ]);
-  return { ...work, mayHandOver, members };
+  return { ...work, mayHandOver, members: members.filter((m) => m.id !== target.id) };
 }
 
 /**

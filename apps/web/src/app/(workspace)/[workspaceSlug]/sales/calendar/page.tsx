@@ -87,7 +87,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             tenantId: ctx.tenantId,
             deletedAt: null,
             startAt: inMonth,
-            ...eventListScope(ctx),
+            ...(await eventListScope(ctx)),
           },
           take: 300,
           select: { id: true, title: true, startAt: true },

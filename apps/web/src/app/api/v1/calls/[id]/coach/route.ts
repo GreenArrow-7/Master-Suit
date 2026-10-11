@@ -1,11 +1,9 @@
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
-import { prisma } from '@/lib/db';
-import { NotFound } from '@/lib/errors';
 import { coachAction } from '@/lib/ai/liveCoach';
 import { leadCallContext, contextPromptBlock } from '@/services/leads/callContext';
-import { seesWholeWorkspace } from '@/lib/security/record-scope';
+import { assertCallInScope } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 const body = z
@@ -33,12 +31,7 @@ const body = z
 export const POST = route(
   { module: 'calls', productModule: LEAD_MODULES, action: 'EDIT', params, body },
   async ({ ctx, params, body }) => {
-    const call = await prisma.call.findFirst({
-      where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
-      select: { id: true, callerId: true, leadId: true },
-    });
-    if (!call) throw NotFound('Call');
-    if (call.callerId !== ctx.actor.id && !seesWholeWorkspace(ctx, 'calls', 'EDIT')) throw NotFound('Call');
+    const call = await assertCallInScope(ctx, params.id, 'EDIT');
 
     const context = call.leadId ? await leadCallContext(ctx.tenantId, call.leadId).catch(() => null) : null;
     const hint = await coachAction(

@@ -17,6 +17,7 @@ import RequirementSuggestion, { type DetectedRequirementView } from './Requireme
 import TemperaturePanel from './TemperaturePanel';
 import { temperatureFromAnalysis } from '@/lib/ai/temperature';
 import { maskCallNumbers } from '@/services/leads/createLead';
+import { callScope } from '@/lib/security/record-scope';
 
 export const metadata = { title: 'Call Detail' };
 
@@ -45,10 +46,13 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
   // of the conversation is a separate authorisation, the same one the
   // transcript and recording routes declare. See lib/auth/sensitive-access.ts.
   const sensitive = await hasSensitiveAccess(ctx);
+  // GET /api/v1/calls/{id}'s rule: a call outside the caller's scope is not
+  // found, as a missing id is.
+  const scope = await callScope(ctx, 'VIEW');
 
   const [call, analysis, audits, followUps, objectionMatches, coachingNotes] = await Promise.all([
     prisma.call.findFirst({
-      where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
+      where: { ...scope, id: params.id, deletedAt: null },
       include: {
         caller: { select: { id: true, fullName: true } },
         consent: true,

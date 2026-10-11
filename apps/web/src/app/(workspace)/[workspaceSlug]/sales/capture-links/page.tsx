@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { can } from '@/lib/security/rbac';
+import { assignableUsers } from '@/lib/security/record-scope';
 import { requirePageAccess } from '@/lib/workspace-page';
 import ListHeader from '@/components/workspace/ListHeader';
 import EmptyState from '@/components/ui/EmptyState';
@@ -27,13 +28,7 @@ export default async function CaptureLinksPage({ params }: { params: Promise<{ w
       take: 200,
       include: { owner: { select: { fullName: true } } },
     }),
-    canAssign
-      ? prisma.user.findMany({
-          where: { tenantId: ctx.tenantId, status: 'ACTIVE', deletedAt: null },
-          select: { id: true, fullName: true },
-          orderBy: { fullName: 'asc' },
-        })
-      : null,
+    canAssign ? assignableUsers(ctx, 'leads', 'ASSIGN') : null,
   ]);
   const base = env.APP_URL.replace(/\/$/, '');
   const canEdit = can(ctx, 'leads', 'EDIT');

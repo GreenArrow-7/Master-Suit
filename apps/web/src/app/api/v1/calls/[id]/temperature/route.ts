@@ -20,7 +20,7 @@ const params = z.object({ id: z.string().cuid() });
 export const POST = route(
   { module: 'leads', productModule: LEAD_MODULES, action: 'EDIT', params, auditEvent: 'RECORD_UPDATED' },
   async ({ ctx, params }) => {
-    await assertCallInScope(ctx, params.id);
+    await assertCallInScope(ctx, params.id, 'VIEW');
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
       select: { id: true, leadId: true },

@@ -7,6 +7,7 @@ import Badge, { type Tone } from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
 import { can, atLeast } from '@/lib/security/rbac';
+import { assignableUsers } from '@/lib/security/record-scope';
 import TaskComposer from './TaskComposer';
 import TaskRowActions from './TaskRowActions';
 
@@ -58,7 +59,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const now = new Date();
 
   const canCreate = can(ctx, 'leads', 'EDIT');
-  const canAssignOthers = atLeast(ctx, 'leads', 'EDIT', 'TEAM');
+  const canAssignOthers = atLeast(ctx, 'leads', 'ASSIGN', 'TEAM');
 
   const [rows, taskTypes, assignees] = await Promise.all([
     prisma.task.findMany({
@@ -84,13 +85,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           select: { id: true, name: true },
         })
       : Promise.resolve([]),
-    canAssignOthers
-      ? prisma.user.findMany({
-          where: { tenantId: ctx.tenantId, status: 'ACTIVE', deletedAt: null },
-          orderBy: { fullName: 'asc' },
-          select: { id: true, fullName: true },
-        })
-      : Promise.resolve([]),
+    canAssignOthers ? assignableUsers(ctx, 'leads', 'ASSIGN') : Promise.resolve([]),
   ]);
 
   return (

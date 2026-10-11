@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { can } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { assignableUsers } from '@/lib/security/record-scope';
 import { requirePageAccess } from '@/lib/workspace-page';
 import ListHeader from '@/components/workspace/ListHeader';
 import EmptyState from '@/components/ui/EmptyState';
@@ -42,13 +43,7 @@ export default async function ColdDataPage({
       take: 200,
       include: { owner: { select: { fullName: true } } },
     }),
-    canAssign
-      ? prisma.user.findMany({
-          where: { tenantId: ctx.tenantId, status: 'ACTIVE', deletedAt: null },
-          select: { id: true, fullName: true },
-          orderBy: { fullName: 'asc' },
-        })
-      : [],
+    canAssign ? assignableUsers(ctx, 'leads', 'ASSIGN') : [],
   ]);
   // A converted record's lead may be another agent's: link only what the lead page would show.
   const convertedIds = records.flatMap((r) => (r.convertedLeadId ? [r.convertedLeadId] : []));

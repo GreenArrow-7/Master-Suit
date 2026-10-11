@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { callScope } from '@/lib/security/record-scope';
 import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
 import { maskCallNumbers } from '@/services/leads/createLead';
@@ -26,16 +26,11 @@ export default async function CallAuditsPage() {
     );
   }
 
-  const scope = scopeFor(ctx, 'calls', 'VIEW');
-  const callWhere: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };
-  if (SCOPE_RANK[scope] < SCOPE_RANK.TEAM) {
-    callWhere.callerId = ctx.actor.id;
-  }
-
+  // The calls list's rule: a team manager reads the team's audits, not the workspace's.
   const found = await prisma.callAudit.findMany({
     where: {
       tenantId: ctx.tenantId,
-      call: callWhere,
+      call: { ...(await callScope(ctx, 'VIEW')), deletedAt: null },
     },
     orderBy: { createdAt: 'desc' },
     take: 50,

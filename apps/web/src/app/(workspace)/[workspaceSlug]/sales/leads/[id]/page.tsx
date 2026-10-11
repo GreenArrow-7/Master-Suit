@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { assignableUsers } from '@/lib/security/record-scope';
 import { emptyFollowUpLabel, obligationAccess, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import { loadFieldRules, applyFieldSecurity, seesField } from '@/lib/security/fieldSecurity';
 import { can, scopeFor } from '@/lib/security/rbac';
@@ -84,11 +85,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       where: { tenantId: ctx.tenantId, isActive: true },
       select: { id: true, name: true, key: true },
     }),
-    prisma.user.findMany({
-      where: { tenantId: ctx.tenantId, status: 'ACTIVE' },
-      select: { id: true, fullName: true },
-      orderBy: { fullName: 'asc' },
-    }),
+    // The owner menu offers whom updateLead accepts.
+    assignableUsers(ctx, 'leads', can(ctx, 'leads', 'ASSIGN') ? 'ASSIGN' : 'REASSIGN'),
     loadFieldRules(ctx, 'LEAD'),
   ]);
   if (!lead) notFound();

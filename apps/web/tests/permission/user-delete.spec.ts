@@ -494,6 +494,34 @@ describe('USERDEL-002: open work is handed over, never left with a suspended acc
     expect(await openOwnedBy(receiver.id)).toEqual({ leads: 3, followUps: 2, tasks: 1 });
   });
 
+  it('a BRANCH-scoped remover hands the work only inside the branch, and is offered only those members', async () => {
+    const { agent } = await agentWithWork('branchbound');
+    await prisma.user.update({ where: { tenantId, id: agent.id }, data: { branchId } });
+    const inside = await member('branchinside', staffRoleId, branchId);
+    const outside = await member('branchoutside', staffRoleId);
+    const remove = (handOverTo: string) =>
+      del(identityDelete, `${path(agent.id)}&handOverTo=${handOverTo}`, branchAdminCookie, at.params);
+
+    const refused = await remove(outside.id);
+    const unknown = await remove(`c${'0'.repeat(24)}`);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(422);
+    expect(unknown.status).toBe(422);
+    expect(refused.body.errors).toEqual(unknown.body.errors);
+    expect(await statusOf(agent.id)).toBe('ACTIVE');
+    expect(await openOwnedBy(agent.id)).toEqual({ leads: 3, followUps: 2, tasks: 1 });
+    expect(await openOwnedBy(outside.id)).toEqual({ leads: 0, followUps: 0, tasks: 0 });
+
+    const work = await get(
+      identityGet,
+      `/api/v1/workspaces/${slug}/identity/account-work?userId=${agent.id}`,
+      branchAdminCookie,
+      { workspaceSlug: slug, action: 'account-work' },
+    );
+    const offered = (work.body.members as { id: string }[]).map((m) => m.id);
+    expect(offered).toContain(inside.id);
+    expect(offered).not.toContain(outside.id);
+  });
+
   it('removing an account can send its leads to the allocation queue', async () => {
     const { agent, leadIds } = await agentWithWork('removequeued', { followUps: 0, tasks: 0 });
 

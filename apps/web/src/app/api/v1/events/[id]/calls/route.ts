@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound, Invalid } from '@/lib/errors';
-import { assertEventInScope } from '@/lib/security/record-scope';
+import { assertEventInScope, assignableUserWhere } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -35,8 +35,9 @@ export const POST = route(
     if (!event) throw NotFound('Event');
 
     const callerIds = body.callerIds ?? [ctx.actor.id];
+    // Each caller owns the calls queued to them: someone your calls:ASSIGN scope reaches.
     const callers = await prisma.user.findMany({
-      where: { id: { in: callerIds }, tenantId: ctx.tenantId, status: 'ACTIVE' },
+      where: { ...(await assignableUserWhere(ctx, 'calls', 'ASSIGN')), id: { in: callerIds } },
       select: { id: true },
     });
     if (callers.length !== callerIds.length) {

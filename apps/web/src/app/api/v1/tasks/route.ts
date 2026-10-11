@@ -2,9 +2,7 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
-import { Invalid } from '@/lib/errors';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
-import { assertLeadInScope } from '@/lib/security/record-scope';
+import { assertAssignableUser, assertLeadInScope } from '@/lib/security/record-scope';
 import { withRecompute } from '@/services/leads/nextFollowUp';
 
 const createBody = z
@@ -15,8 +13,7 @@ const createBody = z
     // lead is what made the standalone Tasks page unusable — there was no way to
     // create one that was not already attached to a record.
     leadId: z.string().cuid().optional(),
-    // Who the task is for. Only someone who can assign across their scope may
-    // set this to another user; otherwise it is silently their own.
+    // Who the task is for: yourself, or someone your leads:ASSIGN scope reaches.
     ownerId: z.string().cuid().optional(),
     dueAt: z.coerce.date(),
     priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
@@ -24,30 +21,14 @@ const createBody = z
   })
   .strict();
 
-/** Can this actor hand a task to someone other than themselves? */
-function mayAssignOthers(scope: string) {
-  return SCOPE_RANK[scope as keyof typeof SCOPE_RANK] >= SCOPE_RANK.TEAM;
-}
-
 export const POST = route(
   { module: 'leads', productModule: LEAD_MODULES, action: 'EDIT', body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, body }) => {
     const { ownerId, ...rest } = body;
-    const scope = scopeFor(ctx, 'leads', 'EDIT');
-    // Assigning to another person requires the reach to do it; without it the
-    // task is your own regardless of what the payload asked for.
-    let resolvedOwner = ctx.actor.id;
-    if (ownerId && ownerId !== ctx.actor.id) {
-      if (!mayAssignOthers(scope)) {
-        throw Invalid([{ field: 'ownerId', code: 'forbidden', message: 'You can only create tasks for yourself.' }]);
-      }
-      const target = await prisma.user.findFirst({
-        where: { tenantId: ctx.tenantId, id: ownerId, status: 'ACTIVE', deletedAt: null },
-        select: { id: true },
-      });
-      if (!target) throw Invalid([{ field: 'ownerId', code: 'not_found', message: 'That teammate was not found.' }]);
-      resolvedOwner = ownerId;
-    }
+    // Another person only inside the caller's own scope: from TEAM up this took
+    // any active user in the workspace. Outside it, 404 as an unknown user.
+    const resolvedOwner = ownerId ?? ctx.actor.id;
+    if (resolvedOwner !== ctx.actor.id) await assertAssignableUser(ctx, prisma, 'leads', 'ASSIGN', resolvedOwner);
 
     // A new task can be earlier than everything already open on the lead, so the
     // stored aggregate is recomputed under the lead's lock in the same

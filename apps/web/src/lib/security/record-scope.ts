@@ -1,68 +1,126 @@
 import { prisma, type TxClient } from '@/lib/db';
 import { AppError, NotFound } from '@/lib/errors';
-import { atLeast, can, scopeFor, type Action, type Ctx } from '@/lib/security/rbac';
+import { can, scopeFor, type Action, type Ctx } from '@/lib/security/rbac';
 import { assertRecordVisible, resolveOwnerIds, visibilityWhere } from '@/lib/security/visibility';
 
 /**
- * Record scope for the routes that load one record by id.
+ * The calls a caller may reach for `action`, as a `where`: a call is its
+ * caller's (`callerId`), read as the Calls page reads them. With no grant for
+ * the action, your own calls (a follow-up names its call under `leads`).
  *
- * A list route filters what it returns; a detail route that loads by id alone
- * returns whatever the id names. Where both exist for the same records, the
- * detail route has to apply the same rule, or the id is the whole access
- * control. That was the defect these guards close: `/api/v1/calls/{id}` and its
- * sub-routes (transcript, analysis, consent, recording and the audio stream)
- * loaded by `{ id, tenantId }` only, so a seller holding `calls:VIEW` at OWN
- * scope could read a colleague's call, its transcript and its recording by
- * quoting the id — while the list route beside them already refused to name it.
- *
- * Both helpers are guards: they answer nothing and change no response for a
- * caller who is entitled to the record. Below TEAM scope they cost one indexed
- * lookup; at TEAM scope and above they cost nothing, matching the list rule
- * exactly (`SCOPE_RANK[scope] < SCOPE_RANK.TEAM` → own records only).
- *
+ * Calls and events follow one rule in their lists and by id: a detail route
+ * that loads by id alone returns whatever the id names, so it applies its
+ * list's rule or the id is the whole access control. TEAM, BRANCH and REGION
+ * are the caller's resolved owners (`resolveOwnerIds`), not the workspace:
+ * these guards used to return early from TEAM up, so a team manager read and
+ * changed every call and event in the workspace by id. ORGANIZATION sees all.
  * `NotFound`, not `Forbidden`: a refusal that distinguishes "not yours" from
  * "does not exist" tells a caller which ids are real.
  */
-export async function assertCallInScope(ctx: Ctx, callId: string, action: Action = 'VIEW'): Promise<void> {
-  if (atLeast(ctx, 'calls', action, 'TEAM')) return;
-  const own = await prisma.call.findFirst({
-    where: { id: callId, tenantId: ctx.tenantId, deletedAt: null, callerId: ctx.actor.id },
-    select: { id: true },
-  });
-  if (!own) throw NotFound('Call');
+export function callScope(ctx: Ctx, action: Action): Promise<Record<string, unknown>> {
+  return can(ctx, 'calls', action)
+    ? visibilityWhere(ctx, 'calls', action, { ownerField: 'callerId' })
+    : Promise.resolve({ tenantId: ctx.tenantId, callerId: ctx.actor.id });
 }
 
 /**
- * The event equivalent. An event has no visibility column, so below TEAM scope
- * the rule is the one the records themselves carry: the event is yours when you
- * host it or created it, and an invitee may see the event they were invited to.
- * Read only: at any other action the invitee clause drops out. The action is
- * the route's own and has no default: a VIEW default let PATCH, DELETE, invite
- * and RSVP reach an event its caller was only invited to.
+ * A call by id under `callScope` for the route's own action (no default: a VIEW
+ * default let a write reach a call its caller may only read), returned for the
+ * route to use.
+ */
+export async function assertCallInScope(ctx: Ctx, callId: string, action: Action) {
+  const call = await prisma.call.findFirst({
+    where: { ...(await callScope(ctx, action)), id: callId, deletedAt: null },
+  });
+  if (!call) throw NotFound('Call');
+  return call;
+}
+
+/**
+ * The events a caller may reach for `action`, as a `where` fragment without
+ * `tenantId`, which every read of events adds (the API, the Events page, an
+ * event's page, the calendar, the assistant). An event has no visibility
+ * column: it is its host's or its creator's, and an invitee reads the event
+ * they were invited to (VIEW only). With no grant for the action, your own.
+ */
+export async function eventListScope(ctx: Ctx, action: Action = 'VIEW') {
+  const scope = scopeFor(ctx, 'events', action);
+  if (scope === 'ORGANIZATION') return {};
+  const owners = scope === 'NONE' ? [ctx.actor.id] : await resolveOwnerIds(ctx, scope);
+  const owned = [{ hostId: { in: owners } }, { createdById: { in: owners } }];
+  return { OR: action === 'VIEW' ? [...owned, { invitees: { some: { userId: ctx.actor.id } } }] : owned };
+}
+
+/**
+ * An event by id under `eventListScope`. The action is the route's own and has
+ * no default: a VIEW default let PATCH, DELETE, invite and RSVP reach an event
+ * its caller was only invited to.
  */
 export async function assertEventInScope(ctx: Ctx, eventId: string, action: Action): Promise<void> {
-  if (atLeast(ctx, 'events', action, 'TEAM')) return;
   const visible = await prisma.event.findFirst({
-    where: { id: eventId, tenantId: ctx.tenantId, deletedAt: null, ...eventScopeFilter(ctx.actor.id, action) },
+    where: { id: eventId, tenantId: ctx.tenantId, deletedAt: null, ...(await eventListScope(ctx, action)) },
     select: { id: true },
   });
   if (!visible) throw NotFound('Event');
 }
 
-/** The same rule as a `where` fragment, for the list route. */
-export function eventScopeFilter(actorId: string, action: Action = 'VIEW') {
-  const mine = [{ hostId: actorId }, { createdById: actorId }];
-  return { OR: action === 'VIEW' ? [...mine, { invitees: { some: { userId: actorId } } }] : mine };
-}
+/**
+ * Who may be handed work: an ACTIVE, undeleted account whose workspace access
+ * is active too. The platform console suspends a membership and leaves the
+ * workspace User ACTIVE, and that person cannot sign in either. An account with
+ * no membership row is not blocked, as in `assessEligibility`.
+ */
+const activeMemberWhere = (tenantId: string) => ({
+  tenantId,
+  deletedAt: null,
+  status: 'ACTIVE' as const,
+  NOT: { workspaceMembership: { is: { status: { not: 'ACTIVE' as const } } } },
+});
 
 /**
- * What every read of events adds to its `where`: nothing at TEAM scope and
- * above, `eventScopeFilter` below it. The list route had it; the Events page,
- * an event's page, the calendar and the assistant read every event in the
- * workspace.
+ * The people this caller may hand work to, as a `where` on User: active
+ * members inside their scope for `module:action` (the module's ASSIGN where
+ * it has one). ORGANIZATION is any active member; TEAM, BRANCH and REGION the
+ * resolved owners; OWN, or no grant, only yourself. From TEAM up the routes
+ * took any active user in the workspace, and some took anyone. The reach sits
+ * under `AND`, so a caller may add its own `id`. The routes that name a new
+ * owner check it and the pickers list it, so no screen offers someone the API
+ * refuses. Inside `withTx`, pass its `tx`.
  */
-export function eventListScope(ctx: Ctx) {
-  return seesWholeWorkspace(ctx, 'events') ? {} : eventScopeFilter(ctx.actor.id);
+export async function assignableUserWhere(
+  ctx: Ctx,
+  module: string,
+  action: Action,
+  db: TxClient | typeof prisma = prisma,
+) {
+  const scope = scopeFor(ctx, module, action);
+  if (scope === 'ORGANIZATION') return activeMemberWhere(ctx.tenantId);
+  const reach = scope === 'NONE' ? [ctx.actor.id] : await resolveOwnerIds(ctx, scope, db);
+  return { ...activeMemberWhere(ctx.tenantId), AND: [{ id: { in: reach } }] };
+}
+
+/** One user under `assignableUserWhere`: outside it answers 404, as an unknown user does. */
+export async function assertAssignableUser(
+  ctx: Ctx,
+  db: TxClient | typeof prisma,
+  module: string,
+  action: Action,
+  userId: string,
+) {
+  const user = await db.user.findFirst({
+    where: { ...(await assignableUserWhere(ctx, module, action, db)), id: userId },
+    select: { id: true },
+  });
+  if (!user) throw NotFound('User');
+}
+
+/** A picker's people: `assignableUserWhere`, by name. */
+export async function assignableUsers(ctx: Ctx, module: string, action: Action) {
+  return prisma.user.findMany({
+    where: await assignableUserWhere(ctx, module, action),
+    select: { id: true, fullName: true },
+    orderBy: { fullName: 'asc' },
+  });
 }
 
 /**
@@ -171,9 +229,4 @@ export async function assertOwnerInScope(
   if (scope === 'NONE' || !ownerId || !(await resolveOwnerIds(ctx, scope, tx)).includes(ownerId)) {
     throw NotFound(what);
   }
-}
-
-/** True when the caller sees every record of this kind in the workspace. */
-export function seesWholeWorkspace(ctx: Ctx, module: string, action: Action = 'VIEW'): boolean {
-  return atLeast(ctx, module, action, 'TEAM');
 }

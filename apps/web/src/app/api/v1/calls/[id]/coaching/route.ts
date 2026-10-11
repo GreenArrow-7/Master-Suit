@@ -3,39 +3,26 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Forbidden, NotFound } from '@/lib/errors';
-import { scopeFor, SCOPE_RANK, type Ctx, atLeast } from '@/lib/security/rbac';
-import { resolveOwnerIds } from '@/lib/security/visibility';
+import { atLeast } from '@/lib/security/rbac';
+import { assertCallInScope } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
 /**
  * Coaching notes on a call.
  *
- * Visibility is the call's visibility: whoever may see the call may read the
+ * Visibility is the call's visibility (`assertCallInScope` at VIEW on every
+ * method, a 404 like a missing id): whoever may see the call may read the
  * coaching on it — the rep being coached most of all. Writing requires seeing
  * someone *else's* calls (TEAM or wider), which is the existing definition of
  * "manager" here; a self-note is just the call's own notes field.
  */
-async function assertCallVisible(ctx: Ctx, callId: string) {
-  const call = await prisma.call.findFirst({
-    where: { id: callId, tenantId: ctx.tenantId, deletedAt: null },
-    select: { id: true, callerId: true },
-  });
-  if (!call) throw NotFound('Call');
-
-  const scope = scopeFor(ctx, 'calls', 'VIEW');
-  if (call.callerId === ctx.actor.id || scope === 'ORGANIZATION') return call;
-  if (SCOPE_RANK[scope] < SCOPE_RANK.TEAM) throw Forbidden();
-  if (!(await resolveOwnerIds(ctx, scope)).includes(call.callerId)) throw Forbidden();
-  return call;
-}
-
 // A manager's note on how a conversation went is conversation content, not call
 // metadata: a monitoring grant reads it only when it is marked sensitive.
 export const GET = route(
   { module: 'calls', productModule: LEAD_MODULES, action: 'VIEW', params, sensitive: 'coaching notes' },
   async ({ ctx, params }) => {
-    await assertCallVisible(ctx, params.id);
+    await assertCallInScope(ctx, params.id, 'VIEW');
     const data = await prisma.coachingNote.findMany({
       where: { tenantId: ctx.tenantId, callId: params.id, deletedAt: null },
       orderBy: { createdAt: 'desc' },
@@ -57,7 +44,7 @@ export const POST = route(
     auditEvent: 'RECORD_CREATED',
   },
   async ({ ctx, params, body }) => {
-    const call = await assertCallVisible(ctx, params.id);
+    const call = await assertCallInScope(ctx, params.id, 'VIEW');
     // Coaching is a manager writing about someone *else's* call. Whatever the
     // scope, a note on your own call is just notes — the Call has a field for
     // those — and letting it through here would put self-assessments in the
@@ -98,7 +85,7 @@ export const PATCH = route(
     auditEvent: 'RECORD_UPDATED',
   },
   async ({ ctx, params, body }) => {
-    const call = await assertCallVisible(ctx, params.id);
+    const call = await assertCallInScope(ctx, params.id, 'VIEW');
     const note = await prisma.coachingNote.findFirst({
       where: { id: body.noteId, tenantId: ctx.tenantId, callId: params.id, deletedAt: null },
     });
