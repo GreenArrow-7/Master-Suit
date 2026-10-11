@@ -50,6 +50,8 @@ test.describe('Mobile viewport', () => {
     'people/work-locations',
     'people/leave',
     'sales/leads',
+    // Each role row carries its scope beside the name (M2-03).
+    'admin/roles',
   ];
 
   test('no signed-in page scrolls sideways at 375px', async ({ page }) => {

@@ -142,6 +142,10 @@ export default async function Page({
             >
               <span className="lf-roles__row-head">
                 <strong>{role.name}</strong>
+                {/* The role's own scope, as the roles API returns it (M2-03). */}
+                <span className="lf-roles__scope" title="Default scope">
+                  · {role.defaultScope.charAt(0) + role.defaultScope.slice(1).toLowerCase()}
+                </span>
                 {role.isSystem && <span className="lf-roles__default">default</span>}
                 {!role.isActive && <span className="lf-roles__default">inactive</span>}
               </span>

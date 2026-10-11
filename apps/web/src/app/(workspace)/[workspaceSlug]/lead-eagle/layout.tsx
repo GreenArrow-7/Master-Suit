@@ -1,6 +1,5 @@
-import { redirect } from 'next/navigation';
-import { AppError } from '@/lib/errors';
-import { requestCtx, requestWorkspace } from '@/lib/workspace-page';
+import NotInPlan from '@/components/workspace/NotInPlan';
+import { workspaceOwns } from '@/lib/workspace-page';
 
 /**
  * Lead Eagle entitlement gate, and nothing else — the same gate as
@@ -19,14 +18,6 @@ export default async function LeadEagleLayout({
   params: Promise<{ workspaceSlug: string }>;
 }) {
   const { workspaceSlug } = await params;
-  try {
-    const ctx = await requestCtx();
-    await requestWorkspace(ctx, workspaceSlug, 'LEAD_EAGLE');
-  } catch (error) {
-    // Only an entitlement refusal becomes a redirect; anything else is rethrown
-    // (see realty/layout.tsx for why a bare catch is wrong here).
-    if (error instanceof AppError && error.status === 403) redirect(`/${workspaceSlug}/dashboard`);
-    throw error;
-  }
-  return children;
+  if (await workspaceOwns(workspaceSlug, 'LEAD_EAGLE')) return children;
+  return <NotInPlan slug={workspaceSlug} module="LEAD_EAGLE" />;
 }

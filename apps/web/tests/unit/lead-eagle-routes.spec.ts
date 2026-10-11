@@ -36,9 +36,7 @@ describe('Lead Eagle is a module', () => {
   });
 
   it('gates its URLs on its own entitlement', () => {
-    expect(read(path.join(APP, 'lead-eagle', 'layout.tsx'))).toContain(
-      "requestWorkspace(ctx, workspaceSlug, 'LEAD_EAGLE')",
-    );
+    expect(read(path.join(APP, 'lead-eagle', 'layout.tsx'))).toContain("workspaceOwns(workspaceSlug, 'LEAD_EAGLE')");
   });
 });
 

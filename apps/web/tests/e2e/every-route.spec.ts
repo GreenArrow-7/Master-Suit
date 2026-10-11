@@ -164,6 +164,8 @@ async function opens(page: Page, url: string) {
   // The refusal screen is a *rendered* page with a 200, so it never trips the
   // status check. For a workspace administrator it is always a defect.
   expect(body, `${url} refused an entitled viewer`).not.toContain('You do not have access to this page');
+  // Nor is the page for a screen outside the plan, which renders a heading too.
+  expect(body, `${url} said the plan lacks it`).not.toContain('plan does not include it');
   expect(body, `${url} rendered an application error`).not.toMatch(
     /Application error: a (client|server)-side exception|Internal Server Error/,
   );

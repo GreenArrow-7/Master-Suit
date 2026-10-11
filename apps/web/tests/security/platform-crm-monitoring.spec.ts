@@ -178,7 +178,7 @@ describe('platform-wide CRM monitoring', () => {
     // The prose above the gate may name SELF_SERVICE — explaining why it is not
     // used is the point of it. What must not come back is the call.
     expect(source).not.toMatch(/permission:\s*SELF_SERVICE/);
-    expect(source).toContain("requestWorkspace(ctx, workspaceSlug, 'SALES')");
+    expect(source).toContain("workspaceOwns(workspaceSlug, 'SALES')");
   });
 
   it('widens which workspaces are visible, never what may be done in one', () => {

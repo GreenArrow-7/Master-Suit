@@ -11,7 +11,16 @@
  * product module. These tests pin that.
  */
 import { randomBytes } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { ReactElement } from 'react';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+// The module layouts read the session and the URL from the request headers, set per case.
+const jar = vi.hoisted(() => ({ cookie: '', path: '/' }));
+vi.mock('next/headers', () => ({
+  headers: async () => new Headers({ cookie: jar.cookie, 'x-pathname': jar.path }),
+  cookies: async () => ({ get: () => undefined }),
+}));
+
 import { prisma } from '@/lib/db';
 import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import { GET as listUsers } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/[action]/route';
@@ -24,6 +33,10 @@ import { GET as leadsList } from '@/app/api/v1/leads/route';
 import { GET as opportunitiesList } from '@/app/api/v1/opportunities/route';
 import { GET as receiptsList } from '@/app/api/v1/collections/receipts/route';
 import { POST as createProposal } from '@/app/api/v1/proposals/route';
+import { GET as eventsList } from '@/app/api/v1/events/route';
+import SalesLayout from '@/app/(workspace)/[workspaceSlug]/sales/layout';
+import RealtyLayout from '@/app/(workspace)/[workspaceSlug]/realty/layout';
+import PeopleLayout from '@/app/(workspace)/[workspaceSlug]/people/layout';
 import { createSessionToken } from '../helpers/session';
 import { get, post } from '../helpers/request';
 import type { Grants } from '../helpers/fixtures';
@@ -68,6 +81,7 @@ async function makeWorkspace(
     ['opportunities', 'VIEW'],
     ['collections', 'VIEW'],
     ['requirements', 'CREATE'],
+    ['settings', 'MANAGE_CONFIGURATION'],
   ];
   await grantPermissions(tenant.id, adminRole.id, grants);
 
@@ -222,6 +236,81 @@ describe('Lead Eagle reaches lead work, and neither Sales-only nor money registe
     const body = { title: 'A few places', listingIds: ['not-a-listing'] };
     expect((await post(createProposal, '/api/v1/proposals', body, leadEagleOnly.cookie)).status).toBe(403);
     expect((await post(createProposal, '/api/v1/proposals', body, realtyOnly.cookie)).status).not.toBe(403);
+  });
+});
+
+/**
+ * A screen or route the workspace's plan does not include (M2-05). The module
+ * layouts sent the screen to the dashboard without a word, and the API named
+ * the last module it tried, so a Lead-Eagle-only workspace was told "Real
+ * Estate is not enabled" for events, which Sales or Real Estate carry.
+ */
+describe('a screen or route outside the plan says which products carry it', () => {
+  const open = (w: Workspace, path: string, cookie = w.cookie) => {
+    jar.cookie = cookie;
+    jar.path = `/${w.slug}${path}`;
+    return { children: 'the screen', params: Promise.resolve({ workspaceSlug: w.slug }) };
+  };
+  const text = (node: unknown): string => {
+    if (typeof node === 'string' || typeof node === 'number') return String(node);
+    if (Array.isArray(node)) return node.map(text).join('');
+    if (node && typeof node === 'object' && 'props' in node)
+      return text((node as ReactElement<{ children?: unknown }>).props.children);
+    return '';
+  };
+  /** What a layout puts on screen, its own server component resolved. */
+  const shown = async (node: unknown) => {
+    const el = node as ReactElement<Record<string, unknown>>;
+    const render = el?.type as unknown as (props: unknown) => Promise<unknown>;
+    return text(typeof render === 'function' ? await render(el.props) : node);
+  };
+
+  it('Events in a Lead-Eagle-only workspace: a page naming Sales or Real Estate, not the dashboard', async () => {
+    for (const path of ['/sales/events', '/sales/events/some-event']) {
+      const page = await shown(await SalesLayout(open(leadEagleOnly, path)));
+      expect(page).toContain('Events is part of Sales or Real Estate.');
+      expect(page).toContain('This workspace’s plan does not include it.');
+      expect(page).toContain('Back to the dashboard');
+      expect(page).toContain('platform provider');
+    }
+    const realty = await shown(await RealtyLayout(open(leadEagleOnly, '/realty/events')));
+    expect(realty).toContain('Events is part of Real Estate.');
+  });
+
+  it('the hint about changing the plan is for an administrator only', async () => {
+    const page = await shown(await SalesLayout(open(leadEagleOnly, '/sales/events', leadEagleOnly.plainCookie)));
+    expect(page).toContain('Events is part of Sales or Real Estate.');
+    expect(page).not.toContain('platform provider');
+  });
+
+  it('every module layout says so: HR, Sales alone, and lead stages, which any lead product carries', async () => {
+    expect(await shown(await PeopleLayout(open(salesOnly, '/people/leave')))).toContain('Leave is part of HR.');
+    expect(await shown(await SalesLayout(open(realtyOnly, '/sales/opportunities')))).toContain(
+      'Opportunities is part of Sales.',
+    );
+    const { default: LeadStagesLayout } = await import('@/app/(workspace)/[workspaceSlug]/admin/lead-stages/layout');
+    expect(await shown(await LeadStagesLayout(open(hrOnly, '/admin/lead-stages')))).toContain(
+      'Lead stages is part of Sales, Real Estate or Lead Eagle.',
+    );
+  });
+
+  it('a screen another product carries still opens there, and an entitled one opens', async () => {
+    await expect(SalesLayout(open(leadEagleOnly, '/sales/leads'))).rejects.toMatchObject({
+      digest: expect.stringContaining(`/${leadEagleOnly.slug}/lead-eagle/leads`),
+    });
+    expect(await SalesLayout(open(salesOnly, '/sales/events'))).toBe('the screen');
+    expect(await PeopleLayout(open(hrOnly, '/people/leave'))).toBe('the screen');
+  });
+
+  it('the API names every product that carries the route, or its one module', async () => {
+    const events = await get(eventsList, '/api/v1/events', leadEagleOnly.cookie);
+    expect(events.status).toBe(403);
+    expect(events.body.detail).toBe('Sales or Real Estate is not enabled for this company.');
+    const leads = await get(leadsList, '/api/v1/leads', hrOnly.cookie);
+    expect(leads.status).toBe(403);
+    expect(leads.body.detail).toBe('Sales, Real Estate or Lead Eagle is not enabled for this company.');
+    const opportunities = await get(opportunitiesList, '/api/v1/opportunities', realtyOnly.cookie);
+    expect(opportunities.body.detail).toBe('Sales is not enabled for this company.');
   });
 });
 

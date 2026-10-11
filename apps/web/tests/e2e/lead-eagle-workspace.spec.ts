@@ -95,14 +95,31 @@ test.describe('Lead Eagle, from the platform portal to a lead', () => {
       await expect(page).toHaveURL(new RegExp(`/${eagle.slug}/lead-eagle/leads/${leadId}`));
     });
 
-    await test.step('the money and marketing registers are not part of it', async () => {
-      await page.goto(at('/realty/collections'));
-      await expect(page).toHaveURL(new RegExp(`/${eagle.slug}/dashboard`));
+    await test.step('the money and marketing registers are not part of it, and the screen says so (M2-05)', async () => {
+      // Each screen stays where it was asked for and names the products that
+      // carry it; it used to go to the dashboard without a word.
+      for (const [path, says] of [
+        ['/realty/collections', 'Collections is part of Real Estate.'],
+        ['/sales/events', 'Events is part of Sales or Real Estate.'],
+        ['/realty/events', 'Events is part of Real Estate.'],
+      ]) {
+        await page.goto(at(path!));
+        await expect(page.getByRole('heading', { name: says })).toBeVisible();
+        await expect(page.getByText('This workspace’s plan does not include it.')).toBeVisible();
+        await expect(page).toHaveURL(new RegExp(`/${eagle.slug}${path}$`));
+      }
+      await expect(page.getByRole('link', { name: 'Back to the dashboard' })).toHaveAttribute(
+        'href',
+        `/${eagle.slug}/dashboard`,
+      );
       expect((await page.request.get('/api/v1/collections/receipts')).status()).toBe(403);
       expect((await page.request.get('/api/v1/opportunities')).status()).toBe(403);
+      const events = await page.request.get('/api/v1/events');
+      expect(events.status()).toBe(403);
+      expect((await events.json()).detail).toBe('Sales or Real Estate is not enabled for this company.');
     });
 
-    await test.step('Admin > Roles lists Lead Eagle’s starter roles beside the administrator (M2-03)', async () => {
+    await test.step('Admin > Roles lists Lead Eagle’s starter roles beside the administrator, each with its scope (M2-03)', async () => {
       await page.goto(at('/admin/roles'));
       await expect(page.locator('.lf-roles__row strong')).toHaveText([
         'Agent',
@@ -111,6 +128,14 @@ test.describe('Lead Eagle, from the platform portal to a lead', () => {
         'Team Lead',
         'Telecaller',
         'Viewer',
+      ]);
+      await expect(page.locator('.lf-roles__scope')).toHaveText([
+        '· Own',
+        '· Organization',
+        '· Organization',
+        '· Team',
+        '· Own',
+        '· Organization',
       ]);
     });
 
