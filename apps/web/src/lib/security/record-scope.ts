@@ -207,6 +207,20 @@ export async function assertContactInScope(ctx: Ctx, contactId: string) {
 }
 
 /**
+ * A list of follow-ups (`leads`) or tasks (`tasks`): the caller's own when
+ * `mine`, otherwise everyone their `module:VIEW` scope covers, as
+ * `assertOwnerInScope` reaches them by id. TEAM, BRANCH and REGION are the
+ * resolved owners, ORGANIZATION all, and a row with no owner only there. The
+ * follow-ups list filtered on the caller alone, so a team lead saw none of the
+ * team's.
+ */
+export function workListScope(ctx: Ctx, module: string, mine: boolean): Promise<Record<string, unknown>> {
+  return mine
+    ? Promise.resolve({ tenantId: ctx.tenantId, ownerId: ctx.actor.id })
+    : visibilityWhere(ctx, module, 'VIEW');
+}
+
+/**
  * A task or follow-up by id: yours, or owned by someone your `module` scope for
  * `action` covers. `tasks/{id}` checked nothing about the task, so `leads:EDIT`
  * changed, completed or took any task in the workspace, and `tasks:DELETE`

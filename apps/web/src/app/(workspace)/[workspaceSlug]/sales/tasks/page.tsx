@@ -1,13 +1,14 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { mergeWhere } from '@/lib/api/where';
-import { visibilityWhere } from '@/lib/security/visibility';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import EmptyState from '@/components/ui/EmptyState';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
-import { can, atLeast } from '@/lib/security/rbac';
-import { assignableUsers } from '@/lib/security/record-scope';
+import { whoseWork } from '@/components/workspace/WhoseWork';
+import { can, atLeast, scopeFor } from '@/lib/security/rbac';
+import { assignableUsers, workListScope } from '@/lib/security/record-scope';
 import TaskComposer from './TaskComposer';
 import TaskRowActions from './TaskRowActions';
 
@@ -49,13 +50,23 @@ function tabOrder(tab: string | undefined): Record<string, string>[] {
   return [{ dueAt: 'asc' }];
 }
 
+/** A filter keeps the view, and the view keeps the filter. */
+function tabHref(tab: string, mine: boolean): string {
+  const query = new URLSearchParams([...(mine ? [['view', 'mine']] : []), ...(tab ? [['tab', tab]] : [])]);
+  return query.toString() ? `/tasks?${query}` : '/tasks';
+}
+
 const fmt = (d: Date | null) =>
   d ? new Date(d).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
-export default async function TasksPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+export default async function TasksPage({ searchParams }: { searchParams: Promise<{ tab?: string; view?: string }> }) {
   const params = await searchParams;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['tasks', 'VIEW'] });
-  const scope = await visibilityWhere(ctx, 'tasks', 'VIEW', { ownerField: 'ownerId' });
+  // Lead work, so every product that works leads: a Lead-Eagle-only workspace had
+  // no list of its team's tasks, only each lead's Tasks tab.
+  const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['tasks', 'VIEW'] });
+  // Everyone the viewer's tasks scope covers, or their own under Mine.
+  const view = whoseWork(scopeFor(ctx, 'tasks', 'VIEW'), params.view);
+  const scope = await workListScope(ctx, 'tasks', view.mine);
   const now = new Date();
 
   const canCreate = can(ctx, 'leads', 'EDIT');
@@ -90,15 +101,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <ListHeader
-        title="Tasks"
-        description={
-          <>
-            {rows.length === 100 ? 'First 100 records' : `${rows.length} record${rows.length === 1 ? '' : 's'}`} in your
-            scope
-          </>
-        }
-      />
+      <ListHeader title="Tasks" description={view.count(rows.length, rows.length === 100, 'task')} />
 
       {canCreate && (
         <div style={{ marginBottom: 'var(--lf-space-4)' }}>
@@ -106,12 +109,14 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         </div>
       )}
 
+      {view.tabs((mine) => tabHref(params.tab ?? '', mine))}
+
       <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="Task filter">
         {TABS.map(([label, key]) => (
           <SalesLink
             key={label}
             className="lf-tab"
-            href={key ? `/tasks?tab=${key}` : '/tasks'}
+            href={tabHref(key, params.view === 'mine')}
             aria-selected={(params.tab ?? '') === key}
             role="tab"
           >

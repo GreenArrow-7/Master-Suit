@@ -351,6 +351,7 @@ describe('Lead Eagle: its own menu only where it is the whole CRM', () => {
     expect(tabsOf(nav, 'le-leads')).toEqual([
       'Leads',
       'Follow-ups',
+      'Tasks',
       'Calls',
       'Site Visits',
       'Requirements',

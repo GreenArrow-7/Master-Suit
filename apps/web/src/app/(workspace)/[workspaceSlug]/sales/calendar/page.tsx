@@ -117,7 +117,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       label: f.title,
       kind: 'follow-up' as const,
       completed: f.status === 'COMPLETED',
-      href: '/follow-ups',
+      href: '/follow-ups?view=mine',
     })),
     ...calls.map((c) => ({
       id: `call-${c.id}`,

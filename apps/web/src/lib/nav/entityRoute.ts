@@ -103,8 +103,9 @@ const ROUTES: Record<string, Dest> = {
   leads_breached: { kind: 'screen', path: '/sales/leads?filter=breached' },
   tasks: { kind: 'screen', path: '/sales/tasks' },
   tasks_overdue: { kind: 'screen', path: '/sales/tasks?tab=overdue' },
-  follow_ups: { kind: 'screen', path: '/sales/follow-ups' },
-  follow_ups_overdue: { kind: 'screen', path: '/sales/follow-ups?due=overdue' },
+  // The assistant's follow-up answers are the user's own queue; the list opens on everyone in scope.
+  follow_ups: { kind: 'screen', path: '/sales/follow-ups?view=mine' },
+  follow_ups_overdue: { kind: 'screen', path: '/sales/follow-ups?view=mine&due=overdue' },
   calendar: { kind: 'screen', path: '/sales/calendar' },
 };
 

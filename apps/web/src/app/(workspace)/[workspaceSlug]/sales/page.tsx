@@ -254,12 +254,13 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
           <>
             Clear{' '}
             <BriefFigure
-              href="/follow-ups?due=overdue"
+              href="/follow-ups?view=mine&due=overdue"
               n={overdueFollowUps}
               label={overdueFollowUps === 1 ? 'overdue follow-up' : 'overdue follow-ups'}
               tone="vermillion"
             />{' '}
-            first. Then <BriefFigure href="/follow-ups?due=today" n={todayFollowUps} label="due today" tone="brass" />,
+            first. Then{' '}
+            <BriefFigure href="/follow-ups?view=mine&due=today" n={todayFollowUps} label="due today" tone="brass" />,
             across{' '}
             <BriefFigure
               href="/leads?filter=mine"
@@ -273,7 +274,7 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
           <>
             Nothing overdue.{' '}
             <BriefFigure
-              href="/follow-ups?due=today"
+              href="/follow-ups?view=mine&due=today"
               n={todayFollowUps}
               label="due today"
               tone={todayFollowUps ? 'brass' : 'viridian'}
@@ -297,7 +298,7 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
         >
           {overdueFollowUps > 0 && (
             <LedgerRow
-              href="/follow-ups?due=overdue"
+              href="/follow-ups?view=mine&due=overdue"
               tone="vermillion"
               title={`${overdueFollowUps} overdue follow-up${overdueFollowUps === 1 ? '' : 's'}`}
               detail="promised and not yet done — these age worst"
@@ -305,7 +306,7 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
           )}
           {todayFollowUps > 0 && (
             <LedgerRow
-              href="/follow-ups?due=today"
+              href="/follow-ups?view=mine&due=today"
               tone="brass"
               title={`${todayFollowUps} due today`}
               detail="on time if done before the day ends"
