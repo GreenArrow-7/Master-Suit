@@ -13,8 +13,8 @@ Paths below are under `apps/web/`.
 |---|---|---|---|
 | Sales | `sales/` | 73 | leads (spreadsheet import, close-out), contacts, accounts, opportunities, tasks, follow-ups; calls with AI coaching, analysis and audits; campaigns, inbox, forms, landing pages, social leads; dashboards, leadership (productivity, value, daily target); projects, listings, bookings, collections, commissions, proposals, portals |
 | HRMS | `people/` | 32 | employees, users, roles, departments; face check-in, attendance, shifts, roster, leave, overtime; payroll, payslips, WPS; recruitment, performance, documents, compliance |
-| Real Estate | `realty/` | 34 | the Sales property screens as a brokerage works them, plus Properties, allocation (data pool), events with QR passes, lead recycling |
-| Lead Eagle | `lead-eagle/` | 23 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads, follow-ups, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle and Google Ads lead forms (Admin → Integrations → Lead sources; any lead module). Every lead module also has QR Capture and Cold Data, and Lead Stages under Administration → Settings |
+| Real Estate | `realty/` | 37 | the Sales property screens as a brokerage works them, plus Properties, allocation (data pool), events with QR passes, lead recycling |
+| Lead Eagle | `lead-eagle/` | 26 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads, follow-ups, tasks, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle and Google Ads lead forms (Admin → Integrations → Lead sources; any lead module). Every lead module also has QR Capture and Cold Data, and Lead Stages under Administration → Settings |
 
 Outside the modules: `check-in` and `attendance` (every workspace), `admin/`
 (users, roles, work locations, settings, audit), `profile/`, and the platform
@@ -63,7 +63,9 @@ Node 22 or newer (CI uses 24).
   people stops at their reporting line (`reportingLine`, `src/services/hr/leave.ts`).
   A task is read under `tasks` wherever it shows, a lead's page included, and
   a follow-up under `leads` (`src/services/leads/nextFollowUp.ts`); a task is
-  changed only where `tasks:VIEW` and `leads:EDIT` both reach its owner. A
+  changed only where `tasks:VIEW` and `leads:EDIT` both reach its owner. The
+  Follow-ups and Tasks lists and their APIs show everyone that scope covers, and
+  the caller's own under Mine (`?view=mine`; `workListScope`). A
   record loaded by id outside the caller's scope answers 404, as a missing id
   does (`src/lib/security/record-scope.ts`). TEAM, BRANCH and REGION mean the
   caller's resolved owners (`resolveOwnerIds`), never the whole workspace, in a
