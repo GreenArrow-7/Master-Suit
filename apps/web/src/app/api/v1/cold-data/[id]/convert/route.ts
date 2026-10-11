@@ -20,7 +20,7 @@ export const POST = route(
     productModule: LEAD_MODULES,
     action: 'CREATE',
     params: z.object({ id: z.string().cuid() }),
-    auditEvent: 'RECORD_CREATED',
+    // Audited by the intake, as this person, naming the lead it made or touched.
   },
   async ({ ctx, params }) => {
     const record = await prisma.dataRecord.findFirst({
@@ -44,6 +44,7 @@ export const POST = route(
         sourceDetail: `data:${record.batch}`.slice(0, 200),
         // The agent who worked it keeps it.
         ownerId: record.ownerId ?? ctx.actor.id,
+        actor: ctx,
       },
     );
     if (!result || !('leadId' in result)) throw NotFound('Record');
