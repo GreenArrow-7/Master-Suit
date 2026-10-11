@@ -13,6 +13,13 @@ import { useState } from 'react';
  * was left on, and a `providerCommentId` never helped anyone sell anything.
  */
 
+/** `users` names who did what on an enquiry; `assignees` is whom the viewer may hand one to. */
+interface Options {
+  users: { id: string; fullName: string | null }[];
+  assignees: { id: string; fullName: string | null }[];
+  teams: { id: string; name: string }[];
+}
+
 interface Lead {
   id: string;
   provider: string;
@@ -153,7 +160,7 @@ export default function SocialLeadList({
   workspaceSlug: string;
   canAssign: boolean;
   me: string;
-  options: { users: { id: string; fullName: string | null }[]; teams: { id: string; name: string }[] };
+  options: Options;
   summary: { new: number; high: number; unassigned: number; overdue: number; converted: number };
 }) {
   /**
@@ -297,7 +304,7 @@ function SocialLeadDrawer({
   workspaceSlug: string;
   canAssign: boolean;
   me: string;
-  options: { users: { id: string; fullName: string | null }[]; teams: { id: string; name: string }[] };
+  options: Options;
 }) {
   return (
     <div className="lf-drawer" role="dialog" aria-modal="true" aria-label="Social enquiry">
@@ -498,7 +505,7 @@ function AssignmentPanel({
   lead: Lead;
   canAssign: boolean;
   me: string;
-  options: { users: { id: string; fullName: string | null }[]; teams: { id: string; name: string }[] };
+  options: Options;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -579,7 +586,7 @@ function AssignmentPanel({
               <span>Person</span>
               <select className="lf-input" value={userId} onChange={(e) => setUserId(e.target.value)}>
                 <option value="">Choose…</option>
-                {options.users.map((u) => (
+                {options.assignees.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.fullName ?? u.id}
                   </option>
@@ -675,13 +682,7 @@ function AssignmentPanel({
  * Nothing here sends without a person. `Draft with AI` fills the box and stops;
  * reaching the customer always takes a second, deliberate press of Send.
  */
-function ReplyPanel({
-  lead,
-  options,
-}: {
-  lead: Lead;
-  options: { users: { id: string; fullName: string | null }[]; teams: { id: string; name: string }[] };
-}) {
+function ReplyPanel({ lead, options }: { lead: Lead; options: Options }) {
   const router = useRouter();
   const { canPublicReply, canPrivateReply, reasonUnavailable } = lead.reply;
   const channel = CHANNEL[lead.provider] ?? lead.provider;

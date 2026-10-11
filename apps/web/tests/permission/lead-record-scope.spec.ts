@@ -18,9 +18,34 @@ import { prisma } from '@/lib/db';
 import { PATCH as patchActivity } from '@/app/api/v1/activities/[id]/route';
 import { POST as audience } from '@/app/api/v1/campaigns/[id]/audience/route';
 import { GET as listCalls } from '@/app/api/v1/calls/route';
-import { GET as readCall, PATCH as patchCall } from '@/app/api/v1/calls/[id]/route';
-import { GET as readCoaching } from '@/app/api/v1/calls/[id]/coaching/route';
-import { POST as recordConsent } from '@/app/api/v1/calls/[id]/consent/route';
+import { DELETE as deleteCall, GET as readCall, PATCH as patchCall } from '@/app/api/v1/calls/[id]/route';
+import {
+  GET as readAnalysis,
+  PATCH as editAnalysis,
+  POST as runAnalysis,
+} from '@/app/api/v1/calls/[id]/analysis/route';
+import {
+  DELETE as deleteAudit,
+  GET as readAudit,
+  PATCH as reviewAudit,
+  POST as runAudit,
+} from '@/app/api/v1/calls/[id]/audit/route';
+import { POST as coachCall } from '@/app/api/v1/calls/[id]/coach/route';
+import {
+  GET as readCoaching,
+  PATCH as resolveCoaching,
+  POST as writeCoaching,
+} from '@/app/api/v1/calls/[id]/coaching/route';
+import { DELETE as withdrawConsent, POST as recordConsent } from '@/app/api/v1/calls/[id]/consent/route';
+import { POST as dialCall } from '@/app/api/v1/calls/[id]/dial/route';
+import { POST as draftEmail, PUT as sendEmail } from '@/app/api/v1/calls/[id]/follow-up-email/route';
+import { POST as draftWhatsApp } from '@/app/api/v1/calls/[id]/follow-up-whatsapp/route';
+import { GET as liveCall } from '@/app/api/v1/calls/[id]/live/route';
+import { POST as liveAudio } from '@/app/api/v1/calls/[id]/live-audio/route';
+import { GET as readRecording, POST as storeRecording } from '@/app/api/v1/calls/[id]/recording/route';
+import { GET as playRecording, PUT as uploadRecording } from '@/app/api/v1/calls/[id]/recording/media/route';
+import { POST as applyTemperature } from '@/app/api/v1/calls/[id]/temperature/route';
+import { GET as readTranscript, POST as storeTranscript } from '@/app/api/v1/calls/[id]/transcript/route';
 import { POST as createCaptureLink } from '@/app/api/v1/capture-links/route';
 import { PATCH as patchCaptureLink } from '@/app/api/v1/capture-links/[id]/route';
 import { PATCH as patchColdRecord } from '@/app/api/v1/cold-data/[id]/route';
@@ -39,11 +64,19 @@ import { POST as convertEnquiry } from '@/app/api/v1/social-leads/[id]/convert/r
 import { POST as createTask } from '@/app/api/v1/tasks/route';
 import { DELETE as deleteTask, PATCH as patchTask } from '@/app/api/v1/tasks/[id]/route';
 import { POST as createWorkspaceLead } from '@/app/api/v1/workspaces/[workspaceSlug]/sales/leads/route';
+import DashboardPage from '@/app/(workspace)/[workspaceSlug]/dashboard/page';
 import CallAuditsPage from '@/app/(workspace)/[workspaceSlug]/sales/call-audits/page';
+import CallActions from '@/app/(workspace)/[workspaceSlug]/sales/calls/[id]/CallActions';
+import CoachingNotes from '@/app/(workspace)/[workspaceSlug]/sales/calls/[id]/CoachingNotes';
 import CallPage from '@/app/(workspace)/[workspaceSlug]/sales/calls/[id]/page';
 import LiveCallPage from '@/app/(workspace)/[workspaceSlug]/sales/calls/[id]/live/page';
 import EventsPage from '@/app/(workspace)/[workspaceSlug]/sales/events/page';
 import EventPage from '@/app/(workspace)/[workspaceSlug]/sales/events/[id]/page';
+import LeadGrid from '@/app/(workspace)/[workspaceSlug]/sales/leads/LeadGrid';
+import SmartViewsPage from '@/app/(workspace)/[workspaceSlug]/sales/smart-views/page';
+import SocialLeadsPage from '@/app/(workspace)/[workspaceSlug]/sales/social-leads/page';
+import SocialLeadList from '@/components/workspace/SocialLeadList';
+import type { PermissionAction, VisibilityScope } from '@prisma/client';
 import { createWorkspaceUser, grantPermissions, seedHierarchy, type Hierarchy, type Member } from '../helpers/fixtures';
 import { createSessionToken } from '../helpers/session';
 import { del, get, patch, post } from '../helpers/request';
@@ -66,6 +99,12 @@ let campaignId: string;
 let taskDesk: Member;
 /** Holds `campaigns:EDIT` and no `leads` grant. */
 let mailer: Member;
+/** In team A: reads the team's calls, changes only its own (the seeded Marketing Executive's calls). */
+let callDesk: Member;
+/** In team A: every lead, event and call action at OWN, ASSIGN included. */
+let ownAssigner: Member;
+/** In team A: edits the team's leads without `leads:ASSIGN` (the seeded Marketing Manager's leads). */
+let leadEditor: Member;
 let poolLeadId: string;
 let slug: string;
 let stageId: string;
@@ -138,7 +177,53 @@ beforeAll(async () => {
   await grantPermissions(tenantId, await roleOf(h.repA1.id), unassigning, 'OWN');
   await grantPermissions(tenantId, await roleOf(h.teamManagerA.id), calendar, 'TEAM');
   await grantPermissions(tenantId, await roleOf(h.director.id), calendar, 'ORGANIZATION');
+  for (const [manager, scope] of [
+    [h.branchManager, 'BRANCH'],
+    [h.regionalManager, 'REGION'],
+  ] as const) {
+    await grantPermissions(tenantId, await roleOf(manager.id), [...work, ...calendar], scope);
+  }
+  await grantPermissions(tenantId, await roleOf(h.teamManagerA.id), [['smartviews', 'VIEW']], 'TEAM');
   slug = (await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { slug: true } })).slug;
+
+  /** A member of team A holding exactly `grants`, each at its own scope. */
+  const teamAMember = async (name: string, grants: [string, PermissionAction, VisibilityScope][]) => {
+    const key = `${name}-${randomBytes(4).toString('hex')}`;
+    const role = await prisma.role.create({ data: { tenantId, key, name, rank: 55 } });
+    for (const [module, action, scope] of grants) await grantPermissions(tenantId, role.id, [[module, action]], scope);
+    const { branchId, regionId } = await prisma.user.findFirstOrThrow({
+      where: { tenantId, id: h.repA1.id },
+      select: { branchId: true, regionId: true },
+    });
+    const user = await createWorkspaceUser({
+      tenantId,
+      roleId: role.id,
+      email: `${key}@hierarchy.test`,
+      fullName: name,
+      branchId,
+      regionId,
+    });
+    const { teamId } = await prisma.userTeam.findFirstOrThrow({ where: { tenantId, userId: h.repA1.id } });
+    await prisma.userTeam.create({ data: { tenantId, userId: user.id, teamId } });
+    return { id: user.id, cookie: await createSessionToken(tenantId, user.id), leadId: '' };
+  };
+  callDesk = await teamAMember('Call desk', [
+    ['calls', 'VIEW', 'TEAM'],
+    ['calls', 'EDIT', 'OWN'],
+  ]);
+  ownAssigner = await teamAMember('Own assigner', [
+    ...(['leads', 'events', 'calls'] as const).flatMap((module) =>
+      (['VIEW', 'CREATE', 'EDIT', 'DELETE', 'ASSIGN'] as const).map(
+        (action): [string, PermissionAction, VisibilityScope] => [module, action, 'OWN'],
+      ),
+    ),
+    ['tasks', 'VIEW', 'OWN'],
+  ]);
+  leadEditor = await teamAMember('Lead editor', [
+    ['leads', 'VIEW', 'ORGANIZATION'],
+    ['leads', 'EDIT', 'TEAM'],
+    ['tasks', 'VIEW', 'TEAM'],
+  ]);
   activityTypeId = (await prisma.activityType.create({ data: { tenantId, key: 'call', name: 'Call' } })).id;
   typeId = (await prisma.taskType.create({ data: { tenantId, key: 'call', name: 'Call' } })).id;
   campaignId = (
@@ -498,7 +583,15 @@ const eventRow = (id: string) =>
 const callRow = (id: string) =>
   prisma.call.findFirst({
     where: { tenantId: h.tenantId, id },
-    select: { notes: true, deletedAt: true, consent: { select: { id: true } } },
+    select: {
+      notes: true,
+      status: true,
+      deletedAt: true,
+      consent: { select: { id: true, withdrawnAt: true } },
+      recording: { select: { storageKey: true } },
+      transcript: { select: { id: true } },
+      _count: { select: { coachingNotes: true, callAudits: true } },
+    },
   });
 /** Logged by `ownerId` on a lead nobody owns: only who logged it places it. */
 const anActivity = async (ownerId: string) =>
@@ -561,27 +654,269 @@ const TEAM_RECORDS = [
   },
 ];
 
+/**
+ * A manager at each scope below ORGANIZATION, someone inside it and someone
+ * outside it (fixtures.ts draws the tree): TEAM, BRANCH and REGION are the
+ * caller's resolved people, not the workspace.
+ */
+const MANAGERS = [
+  { who: 'a team manager', as: 'teamManagerA', inside: 'repSubTeam', outside: 'repB1' },
+  { who: 'a branch manager', as: 'branchManager', inside: 'repSubTeam', outside: 'repB1' },
+  { who: 'a regional manager', as: 'regionalManager', inside: 'repB1', outside: 'repOtherRegion' },
+] as const;
+
 describe.each(TEAM_RECORDS)('$name', ({ make, send, row }) => {
-  it('a team manager: another team’s answers exactly as a missing id, and nothing changes', async () => {
-    const elsewhere = await make(h.repB1.id);
-    const before = await row(elsewhere);
-    const refused = await send(elsewhere, h.teamManagerA);
-    const missing = await send(MISSING, h.teamManagerA);
-    expect(refused.status).toBe(404);
-    expect(missing.status).toBe(404);
-    expect(refused.body.detail).toBe(missing.body.detail);
-    expect(await row(elsewhere)).toEqual(before);
+  it.each(MANAGERS)(
+    '$who: one outside their scope answers exactly as a missing id, and nothing changes',
+    async ({ as, outside }) => {
+      const elsewhere = await make(h[outside].id);
+      const before = await row(elsewhere);
+      const refused = await send(elsewhere, h[as]);
+      const missing = await send(MISSING, h[as]);
+      expect(refused.status).toBe(404);
+      expect(missing.status).toBe(404);
+      expect(refused.body.detail).toBe(missing.body.detail);
+      expect(await row(elsewhere)).toEqual(before);
+    },
+  );
+
+  it.each(MANAGERS)('$who reaches one inside their scope', async ({ as, inside }) => {
+    const res = await send(await make(h[inside].id), h[as]);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
   });
 
-  it('a team manager reaches the team’s, the director another region’s', async () => {
+  it('a team manager reaches the team’s own, the director another region’s', async () => {
     for (const [owner, as] of [
       [h.repA2, h.teamManagerA],
-      [h.repSubTeam, h.teamManagerA],
       [h.repOtherRegion, h.director],
     ]) {
       const res = await send(await make(owner.id), as);
       expect(res.status, JSON.stringify(res.body)).toBe(200);
     }
+  });
+});
+
+/**
+ * A call with everything its routes read or replace: consent, a recording, a
+ * transcript, an analysis, an audit and a coaching note. Without them a route
+ * answers 404 for its own missing row, and a refusal cannot be told from it.
+ */
+const aWorkedCall = async (callerId: string) => {
+  const callId = await aCall(callerId);
+  const tenantId = h.tenantId;
+  await prisma.recordingConsent.create({
+    data: { tenantId, callId, consentGiven: true, method: 'VERBAL', givenAt: new Date() },
+  });
+  await prisma.recording.create({ data: { tenantId, callId, storageKey: `recordings/original-${callId}` } });
+  await prisma.transcript.create({ data: { tenantId, callId, content: 'Hello' } });
+  await prisma.aIAnalysis.create({ data: { tenantId, callId, status: 'COMPLETED' } });
+  await prisma.callAudit.create({ data: { tenantId, callId, scorecardId: 'scorecard', status: 'COMPLETED' } });
+  await prisma.coachingNote.create({ data: { tenantId, callId, authorId: h.director.id, body: 'Pace' } });
+  return callId;
+};
+/** The id of a row the call carries, or a missing one for a missing call. */
+const auditOf = async (callId: string) =>
+  (await prisma.callAudit.findFirst({ where: { tenantId: h.tenantId, callId }, select: { id: true } }))?.id ?? MISSING;
+const noteOf = async (callId: string) =>
+  (await prisma.coachingNote.findFirst({ where: { tenantId: h.tenantId, callId }, select: { id: true } }))?.id ??
+  MISSING;
+/** A PUT, which the request helpers do not send: JSON, or a multipart form. */
+const put = async (
+  handler: (req: Request, context: { params: Promise<{ id: string }> }) => Promise<Response>,
+  id: string,
+  path: string,
+  as: Member,
+  body: Record<string, unknown> | FormData,
+) => {
+  const json = !(body instanceof FormData);
+  const res = await handler(
+    new Request(`http://localhost${path}`, {
+      method: 'PUT',
+      headers: { cookie: as.cookie, ...(json ? { 'content-type': 'application/json' } : {}) },
+      body: json ? JSON.stringify(body) : body,
+    }),
+    { params: Promise.resolve({ id }) },
+  );
+  return { status: res.status, body: await res.json().catch(() => null) };
+};
+const upload = () => {
+  const form = new FormData();
+  form.append('file', new Blob(['not a recording'], { type: 'text/plain' }), 'note.txt');
+  return form;
+};
+/**
+ * Every other route under calls/{id}. Each loads the call through
+ * `assertCallInScope` at its own action before anything else, so outside the
+ * caller's scope it answers as a missing id does and changes nothing. A PUT of
+ * recording media loaded the call by id and workspace alone: calls:EDIT
+ * replaced another team's recording, and a call without consent answered 403.
+ */
+const CALL_ROUTES: {
+  name: string;
+  make?: (callerId: string) => Promise<string>;
+  send: (id: string, as: Member) => Promise<{ status: number; body: any }>;
+}[] = [
+  { name: 'DELETE calls/{id}', send: (id, as) => del(deleteCall, `/api/v1/calls/${id}`, as.cookie) },
+  { name: 'GET analysis', send: (id, as) => get(readAnalysis, `/api/v1/calls/${id}/analysis`, as.cookie) },
+  { name: 'POST analysis', send: (id, as) => post(runAnalysis, `/api/v1/calls/${id}/analysis`, {}, as.cookie) },
+  {
+    name: 'PATCH analysis',
+    send: (id, as) => patch(editAnalysis, `/api/v1/calls/${id}/analysis`, { summary: 'Taken' }, as.cookie),
+  },
+  { name: 'GET audit', send: (id, as) => get(readAudit, `/api/v1/calls/${id}/audit`, as.cookie) },
+  {
+    name: 'POST audit',
+    send: (id, as) => post(runAudit, `/api/v1/calls/${id}/audit`, { scorecardId: MISSING }, as.cookie),
+  },
+  {
+    name: 'PATCH audit',
+    send: async (id, as) => patch(reviewAudit, `/api/v1/calls/${id}/audit`, { auditId: await auditOf(id) }, as.cookie),
+  },
+  {
+    name: 'DELETE audit',
+    send: async (id, as) => del(deleteAudit, `/api/v1/calls/${id}/audit?auditId=${await auditOf(id)}`, as.cookie),
+  },
+  {
+    name: 'POST coach',
+    send: (id, as) => post(coachCall, `/api/v1/calls/${id}/coach`, { action: 'ASK_NEXT' }, as.cookie),
+  },
+  {
+    name: 'POST coaching',
+    send: (id, as) => post(writeCoaching, `/api/v1/calls/${id}/coaching`, { body: 'Slow down' }, as.cookie),
+  },
+  {
+    name: 'PATCH coaching',
+    send: async (id, as) =>
+      patch(resolveCoaching, `/api/v1/calls/${id}/coaching`, { noteId: await noteOf(id), resolved: true }, as.cookie),
+  },
+  {
+    name: 'DELETE consent',
+    send: (id, as) => del(withdrawConsent, `/api/v1/calls/${id}/consent`, as.cookie),
+  },
+  { name: 'POST dial', send: (id, as) => post(dialCall, `/api/v1/calls/${id}/dial`, {}, as.cookie) },
+  {
+    name: 'POST follow-up-email',
+    send: (id, as) => post(draftEmail, `/api/v1/calls/${id}/follow-up-email`, {}, as.cookie),
+  },
+  {
+    name: 'PUT follow-up-email',
+    send: (id, as) =>
+      put(sendEmail, id, `/api/v1/calls/${id}/follow-up-email`, as, { subject: 'Thanks', body: 'Taken' }),
+  },
+  {
+    name: 'POST follow-up-whatsapp',
+    send: (id, as) => post(draftWhatsApp, `/api/v1/calls/${id}/follow-up-whatsapp`, {}, as.cookie),
+  },
+  { name: 'GET live', send: (id, as) => get(liveCall, `/api/v1/calls/${id}/live`, as.cookie) },
+  {
+    name: 'POST live-audio',
+    send: (id, as) => post(liveAudio, `/api/v1/calls/${id}/live-audio`, {}, as.cookie),
+  },
+  {
+    name: 'GET recording',
+    send: (id, as) => get(readRecording, `/api/v1/calls/${id}/recording`, as.cookie),
+  },
+  {
+    name: 'POST recording',
+    send: (id, as) => post(storeRecording, `/api/v1/calls/${id}/recording`, { storageKey: 'taken' }, as.cookie),
+  },
+  {
+    name: 'GET recording/media',
+    send: (id, as) => get(playRecording, `/api/v1/calls/${id}/recording/media`, as.cookie),
+  },
+  {
+    name: 'PUT recording/media',
+    send: (id, as) => put(uploadRecording, id, `/api/v1/calls/${id}/recording/media`, as, upload()),
+  },
+  {
+    name: 'PUT recording/media, no consent',
+    make: aCall,
+    send: (id, as) => put(uploadRecording, id, `/api/v1/calls/${id}/recording/media`, as, upload()),
+  },
+  {
+    name: 'POST temperature',
+    send: (id, as) => post(applyTemperature, `/api/v1/calls/${id}/temperature`, {}, as.cookie),
+  },
+  { name: 'GET transcript', send: (id, as) => get(readTranscript, `/api/v1/calls/${id}/transcript`, as.cookie) },
+  {
+    name: 'POST transcript',
+    send: (id, as) => post(storeTranscript, `/api/v1/calls/${id}/transcript`, { content: 'Taken' }, as.cookie),
+  },
+];
+
+describe.each(CALL_ROUTES)('calls/{id}: $name', ({ make = aWorkedCall, send }) => {
+  it.each(MANAGERS)(
+    '$who: a call outside their scope answers exactly as a missing id, and nothing changes',
+    async ({ as, outside }) => {
+      const elsewhere = await make(h[outside].id);
+      const before = await callRow(elsewhere);
+      const refused = await send(elsewhere, h[as]);
+      const missing = await send(MISSING, h[as]);
+      expect(refused.status, JSON.stringify(refused.body)).toBe(404);
+      expect(missing.status).toBe(404);
+      expect(refused.body.detail).toBe(missing.body.detail);
+      expect(await callRow(elsewhere)).toEqual(before);
+    },
+  );
+});
+
+describe('a call’s writes check it at their own action', () => {
+  it('reading a teammate’s call does not stretch to changing it or coaching on it', async () => {
+    const theirs = await aCall(h.repA2.id);
+    const before = await callRow(theirs);
+    expect((await get(readCall, `/api/v1/calls/${theirs}`, callDesk.cookie)).status).toBe(200);
+    for (const send of [
+      (id: string) => patch(patchCall, `/api/v1/calls/${id}`, { notes: 'Taken' }, callDesk.cookie),
+      (id: string) =>
+        post(recordConsent, `/api/v1/calls/${id}/consent`, { consentGiven: true, method: 'VERBAL' }, callDesk.cookie),
+      (id: string) => post(writeCoaching, `/api/v1/calls/${id}/coaching`, { body: 'Slow down' }, callDesk.cookie),
+    ]) {
+      const refused = await send(theirs);
+      const missing = await send(MISSING);
+      expect(refused.status, JSON.stringify(refused.body)).toBe(404);
+      expect(refused.body.detail).toBe(missing.body.detail);
+    }
+    expect(await callRow(theirs)).toEqual(before);
+  });
+
+  it('the call page offers its writes only on a call the viewer may change', async () => {
+    cookieJar.value = callDesk.cookie;
+    const open = async (id: string) => {
+      const tree = await CallPage({ params: Promise.resolve({ id }) });
+      const props = (type: unknown) => elements(tree).find((el) => el.type === type)?.props;
+      return {
+        actions: props(CallActions)?.canEdit,
+        coach: props(CoachingNotes)?.canCoach,
+        live: hrefs(tree).includes(`/calls/${id}/live`),
+      };
+    };
+    expect(await open(await aCall(h.repA2.id))).toEqual({ actions: false, coach: false, live: false });
+    expect(await open(await aCall(callDesk.id))).toEqual({ actions: true, coach: false, live: true });
+  });
+});
+
+describe('an activity by id, at TEAM scope', () => {
+  const logged = async (ownerId: string, leadId: string) =>
+    (
+      await prisma.activity.create({
+        data: { tenantId: h.tenantId, typeId: activityTypeId, leadId, ownerId, notes: 'Called' },
+      })
+    ).id;
+  const correct = async (id: string) =>
+    (await patch(patchActivity, `/api/v1/activities/${id}`, { notes: 'Corrected' }, h.teamManagerA.cookie)).status;
+
+  it('is the team’s when one of its people owns the lead, whoever logged it', async () => {
+    expect(await correct(await logged(h.repB1.id, h.repA2.leadId))).toBe(200);
+  });
+
+  it('is the team’s when one of its people logged it, whoever owns the lead', async () => {
+    expect(await correct(await logged(h.repA2.id, h.repB1.leadId))).toBe(200);
+  });
+
+  it('is not the team’s when neither who logged it nor the lead’s owner is in the team', async () => {
+    const id = await logged(h.repB1.id, h.repOtherRegion.leadId);
+    expect(await correct(id)).toBe(404);
+    expect(await activityRow(id)).toMatchObject({ notes: 'Called' });
   });
 });
 
@@ -643,6 +978,51 @@ describe('the lists and screens of events and calls', () => {
     }
     await expect(openEvent(await anEvent(h.repB1.id))).rejects.toThrow(/;404$/);
     await expect(openEvent(await anEvent(h.repA2.id))).resolves.toBeTruthy();
+  });
+
+  it('the dashboard counts the calls and audits the Calls and Call Audits pages list', async () => {
+    cookieJar.value = h.teamManagerA.cookie;
+    const panel = async () => {
+      const tree = await DashboardPage({ params: Promise.resolve({ workspaceSlug: slug }) });
+      const values = elements(tree).find((el) => el.props.title === 'Call quality')?.props.values;
+      return Object.fromEntries(values as [string, string | number][]);
+    };
+    const before = await panel();
+    const startedAt = new Date();
+    const theirs = await prisma.call.create({ data: { tenantId: h.tenantId, callerId: h.repB1.id, startedAt } });
+    await prisma.callAudit.create({
+      data: { tenantId: h.tenantId, callId: theirs.id, scorecardId: 'scorecard', status: 'COMPLETED' },
+    });
+    expect(await panel()).toEqual(before);
+    await prisma.call.create({ data: { tenantId: h.tenantId, callerId: h.repA2.id, startedAt } });
+    expect((await panel())['Calls today']).toBe(Number(before['Calls today']) + 1);
+  });
+});
+
+describe('the people a screen offers to hand work to', () => {
+  it('Smart Views’ bulk assign lists whom the assign route accepts', async () => {
+    cookieJar.value = h.teamManagerA.cookie;
+    const tree = await SmartViewsPage({ searchParams: Promise.resolve({}) });
+    const offered = (elements(tree).find((el) => el.type === LeadGrid)?.props.users as { id: string }[]).map(
+      (user) => user.id,
+    );
+    expect(offered).toContain(h.repA2.id);
+    expect(offered).not.toContain(h.repB1.id);
+  });
+
+  it('Social Leads offers only those, and still names everyone who touched an enquiry', async () => {
+    cookieJar.value = h.teamManagerA.cookie;
+    const tree = await SocialLeadsPage({
+      params: Promise.resolve({ workspaceSlug: slug }),
+      searchParams: Promise.resolve({}),
+    });
+    const { users, assignees } = elements(tree).find((el) => el.type === SocialLeadList)?.props.options as {
+      users: { id: string }[];
+      assignees: { id: string }[];
+    };
+    expect(assignees.map((user) => user.id)).toContain(h.repA2.id);
+    expect(assignees.map((user) => user.id)).not.toContain(h.repB1.id);
+    expect(users.map((user) => user.id)).toEqual(expect.arrayContaining([h.repB1.id, h.director.id]));
   });
 });
 
@@ -853,14 +1233,23 @@ const HANDING: { name: string; refusal?: number; hand: (as: Member, to: string) 
   },
 ];
 
+/** Refused exactly as an unknown user is, and nothing lands. */
+const refusedAsUnknown = async (refusal: number, theirs: Handing, unknown: Handing) => {
+  expect(theirs.res.status, JSON.stringify(theirs.res.body)).toBe(refusal);
+  expect(unknown.res.status).toBe(refusal);
+  expect(theirs.res.body.detail).toBe(unknown.res.body.detail);
+  expect(await theirs.landed()).toBe(false);
+};
+
 describe.each(HANDING)('handing work: $name', ({ hand, refusal = 404 }) => {
-  it('a team manager: someone in another team answers as an unknown user, and nothing lands', async () => {
-    const theirs = await hand(h.teamManagerA, h.repB1.id);
-    const unknown = await hand(h.teamManagerA, MISSING);
-    expect(theirs.res.status, JSON.stringify(theirs.res.body)).toBe(refusal);
-    expect(unknown.res.status).toBe(refusal);
-    expect(theirs.res.body.detail).toBe(unknown.res.body.detail);
-    expect(await theirs.landed()).toBe(false);
+  it.each(MANAGERS)('$who: someone outside their scope answers as an unknown user', async ({ as, outside }) => {
+    await refusedAsUnknown(refusal, await hand(h[as], h[outside].id), await hand(h[as], MISSING));
+  });
+
+  it.each(MANAGERS)('$who hands inside their scope', async ({ as, inside }) => {
+    const handing = await hand(h[as], h[inside].id);
+    expect(handing.res.status, JSON.stringify(handing.res.body)).toBe(200);
+    expect(await handing.landed()).toBe(true);
   });
 
   it('a team manager hands to the team; the director to either team', async () => {
@@ -875,11 +1264,29 @@ describe.each(HANDING)('handing work: $name', ({ hand, refusal = 404 }) => {
     }
   });
 
-  it('an own-scope agent cannot hand it to a teammate', async () => {
+  it('an own-scope agent who may assign: a teammate answers as an unknown user', async () => {
+    await refusedAsUnknown(refusal, await hand(ownAssigner, h.repA2.id), await hand(ownAssigner, MISSING));
+  });
+
+  it('an own-scope agent who may not assign never hands it to a teammate', async () => {
     const handing = await hand(h.repA1, h.repA2.id);
     expect(handing.res.status).toBeLessThan(500);
     expect(await handing.landed()).toBe(false);
   });
+});
+
+/**
+ * `leads:EDIT` at TEAM without `leads:ASSIGN`, as the seeded Marketing Manager
+ * holds them: a task or follow-up stays with the editor. These took any active
+ * user before, on the EDIT scope; the target is now checked under ASSIGN.
+ */
+describe('editing the team’s leads without assigning them', () => {
+  it.each(HANDING.filter(({ name }) => /tasks|follow-ups/.test(name)))(
+    '$name: a teammate answers as an unknown user',
+    async ({ hand }) => {
+      await refusedAsUnknown(404, await hand(leadEditor, h.repA2.id), await hand(leadEditor, MISSING));
+    },
+  );
 });
 
 describe('deleting', () => {

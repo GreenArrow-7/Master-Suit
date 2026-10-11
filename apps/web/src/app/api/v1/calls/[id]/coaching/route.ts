@@ -11,11 +11,12 @@ const params = z.object({ id: z.string().cuid() });
 /**
  * Coaching notes on a call.
  *
- * Visibility is the call's visibility (`assertCallInScope` at VIEW on every
- * method, a 404 like a missing id): whoever may see the call may read the
- * coaching on it — the rep being coached most of all. Writing requires seeing
- * someone *else's* calls (TEAM or wider), which is the existing definition of
- * "manager" here; a self-note is just the call's own notes field.
+ * Each method checks the call at its own action (`assertCallInScope`, a 404
+ * like a missing id): whoever may see the call may read the coaching on it —
+ * the rep being coached most of all — and a note is written or resolved only on
+ * a call the caller may change. Writing requires reaching someone *else's*
+ * calls (TEAM or wider), which is the existing definition of "manager" here; a
+ * self-note is just the call's own notes field.
  */
 // A manager's note on how a conversation went is conversation content, not call
 // metadata: a monitoring grant reads it only when it is marked sensitive.
@@ -44,7 +45,7 @@ export const POST = route(
     auditEvent: 'RECORD_CREATED',
   },
   async ({ ctx, params, body }) => {
-    const call = await assertCallInScope(ctx, params.id, 'VIEW');
+    const call = await assertCallInScope(ctx, params.id, 'EDIT');
     // Coaching is a manager writing about someone *else's* call. Whatever the
     // scope, a note on your own call is just notes — the Call has a field for
     // those — and letting it through here would put self-assessments in the
@@ -85,7 +86,7 @@ export const PATCH = route(
     auditEvent: 'RECORD_UPDATED',
   },
   async ({ ctx, params, body }) => {
-    const call = await assertCallInScope(ctx, params.id, 'VIEW');
+    const call = await assertCallInScope(ctx, params.id, 'EDIT');
     const note = await prisma.coachingNote.findFirst({
       where: { id: body.noteId, tenantId: ctx.tenantId, callId: params.id, deletedAt: null },
     });

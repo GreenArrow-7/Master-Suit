@@ -97,11 +97,11 @@ export const PUT = route(
   async ({ ctx, params: { id: callId }, req }) => {
     if (!/^[a-z0-9]{20,32}$/i.test(callId)) throw new AppError(422, 'validation-failed', 'Invalid call id.');
 
-    const [call, consent] = await Promise.all([
-      prisma.call.findFirst({ where: { id: callId, tenantId: ctx.tenantId, deletedAt: null }, select: { id: true } }),
-      prisma.recordingConsent.findFirst({ where: { callId, tenantId: ctx.tenantId } }),
-    ]);
-    if (!call) throw new AppError(404, 'not-found', 'Call not found.');
+    // A call the caller may change, as the JSON recording endpoint checks: by id
+    // and workspace alone, calls:EDIT replaced another team's recording, and a
+    // 403 for a call without consent confirmed the id was real.
+    await assertCallInScope(ctx, callId, 'EDIT');
+    const consent = await prisma.recordingConsent.findFirst({ where: { callId, tenantId: ctx.tenantId } });
     // The same rule the JSON recording endpoint enforces, checked before a byte
     // is read: recording must never begin without active consent.
     if (!consent?.consentGiven || consent.withdrawnAt) {

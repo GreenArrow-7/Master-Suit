@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { callScope } from '@/lib/security/record-scope';
 import { myEmployee } from '@/services/hr/leave';
 import AiInsight from '@/components/ui/AiInsight';
 import { names } from '@/services/leadership/rollups';
@@ -299,24 +300,27 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
   /**
    * Call quality — by permission rather than by role name, so it appears for
    * anyone who reviews calls and not only for the QA persona. For a seller or
-   * administrator it is one more module panel.
+   * administrator it is one more module panel. Counted over the calls the
+   * Calls and Call Audits pages it links to list (`callScope`): a team manager
+   * was told the workspace's backlog and shown the team's.
    */
   const callsQuery =
     modules.has('SALES') && can(ctx, 'calls', 'VIEW')
-      ? Promise.all([
-          prisma.call.count({
-            where: { tenantId: ctx.tenantId, deletedAt: null, startedAt: { gte: today, lt: tomorrow } },
-          }),
-          prisma.callAudit.count({ where: { tenantId: ctx.tenantId, status: 'COMPLETED', humanReviewed: false } }),
-          prisma.callAudit.count({ where: { tenantId: ctx.tenantId, humanReviewed: true } }),
-          prisma.callAudit.aggregate({
-            where: { tenantId: ctx.tenantId, status: 'COMPLETED' },
-            _avg: { overallScore: true, maxScore: true },
-          }),
-          prisma.callAudit.count({
-            where: { tenantId: ctx.tenantId, status: 'COMPLETED', humanReviewed: false, modelId: 'demo-simulation' },
-          }),
-        ])
+      ? callScope(ctx, 'VIEW').then((scope) => {
+          const audited = { tenantId: ctx.tenantId, call: { ...scope, deletedAt: null } };
+          return Promise.all([
+            prisma.call.count({ where: { ...scope, deletedAt: null, startedAt: { gte: today, lt: tomorrow } } }),
+            prisma.callAudit.count({ where: { ...audited, status: 'COMPLETED', humanReviewed: false } }),
+            prisma.callAudit.count({ where: { ...audited, humanReviewed: true } }),
+            prisma.callAudit.aggregate({
+              where: { ...audited, status: 'COMPLETED' },
+              _avg: { overallScore: true, maxScore: true },
+            }),
+            prisma.callAudit.count({
+              where: { ...audited, status: 'COMPLETED', humanReviewed: false, modelId: 'demo-simulation' },
+            }),
+          ]);
+        })
       : null;
 
   const [people, sales, mine, approvals, security, calls, teamFollowUps] = await Promise.all([
