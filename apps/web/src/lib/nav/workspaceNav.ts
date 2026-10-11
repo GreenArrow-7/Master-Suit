@@ -394,6 +394,14 @@ function definitions(slug: string): SectionDef[] {
               keywords: 'callbacks due today overdue',
             },
             {
+              label: 'Tasks',
+              href: r('/tasks'),
+              aliases: [le('/tasks')],
+              permission: 'tasks',
+              module: R,
+              keywords: 'team tasks todo overdue',
+            },
+            {
               label: 'Calls',
               href: r('/calls'),
               aliases: [le('/calls')],
@@ -625,6 +633,14 @@ function definitions(slug: string): SectionDef[] {
               module: LE,
               unlessModule: [S, R],
               keywords: 'callbacks due today overdue',
+            },
+            {
+              label: 'Tasks',
+              href: le('/tasks'),
+              permission: 'tasks',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'team tasks todo overdue',
             },
             {
               label: 'Calls',

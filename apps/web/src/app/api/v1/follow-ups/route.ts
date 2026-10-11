@@ -2,7 +2,7 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
-import { assertCallInScope, assertLeadInScope } from '@/lib/security/record-scope';
+import { assertCallInScope, assertLeadInScope, workListScope } from '@/lib/security/record-scope';
 import { withRecompute } from '@/services/leads/nextFollowUp';
 
 const createBody = z
@@ -40,6 +40,8 @@ const listQuery = z
   .object({
     status: z.enum(['OPEN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'RESCHEDULED']).optional(),
     due: z.enum(['overdue', 'today', 'upcoming']).optional(),
+    // The caller's own; by default, everyone their leads scope covers (the page's Mine).
+    view: z.enum(['mine']).optional(),
   })
   .strict();
 
@@ -49,8 +51,7 @@ export const GET = route(
     const now = new Date();
     const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
     const where: Record<string, unknown> = {
-      tenantId: ctx.tenantId,
-      ownerId: ctx.actor.id,
+      ...(await workListScope(ctx, 'leads', query.view === 'mine')),
       deletedAt: null,
     };
 

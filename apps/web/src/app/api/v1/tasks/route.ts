@@ -2,7 +2,9 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
-import { assertAssignableUser, assertLeadInScope } from '@/lib/security/record-scope';
+import { cursorWhere, pageQuery, toPage } from '@/lib/api/pagination';
+import { mergeWhere } from '@/lib/api/where';
+import { assertAssignableUser, assertLeadInScope, workListScope } from '@/lib/security/record-scope';
 import { withRecompute } from '@/services/leads/nextFollowUp';
 
 const createBody = z
@@ -47,5 +49,35 @@ export const POST = route(
         }),
       );
     });
+  },
+);
+
+const listQuery = pageQuery
+  .extend({
+    status: z.enum(['OPEN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'RESCHEDULED']).optional(),
+    // The caller's own; by default, everyone their tasks scope covers (the Tasks page's Mine).
+    view: z.enum(['mine']).optional(),
+  })
+  .strict();
+
+/**
+ * The Tasks page's rows for API users: the tasks the caller's `tasks:VIEW`
+ * scope covers, newest change first, a page at a time. There was no list, so
+ * a Lead-Eagle-only workspace reached its team's tasks only lead by lead.
+ */
+export const GET = route(
+  { module: 'tasks', productModule: LEAD_MODULES, action: 'VIEW', query: listQuery },
+  async ({ ctx, query }) => {
+    const rows = await prisma.task.findMany({
+      where: mergeWhere(
+        await workListScope(ctx, 'tasks', query.view === 'mine'),
+        { deletedAt: null, status: query.status },
+        cursorWhere(query.cursor),
+      ),
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      take: query.limit + 1,
+      include: { type: { select: { name: true } }, owner: { select: { id: true, fullName: true } } },
+    });
+    return toPage(rows, query.limit);
   },
 );

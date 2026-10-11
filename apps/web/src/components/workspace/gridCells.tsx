@@ -335,7 +335,8 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
         case 'title':
           return <span style={{ fontWeight: 500 }}>{row.title}</span>;
         case 'actions':
-          return <FollowUpRowActions id={String(row.id)} status={String(row.status)} />;
+          // `canAct` false: the page found the viewer may read this row, not change it.
+          return row.canAct === false ? null : <FollowUpRowActions id={String(row.id)} status={String(row.status)} />;
         case 'lead':
           return row.lead ? link(`/leads/${row.lead.id}`, row.lead.fullName) : dash;
         case 'owner':

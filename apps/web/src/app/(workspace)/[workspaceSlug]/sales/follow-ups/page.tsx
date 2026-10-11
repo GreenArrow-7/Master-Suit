@@ -6,9 +6,11 @@ import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
 import ConfigurableGrid from '@/components/workspace/ConfigurableGrid';
 import ColumnEditor from '@/components/workspace/ColumnEditor';
+import { whoseWork } from '@/components/workspace/WhoseWork';
 import FollowUpComposer from './FollowUpComposer';
 import { columnsFor } from '@/lib/grid/resolve';
-import { can } from '@/lib/security/rbac';
+import { can, scopeFor } from '@/lib/security/rbac';
+import { leadsInScope, ownerReach, workListScope } from '@/lib/security/record-scope';
 import { names } from '@/services/leadership/rollups';
 
 export const metadata = { title: 'Follow-ups' };
@@ -21,31 +23,28 @@ const TABS = [
   ['Completed', 'completed'],
 ] as const;
 
-export default async function FollowUpsPage({ searchParams }: { searchParams: Promise<{ due?: string }> }) {
+export default async function FollowUpsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ due?: string; view?: string }>;
+}) {
   const params = await searchParams;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['leads', 'VIEW'] });
   const now = new Date();
   const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
   /**
-   * Whose follow-ups this page lists.
+   * Whose follow-ups this page lists: everyone the viewer's `leads` scope
+   * covers (a follow-up is read under `leads`), or their own under Mine.
    *
-   * `ownerId: ctx.actor.id` was the whole filter, which is right for a
-   * representative and wrong for anyone reading the operation — and empty for a
-   * platform service actor, whose id is the namespaced `platform:<id>` and owns
-   * no rows at all, so the page rendered "No follow-ups" over a workspace with
-   * seventy of them.
-   *
-   * Deliberately not widened for everybody. A manager or administrator opening
-   * "Follow-ups" today expects their own queue, and quietly turning it into the
-   * company's would change a page people already use. The support and service
-   * actors are the case that has no own-queue to show, so they get the whole
-   * list with an Owner column; everyone else is untouched.
+   * It listed the viewer's own alone, under a count line saying "in your
+   * scope", so a team lead saw none of the team's; only a platform service
+   * actor, whose namespaced id owns no rows, had the whole list, which its
+   * ORGANIZATION scope now gives it.
    */
-  const orgWide = ctx.actor.id.startsWith('platform:');
+  const view = whoseWork(scopeFor(ctx, 'leads', 'VIEW'), params.view);
   const where: Record<string, unknown> = {
-    tenantId: ctx.tenantId,
-    ...(orgWide ? {} : { ownerId: ctx.actor.id }),
+    ...(await workListScope(ctx, 'leads', view.mine)),
     status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] },
     deletedAt: null,
   };
@@ -58,48 +57,54 @@ export default async function FollowUpsPage({ searchParams }: { searchParams: Pr
   const rows = await prisma.followUpTask.findMany({ where, orderBy: { dueAt: 'asc' }, take: 100 });
 
   // FollowUpTask carries a bare leadId with no relation, so the name is looked up
-  // here. The column previously showed the first eight characters of the cuid,
-  // which identified nothing to the person reading it.
-  const leadIds = [...new Set(rows.map((row) => row.leadId).filter((id): id is string => Boolean(id)))];
-  const leads =
-    leadIds.length > 0
-      ? await prisma.lead.findMany({
-          where: { tenantId: ctx.tenantId, id: { in: leadIds } },
-          select: { id: true, fullName: true },
-        })
-      : [];
-  const leadById = new Map(leads.map((lead) => [lead.id, lead]));
+  // here, for the leads the viewer may open. The column previously showed the
+  // first eight characters of the cuid, which identified nothing to the person
+  // reading it.
+  const leadById = await leadsInScope(
+    ctx,
+    rows.map((row) => row.leadId),
+  );
 
   // Owner names, only when the list spans people. One lookup for the page.
-  const ownerById = orgWide
-    ? await names(
+  const ownerById = view.mine
+    ? new Map<string, string>()
+    : await names(
         ctx.tenantId,
         rows.map((row) => row.ownerId),
-      )
-    : new Map<string, string>();
+      );
+
+  // Complete and Reschedule only where `follow-ups/{id}` takes them: an owner
+  // the viewer's `leads:EDIT` reaches (a Viewer edits nothing).
+  const editable = await ownerReach(ctx, 'leads', 'EDIT');
 
   const followUps = rows.map((row) => ({
     ...row,
     lead: row.leadId ? (leadById.get(row.leadId) ?? null) : null,
     // "Removed user" rather than a bare id: an owner whose account is gone still
     // owns rows, and the cuid tells a reader nothing.
-    owner: orgWide ? (ownerById.get(row.ownerId) ?? 'Removed user') : null,
+    owner: view.mine ? null : (ownerById.get(row.ownerId) ?? 'Removed user'),
+    canAct: editable(row.ownerId),
   }));
 
   const configured = await columnsFor(ctx.tenantId, 'FOLLOWUP');
   // The Owner column is off by default — it repeats your own name on a personal
   // list. Inserted after the task title when the list is somebody else's work.
   const columns =
-    orgWide && !configured.some((column) => column.key === 'owner')
+    !view.mine && !configured.some((column) => column.key === 'owner')
       ? [configured[0]!, { key: 'owner', label: 'Owner', hideMobile: true }, ...configured.slice(1)]
       : configured;
+
+  // A filter keeps the view, and the view keeps the filter.
+  const href = (due: string, mine: boolean) => {
+    const query = new URLSearchParams([...(mine ? [['view', 'mine']] : []), ...(due ? [['due', due]] : [])]);
+    return query.toString() ? `/follow-ups?${query}` : '/follow-ups';
+  };
 
   return (
     <>
       <ListHeader
         title="Follow-ups"
-        count={rows.length}
-        capped={rows.length === 100}
+        description={view.count(rows.length, rows.length === 100, 'follow-up')}
         actions={
           <>
             {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
@@ -110,12 +115,14 @@ export default async function FollowUpsPage({ searchParams }: { searchParams: Pr
         }
       />
 
+      {view.tabs((mine) => href(params.due ?? '', mine))}
+
       <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="Due filter">
         {TABS.map(([label, key]) => (
           <SalesLink
             key={label}
             className="lf-tab"
-            href={key ? `/follow-ups?due=${key}` : '/follow-ups'}
+            href={href(key, params.view === 'mine')}
             aria-selected={(params.due ?? '') === key}
             role="tab"
           >

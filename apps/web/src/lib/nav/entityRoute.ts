@@ -102,9 +102,11 @@ const ROUTES: Record<string, Dest> = {
   leads_overdue: { kind: 'screen', path: '/sales/leads?filter=overdue' },
   leads_breached: { kind: 'screen', path: '/sales/leads?filter=breached' },
   tasks: { kind: 'screen', path: '/sales/tasks' },
-  tasks_overdue: { kind: 'screen', path: '/sales/tasks?tab=overdue' },
-  follow_ups: { kind: 'screen', path: '/sales/follow-ups' },
-  follow_ups_overdue: { kind: 'screen', path: '/sales/follow-ups?due=overdue' },
+  // The daily brief counts the user's own overdue tasks and follow-ups, and the
+  // follow-up answers are their own queue; the lists open on everyone in scope.
+  tasks_overdue: { kind: 'screen', path: '/sales/tasks?view=mine&tab=overdue' },
+  follow_ups: { kind: 'screen', path: '/sales/follow-ups?view=mine' },
+  follow_ups_overdue: { kind: 'screen', path: '/sales/follow-ups?view=mine&due=overdue' },
   calendar: { kind: 'screen', path: '/sales/calendar' },
 };
 

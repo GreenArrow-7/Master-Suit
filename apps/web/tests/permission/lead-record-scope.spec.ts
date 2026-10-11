@@ -53,6 +53,7 @@ import { POST as assignColdList } from '@/app/api/v1/cold-data/assign/route';
 import { GET as listEvents, POST as createEvent } from '@/app/api/v1/events/route';
 import { DELETE as deleteEvent, GET as readEvent, PATCH as patchEvent } from '@/app/api/v1/events/[id]/route';
 import { POST as queueEventCalls } from '@/app/api/v1/events/[id]/calls/route';
+import { GET as listFollowUps } from '@/app/api/v1/follow-ups/route';
 import { PATCH as patchFollowUp } from '@/app/api/v1/follow-ups/[id]/route';
 import { POST as createLead } from '@/app/api/v1/leads/route';
 import { POST as bulkAssign } from '@/app/api/v1/leads/assign/route';
@@ -61,7 +62,7 @@ import { POST as closeOut } from '@/app/api/v1/leads/[id]/close-out/route';
 import { DELETE as removePhone, POST as addPhone } from '@/app/api/v1/leads/[id]/phones/route';
 import { POST as assignEnquiry } from '@/app/api/v1/social-leads/[id]/assign/route';
 import { POST as convertEnquiry } from '@/app/api/v1/social-leads/[id]/convert/route';
-import { POST as createTask } from '@/app/api/v1/tasks/route';
+import { GET as listTasks, POST as createTask } from '@/app/api/v1/tasks/route';
 import { DELETE as deleteTask, PATCH as patchTask } from '@/app/api/v1/tasks/[id]/route';
 import { POST as createWorkspaceLead } from '@/app/api/v1/workspaces/[workspaceSlug]/sales/leads/route';
 import DashboardPage from '@/app/(workspace)/[workspaceSlug]/dashboard/page';
@@ -73,6 +74,14 @@ import CallPage from '@/app/(workspace)/[workspaceSlug]/sales/calls/[id]/page';
 import LiveCallPage from '@/app/(workspace)/[workspaceSlug]/sales/calls/[id]/live/page';
 import EventsPage from '@/app/(workspace)/[workspaceSlug]/sales/events/page';
 import EventPage from '@/app/(workspace)/[workspaceSlug]/sales/events/[id]/page';
+import FollowUpsPage from '@/app/(workspace)/[workspaceSlug]/sales/follow-ups/page';
+import TasksPage from '@/app/(workspace)/[workspaceSlug]/sales/tasks/page';
+import TaskRowActions from '@/app/(workspace)/[workspaceSlug]/sales/tasks/TaskRowActions';
+import RowDetails from '@/components/workspace/RowDetails';
+import SalesHomePage from '@/app/(workspace)/[workspaceSlug]/sales/page';
+import ConfigurableGrid from '@/components/workspace/ConfigurableGrid';
+import { invalidateEntitlements } from '@/lib/security/entitlements';
+import { entityRoute } from '@/lib/nav/entityRoute';
 import LeadGrid from '@/app/(workspace)/[workspaceSlug]/sales/leads/LeadGrid';
 import SmartViewsPage from '@/app/(workspace)/[workspaceSlug]/sales/smart-views/page';
 import SocialLeadsPage from '@/app/(workspace)/[workspaceSlug]/sales/social-leads/page';
@@ -224,6 +233,7 @@ beforeAll(async () => {
     ['leads', 'VIEW', 'ORGANIZATION'],
     ['leads', 'EDIT', 'TEAM'],
     ['tasks', 'VIEW', 'TEAM'],
+    ['tasks', 'DELETE', 'OWN'],
   ]);
   activityTypeId = (await prisma.activityType.create({ data: { tenantId, key: 'call', name: 'Call' } })).id;
   typeId = (await prisma.taskType.create({ data: { tenantId, key: 'call', name: 'Call' } })).id;
@@ -1306,6 +1316,261 @@ describe('editing the team’s leads without assigning them', () => {
       await refusedAsUnknown(404, await hand(leadEditor, h.repA2.id), await hand(leadEditor, MISSING));
     },
   );
+});
+
+/**
+ * The follow-ups and tasks lists show the work of the people the caller's scope
+ * covers, as the by-id routes reach it: a follow-up under `leads:VIEW`, a task
+ * under `tasks:VIEW`, a task with no owner only at ORGANIZATION. The follow-ups
+ * list and its API filtered on the caller alone, so a team lead saw none of the
+ * team's; a Lead-Eagle-only workspace had no task list and there was no tasks
+ * list API. "Mine" keeps the caller's own queue one click away.
+ */
+type Owner = 'teamManagerA' | 'repA1' | 'repA2' | 'repB1' | 'director';
+const OWNERS: Owner[] = ['teamManagerA', 'repA1', 'repA2', 'repB1', 'director'];
+const TEAM_A: Owner[] = ['teamManagerA', 'repA1', 'repA2'];
+const VIEWERS: { name: string; who: Owner; sees: (Owner | null)[]; wide?: string }[] = [
+  { name: 'a team manager (TEAM)', who: 'teamManagerA', sees: TEAM_A, wide: 'Team' },
+  { name: 'an agent (OWN)', who: 'repA1', sees: ['repA1'] },
+  { name: 'the director (ORGANIZATION)', who: 'director', sees: [...OWNERS, null], wide: 'Everyone' },
+];
+const followUpOf = new Map<Owner | null, string>();
+const taskOf = new Map<Owner | null, string>();
+
+/** `listed` holds the row of every owner in `sees`, and no other row of `rows`. */
+const exactly = (listed: string[], rows: Map<Owner | null, string>, sees: (Owner | null)[]) => {
+  for (const [owner, id] of rows) expect(listed.includes(id), `${owner ?? 'nobody'}’s`).toBe(sees.includes(owner));
+};
+const followUpsApi = async (cookie: string, query = '') => {
+  const res = await get(listFollowUps, `/api/v1/follow-ups${query}`, cookie);
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  return (res.body.data as { id: string }[]).map((row) => row.id);
+};
+/** Every page of the tasks API, `limit` rows at a time. */
+const tasksApi = async (cookie: string, query = '', limit = 200) => {
+  const listed: string[] = [];
+  let cursor = '';
+  do {
+    const res = await get(listTasks, `/api/v1/tasks?limit=${limit}${query}${cursor && `&cursor=${cursor}`}`, cookie);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    listed.push(...(res.body.data as { id: string }[]).map((row) => row.id));
+    cursor = res.body.nextCursor ?? '';
+  } while (cursor);
+  return listed;
+};
+const followUpsPage = async (cookie: string, searchParams: Record<string, string> = {}) => {
+  cookieJar.value = cookie;
+  const tree = await FollowUpsPage({ searchParams: Promise.resolve(searchParams) });
+  const grid = elements(tree).find((el) => el.type === ConfigurableGrid)?.props;
+  return {
+    tree,
+    rows: (grid?.rows ?? []) as { id: string; canAct?: boolean; lead?: { fullName: string } | null }[],
+    ownerColumn: ((grid?.columns ?? []) as { key: string }[]).some((column) => column.key === 'owner'),
+  };
+};
+const tasksPage = async (cookie: string, searchParams: Record<string, string> = {}) => {
+  cookieJar.value = cookie;
+  const tree = await TasksPage({ searchParams: Promise.resolve(searchParams) });
+  return { tree, rows: elements(tree).flatMap((el) => (el.type === 'tr' && el.key ? [String(el.key)] : [])) };
+};
+/** The elements of one task's row on the Tasks page. */
+const taskCells = (tree: unknown, id: string) =>
+  elements(elements(tree).find((el) => el.type === 'tr' && el.key === id)?.props.children);
+/** The labels of the page's switch between the caller's own work and their scope's. */
+const switchLabels = (tree: unknown) => {
+  const nav = elements(tree).find((el) => el.props['aria-label'] === 'Whose work');
+  return nav ? elements(nav.props.children).map((el) => el.props.children) : [];
+};
+
+describe('the follow-ups and tasks lists', () => {
+  beforeAll(async () => {
+    const { tenantId } = h;
+    // Overdue, so they lead every list ordered by due date.
+    const dueAt = new Date(Date.now() - 86_400_000);
+    for (const owner of OWNERS) {
+      const data = { tenantId, ownerId: h[owner].id, createdById: h[owner].id, dueAt };
+      followUpOf.set(owner, (await prisma.followUpTask.create({ data: { ...data, title: 'Call back' } })).id);
+      taskOf.set(owner, (await prisma.task.create({ data: { ...data, typeId, title: 'Send brochure' } })).id);
+    }
+    taskOf.set(null, (await prisma.task.create({ data: { tenantId, typeId, title: 'Nobody’s', dueAt } })).id);
+  });
+
+  describe.each(VIEWERS)('$name', ({ who, sees, wide }) => {
+    it('the follow-ups API and page list the follow-ups of the people in scope, overdue filter included', async () => {
+      const { cookie } = h[who];
+      exactly(await followUpsApi(cookie), followUpOf, sees);
+      exactly(await followUpsApi(cookie, '?due=overdue'), followUpOf, sees);
+      for (const params of [{}, { due: 'overdue' }] as Record<string, string>[]) {
+        const page = await followUpsPage(cookie, params);
+        exactly(
+          page.rows.map((row) => row.id),
+          followUpOf,
+          sees,
+        );
+        expect(page.ownerColumn).toBe(Boolean(wide));
+      }
+    });
+
+    it('the tasks API and page list the tasks of the people in scope, overdue filter included', async () => {
+      const { cookie } = h[who];
+      exactly(await tasksApi(cookie), taskOf, sees);
+      exactly((await tasksPage(cookie)).rows, taskOf, sees);
+      exactly((await tasksPage(cookie, { tab: 'overdue' })).rows, taskOf, sees);
+    });
+
+    it('Mine lists only their own, overdue filter included', async () => {
+      const { cookie } = h[who];
+      exactly(await followUpsApi(cookie, '?view=mine'), followUpOf, [who]);
+      exactly(await followUpsApi(cookie, '?view=mine&due=overdue'), followUpOf, [who]);
+      const page = await followUpsPage(cookie, { view: 'mine', due: 'overdue' });
+      exactly(
+        page.rows.map((row) => row.id),
+        followUpOf,
+        [who],
+      );
+      expect(page.ownerColumn).toBe(false);
+      exactly(await tasksApi(cookie, '&view=mine'), taskOf, [who]);
+      exactly((await tasksPage(cookie, { view: 'mine' })).rows, taskOf, [who]);
+      exactly((await tasksPage(cookie, { view: 'mine', tab: 'overdue' })).rows, taskOf, [who]);
+    });
+
+    it(wide ? `offers Mine and ${wide}` : 'offers no switch: their own is all they see', async () => {
+      const { cookie } = h[who];
+      const offered = wide ? ['Mine', wide] : [];
+      expect(switchLabels((await followUpsPage(cookie)).tree)).toEqual(offered);
+      expect(switchLabels((await tasksPage(cookie)).tree)).toEqual(offered);
+    });
+  });
+
+  it('the tasks API pages through the same rows', async () => {
+    const { cookie } = h.teamManagerA;
+    const paged = await tasksApi(cookie, '', 2);
+    expect(paged.length).toBeGreaterThan(2);
+    expect(paged).toEqual(await tasksApi(cookie));
+  });
+
+  it('offers Complete and Reschedule only on follow-ups the viewer’s leads:EDIT reaches', async () => {
+    // Reads every lead, edits the team's.
+    const { rows } = await followUpsPage(leadEditor.cookie);
+    const canAct = (owner: Owner) => rows.find((row) => row.id === followUpOf.get(owner))?.canAct;
+    expect(canAct('repA2')).toBe(true);
+    expect(canAct('repB1')).toBe(false);
+  });
+
+  it('the screens that count the caller’s own follow-ups open them under Mine', async () => {
+    cookieJar.value = h.repA1.cookie;
+    const home = await SalesHomePage();
+    expect(hrefs(await (home.type as (props: unknown) => Promise<unknown>)(home.props))).toContain(
+      '/follow-ups?view=mine&due=overdue',
+    );
+    cookieJar.value = h.teamManagerA.cookie;
+    const due = new Date(Date.now() - 86_400_000);
+    const month = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}`;
+    const tree = await CalendarPage({ searchParams: Promise.resolve({ month }) });
+    const items = elements(tree).find((el) => Array.isArray(el.props.items))?.props.items as {
+      id: string;
+      href: string;
+    }[];
+    expect(items.find((item) => item.id === `fup-${followUpOf.get('teamManagerA')}`)?.href).toBe(
+      '/follow-ups?view=mine',
+    );
+    expect(entityRoute('follow_ups_overdue', null, slug)).toBe(`/${slug}/sales/follow-ups?view=mine&due=overdue`);
+    // The daily brief's "Overdue tasks" counts the user's own too.
+    expect(entityRoute('tasks_overdue', null, slug)).toBe(`/${slug}/sales/tasks?view=mine&tab=overdue`);
+  });
+
+  it('offers a task’s buttons only where its PATCH and DELETE reach the owner', async () => {
+    // Overdue, so they sort ahead of the rest of the fixture's tasks.
+    const own = async (as: Member) =>
+      (
+        await prisma.task.create({
+          data: {
+            tenantId: h.tenantId,
+            typeId,
+            ownerId: as.id,
+            title: 'Own',
+            dueAt: new Date(Date.now() - 86_400_000),
+          },
+        })
+      ).id;
+    const actions = async (as: Member, id: string) =>
+      taskCells((await tasksPage(as.cookie)).tree, id).find((el) => el.type === TaskRowActions)?.props;
+    // The desk reads every task and edits its own leads alone.
+    const deskOwn = await own(taskDesk);
+    expect(await actions(taskDesk, deskOwn)).toBeDefined();
+    expect(await actions(taskDesk, taskOf.get('repA2')!)).toBeUndefined();
+    expect(await actions(taskDesk, taskOf.get('repB1')!)).toBeUndefined();
+    // The editor edits the team's leads and deletes only its own tasks.
+    const editorOwn = await own(leadEditor);
+    expect((await actions(leadEditor, editorOwn))?.canDelete).toBe(true);
+    expect((await actions(leadEditor, taskOf.get('repA2')!))?.canDelete).toBe(false);
+    // The director reaches all of them.
+    expect((await actions(h.director, taskOf.get('repB1')!))?.canDelete).toBe(true);
+  });
+
+  it('names a row’s lead only where the viewer may open the lead', async () => {
+    // Team A's work on a lead that has since gone to team B: a reassignment moves only open work.
+    const lead = await prisma.lead.findFirstOrThrow({
+      where: { tenantId: h.tenantId, id: h.repB1.leadId },
+      select: { id: true, fullName: true },
+    });
+    const data = {
+      tenantId: h.tenantId,
+      ownerId: h.repA2.id,
+      leadId: lead.id,
+      dueAt: new Date(Date.now() - 86_400_000),
+    };
+    const followUp = (await prisma.followUpTask.create({ data: { ...data, title: 'Moved on' } })).id;
+    const theTask = (await prisma.task.create({ data: { ...data, typeId, title: 'Moved on' } })).id;
+    for (const [as, named] of [
+      [h.teamManagerA, false],
+      [h.director, true],
+    ] as const) {
+      const row = (await followUpsPage(as.cookie)).rows.find((r) => r.id === followUp);
+      expect(row?.lead?.fullName).toBe(named ? lead.fullName : undefined);
+      expect(hrefs(taskCells((await tasksPage(as.cookie)).tree, theTask)).includes(`/leads/${lead.id}`)).toBe(named);
+    }
+    // A lead the team manager may open is still named.
+    const ours = await prisma.task.create({ data: { ...data, typeId, leadId: h.repA2.leadId, title: 'Ours' } });
+    expect(hrefs(taskCells((await tasksPage(h.teamManagerA.cookie)).tree, ours.id))).toContain(
+      `/leads/${h.repA2.leadId}`,
+    );
+  });
+
+  it('labels and ranks each task cell for a phone card, as the grid does', async () => {
+    const cells = taskCells((await tasksPage(h.teamManagerA.cookie)).tree, taskOf.get('repA2')!);
+    expect(
+      cells.filter((el) => el.type === 'td').map((el) => [el.props['data-label'], el.props['data-priority']]),
+    ).toEqual([
+      ['Task', 'primary'],
+      ['Type', 'detail'],
+      ['Related lead', 'detail'],
+      ['Owner', 'detail'],
+      ['Due', 'secondary'],
+      ['Priority', 'secondary'],
+      ['Status', 'secondary'],
+      ['', 'secondary'],
+    ]);
+    expect(cells.some((el) => el.type === RowDetails)).toBe(true);
+  });
+
+  it('a Lead-Eagle-only workspace lists its team lead the team’s tasks, on the page and through the API', async () => {
+    const swap = async (from: 'SALES' | 'LEAD_EAGLE', to: 'SALES' | 'LEAD_EAGLE') => {
+      await prisma.moduleEntitlement.updateMany({
+        where: { tenantId: h.tenantId, module: from },
+        data: { module: to },
+      });
+      await invalidateEntitlements(h.tenantId);
+    };
+    await swap('SALES', 'LEAD_EAGLE');
+    try {
+      const { cookie } = h.teamManagerA;
+      exactly((await tasksPage(cookie)).rows, taskOf, TEAM_A);
+      exactly(await tasksApi(cookie), taskOf, TEAM_A);
+    } finally {
+      await swap('LEAD_EAGLE', 'SALES');
+    }
+  });
 });
 
 describe('deleting', () => {
