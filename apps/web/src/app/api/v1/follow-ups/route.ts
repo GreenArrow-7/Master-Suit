@@ -2,7 +2,7 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
-import { assertLeadInScope } from '@/lib/security/record-scope';
+import { assertCallInScope, assertLeadInScope } from '@/lib/security/record-scope';
 import { withRecompute } from '@/services/leads/nextFollowUp';
 
 const createBody = z
@@ -20,6 +20,9 @@ const createBody = z
 export const POST = route(
   { module: 'leads', productModule: LEAD_MODULES, action: 'EDIT', body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, body }) => {
+    // It shows on its call's page: a call the caller may see. Before the
+    // transaction, because the helper reads through the global client.
+    if (body.callId) await assertCallInScope(ctx, body.callId);
     // Same contract as a task: the lead is locked and its stored aggregate
     // recomputed in the transaction that creates the obligation.
     return withTx(ctx.tenantId, async (tx) => {

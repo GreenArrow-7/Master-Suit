@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { assertLeadInScope } from '@/lib/security/record-scope';
+import { assertContactInScope, assertLeadInScope } from '@/lib/security/record-scope';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { decideTestimonial, requestTestimonial, TESTIMONIAL_STATUSES } from '@/services/clients/testimonials';
 
@@ -52,8 +52,9 @@ export const POST = route(
     auditEvent: 'RECORD_CREATED',
   },
   async ({ ctx, body }) => {
-    // One open ask per client: asking a colleague's lead would block theirs.
+    // One open ask per client: asking a colleague's lead or contact would block theirs.
     if (body.leadId) await assertLeadInScope(ctx, body.leadId, prisma, 'VIEW');
+    if (body.contactId) await assertContactInScope(ctx, body.contactId);
     return requestTestimonial({ ctx, ...body });
   },
 );

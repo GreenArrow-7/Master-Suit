@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db';
 import { touchLead } from '@/services/leads/touch';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
-import { assertLeadCallable } from '@/lib/security/record-scope';
+import { assertContactInScope, assertEventInScope, assertLeadCallable } from '@/lib/security/record-scope';
 import { notifyAboutCall } from '@/services/crm/notify';
 import { maskCallNumbers } from '@/services/leads/createLead';
 import { Invalid } from '@/lib/errors';
@@ -31,6 +31,9 @@ export const POST = route(
   async ({ ctx, body }) => {
     // The call lists, stamps and notifies on its lead: one the caller may call.
     if (body.leadId) await assertLeadCallable(ctx, body.leadId);
+    // Its follow-up email reads the contact's address; a meeting shows on its event's page.
+    if (body.contactId) await assertContactInScope(ctx, body.contactId);
+    if (body.eventId) await assertEventInScope(ctx, body.eventId, 'VIEW');
     // A role that sees the lead's number masked sends the masked string back:
     // the call goes to the lead's stored number instead — a call placed by lead
     // id, which is the point of masking for a telecaller.
