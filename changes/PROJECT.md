@@ -1,8 +1,7 @@
 # YOUHAN ONE — project state
 
-Updated 2026-10-10. Production runs `main` at b28d2b7, released 10 Oct
-(evening), with 98 migrations; `main` is ahead of production where the index
-says so.
+Updated 2026-10-11. Production runs `main` at 8370b22, released 11 Oct, with
+101 migrations; `main` is ahead of production where the index says so.
 
 ## The product
 
