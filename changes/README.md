@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-11 | [A lead's main phone and email can be masked per role](2026-10-11-lead-contact-masking.md) | #158 | security, Lead Eagle |
 | 2026-10-11 | [A workspace could bring back a suspended account; lead work, events and Sales lead routes reached past record scope](2026-10-11-identity-guard-and-record-scope.md) | #157 | security, Lead Eagle |
 | 2026-10-10 | [Lead writes outside your scope answered 'forbidden'; bulk assign ignored scope; Make lead opened a lead you cannot see](2026-10-10-lead-record-scope.md) | #155 | security, Lead Eagle |
 | 2026-10-10 | [Cold data: assign one record; Make lead opens only what you may see; notes shown](2026-10-10-cold-data-assign-and-make-lead.md) | #155 | Lead Eagle |

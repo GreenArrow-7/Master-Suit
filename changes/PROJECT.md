@@ -71,6 +71,14 @@ Node 22 or newer (CI uses 24).
   administrator. A suspended or deactivated one comes back only through the
   platform console's reactivate, an erasing one when its owner withdraws the
   request, a deleted one never.
+- **Sensitive fields.** A lead's phone numbers and email are masked for a role
+  without `leads:VIEW_SENSITIVE_FIELDS` (`LEAD_SENSITIVE_FIELDS`,
+  `src/services/leads/createLead.ts`). A screen or route that shows a lead or a
+  number it holds serialises it through `applyFieldSecurity`, `asLeadPhone` or
+  `maskCallNumbers` (a call's lead side), and builds `tel:` and `wa.me` links
+  with `dialable()`, which refuses a mask. A notification names the lead, not
+  its number. Still outside it: the campaign dialer, event invitees, cold data
+  and the inbox (`changes/2026-10-11-lead-contact-masking.md`).
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
   P2002 answers 409 and P2025 404, a zod failure 422 — let the database say
   "already exists" or "not found" instead of reading first.

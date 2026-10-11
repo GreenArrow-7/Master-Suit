@@ -174,6 +174,10 @@ describe('P0-1 employee creation cannot be used to escalate', () => {
     // Never granted anything that administers people.
     const granted = role!.permissions.map((p) => `${p.permission.module}:${p.permission.action}`);
     expect(granted).not.toContain('users:MANAGE_USERS');
+    // It works leads, so it reads their phone and email whole, as every role that
+    // read leads before M2-06 does; without this its numbers would be masked.
+    expect(granted).toContain('leads:VIEW');
+    expect(granted).toContain('leads:VIEW_SENSITIVE_FIELDS');
     expect(granted.every((key) => p1Scope(role!.permissions, key) === 'OWN')).toBe(true);
 
     // No account yet — since 4.2 the endpoint issues an invitation, so the

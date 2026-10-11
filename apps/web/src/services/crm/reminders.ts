@@ -108,7 +108,9 @@ async function sweepDueTasks(): Promise<number> {
  *
  * `Call.followUpAt` is the only forward-looking timestamp the model carries —
  * there is no `scheduledAt` — so this is what "call reminder" can honestly mean
- * today. It points at the lead for the same reason the task sweep does.
+ * today. It points at the lead for the same reason the task sweep does, and
+ * names the lead, never its number: the owner it reaches may see that number
+ * masked (leads:VIEW_SENSITIVE_FIELDS). Only a call with no lead shows its number.
  */
 async function sweepDueCallFollowUps(): Promise<number> {
   const rows = await withPlatformTx((tx) =>
@@ -117,8 +119,8 @@ async function sweepDueCallFollowUps(): Promise<number> {
               COALESCE(l."ownerId", c."callerId")           AS "userId",
               COALESCE(c."leadId", c.id)                    AS "recordId",
               CASE WHEN c."leadId" IS NULL THEN 'call' ELSE 'lead' END AS "objectType",
-              c."recipientNumber"                           AS title,
-              l."fullName"                                  AS body
+              COALESCE(l."fullName", CASE WHEN c."leadId" IS NULL THEN c."recipientNumber" END, 'a call') AS title,
+              NULL::text                                    AS body
          FROM "Call" c
          LEFT JOIN "Lead" l
                 ON l.id = c."leadId" AND l."tenantId" = c."tenantId" AND l."deletedAt" IS NULL
@@ -141,8 +143,8 @@ async function sweepDueCallFollowUps(): Promise<number> {
   );
 
   return writeReminders(rows, 'call.reminder', (row) => ({
-    title: `Call follow-up due: ${row.body ?? row.title}`,
-    body: row.body ? row.title : null,
+    title: `Call follow-up due: ${row.title}`,
+    body: null,
   }));
 }
 

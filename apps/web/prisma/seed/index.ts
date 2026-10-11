@@ -330,6 +330,10 @@ for (const spec of ROLES) {
   if (!spec.grants.leads) continue;
   spec.grants.calls = { ...spec.grants.leads };
   spec.grants.events = { ...spec.grants.leads };
+  // A lead's phone and email are masked without leads:VIEW_SENSITIVE_FIELDS. Every
+  // role that reads leads holds it, as migration 20261011000000_lead_contact_sensitive
+  // grants it on existing workspaces; a demo of masking switches it off in Roles.
+  if (spec.grants.leads.VIEW) spec.grants.leads.VIEW_SENSITIVE_FIELDS ??= spec.grants.leads.VIEW;
 }
 
 const STAGES = [

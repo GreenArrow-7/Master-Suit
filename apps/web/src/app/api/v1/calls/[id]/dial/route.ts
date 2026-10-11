@@ -8,6 +8,7 @@ import { callbackSecrets, TelephonyConfigError, UNSIGNED_VENDORS } from '@/lib/i
 import { resolveTelephony } from '@/lib/integrations/telephony/resolve';
 import { streamToken } from '@/lib/integrations/telephony/stream';
 import { assertCallInScope } from '@/lib/security/record-scope';
+import { maskCallNumbers } from '@/services/leads/createLead';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -118,7 +119,7 @@ export const POST = route(
         stream,
       });
 
-      return prisma.call.update({
+      const placed = await prisma.call.update({
         where: { id: call.id, tenantId: ctx.tenantId },
         data: {
           externalCallId: result.externalCallId,
@@ -126,6 +127,9 @@ export const POST = route(
           startedAt: new Date(),
         },
       });
+      // The provider dialled the stored number; the caller reads it as the lead's
+      // phone reads to them, which for a telecaller is masked.
+      return (await maskCallNumbers(ctx, [placed]))[0];
     } catch (err) {
       // A vendor that refused must leave the call dialable again rather than
       // stranded in RINGING with no external id to reconcile against.
