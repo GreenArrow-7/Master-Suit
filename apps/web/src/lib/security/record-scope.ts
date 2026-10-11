@@ -221,6 +221,39 @@ export function workListScope(ctx: Ctx, module: string, mine: boolean): Promise<
 }
 
 /**
+ * Whose rows `module:action` reaches, as `assertOwnerInScope` decides it, for a
+ * list that shows a row's buttons only where its route takes them: some roles
+ * read further than they edit or delete, and their buttons answered 404.
+ */
+export async function ownerReach(
+  ctx: Ctx,
+  module: string,
+  action: Action,
+): Promise<(ownerId: string | null) => boolean> {
+  const scope = scopeFor(ctx, module, action);
+  if (scope === 'ORGANIZATION') return () => true;
+  const owners = new Set(scope === 'NONE' ? [] : await resolveOwnerIds(ctx, scope));
+  return (ownerId: string | null) => ownerId !== null && owners.has(ownerId);
+}
+
+/**
+ * The leads in `ids` the caller may open, by id, under the lead page's own rule.
+ * A follow-up or task in scope can hang on a lead that has left it (a
+ * reassignment moves only open work), and the lists showed that lead's name.
+ */
+export async function leadsInScope(ctx: Ctx, ids: (string | null)[]) {
+  const wanted = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+  const leads =
+    wanted.length > 0 && scopeFor(ctx, 'leads', 'VIEW') !== 'NONE'
+      ? await prisma.lead.findMany({
+          where: { ...(await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true })), id: { in: wanted } },
+          select: { id: true, fullName: true },
+        })
+      : [];
+  return new Map(leads.map((lead) => [lead.id, lead]));
+}
+
+/**
  * A task or follow-up by id: yours, or owned by someone your `module` scope for
  * `action` covers. `tasks/{id}` checked nothing about the task, so `leads:EDIT`
  * changed, completed or took any task in the workspace, and `tasks:DELETE`

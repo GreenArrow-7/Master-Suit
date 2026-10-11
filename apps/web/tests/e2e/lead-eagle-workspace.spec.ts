@@ -116,6 +116,20 @@ test.describe('Lead Eagle, from the platform portal to a lead', () => {
         'Everyone',
       ]);
       expect((await page.request.get('/api/v1/tasks')).status()).toBe(200);
+
+      // On a phone the row is a card: the task as its title, Due under its label,
+      // the lead folded under Details.
+      const desktop = page.viewportSize()!;
+      await page.setViewportSize({ width: 390, height: 844 });
+      const card = page.locator('tbody tr', { hasText: `Eagle task ${run}` });
+      await expect(card.locator('td[data-label="Task"]')).toBeVisible();
+      const due = card.locator('td[data-label="Due"]');
+      await expect(due).toBeVisible();
+      expect(await due.evaluate((td) => getComputedStyle(td, '::before').content)).toBe('"Due"');
+      await expect(card.locator('td[data-label="Related lead"]')).toBeHidden();
+      await card.getByText('Details', { exact: true }).click();
+      await expect(card.locator('td[data-label="Related lead"]')).toBeVisible();
+      await page.setViewportSize(desktop);
     });
 
     await test.step('the money and marketing registers are not part of it', async () => {

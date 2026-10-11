@@ -10,8 +10,7 @@ import { whoseWork } from '@/components/workspace/WhoseWork';
 import FollowUpComposer from './FollowUpComposer';
 import { columnsFor } from '@/lib/grid/resolve';
 import { can, scopeFor } from '@/lib/security/rbac';
-import { workListScope } from '@/lib/security/record-scope';
-import { resolveOwnerIds } from '@/lib/security/visibility';
+import { leadsInScope, ownerReach, workListScope } from '@/lib/security/record-scope';
 import { names } from '@/services/leadership/rollups';
 
 export const metadata = { title: 'Follow-ups' };
@@ -58,17 +57,13 @@ export default async function FollowUpsPage({
   const rows = await prisma.followUpTask.findMany({ where, orderBy: { dueAt: 'asc' }, take: 100 });
 
   // FollowUpTask carries a bare leadId with no relation, so the name is looked up
-  // here. The column previously showed the first eight characters of the cuid,
-  // which identified nothing to the person reading it.
-  const leadIds = [...new Set(rows.map((row) => row.leadId).filter((id): id is string => Boolean(id)))];
-  const leads =
-    leadIds.length > 0
-      ? await prisma.lead.findMany({
-          where: { tenantId: ctx.tenantId, id: { in: leadIds } },
-          select: { id: true, fullName: true },
-        })
-      : [];
-  const leadById = new Map(leads.map((lead) => [lead.id, lead]));
+  // here, for the leads the viewer may open. The column previously showed the
+  // first eight characters of the cuid, which identified nothing to the person
+  // reading it.
+  const leadById = await leadsInScope(
+    ctx,
+    rows.map((row) => row.leadId),
+  );
 
   // Owner names, only when the list spans people. One lookup for the page.
   const ownerById = view.mine
@@ -78,12 +73,9 @@ export default async function FollowUpsPage({
         rows.map((row) => row.ownerId),
       );
 
-  // Complete and Reschedule only where `follow-ups/{id}` takes them: the
-  // viewer's own, or an owner their `leads:EDIT` scope covers. Some roles read
-  // further than they edit (a Viewer edits nothing).
-  const editScope = scopeFor(ctx, 'leads', 'EDIT');
-  const editable =
-    editScope === 'ORGANIZATION' ? null : new Set(editScope === 'NONE' ? [] : await resolveOwnerIds(ctx, editScope));
+  // Complete and Reschedule only where `follow-ups/{id}` takes them: an owner
+  // the viewer's `leads:EDIT` reaches (a Viewer edits nothing).
+  const editable = await ownerReach(ctx, 'leads', 'EDIT');
 
   const followUps = rows.map((row) => ({
     ...row,
@@ -91,7 +83,7 @@ export default async function FollowUpsPage({
     // "Removed user" rather than a bare id: an owner whose account is gone still
     // owns rows, and the cuid tells a reader nothing.
     owner: view.mine ? null : (ownerById.get(row.ownerId) ?? 'Removed user'),
-    canAct: editable === null || editable.has(row.ownerId),
+    canAct: editable(row.ownerId),
   }));
 
   const configured = await columnsFor(ctx.tenantId, 'FOLLOWUP');
