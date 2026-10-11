@@ -2,6 +2,7 @@ import { requirePageAccess } from '@/lib/workspace-page';
 import { mergeWhere } from '@/lib/api/where';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { can } from '@/lib/security/rbac';
+import { eventListScope } from '@/lib/security/record-scope';
 import { prisma } from '@/lib/db';
 import CalendarView from './CalendarView';
 
@@ -79,12 +80,19 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           select: { id: true, startedAt: true, createdAt: true, direction: true, status: true },
         })
       : [],
-    // Events are tenant-wide, matching the Events list page.
-    prisma.event.findMany({
-      where: { tenantId: ctx.tenantId, deletedAt: null, startAt: inMonth },
-      take: 300,
-      select: { id: true, title: true, startAt: true },
-    }),
+    // The events the Events list shows, on their own grant.
+    can(ctx, 'events', 'VIEW')
+      ? prisma.event.findMany({
+          where: {
+            tenantId: ctx.tenantId,
+            deletedAt: null,
+            startAt: inMonth,
+            ...eventListScope(ctx),
+          },
+          take: 300,
+          select: { id: true, title: true, startAt: true },
+        })
+      : [],
   ]);
 
   const items = [
