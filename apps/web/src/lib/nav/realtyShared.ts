@@ -10,6 +10,7 @@ import type { ProductModuleKey } from '@/lib/modules/catalogue';
 export const REALTY_SHARED_ROOTS = [
   'leads',
   'follow-ups',
+  'tasks',
   'calls',
   'site-visits',
   'projects',
@@ -35,6 +36,7 @@ export const REALTY_SHARED_ROOTS = [
 export const LEAD_EAGLE_SHARED_ROOTS = [
   'leads',
   'follow-ups',
+  'tasks',
   'calls',
   'site-visits',
   'projects',

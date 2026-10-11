@@ -97,6 +97,43 @@ test.describe('Lead Eagle, from the platform portal to a lead', () => {
       }
     });
 
+    await test.step('its Leads menu has Tasks, the list of everyone’s tasks with Mine one click away', async () => {
+      const tenantId = (await prisma.tenant.findUniqueOrThrow({ where: { slug: eagle.slug }, select: { id: true } }))
+        .id;
+      const { id: typeId } = await prisma.taskType.findFirstOrThrow({ where: { tenantId }, select: { id: true } });
+      const res = await page.request.post('/api/v1/tasks', {
+        data: { typeId, leadId, title: `Eagle task ${run}`, dueAt: new Date(Date.now() + 3_600_000).toISOString() },
+      });
+      expect(res.status(), await res.text()).toBeLessThan(300);
+
+      await page.goto(at('/lead-eagle/leads'));
+      await page
+        .getByRole('navigation', { name: 'Leads screens' })
+        .getByRole('link', { name: 'Tasks', exact: true })
+        .click();
+      await expect(page).toHaveURL(new RegExp(`/${eagle.slug}/lead-eagle/tasks$`));
+      await expect(page.getByText(`Eagle task ${run}`)).toBeVisible();
+      await expect(page.getByRole('navigation', { name: 'Whose work' }).getByRole('tab')).toHaveText([
+        'Mine',
+        'Everyone',
+      ]);
+      expect((await page.request.get('/api/v1/tasks')).status()).toBe(200);
+
+      // On a phone the row is a card: the task as its title, Due under its label,
+      // the lead folded under Details.
+      const desktop = page.viewportSize()!;
+      await page.setViewportSize({ width: 390, height: 844 });
+      const card = page.locator('tbody tr', { hasText: `Eagle task ${run}` });
+      await expect(card.locator('td[data-label="Task"]')).toBeVisible();
+      const due = card.locator('td[data-label="Due"]');
+      await expect(due).toBeVisible();
+      expect(await due.evaluate((td) => getComputedStyle(td, '::before').content)).toBe('"Due"');
+      await expect(card.locator('td[data-label="Related lead"]')).toBeHidden();
+      await card.getByText('Details', { exact: true }).click();
+      await expect(card.locator('td[data-label="Related lead"]')).toBeVisible();
+      await page.setViewportSize(desktop);
+    });
+
     await test.step('the money and marketing registers are not part of it, and the screen says so (M2-05)', async () => {
       // Each screen stays where it was asked for and names the products that
       // carry it, as the API does; it used to go to the dashboard without a word.

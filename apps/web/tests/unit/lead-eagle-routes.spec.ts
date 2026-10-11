@@ -71,7 +71,7 @@ describe('the Lead Eagle routes re-export the Sales pages for lead work', () => 
 });
 
 describe('the APIs admit Lead Eagle for lead work and nothing else', () => {
-  const lead = apiRoutes([...SHARED, 'documents', 'tasks', 'activities']).filter((route) =>
+  const lead = apiRoutes([...SHARED, 'documents', 'activities']).filter((route) =>
     read(path.join(API, route)).includes('productModule'),
   );
   const money = apiRoutes(['collections', 'commissions', 'commission-slabs', 'proposals', 'portals', 'events']);

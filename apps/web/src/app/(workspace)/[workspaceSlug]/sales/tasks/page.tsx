@@ -1,13 +1,15 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { mergeWhere } from '@/lib/api/where';
-import { visibilityWhere } from '@/lib/security/visibility';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import EmptyState from '@/components/ui/EmptyState';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
-import { can, atLeast } from '@/lib/security/rbac';
-import { assignableUsers } from '@/lib/security/record-scope';
+import { whoseWork } from '@/components/workspace/WhoseWork';
+import { can, atLeast, scopeFor } from '@/lib/security/rbac';
+import { assignableUsers, leadsInScope, ownerReach, workListScope } from '@/lib/security/record-scope';
+import RowDetails from '@/components/workspace/RowDetails';
 import TaskComposer from './TaskComposer';
 import TaskRowActions from './TaskRowActions';
 
@@ -49,19 +51,29 @@ function tabOrder(tab: string | undefined): Record<string, string>[] {
   return [{ dueAt: 'asc' }];
 }
 
+/** A filter keeps the view, and the view keeps the filter. */
+function tabHref(tab: string, mine: boolean): string {
+  const query = new URLSearchParams([...(mine ? [['view', 'mine']] : []), ...(tab ? [['tab', tab]] : [])]);
+  return query.toString() ? `/tasks?${query}` : '/tasks';
+}
+
 const fmt = (d: Date | null) =>
   d ? new Date(d).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
-export default async function TasksPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+export default async function TasksPage({ searchParams }: { searchParams: Promise<{ tab?: string; view?: string }> }) {
   const params = await searchParams;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['tasks', 'VIEW'] });
-  const scope = await visibilityWhere(ctx, 'tasks', 'VIEW', { ownerField: 'ownerId' });
+  // Lead work, so every product that works leads: a Lead-Eagle-only workspace had
+  // no list of its team's tasks, only each lead's Tasks tab.
+  const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['tasks', 'VIEW'] });
+  // Everyone the viewer's tasks scope covers, or their own under Mine.
+  const view = whoseWork(scopeFor(ctx, 'tasks', 'VIEW'), params.view);
+  const scope = await workListScope(ctx, 'tasks', view.mine);
   const now = new Date();
 
   const canCreate = can(ctx, 'leads', 'EDIT');
   const canAssignOthers = atLeast(ctx, 'leads', 'ASSIGN', 'TEAM');
 
-  const [rows, taskTypes, assignees] = await Promise.all([
+  const [rows, taskTypes, assignees, editable, deletable] = await Promise.all([
     prisma.task.findMany({
       where: mergeWhere(scope, { deletedAt: null }, tabWhere(params.tab, now)),
       orderBy: tabOrder(params.tab),
@@ -74,7 +86,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         priority: true,
         status: true,
         type: { select: { name: true } },
-        lead: { select: { id: true, fullName: true } },
+        leadId: true,
+        ownerId: true,
         owner: { select: { fullName: true } },
       },
     }),
@@ -86,19 +99,20 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         })
       : Promise.resolve([]),
     canAssignOthers ? assignableUsers(ctx, 'leads', 'ASSIGN') : Promise.resolve([]),
+    // A row's buttons only where `tasks/{id}` takes them: PATCH where `leads:EDIT`
+    // reaches the owner, DELETE where `tasks:DELETE` does. Some roles read further.
+    ownerReach(ctx, 'leads', 'EDIT'),
+    ownerReach(ctx, 'tasks', 'DELETE'),
   ]);
+  // The related lead's name only where the viewer may open the lead.
+  const leadById = await leadsInScope(
+    ctx,
+    rows.map((t) => t.leadId),
+  );
 
   return (
     <>
-      <ListHeader
-        title="Tasks"
-        description={
-          <>
-            {rows.length === 100 ? 'First 100 records' : `${rows.length} record${rows.length === 1 ? '' : 's'}`} in your
-            scope
-          </>
-        }
-      />
+      <ListHeader title="Tasks" description={view.count(rows.length, rows.length === 100, 'task')} />
 
       {canCreate && (
         <div style={{ marginBottom: 'var(--lf-space-4)' }}>
@@ -106,12 +120,14 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         </div>
       )}
 
+      {view.tabs((mine) => tabHref(params.tab ?? '', mine))}
+
       <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="Task filter">
         {TABS.map(([label, key]) => (
           <SalesLink
             key={label}
             className="lf-tab"
-            href={key ? `/tasks?tab=${key}` : '/tasks'}
+            href={tabHref(key, params.view === 'mine')}
             aria-selected={(params.tab ?? '') === key}
             role="tab"
           >
@@ -147,27 +163,41 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
             <tbody>
               {rows.map((t) => {
                 const overdue = t.status === 'OPEN' && t.dueAt && new Date(t.dueAt) < now;
+                const lead = t.leadId ? leadById.get(t.leadId) : undefined;
                 return (
                   <tr key={t.id}>
-                    <td style={{ fontWeight: 500 }}>{t.title}</td>
-                    <td>{t.type?.name ?? '—'}</td>
-                    <td>{t.lead ? <SalesLink href={`/leads/${t.lead.id}`}>{t.lead.fullName}</SalesLink> : '—'}</td>
-                    <td>{t.owner?.fullName ?? '—'}</td>
-                    <td style={{ color: overdue ? 'var(--lf-wine-700)' : 'var(--lf-ink-2)' }}>
+                    <td data-label="Task" data-priority="primary" style={{ fontWeight: 500 }}>
+                      {t.title}
+                    </td>
+                    <td data-label="Type" data-priority="detail">
+                      {t.type?.name ?? '—'}
+                    </td>
+                    <td data-label="Related lead" data-priority="detail">
+                      {lead ? <SalesLink href={`/leads/${lead.id}`}>{lead.fullName}</SalesLink> : '—'}
+                    </td>
+                    <td data-label="Owner" data-priority="detail">
+                      {t.owner?.fullName ?? '—'}
+                    </td>
+                    <td
+                      data-label="Due"
+                      data-priority="secondary"
+                      style={{ color: overdue ? 'var(--lf-wine-700)' : 'var(--lf-ink-2)' }}
+                    >
                       {fmt(t.dueAt)}
                       {overdue ? ' · overdue' : ''}
                     </td>
-                    <td>
+                    <td data-label="Priority" data-priority="secondary">
                       <Badge tone={PRIORITY_TONE[t.priority] ?? 'slate'}>{t.priority.toLowerCase()}</Badge>
                     </td>
-                    <td>
+                    <td data-label="Status" data-priority="secondary">
                       <Badge tone={STATUS_TONE[t.status] ?? 'slate'}>{t.status.replace(/_/g, ' ').toLowerCase()}</Badge>
                     </td>
-                    <td style={{ textAlign: 'right' }}>
-                      {canCreate ? (
-                        <TaskRowActions id={t.id} status={t.status} canDelete={can(ctx, 'tasks', 'DELETE')} />
+                    <td data-label="" data-priority="secondary" style={{ textAlign: 'right' }}>
+                      {editable(t.ownerId) ? (
+                        <TaskRowActions id={t.id} status={t.status} canDelete={deletable(t.ownerId)} />
                       ) : null}
                     </td>
+                    <RowDetails />
                   </tr>
                 );
               })}
