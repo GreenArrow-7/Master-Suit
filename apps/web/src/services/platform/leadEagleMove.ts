@@ -6,13 +6,15 @@
  * One transaction, all or nothing. A dry run performs every write — so every
  * constraint, foreign key and policy is exercised against the real workspace —
  * checks the counts and a sample, and rolls back. A commit does the same and
- * keeps it. A company already moved into the workspace is refused, so a second
- * run cannot double the book.
+ * keeps it, with a platform audit row naming the company. A company already
+ * moved into the workspace is refused, so a second run cannot double the book.
  *
  * People are matched by email to the workspace's existing users: accounts are
  * never created here (add them to the workspace first). Records owned by someone without an
  * account move unowned, and anything that must have an owner (a follow-up, a
- * booking) falls to the workspace's first Company Admin; each case is reported.
+ * booking) falls to the workspace's first Company Admin; activities and stage
+ * changes keep their row and lose their person. Each case is reported, and so
+ * is every row on a merged-duplicate or deleted record, which stays behind.
  */
 import type {
   BookingStatus,
@@ -30,6 +32,7 @@ import type {
   UnitStatus,
 } from '@prisma/client';
 import { prisma, withPlatformTx } from '@/lib/db';
+import { platformAudit } from '@/lib/security/audit';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { nextReference } from '@/services/shared/reference';
@@ -223,6 +226,9 @@ export interface MoveReport {
 
 class DryRun extends Error {}
 
+/** The platform audit row a commit leaves, which also refuses a second move. */
+const MOVED_EVENT = 'LEAD_EAGLE_COMPANY_MOVED';
+
 const CATEGORY: Record<string, StageCategory> = { OPEN: 'OPEN', WON: 'CONVERSION', LOST: 'TERMINAL_NEGATIVE' };
 const PROJECT_STATUS: Record<string, [ProjectStatus, PossessionStatus]> = {
   OFF_PLAN: ['LAUNCHED', 'NEW_LAUNCH'],
@@ -282,10 +288,21 @@ export async function moveCompany(
   // Lead Eagle shows projects and listings itself (Inventory); Collections and Commissions are Real Estate's.
   const needsRealEstate = snap.bookings.length + snap.commissions.length > 0;
 
+  // The marked leads guard moves made before the audit row existed; the row guards a company with none.
   const already = await prisma.lead.count({
     where: { tenantId, customData: { path: ['leadEagle', 'company'], equals: snap.company.id } },
   });
+  // ponytail: the row lives only as long as PLATFORM_AUDIT_RETENTION_DAYS keeps it (default: for ever), and
+  // a re-run after undoing a move by hand needs it removed; a durable marker on the moved rows if that bites.
+  const recorded = await prisma.platformAuditEvent.findFirst({
+    where: { tenantId, event: MOVED_EVENT, objectId: snap.company.id },
+    select: { occurredAt: true },
+  });
   if (already) throw new Error(`${snap.company.slug} was already moved into this workspace (${already} leads).`);
+  if (recorded) {
+    const on = recorded.occurredAt.toISOString().slice(0, 10);
+    throw new Error(`${snap.company.slug} was already moved into this workspace (audit record of ${on}).`);
+  }
 
   // People, by email. Never created: an account is the owner's to invite.
   const people = await prisma.user.findMany({
@@ -300,16 +317,23 @@ export async function moveCompany(
     if (match) userMap.set(user.id, match);
   }
   const owned = (id: Id | null) => (id ? (userMap.get(id) ?? null) : null);
-  const unmatched = snap.users.filter((u) => !userMap.has(u.id));
-  for (const user of unmatched) {
-    const holds =
-      snap.leads.filter((l) => l.ownerId === user.id).length +
-      snap.dataRecords.filter((r) => r.ownerId === user.id).length +
-      snap.listings.filter((l) => l.agentId === user.id).length +
-      snap.captureLinks.filter((c) => c.assignToId === user.id).length +
-      snap.units.filter((u) => u.heldById === user.id).length;
+  /** Without an account here: the ids `owned` turns to null. */
+  const lost = (id: Id | null): id is Id => !!id && !userMap.has(id);
+  const holders = [
+    ...snap.leads.map((l) => l.ownerId),
+    ...snap.dataRecords.map((r) => r.ownerId),
+    ...snap.listings.map((l) => l.agentId),
+    ...snap.captureLinks.map((c) => c.assignToId),
+    ...snap.units.map((u) => u.heldById),
+  ].filter(lost);
+  for (const user of snap.users) {
+    const holds = holders.filter((id) => id === user.id).length;
     if (holds) problems.push(`${user.email} owns ${holds} records but has no account here; they move unowned.`);
   }
+  // Deleted in Lead Eagle, so not among the users read: no email to name.
+  const known = new Set(snap.users.map((u) => u.id));
+  const removed = holders.filter((id) => !known.has(id)).length;
+  if (removed) problems.push(`${removed} records are owned by people no longer in Lead Eagle; they move unowned.`);
   const fallback =
     people.find((p) => p.status === 'ACTIVE' && p.role?.key === 'company_admin') ??
     people.find((p) => p.status === 'ACTIVE');
@@ -459,17 +483,26 @@ export async function moveCompany(
         };
         let activities = 0;
         let stageChanges = 0;
+        // The reader leaves merged-duplicate and deleted leads and cold data behind, not their rows.
+        let leftBehind = 0;
+        let lostActivities = 0;
+        let lostStageChanges = 0;
+        const recordIds = new Set(snap.dataRecords.map((r) => r.id));
         const recordNotes = new Map<Id, string[]>();
         for (const a of snap.activities) {
           const text = [a.summary, a.body].filter(Boolean).join('\n');
-          if (a.dataRecordId) {
+          if (a.dataRecordId && recordIds.has(a.dataRecordId)) {
             // Cold-data calls have no timeline here; they join the record's notes.
             recordNotes.set(a.dataRecordId, [...(recordNotes.get(a.dataRecordId) ?? []), text]);
             activities += 1;
             continue;
           }
           const leadId = a.leadId ? leadMap.get(a.leadId) : undefined;
-          if (!leadId) continue;
+          // On a deleted record, it still moves onto its lead if it names one that moved.
+          if (!leadId) {
+            leftBehind += 1;
+            continue;
+          }
           if (a.type === 'ENQUIRY') {
             // Lead Eagle wrote each enquiry twice; it moves once, from LeadEnquiry, with its source.
             activities += 1;
@@ -488,8 +521,10 @@ export async function moveCompany(
               },
             });
             stageChanges += 1;
+            if (lost(a.userId)) lostStageChanges += 1;
             continue;
           }
+          if (lost(a.userId)) lostActivities += 1;
           const kind = a.type === 'CALL' ? `CALL_${a.callDirection ?? 'OUTBOUND'}` : a.type;
           await tx.activity.create({
             data: {
@@ -508,7 +543,10 @@ export async function moveCompany(
         }
         for (const e of snap.enquiries) {
           const leadId = leadMap.get(e.leadId);
-          if (!leadId) continue;
+          if (!leadId) {
+            leftBehind += 1;
+            continue;
+          }
           await tx.activity.create({
             data: {
               tenantId,
@@ -522,13 +560,32 @@ export async function moveCompany(
           activities += 1;
         }
         tally('activities and enquiries', snap.activities.length + snap.enquiries.length, activities + stageChanges);
+        if (lostActivities) {
+          problems.push(
+            `${lostActivities} activities were logged by someone without an account here; they move without who logged them.`,
+          );
+        }
+        if (lostStageChanges) {
+          problems.push(
+            `${lostStageChanges} stage changes were made by someone without an account here; they move without who made them.`,
+          );
+        }
+        if (leftBehind) {
+          problems.push(
+            `${leftBehind} activities and enquiries are on merged duplicates, deleted records or no record; they stay behind.`,
+          );
+        }
 
         // ── Follow-ups ───────────────────────────────────────────────────────
         let followUps = 0;
         let orphanFollowUps = 0;
+        let followUpsLeftBehind = 0;
         for (const f of snap.followUps) {
           const leadId = leadMap.get(f.leadId);
-          if (!leadId) continue;
+          if (!leadId) {
+            followUpsLeftBehind += 1;
+            continue;
+          }
           const status: TaskStatus = f.doneAt ? 'COMPLETED' : f.cancelledAt ? 'CANCELLED' : 'OPEN';
           const ownerId = owned(f.ownerId);
           if (!ownerId) orphanFollowUps += 1;
@@ -551,6 +608,11 @@ export async function moveCompany(
         if (orphanFollowUps) {
           problems.push(
             `${orphanFollowUps} follow-ups have no owner with an account; they are given to ${fallback.email}.`,
+          );
+        }
+        if (followUpsLeftBehind) {
+          problems.push(
+            `${followUpsLeftBehind} follow-ups are on merged duplicates or deleted leads; they stay behind.`,
           );
         }
 
@@ -653,6 +715,7 @@ export async function moveCompany(
         const unitMap = new Map<Id, Id>();
         for (const u of snap.units) {
           const projectId = projectMap.get(u.projectId);
+          // The reader reads live units, of live projects or deleted ones.
           if (!projectId) continue;
           const created = await tx.unitInventory.create({
             data: {
@@ -672,6 +735,11 @@ export async function moveCompany(
           unitMap.set(u.id, created.id);
         }
         tally('units', snap.units.length, unitMap.size);
+        if (unitMap.size < snap.units.length) {
+          problems.push(
+            `${snap.units.length - unitMap.size} units are on projects that did not move; they stay behind.`,
+          );
+        }
 
         const listingMap = new Map<Id, Id>();
         const references = new Set(
@@ -794,7 +862,13 @@ export async function moveCompany(
         for (const c of snap.commissions) {
           const booking = bookingMap.get(c.bookingId);
           const userId = owned(c.userId);
-          if (!booking) continue;
+          if (!booking) {
+            const reference = snap.bookings.find((b) => b.id === c.bookingId)?.reference ?? c.bookingId;
+            problems.push(
+              `A commission of AED ${c.amount} is on booking ${reference}, which did not move; it stays behind.`,
+            );
+            continue;
+          }
           if (!userId) {
             problems.push(
               `A commission of AED ${c.amount} on a booking is owed to ${c.externalName ?? 'someone without an account'}; it is not moved.`,
@@ -827,7 +901,9 @@ export async function moveCompany(
         if (moved.length !== snap.leads.length) {
           throw new Error(`Moved ${moved.length} leads of ${snap.leads.length}; nothing was kept.`);
         }
-        const sample = [0, Math.floor(snap.leads.length / 2), snap.leads.length - 1].filter((i) => i >= 0);
+        const sample = [0, Math.floor(snap.leads.length / 2), snap.leads.length - 1].filter(
+          (i) => i >= 0 && i < snap.leads.length,
+        );
         for (const i of new Set(sample)) {
           const source = snap.leads[i]!;
           const row = moved.find((m) => m.id === leadMap.get(source.id));
@@ -850,6 +926,19 @@ export async function moveCompany(
             create: { tenantId, module: 'REAL_ESTATE', state: 'ACTIVE' },
           });
         }
+        // Run from a shell, so no platform person: the actor is the system.
+        await platformAudit(
+          { platformUserId: null },
+          {
+            event: MOVED_EVENT,
+            objectType: 'lead_eagle_company',
+            objectId: snap.company.id,
+            tenantId,
+            // Flat: the workspace's own Audit log prints each value as text.
+            metadata: { slug: snap.company.slug, leads: snap.leads.length },
+          },
+          tx,
+        );
         if (!options.commit) throw new DryRun();
       },
       { timeoutMs: 30 * 60_000 },
