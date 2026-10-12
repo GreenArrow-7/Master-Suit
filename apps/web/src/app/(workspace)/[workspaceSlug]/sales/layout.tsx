@@ -1,8 +1,5 @@
-import { redirect } from 'next/navigation';
-import { headers } from 'next/headers';
-import { AppError } from '@/lib/errors';
-import { leadEagleEquivalent, realtyEquivalent } from '@/lib/nav/realtyShared';
-import { requestCtx, requestWorkspace } from '@/lib/workspace-page';
+import NotInPlan from '@/components/workspace/NotInPlan';
+import { workspaceOwns } from '@/lib/workspace-page';
 
 /**
  * Sales entitlement gate. The workspace layout above already established the
@@ -23,6 +20,17 @@ import { requestCtx, requestWorkspace } from '@/lib/workspace-page';
  * this workspace. Every page beneath still asserts its own permission — the
  * leads list needs `leads:VIEW`, and a session that lacks it is still refused
  * there.
+ *
+ * ── Where a workspace without Sales goes instead ────────────────────────────
+ *
+ * Record links — the notification bell, a push notification already on a
+ * phone, the assistant — are built as `/sales/...` (lib/nav/entityRoute.ts).
+ * A workspace that bought only Real Estate owns the same registers under
+ * `/realty/`, and one that bought Lead Eagle owns most of them under
+ * `/lead-eagle/`, so `NotInPlan` sends it to the same screen there (Real Estate
+ * first, the fuller of the two, via lib/nav/realtyShared.ts) and names every
+ * product that carries a screen neither has for it. The Real Estate and Lead
+ * Eagle layouts do the same through it.
  */
 export default async function SalesLayout({
   children,
@@ -32,47 +40,6 @@ export default async function SalesLayout({
   params: Promise<{ workspaceSlug: string }>;
 }) {
   const { workspaceSlug } = await params;
-  try {
-    const ctx = await requestCtx();
-    await requestWorkspace(ctx, workspaceSlug, 'SALES');
-  } catch (error) {
-    // Only an entitlement refusal becomes a redirect. Anything else — a broken
-    // session, a database fault, or one of Next's own control-flow interrupts —
-    // is rethrown, because the old bare `catch` turned every one of them into
-    // "this workspace has no Sales module", which is the wrong answer and hides
-    // the real one.
-    if (error instanceof AppError && error.status === 403) redirect(await elsewhere(workspaceSlug));
-    throw error;
-  }
-  return children;
-}
-
-/**
- * Where a workspace without Sales goes instead.
- *
- * Record links — the notification bell, a push notification already on a
- * phone, the assistant — are built as `/sales/...` (lib/nav/entityRoute.ts).
- * A workspace that bought only Real Estate owns the same registers under
- * `/realty/`, and one that bought Lead Eagle owns most of them under
- * `/lead-eagle/`, so it is sent to the same screen there rather than to the
- * dashboard — Real Estate first, the fuller of the two. Anything neither has a
- * screen for still goes to the dashboard.
- */
-async function elsewhere(workspaceSlug: string): Promise<string> {
-  const header = await headers();
-  const url = `${header.get('x-pathname') ?? ''}${header.get('x-search') ?? ''}`;
-  const choices = [
-    ['REAL_ESTATE', realtyEquivalent(url)],
-    ['LEAD_EAGLE', leadEagleEquivalent(url)],
-  ] as const;
-  for (const [module, target] of choices) {
-    if (!target) continue;
-    try {
-      await requestWorkspace(await requestCtx(), workspaceSlug, module);
-      return target;
-    } catch (error) {
-      if (!(error instanceof AppError && error.status === 403)) throw error;
-    }
-  }
-  return `/${workspaceSlug}/dashboard`;
+  if (await workspaceOwns(workspaceSlug, 'SALES')) return children;
+  return <NotInPlan slug={workspaceSlug} module="SALES" />;
 }

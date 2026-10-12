@@ -259,9 +259,18 @@ branch `fix/cold-data-scope-and-calls`, with the fixes from its review.
 - The Lead Eagle move tool still folds the standalone's cold-record activity
   into the record's notes; it could write them as `Activity.dataRecordId`
   calls now (the standalone has no live customers).
-- Merging main: #168 (`6214c6fb`) rewrote `realtyShared.ts` (its
-  `sameScreenElsewhere` reads both root lists, so `targets` in both is what
-  it needs), `tests/unit/lead-eagle-routes.spec.ts`,
-  `tests/e2e/lead-eagle-workspace.spec.ts`, `PROJECT.md` and the index; the
-  conflicts are textual. The unit and E2E specs need a re-run on the merged
-  head.
+- Main (#168, `6214c6fb`) is merged in. Two textual conflicts:
+  `tests/e2e/lead-eagle-workspace.spec.ts` keeps this branch's cold-call step
+  and #168's plan-page step for the money registers; the index keeps both
+  rows. `realtyShared.ts` merged clean with `targets` in both root lists, so
+  NotInPlan sends `/realty/targets` and `/sales/targets` in a
+  Lead-Eagle-only workspace to `/lead-eagle/targets`, and `/lead-eagle/targets`
+  to Sales or Real Estate where the plan has those (checked through #168's
+  layout harness). On the merged tree (`C:/ymw/logs/r1mu-m5-*.log`):
+  `tsc --noEmit` clean; the touched specs with `page-access` and
+  `module-entitlement`, 9 files, 1281 passed; permission, sales, tenant and
+  unit 157 files, 2831 passed, 2 skipped; `lead-eagle-workspace.spec.ts`,
+  `cold-data-assign`, `daily-target` and `daily-target-workflow` passed in the
+  browser (the first run of `lead-eagle-workspace` failed once in #168's
+  soft-navigation step, `router.push` fired before hydration on a cold
+  `.next`; it passed alone).
