@@ -164,6 +164,20 @@ test.describe('Lead Eagle, from the platform portal to a lead', () => {
       await expect(page.getByRole('button', { name: 'Copy embed code' })).toBeVisible();
     });
 
+    await test.step('a referral is recorded on the new-lead form with who referred it (M6-15)', async () => {
+      await page.goto(at('/lead-eagle/leads/new'));
+      await page.getByLabel('Full name').fill(`Referred ${run}`);
+      await page.getByLabel('Phone').fill(`+97155${String(Date.now()).slice(-7)}`);
+      await page.getByLabel('Source', { exact: true }).selectOption('REFERRAL');
+      await page.getByLabel('Referred by').fill('Ahmed Al Mansoori');
+      await page.getByRole('button', { name: 'Create lead' }).click();
+      await expect(page).toHaveURL(new RegExp(`/${eagle.slug}/lead-eagle/leads/c[a-z0-9]+$`));
+      const tenantId = (await prisma.tenant.findUniqueOrThrow({ where: { slug: eagle.slug }, select: { id: true } }))
+        .id;
+      const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, fullName: `Referred ${run}` } });
+      expect(lead).toMatchObject({ source: 'REFERRAL', sourceDetail: 'Ahmed Al Mansoori' });
+    });
+
     await test.step('an Agent cannot open a colleague’s site visit, on the page or the API', async () => {
       const tenantId = (await prisma.tenant.findUniqueOrThrow({ where: { slug: eagle.slug }, select: { id: true } }))
         .id;

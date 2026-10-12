@@ -4,12 +4,13 @@
 pages (`/lead-eagle/forms`, `/lead-eagle/landing-pages`, under a new **Lead
 Sources** menu area), and so does a Real Estate one (`/realty/forms`,
 `/realty/landing-pages`). A submission from a site becomes a lead through the
-same intake the portals and QR codes use, with source _Website form_ or
-_Landing page_, and is handed to the distribution rule. `/embed.js` is a
-one-line snippet that frames the workspace's public form on the brokerage's own
-site. A lead can be recorded as a _Referral_ with who referred it, and the
-source reports show Referral as a source. Audit rows M6-06, M6-07, M6-09,
-M6-15; M6-27 closed by decision. Branch `feat/intake-forms-landing-embed-referral`.
+same intake the portals and QR codes use, with source `PUBLIC_FORM` (shown as
+_Public form_) or `LANDING_PAGE` (_Landing page_), and is queued for the
+distribution rule. `/embed.js` is a one-line snippet that frames the
+workspace's public form on the brokerage's own site. A lead can be recorded as
+a _Referral_ with who referred it, and the source reports show Referral as a
+source. Audit rows M6-06, M6-07, M6-09, M6-15; M6-27 closed by decision.
+Branch `feat/intake-forms-landing-embed-referral`.
 
 **Why.** The Lead Eagle gap audit of 11 Oct: Forms, Landing Pages and Referrals
 were `SALES`-only, so a Lead-Eagle-only workspace had no website form beyond the
@@ -20,93 +21,141 @@ referral options, and mark M6-27 complete by decision.
 
 **Where** (under `apps/web/`)
 
-- `src/app/api/v1/forms/route.ts`, `forms/[id]/route.ts`, `landing-pages/route.ts`, `landing-pages/[id]/route.ts`: `productModule: LEAD_MODULES`.
+- `src/app/api/v1/forms/route.ts`, `forms/[id]/route.ts`, `landing-pages/route.ts`, `landing-pages/[id]/route.ts`: `productModule: LEAD_MODULES` (was `SALES`).
 - `sales/forms/page.tsx`, `sales/landing-pages/page.tsx`: `module: LEAD_MODULES`; `lead-eagle/forms/page.tsx`, `lead-eagle/landing-pages/page.tsx`, `realty/forms/page.tsx`, `realty/landing-pages/page.tsx`: one-line re-exports.
 - `src/lib/nav/realtyShared.ts`: `forms` and `landing-pages` join both `REALTY_SHARED_ROOTS` and `LEAD_EAGLE_SHARED_ROOTS`, so the drift guards (`realty-routes.spec.ts`, `lead-eagle-routes.spec.ts`) cover the screens and all four routes.
 - `src/lib/nav/workspaceNav.ts`: Lead Eagle → **Lead Sources** and Real Estate → **Lead Sources** (Forms, Landing Pages); the Real Estate and Sales tabs alias the `/lead-eagle/` addresses, as their other shared tabs do.
-- `src/app/api/v1/public/forms/route.ts`: a submission goes through `takeEnquiry` (`services/leads/intake.ts`, which now takes `company`): attached to the lead that already holds the number or email, audited in the same transaction, the first-contact clock, distribution and automations; the `FormSubmission` row is kept beside it. Takes `page` (a landing-page slug) and then records `LANDING_PAGE` / `landing:<slug>` and the page's conversion; a workspace without a lead module answers 404.
+- `src/app/api/v1/public/forms/route.ts`: a submission goes through `takeEnquiry` (`services/leads/intake.ts`, which now takes `company`): attached to the lead that already holds the number or email, audited in the same transaction, the first-contact clock, distribution and automations; the `FormSubmission` row is kept beside it. Unmapped answers go on the timeline note, except contact details: an unmapped phone answer joins the lead's numbers, an unmapped email answer stays in the submission only. Takes `page` (a landing-page slug) and then records `LANDING_PAGE` / `landing:<slug>` and the page's conversion; a workspace without a lead module answers 404.
+- `src/app/f/…/page.tsx`, `src/app/l/…/page.tsx`, `src/app/c/…/page.tsx`: the public form, landing page and QR capture page are a 404 when the workspace has no usable lead module, like their APIs.
 - `src/app/f/[workspaceSlug]/[formKey]/LeadForm.tsx`, `src/app/l/.../page.tsx`: the landing page sends its slug; the referer regex is gone.
-- `public/embed.js`: reads `data-workspace` / `data-form` off its own script tag and inserts an iframe of `/f/<workspace>/<form>?embed=1` (optional `data-height`, `data-title`); `next.config.ts` caches it for an hour; `src/app/f/.../page.tsx` renders the card alone in embed mode; `src/proxy.ts` answers `frame-ancestors *` for `/f/<ws>/<key>` only (`docs/05-SECURITY.md` records the exception); `FormAdmin.tsx` gains **Copy embed code**.
-- `prisma/migrations/20261012004000_record_source_referral`: `RecordSource` gains `REFERRAL` (additive; the 102nd migration). `api/v1/leads/route.ts` accepts it and refuses a referral with no `sourceDetail`; `sales/leads/new/LeadForm.tsx` gets a Source select and a _Referred by_ field; `services/platform/leadEagleMove.ts` maps a standalone "referral" source to it rather than to Manual.
+- `public/embed.js`: reads `data-workspace` / `data-form` off its own script tag and inserts an iframe of `/f/<workspace>/<form>?embed=1` (optional `data-height`, `data-title`); `next.config.ts` caches it for an hour; `src/app/f/.../page.tsx` renders the card alone in embed mode, and `globals.css` drops the page canvas there so the host site shows through; `src/proxy.ts` answers `frame-ancestors *` for `/f/<ws>/<key>` only (`docs/05-SECURITY.md` records the exception); `FormAdmin.tsx` gains **Copy embed code**.
+- `prisma/migrations/20261012004000_record_source_referral`: `RecordSource` gains `REFERRAL` (additive; the 102nd migration). `api/v1/leads/route.ts` accepts it and refuses a referral with no `sourceDetail`; `sales/leads/new/LeadForm.tsx` gets a Source select and a _Referred by_ field; `services/leadership/reports.ts` never reads a referral's detail as an intake key, and looks a detail up only among its own keys.
 
 **Behaviour**
 
 - Lead Eagle and Real Estate menus: Lead Sources → Forms, Landing Pages, the
   same screens Sales has. A form's row offers _Copy link_ and _Copy embed code_
   (`<script src="…/embed.js" data-workspace="…" data-form="…"></script>`).
-- A website submission: a new lead with source _Website form_ (`PUBLIC_FORM`,
-  `sourceDetail` the form key) or _Landing page_ (`LANDING_PAGE`,
-  `landing:<slug>`), implied consent, the email lower-cased, the number
-  normalised (E.164, +971 by default), unmapped answers on the timeline note, an
-  audit row, the SLA clock, then the distribution rule. A known number or email
-  attaches the submission to the existing lead instead (its owner is told); a
-  name alone never matches any more. The visitor's answer is the same either way.
+- A website submission: a new lead with source `PUBLIC_FORM` (the lead shows
+  `public form · <form key>`, the reports _Public form_) or `LANDING_PAGE`
+  (`landing:<slug>`), implied consent, the email lower-cased, the number
+  normalised (E.164, +971 by default), unmapped answers other than contact
+  details on the timeline note, an audit row, the SLA clock, then the
+  distribution rule. A known number or email attaches the submission to the
+  existing lead instead: its owner is told, and a new number from the form is
+  added to that lead. A name alone never matches any more. The visitor's answer
+  is the same either way.
 - A page another site frames: only `/f/<workspace>/<key>`; every other address
-  still refuses framing. A workspace whose lead modules have all lapsed has no
-  public form (404 on read and submit).
+  still refuses framing. Framed, the form has no background of its own around
+  the card. A workspace whose lead modules have all lapsed has no public form,
+  landing page or QR capture page (404 on the pages, the read and the submit).
 - New lead form: Source _Manual_ or _Referral_; Referral asks who referred the
   lead (required) and the detail shows on the lead as `referral · <name>`.
-  Source analysis, lead quality and source-to-booking list _Referral_.
+  Source analysis, lead quality and source-to-booking list _Referral_, whatever
+  the referrer is called.
 
-**Decisions taken** (the brief's defaults, accepted by the owner)
+**Decisions taken**
+
+The brief's defaults, accepted by the owner:
 
 - M6-27: complete by decision (adapter interface accepted as is); no code.
-- `PUBLIC_FORM` is the website-form source: it already carries that meaning
-  (the audit row itself cites it, and every Sales form lead has it), so no
-  `WEBSITE_FORM` value was added beside it.
-- Referral is a `RecordSource` value with the referrer in `sourceDetail`
-  (free text) rather than the Sales referral register opened to Lead Eagle: the
-  register lives inside the Clients screen, which is not lead work.
-- Real Estate gets the two screens too: `LEAD_MODULES` includes it, its API
-  calls already passed, and Lead Eagle's registers are Real Estate's minus the
-  money and marketing ones, which is what the `/sales/` link fallback relies on.
-- The public form route checks the workspace's lead entitlement, as the QR
-  capture route does: a workspace nobody can open should not collect leads.
+- M6-07: the embeddable snippet is built.
+- M6-15: the smaller option: `REFERRAL` is a `RecordSource` value with the
+  referrer as free text in `sourceDetail`. The Sales referral register was not
+  opened to Lead Eagle.
+
+Taken while building, for the owner to confirm (none of them is in the brief):
+
+- `PUBLIC_FORM` stands for the row's `WEBSITE_FORM`; no new value was added.
+  Every existing Sales form lead already carries it, and a second value would
+  split the source reports between old and new form leads. Screens show it as
+  _Public form_.
+- Real Estate gets the two screens and a Lead Sources menu area too. Once the
+  gate is `LEAD_MODULES`, a Real-Estate-only workspace may call the forms API.
+  Without the screens it had no way to reach them, and after #168 a `/sales/forms`
+  link there would be sent to a `/realty/forms` that did not exist.
+- A workspace whose lead modules have all lapsed has no public form, landing
+  page or QR capture page (404), as the QR capture API already did.
+- Sales workspaces' form submissions now go through the portal intake, so a
+  repeat that matches only by name makes a new lead instead of attaching to a
+  namesake. A number or email match still attaches, and now also tells the owner.
 - The embed frame is a fixed height (560 px, `data-height` to change it); a
   postMessage resize is the upgrade if forms grow long.
 
 **Verified.** Every new test fails on the merge base's source (c03f59ae, the
-branch's files swapped back) and passes on the branch.
-`tests/sales/forms-lead-eagle.spec.ts` (8): a Lead-Eagle-only admin publishes a
-form and a landing page and sees both screens; a submission becomes a lead with
-`PUBLIC_FORM`, the form key, a lower-cased email, implied consent, an audit row
-and the timeline note, and the rule assigns it; a repeat from the same number
-attaches; through the page, `LANDING_PAGE` and the page's count; an unknown page
-is a plain form lead; a lapsed module is 404 and makes nothing. On main:
-`POST /api/v1/forms` 403 _Sales is not enabled for this company_; with only the
-forms gate widened, 4 of the 5 submission cases still fail (email not
-lower-cased, `page` an unrecognised key, 200 instead of 404); the repeat case
-passes on main and stays as a guard. `tests/sales/embed-snippet.spec.ts` (4; on
-main: no `public/embed.js`): the script reads its tag and frames `/f/…?embed=1`,
-evaluates nothing, is cacheable; only `/f/<ws>/<key>` may be framed.
+branch's files swapped back) and passes on the branch, except the nameless
+referral, which main refuses too. Three forms cases pass on main once only the
+forms gate is widened, so they are guards; they are named below.
+`tests/sales/forms-lead-eagle.spec.ts` (14): a Lead-Eagle-only admin publishes
+a form and a landing page and sees both screens; a Real-Estate-only admin
+publishes a form and sees it at `/realty/forms`; a submission becomes a lead
+with `PUBLIC_FORM`, the form key, a lower-cased email, implied consent, an
+audit row and the timeline note, and the submission itself queued it for
+distribution (a spy on `enqueue`) before the rule assigns it; a repeat by email
+in another case attaches and notifies the owner; unmapped phone and email
+answers stay off the note (the phone joins the lead's numbers); through the
+page, `LANDING_PAGE`, the page's count and the queued distribution; an unknown
+page, a published page without the form and a paused page with it all give a
+plain form lead and score nothing; a lapsed module is 404 on the API and on the
+`/f`, `/l` and `/c` pages and makes nothing. On main: `POST /api/v1/forms` 403
+_Sales is not enabled for this company_. With only the forms gate widened, 7 of
+the 10 submission cases still fail on main (email not lower-cased, no
+notification, no note, `page` an unrecognised key, 200 instead of 404). The
+guards: the repeat by number, the namesake on another number and the
+Real-Estate case pass on main once the gate is widened. Removing the
+distribution enqueue from `takeEnquiry` fails the two queued checks, and
+dropping `formId` or `state` from the page lookup fails the off-page case.
+`tests/sales/embed-snippet.spec.ts` (4; on main: no `public/embed.js`): the
+script reads its tag and frames `/f/…?embed=1`, evaluates nothing, is
+cacheable; only `/f/<ws>/<key>` may be framed.
 `tests/sales/referral-source.spec.ts` (3; on main: `invalid_enum_value …
-received 'REFERRAL'`, no Referral row): a Lead-Eagle-only workspace records the
-referrer, a nameless referral is 422 (a guard; main refuses it too), both source
-reports list Referral. `tests/unit/lead-eagle-routes.spec.ts` (+1),
+received 'REFERRAL'`): a Lead-Eagle-only workspace records the referrer; a
+nameless referral is 422 (a guard: main refuses it too); both source
+reports list Referral, a referrer called `bayut` included (before the fix in
+`reports.ts` it was filed under Bayut), and a detail of `__proto__` still gives
+a text label. `tests/unit/lead-eagle-routes.spec.ts` (+1),
 `tests/unit/realty-routes.spec.ts` (+1, and its walkers now cover the two
 Real Estate re-exports and their APIs) and `tests/unit/workspace-nav.spec.ts`
 (+2, plus four screen-coverage rows) pin the roots, re-exports, routes and
-menus. E2E `tests/e2e/embed-form.spec.ts` (2; on main: no iframe, `embed.js`
-blocked, `frame-ancestors 'none'`): a page on another origin with the script
-shows the form in a frame, a submission becomes the lead, the headers;
-`lead-eagle-workspace.spec.ts` (+1 step; on main: no _Forms_ heading): the menu,
-a published form, _Copy embed code_. The Forms screen, the new-lead form with
-Referral and the embedded form were checked at 390 px in light and dark.
-Runs on the rig (its own database, 102 migrations): the six new and touched
-specs 684/684; the broad run (`tests/` permission, sales, tenant, unit,
-security, platform, integration, identity, hr, ai; the retention specs apart)
-259 files, 4073 passed, 2 skipped; `retention`, `audit-retention`,
-`document-purge` one at a time 4/4, 7/7, 1/1; `tsc --noEmit` clean; eslint
-0 errors (three `any` warnings that main has too); prettier clean; E2E
-`embed-form.spec.ts` 2/2 and `lead-eagle-workspace.spec.ts` 1/1.
+menus. E2E `tests/e2e/embed-form.spec.ts` (4): a page on another origin with
+the script shows the form in a frame with a transparent page around the card,
+and a submission becomes the lead; the headers; `/embed.js` is served with
+`max-age`; a landing page at `/l/…` credits its lead (`LANDING_PAGE`,
+`landing:<slug>`) and its count. On main: no iframe, `embed.js` blocked,
+`frame-ancestors 'none'`; on the previous branch head the frame's body was
+`rgb(247, 249, 252)`; without the landing page's `page` prop the `/l/` case
+fails. `lead-eagle-workspace.spec.ts` (+2 steps; on main: no _Forms_ heading):
+the menu, a published form, _Copy embed code_; the new-lead form records a
+Referral with _Referred by_. The Forms screen, the new-lead form with Referral
+and the embedded form were checked at 390 px in light and dark before the
+review round, which changed only the embedded page's background.
+
+Runs on the rig (its own database, 102 migrations), on the branch before the
+merge-up with main: the new and touched specs with `growth.spec.ts` and
+`lead-eagle-move.spec.ts` 8 files, 706/706; the broad run (`tests/`
+permission, sales, tenant, unit, security, platform, integration, identity,
+hr, ai; the retention specs apart) 259 files, 4078 passed, 2 skipped;
+`retention`, `audit-retention`, `document-purge` one at a time 4/4, 7/7, 1/1;
+`tsc --noEmit` clean; eslint (no findings) and prettier clean on the files this round touched; E2E
+`embed-form.spec.ts` 4/4 and `lead-eagle-workspace.spec.ts` 1/1.
 
 **Left open**
 
-- The `/f/` and `/l/` pages still render for a workspace whose lead modules
-  have lapsed; only the submit and read API refuse. The QR capture page behaves
-  the same.
+- For the owner: a website-form or QR submission that matches an existing lead
+  by email adds the visitor's number to that lead (as a WhatsApp number, and as
+  its main number when it had none), puts their note on its timeline and
+  notifies the owner. Anyone who knows a client's email can therefore add a
+  number to that client's lead. The number carries the label _Website form:
+  <form>_ and the change is audited as `lead.enquired_again`. The QR capture
+  route has worked this way since it shipped.
+- For the owner: whether website-form leads should read _Website form_ rather
+  than _Public form_ (a label, no data change), or carry a `WEBSITE_FORM` value.
 - The embed frame does not resize to its form; long forms scroll inside it.
 - A referrer is free text; linking a referral to a client record stays with the
   Sales referral register.
 - Lead Eagle's starter roles carry no `forms` or `landingpages` grants: the
   Company Administrator publishes forms, and can grant them from Roles.
+- `docs/03-API.md` still describes an older `/public/forms/{key}/submit`
+  contract (stale before this change).
+- The test counts are from the branch before the merge-up with main (#168);
+  re-run the touched specs and E2E on the merged commit.

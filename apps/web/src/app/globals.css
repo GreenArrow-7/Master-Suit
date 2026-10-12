@@ -35,6 +35,11 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* The public form framed by /embed.js: no canvas around the card, so the host site shows through. */
+body:has(main[data-embed]) {
+  background: transparent;
+}
+
 /**
  * Selection borrowed `--lf-wine-900` for its foreground, and that token is a
  * near-black used as a *panel background* elsewhere — so it is deliberately not

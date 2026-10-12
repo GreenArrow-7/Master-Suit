@@ -53,11 +53,27 @@ describe('Referral as a lead source', () => {
   });
 
   it('shows Referral in the source reports', async () => {
+    // A referrer typed like a portal's key stays a referral; a detail named like
+    // an object's own property is no label at all.
+    for (const [phone, source, sourceDetail] of [
+      ['0501112234', 'REFERRAL', 'bayut'],
+      ['0501112235', 'MANUAL', '__proto__'],
+    ]) {
+      const res = await post(
+        createLead,
+        '/api/v1/leads',
+        { fullName: `Odd detail ${sourceDetail}`, phone, source, sourceDetail },
+        fixture.a.cookie,
+      );
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+    }
     const ctx = buildCtx(buildActor({ id: fixture.a.userId, tenantId, grants: [['reports', 'VIEW']] }));
     const range = { from: new Date(Date.now() - 86_400_000), to: new Date(Date.now() + 86_400_000) };
     const toBooking = await runReport(ctx, 'source-to-booking', range);
-    expect(toBooking.rows.find((r) => r.source === 'Referral')).toMatchObject({ leads: 1, bookings: 0 });
+    expect(toBooking.rows.find((r) => r.source === 'Referral')).toMatchObject({ leads: 2, bookings: 0 });
+    expect(toBooking.rows.find((r) => r.source === 'Bayut')).toBeUndefined();
+    expect(toBooking.rows.map((r) => typeof r.source)).toEqual(toBooking.rows.map(() => 'string'));
     const analysis = await runReport(ctx, 'source-analysis', range);
-    expect(analysis.rows.find((r) => r.source === 'referral')).toMatchObject({ leads: 1 });
+    expect(analysis.rows.find((r) => r.source === 'referral')).toMatchObject({ leads: 2 });
   });
 });

@@ -83,13 +83,17 @@ export const POST = route(
 
     // Mapped answers become the lead's own columns; the rest go on the timeline
     // note, as a portal enquiry's details do. All of them stay in the submission.
+    // Contact details never go on the note, which nobody masks: another number
+    // joins the lead's numbers, another address stays in the submission.
     const mapped: Record<string, string> = {};
+    const phones: string[] = [];
     const details: string[] = [];
     for (const field of form.fields) {
       const answer = body.answers[field.key]?.trim();
       if (!answer) continue;
       if (field.mapsToField) mapped[field.mapsToField] = answer;
-      else details.push(`${field.label}: ${answer}`);
+      else if (field.type === 'PHONE') phones.push(answer);
+      else if (field.type !== 'EMAIL') details.push(`${field.label}: ${answer}`);
     }
     if (!mapped.fullName) throw Conflict('Please tell us your name.');
 
@@ -107,7 +111,7 @@ export const POST = route(
       {
         fullName: mapped.fullName,
         email: mapped.email?.toLowerCase() ?? null,
-        phones: mapped.phone ? [mapped.phone] : [],
+        phones: mapped.phone ? [mapped.phone, ...phones] : phones,
         company: mapped.company ?? null,
         message: null,
         reference: null,

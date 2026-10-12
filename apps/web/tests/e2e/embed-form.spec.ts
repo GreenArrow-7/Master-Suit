@@ -15,6 +15,7 @@ test.describe('the embeddable form snippet', () => {
   const slug = `embed-${run}`;
   const formKey = 'talk-to-us';
   const phone = `05${String(Date.now()).slice(-8)}`;
+  const pagePhone = `05${String(Date.now() + 7).slice(-8)}`;
   let tenantId = '';
 
   test.beforeAll(async () => {
@@ -26,7 +27,7 @@ test.describe('the embeddable form snippet', () => {
     await prisma.leadStage.create({
       data: { tenantId, key: 'new', name: 'New', category: 'OPEN', isDefault: true, position: 0 },
     });
-    await prisma.form.create({
+    const form = await prisma.form.create({
       data: {
         tenantId,
         key: formKey,
@@ -58,6 +59,16 @@ test.describe('the embeddable form snippet', () => {
             },
           ],
         },
+      },
+    });
+    await prisma.landingPage.create({
+      data: {
+        tenantId,
+        slug: 'launch',
+        name: 'Marina launch',
+        state: 'PUBLISHED',
+        formId: form.id,
+        blocks: [{ type: 'headline', text: 'Own the Marina view' }],
       },
     });
   });
@@ -104,6 +115,10 @@ test.describe('the embeddable form snippet', () => {
 
     const frame = page.frameLocator('iframe');
     await expect(frame.getByRole('heading', { name: 'Talk to us' })).toBeVisible();
+    // No canvas of its own around the card: the brokerage's page shows through.
+    expect(await frame.locator('body').evaluate((body) => getComputedStyle(body).backgroundColor)).toBe(
+      'rgba(0, 0, 0, 0)',
+    );
     await frame.getByLabel('Your name').fill('Embedded Visitor');
     await frame.getByLabel('Phone').fill(phone);
     await frame.getByRole('button', { name: 'Send' }).click();
@@ -120,5 +135,25 @@ test.describe('the embeddable form snippet', () => {
     expect(form.headers()['x-frame-options']).toBeUndefined();
     const login = await request.get('/login');
     expect(login.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
+  });
+
+  test('the snippet is served for browsers to keep', async ({ request }) => {
+    const script = await request.get('/embed.js');
+    expect(script.status()).toBe(200);
+    expect(script.headers()['cache-control']).toMatch(/max-age=[1-9]/);
+  });
+
+  test('a landing page carrying the form credits the lead and its count to that page', async ({ page }) => {
+    await page.goto(`/l/${slug}/launch`);
+    await expect(page.getByRole('heading', { name: 'Own the Marina view' })).toBeVisible();
+    await page.getByLabel('Your name').fill('Landing Visitor');
+    await page.getByLabel('Phone').fill(pagePhone);
+    await page.getByRole('button', { name: 'Send' }).click();
+    await expect(page.getByRole('status')).toHaveText('Thanks, we will call you.');
+
+    const lead = await prisma.lead.findFirst({ where: { tenantId, phoneNormalized: `+971${pagePhone.slice(1)}` } });
+    expect(lead).toMatchObject({ fullName: 'Landing Visitor', source: 'LANDING_PAGE', sourceDetail: 'landing:launch' });
+    const landing = await prisma.landingPage.findFirstOrThrow({ where: { tenantId, slug: 'launch' } });
+    expect(landing.submissionCount).toBe(1);
   });
 });

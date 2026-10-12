@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
+import { assertAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitlements';
 import LeadForm from './LeadForm';
 
 export const metadata = { title: 'Get in touch' };
@@ -26,6 +27,8 @@ export default async function PublicFormPage({
     select: { id: true, displayName: true },
   });
   if (!tenant) notFound();
+  // A workspace whose lead modules have lapsed collects no leads: its form is gone, as the API says.
+  await assertAnyModuleEntitlement(tenant.id, LEAD_MODULES).catch(() => notFound());
 
   const form = await prisma.form.findFirst({
     where: { tenantId: tenant.id, key: formKey, state: 'PUBLISHED', isPublic: true, deletedAt: null },
@@ -35,6 +38,7 @@ export default async function PublicFormPage({
 
   return (
     <main
+      data-embed={embed || undefined}
       style={{
         minHeight: embed ? undefined : '100dvh',
         display: 'grid',
