@@ -2,12 +2,13 @@ import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { visibilityWhere } from '@/lib/security/visibility';
-import { assignableUsers } from '@/lib/security/record-scope';
+import { assignableUsers, leadScope } from '@/lib/security/record-scope';
 import { emptyFollowUpLabel, obligationAccess, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import { loadFieldRules, applyFieldSecurity, seesField } from '@/lib/security/fieldSecurity';
 import { can, scopeFor } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { asLeadPhone, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
+import { leadSourceLabel, listLeadSources } from '@/services/leads/leadSources';
 import StageRail from '@/components/ui/StageRail';
 import LeadDetail from './LeadDetail';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -17,7 +18,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['leads', 'VIEW'] });
 
   const [scope, taskScope] = await Promise.all([
-    visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true }),
+    leadScope(ctx, 'VIEW', { includeUnassigned: true }),
     // A Task is read under `tasks`, not `leads` (services/leads/nextFollowUp.ts):
     // the Tasks tab lists what the viewer's Tasks page would, and a role with no
     // `tasks` grant sees none. Completing one also takes `leads:EDIT` over its
@@ -33,6 +34,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     include: {
       stage: true,
       owner: { select: { fullName: true, email: true } },
+      secondaryOwner: { select: { id: true, fullName: true } },
+      leadSource: { select: { id: true, name: true, parentId: true, parent: { select: { name: true } } } },
       activities: {
         orderBy: { occurredAt: 'desc' },
         take: 50,
@@ -69,7 +72,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     },
   });
 
-  const [lead, stages, activityTypes, taskTypes, tenantUsers, rules] = await Promise.all([
+  const [lead, stages, activityTypes, taskTypes, tenantUsers, rules, sources] = await Promise.all([
     leadPromise,
     prisma.leadStage.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null },
@@ -88,6 +91,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     // The owner menu offers whom updateLead accepts.
     assignableUsers(ctx, 'leads', can(ctx, 'leads', 'ASSIGN') ? 'ASSIGN' : 'REASSIGN'),
     loadFieldRules(ctx, 'LEAD'),
+    listLeadSources(prisma, ctx.tenantId),
   ]);
   if (!lead) notFound();
 
@@ -115,13 +119,18 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         : lead.phones.map((p) => ({ ...p, raw: asLeadPhone(ctx, rules, p.raw) ?? '', normalized: '' })),
     // Masked contact details are shown, never dialled, mailed or edited.
     contactMasked: { phone: !phoneVisible, email: !sees('email') },
+    phoneIsWhatsapp: lead.phoneIsWhatsapp,
     company: lead.company,
     jobTitle: lead.jobTitle,
     industry: lead.industry,
     city: lead.city,
     country: lead.country,
+    nationality: lead.nationality,
     source: lead.source,
     sourceDetail: lead.sourceDetail,
+    sourceId: lead.sourceId,
+    sourceLabel: leadSourceLabel(lead.leadSource),
+    campaignName: lead.campaignName,
     consentStatus: lead.consentStatus,
     priority: lead.priority,
     status: lead.status,
@@ -141,6 +150,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     stageReason: lead.stageReason,
     assignedWhy: lead.assignments[0]?.note ?? null,
     owner: lead.owner,
+    secondaryOwner: lead.secondaryOwner,
     activities: lead.activities.map((a) => ({
       id: a.id,
       outcome: a.outcome,
@@ -197,6 +207,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         activityTypes={activityTypes}
         taskTypes={taskTypes}
         users={tenantUsers}
+        // The offered entries, plus the lead's own (and its source) should it have been withdrawn since.
+        sources={sources.filter((s) => s.isActive || s.id === lead.sourceId || s.id === lead.leadSource?.parentId)}
         canEdit={can(ctx, 'leads', 'EDIT')}
         canAssign={can(ctx, 'leads', 'ASSIGN')}
         canDelete={can(ctx, 'leads', 'DELETE')}

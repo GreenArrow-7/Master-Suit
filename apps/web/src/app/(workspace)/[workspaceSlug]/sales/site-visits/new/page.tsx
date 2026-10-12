@@ -1,7 +1,7 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
-import { visibilityWhere } from '@/lib/security/visibility';
+import { leadScope } from '@/lib/security/record-scope';
 import { can } from '@/lib/security/rbac';
 import { loadFieldRules } from '@/lib/security/fieldSecurity';
 import { asLeadPhone } from '@/services/leads/createLead';
@@ -27,7 +27,7 @@ export default async function NewSiteVisitPage() {
 
   const [leads, projects, listings, leadRules] = await Promise.all([
     canReadLeads
-      ? visibilityWhere(ctx, 'leads', 'VIEW').then((scope) =>
+      ? leadScope(ctx, 'VIEW').then((scope) =>
           prisma.lead.findMany({
             where: { ...scope, deletedAt: null },
             select: { id: true, fullName: true, phone: true },

@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db';
 import { can, type Action, type Ctx } from '@/lib/security/rbac';
-import { eventListScope } from '@/lib/security/record-scope';
+import { eventListScope, leadScope } from '@/lib/security/record-scope';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { obligationAccess, obligationWhere, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import type { EntityType } from '@/lib/nav/entityRoute';
@@ -167,7 +167,7 @@ const LEAD_SELECT = {
 
 /** Resolve a lead by id or (partial) name within the caller's visibility. */
 async function findLead(ctx: Ctx, args: { leadId?: string; name?: string }) {
-  const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
+  const scope = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
   if (args.leadId) {
     return prisma.lead.findFirst({ where: { ...scope, id: args.leadId }, select: LEAD_SELECT });
   }
@@ -190,7 +190,7 @@ export const TOOLS: ToolDef[] = [
     },
     requires: [['leads', 'VIEW']],
     execute: async (ctx, args) => {
-      const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
+      const scope = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
       const where: Record<string, unknown> = { ...scope };
       const now = new Date();
       switch (args.view) {
@@ -750,7 +750,7 @@ export const TOOLS: ToolDef[] = [
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-      const leadScope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
+      const leadWhere = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
       /**
        * Events are the one part of this snapshot that is not the actor's own
        * work: follow-ups, tasks and calls are filtered to `ctx.actor.id`, and
@@ -789,13 +789,13 @@ export const TOOLS: ToolDef[] = [
           where: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, deletedAt: null, status: 'OPEN', dueAt: { lt: now } },
         }),
         prisma.lead.findMany({
-          where: { ...leadScope, slaState: 'BREACHED' },
+          where: { ...leadWhere, slaState: 'BREACHED' },
           take: 5,
           select: LEAD_SELECT,
           orderBy: { updatedAt: 'desc' },
         }),
         prisma.lead.findMany({
-          where: { ...leadScope, score: { gte: 70 } },
+          where: { ...leadWhere, score: { gte: 70 } },
           orderBy: { score: 'desc' },
           take: 5,
           select: LEAD_SELECT,

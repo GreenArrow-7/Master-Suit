@@ -35,6 +35,10 @@ Unassigned records (`ownerId IS NULL`) are visible to anyone holding `ASSIGN` on
 module at `TEAM` or wider; otherwise they are invisible. This is what makes an
 "Unassigned leads" queue work without leaking the whole tenant.
 
+A lead's `secondaryOwnerId` counts as an owner at every scope: a lead is in
+scope when either its owner or its secondary owner resolves (`leadScope` and
+`assertLeadInScope`, `lib/security/record-scope.ts`).
+
 ## 3. Default role matrix
 
 Rank orders the hierarchy; a role may only administer roles of a higher rank number.

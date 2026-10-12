@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
 import Field from '@/components/forms/Field';
+import { send, useRun } from '@/components/forms/useRun';
 import { FIELD_LABELS, LEAD_FIELDS } from '@/lib/leads/importMapping';
 
 type Category = 'OPEN' | 'CONVERSION' | 'TERMINAL_NEGATIVE' | 'TERMINAL_JUNK';
@@ -30,43 +30,6 @@ const CATEGORIES: [Category, string][] = [
 ];
 /** The name is always there; these may be required before a lead enters a stage. */
 const FIELDS = LEAD_FIELDS.filter((field) => field !== 'fullName');
-
-async function send(url: string, method: string, body?: unknown) {
-  const res = await fetch(url, {
-    method,
-    headers: { 'content-type': 'application/json' },
-    ...(body !== undefined && { body: JSON.stringify(body) }),
-  }).catch(() => null);
-  if (!res) throw new Error('Could not reach the server. Nothing was saved.');
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.errors?.[0]?.message ?? data.detail ?? `Request failed (${res.status})`);
-  }
-}
-
-function useRun() {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
-  const run = async (write: () => Promise<unknown>, done: string) => {
-    setBusy(true);
-    setMessage(null);
-    try {
-      await write();
-      setMessage({ text: done });
-      router.refresh();
-    } catch (e) {
-      setMessage({ text: (e as Error).message, error: true });
-    }
-    setBusy(false);
-  };
-  const note = message && (
-    <p className={message.error ? 'lf-hint lf-hint--error' : 'lf-hint'} role={message.error ? 'alert' : 'status'}>
-      {message.text}
-    </p>
-  );
-  return { busy, run, note };
-}
 
 export default function StageEditor({
   workspaceSlug,

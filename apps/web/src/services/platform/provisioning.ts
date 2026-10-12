@@ -1,6 +1,7 @@
 import type { PermissionAction, VisibilityScope } from '@prisma/client';
 import type { TxClient } from '@/lib/db';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
+import { ensureLeadSources } from '@/services/leads/leadSources';
 
 type Grants = Record<string, PermissionAction[]>;
 
@@ -201,6 +202,8 @@ export async function provisionLeadWork(
 ): Promise<void> {
   if (!modules.some((module) => (LEAD_MODULES as readonly string[]).includes(module))) return;
   if (modules.includes('LEAD_EAGLE') && !before.includes('LEAD_EAGLE')) await provisionStarterRoles(tx, tenantId);
+  // The source catalogue (M4-03): the same seed the screens and intake apply on first use.
+  await ensureLeadSources(tx, tenantId);
   if ((await tx.leadStage.count({ where: { tenantId } })) === 0) {
     await tx.leadStage.createMany({
       data: [

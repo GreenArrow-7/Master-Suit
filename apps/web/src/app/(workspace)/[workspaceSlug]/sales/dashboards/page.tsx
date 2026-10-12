@@ -1,5 +1,6 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { leadScope } from '@/lib/security/record-scope';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import DashboardCharts from './DashboardCharts';
@@ -36,8 +37,8 @@ export default async function DashboardsPage() {
   // want of one tile. A missing permission drops its tile, not the dashboard.
   const canSeeTasks = can(ctx, 'tasks', 'VIEW');
   const canSeeActivities = can(ctx, 'activities', 'VIEW');
-  const [leadScope, taskScope, activityScope] = await Promise.all([
-    visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true }),
+  const [leadWhere, taskScope, activityScope] = await Promise.all([
+    leadScope(ctx, 'VIEW', { includeUnassigned: true }),
     canSeeTasks ? visibilityWhere(ctx, 'tasks', 'VIEW', { ownerField: 'ownerId' }) : null,
     canSeeActivities ? visibilityWhere(ctx, 'activities', 'VIEW', { ownerField: 'ownerId' }) : null,
   ]);
@@ -53,14 +54,14 @@ export default async function DashboardsPage() {
     slaRaw,
     stages,
   ] = await Promise.all([
-    prisma.lead.count({ where: leadScope }),
-    prisma.lead.count({ where: { ...leadScope, createdAt: { gte: monthStart } } }),
+    prisma.lead.count({ where: leadWhere }),
+    prisma.lead.count({ where: { ...leadWhere, createdAt: { gte: monthStart } } }),
     taskScope ? prisma.task.count({ where: { ...taskScope, status: 'OPEN' } }) : null,
     taskScope ? prisma.task.count({ where: { ...taskScope, status: 'OPEN', dueAt: { lt: now } } }) : null,
     activityScope ? prisma.activity.count({ where: { ...activityScope, createdAt: { gte: monthStart } } }) : null,
-    prisma.lead.groupBy({ by: ['stageId'], where: leadScope, _count: { id: true } }),
-    prisma.lead.groupBy({ by: ['source'], where: leadScope, _count: { id: true } }),
-    prisma.lead.groupBy({ by: ['slaState'], where: leadScope, _count: { id: true } }),
+    prisma.lead.groupBy({ by: ['stageId'], where: leadWhere, _count: { id: true } }),
+    prisma.lead.groupBy({ by: ['source'], where: leadWhere, _count: { id: true } }),
+    prisma.lead.groupBy({ by: ['slaState'], where: leadWhere, _count: { id: true } }),
     prisma.leadStage.findMany({
       where: { tenantId: ctx.tenantId },
       orderBy: { position: 'asc' },

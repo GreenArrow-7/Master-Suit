@@ -2,8 +2,8 @@ import { prisma, type TxClient } from '@/lib/db';
 import { Conflict, Forbidden, Invalid } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import { scopeFor, type Ctx } from '@/lib/security/rbac';
-import { assertAssignableUser, assignableUserWhere } from '@/lib/security/record-scope';
-import { resolveOwnerIds, visibilityWhere } from '@/lib/security/visibility';
+import { assertAssignableUser, assignableUserWhere, leadScope } from '@/lib/security/record-scope';
+import { resolveOwnerIds } from '@/lib/security/visibility';
 import { activeRule } from '@/services/distribution/assignLead';
 import { openTriageEntry } from '@/services/distribution/triage';
 import { OPEN_LEADS_WHERE } from './closeOut';
@@ -34,7 +34,7 @@ export async function assignLeads(
 ): Promise<string[]> {
   if (ownerId) await assertAssignableUser(ctx, tx, 'leads', 'ASSIGN', ownerId);
 
-  const scope = await visibilityWhere(ctx, 'leads', 'ASSIGN', { includeUnassigned: true, db: tx });
+  const scope = await leadScope(ctx, 'ASSIGN', { includeUnassigned: true, db: tx });
   const leads = await tx.lead.findMany({
     where: { ...scope, id: { in: leadIds }, deletedAt: null },
     select: { id: true, ownerId: true },
