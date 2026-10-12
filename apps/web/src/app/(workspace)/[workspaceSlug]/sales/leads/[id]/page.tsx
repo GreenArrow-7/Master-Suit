@@ -201,9 +201,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     custom: Object.fromEntries(
       fields.flatMap((f) => (customData[f.key] == null ? [] : [[f.key, customData[f.key] as string | number]])),
     ),
+    // Named only to a viewer who may see projects or listings: the interests API answers 404 otherwise.
     interests: {
-      projects: lead.projectInterests.map((i) => i.project),
-      listings: lead.listingInterests.map((i) => i.listing),
+      projects: seesProjects ? lead.projectInterests.map((i) => i.project) : [],
+      listings: seesListings ? lead.listingInterests.map((i) => i.listing) : [],
     },
     notes: lead.notes,
     tags: lead.tags,
@@ -280,7 +281,6 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         customFields={fields.map(fieldForScreen)}
         projectOptions={projectOptions}
         listingOptions={listingOptions}
-        opens={{ projects: seesProjects, listings: seesListings }}
         matchesHref={opensRequirement ? `/requirements/${requirement!.id}` : null}
         canEdit={can(ctx, 'leads', 'EDIT')}
         canAssign={can(ctx, 'leads', 'ASSIGN')}

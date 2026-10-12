@@ -591,7 +591,8 @@ describe('moving a Lead Eagle company', () => {
       locations: ['Dubai Marina', 'JLT'],
       notes: null,
     });
-    expect(requirement.possessionBy?.toISOString()).toBe('2027-01-31T00:00:00.000Z');
+    // Stored as the composer stores a chosen day: its end in the workspace's time zone (Dubai here).
+    expect(requirement.possessionBy?.toISOString()).toBe('2027-01-31T19:59:59.999Z');
     const history = await prisma.leadStageHistory.findFirstOrThrow({ where: { tenantId, leadId: omar!.id } });
     expect(history).toMatchObject({ toStageId: omar!.stageId, reason: 'Budget' });
     // A note, an inbound call and the enquiry — once, though Lead Eagle wrote it twice.

@@ -47,8 +47,8 @@ A lead's requirement on its page and its interest links (the projects and
 listings it asked about) are the lead's: they are read wherever the lead is,
 and written under `leads:EDIT` on the lead's scope
 (`PUT /api/v1/leads/{id}/requirement`, `/api/v1/leads/{id}/interests`), a lead
-out of reach answering 404. An interest names only a project or listing the
-caller can see (`projects:VIEW`, `listings:VIEW`). The Requirements register
+out of reach answering 404. An interest names, and the lead page shows, only a
+project or listing the caller can see (`projects:VIEW`, `listings:VIEW`). The Requirements register
 keeps its own `requirements` scope, by the requirement's owner. A project's
 page lists only the interested leads the viewer may see (`leadScope`).
 

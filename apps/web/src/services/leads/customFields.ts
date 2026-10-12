@@ -1,6 +1,6 @@
 import type { LeadCustomFieldDefinition } from '@prisma/client';
 import { prisma, type TxClient } from '@/lib/db';
-import { parseTypedDate } from '@/lib/dates';
+import { formatTypedDate, parseTypedDate } from '@/lib/dates';
 import { AppError } from '@/lib/errors';
 import type { ColumnDef } from '@/lib/grid/columns';
 
@@ -56,7 +56,9 @@ export function fieldValue(def: Pick<LeadField, 'key' | 'label' | 'type' | 'opti
   switch (def.type) {
     case 'NUMBER': {
       const n = Number(text);
-      return Number.isFinite(n) ? n : refuse(def.key, `${def.label} must be a number.`);
+      if (!Number.isFinite(n)) return refuse(def.key, `${def.label} must be a number.`);
+      // The value column is Decimal(20,6): anything larger fails the insert.
+      return Math.abs(n) < 1e14 ? n : refuse(def.key, `${def.label} is too large.`);
     }
     case 'DATE':
       return parseTypedDate(text) === text ? text : refuse(def.key, `${def.label} must be a real date (YYYY-MM-DD).`);
@@ -125,6 +127,32 @@ export async function withCustomValues(
   return next;
 }
 
+/**
+ * A new lead's `custom` (POST /api/v1/leads) checked against the workspace's
+ * fields: a key a field defines is checked by its type and kept typed, ''
+ * dropped (required is not asked on create, so an integration that leaves a
+ * field out still lands its lead); a key no field defines is kept as given, as
+ * the create API always has. Returns `customData` and the typed value rows.
+ */
+export async function customForCreate(db: Db, tenantId: string, input: Record<string, unknown>) {
+  const data = { ...input };
+  const rows: ({ definitionId: string } & ReturnType<typeof columnFor>)[] = [];
+  const keys = Object.keys(input);
+  if (!keys.length) return { data, rows };
+  const defs = await db.leadCustomFieldDefinition.findMany({
+    where: { tenantId, objectType: 'LEAD', key: { in: keys } },
+  });
+  for (const def of defs) {
+    const value = fieldValue({ ...fieldForScreen(def), isRequired: false }, input[def.key]);
+    if (value === null) delete data[def.key];
+    else {
+      data[def.key] = value;
+      rows.push({ definitionId: def.id, ...columnFor(def.type, value) });
+    }
+  }
+  return { data, rows };
+}
+
 /** A field's value as a grid cell or a fact shows it. */
 export function shownValue(value: unknown) {
   return value == null || value === '' ? null : String(value);
@@ -133,13 +161,24 @@ export function shownValue(value: unknown) {
 /** The lead grid's custom-field columns (`cf:<key>`), offered under Columns; none shown by default. */
 export async function customColumns(tenantId: string): Promise<ColumnDef[]> {
   const fields = await leadFields(prisma, tenantId, { activeOnly: true });
-  return fields.map((def) => ({ key: `cf:${def.key}`, label: def.label, hideMobile: true }));
+  return fields.map((def) => ({
+    key: `cf:${def.key}`,
+    label: def.label,
+    hideMobile: true,
+    ...(def.type === 'DATE' && { date: true }),
+  }));
 }
 
 /** Each row's values for the custom columns, by key, and nothing else of `customData`. */
 export function customCells(columns: ColumnDef[], customData: unknown) {
   const data = (customData ?? {}) as Record<string, unknown>;
   return Object.fromEntries(
-    columns.filter((c) => c.key.startsWith('cf:')).map((c) => [c.key, shownValue(data[c.key.slice(3)])]),
+    columns
+      .filter((c) => c.key.startsWith('cf:'))
+      .map((c) => {
+        const value = shownValue(data[c.key.slice(3)]);
+        // A date reads DD/MM/YYYY, as on the Overview.
+        return [c.key, c.date && value ? formatTypedDate(value) || value : value];
+      }),
   );
 }

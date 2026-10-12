@@ -3699,6 +3699,8 @@ model LeadScoreHistory {
   tenantId   String
   leadId     String
   ruleId     String?
+  /// The activity whose type's points this move was, or took back on its deletion (M4-11).
+  activityId String?
   delta      Int
   scoreAfter Int
   reason     String?

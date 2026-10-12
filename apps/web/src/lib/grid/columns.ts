@@ -40,6 +40,8 @@ export interface ColumnDef {
   byDefault?: boolean;
   /** Dropped from the mobile card layout, matching `data-hide-mobile`. */
   hideMobile?: boolean;
+  /** A custom DATE field (`cf:<key>`): its YYYY-MM-DD value is shown DD/MM/YYYY. */
+  date?: boolean;
   /**
    * The record's identity. On a phone a row becomes a card, and this column is
    * its title — rendered without a label, at heading weight — so a card reads

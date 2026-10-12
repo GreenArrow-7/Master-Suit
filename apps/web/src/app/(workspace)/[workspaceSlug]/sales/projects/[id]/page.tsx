@@ -14,6 +14,9 @@ import { Metric } from '@/components/ui/MetricCard';
 
 export const metadata = { title: 'Project' };
 
+/** Interested leads listed, the most recently updated first (M4-06). */
+const INTERESTED_SHOWN = 50;
+
 /**
  * Everything a salesperson needs on a call about one project, on one screen:
  * what it costs, what is left, what it is near, and how it compares.
@@ -90,7 +93,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           prisma.lead.findMany({
             where: { ...scope, projectInterests: { some: { projectId: project.id } } },
             orderBy: { updatedAt: 'desc' },
-            take: 50,
+            // ponytail: the latest 50, said so on the page; a leads-list filter by project when books outgrow it.
+            take: INTERESTED_SHOWN + 1,
             select: {
               id: true,
               reference: true,
@@ -243,7 +247,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             </p>
           ) : (
             <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
-              {interested.map((lead) => (
+              {interested.slice(0, INTERESTED_SHOWN).map((lead) => (
                 <li
                   key={lead.id}
                   style={{
@@ -271,6 +275,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                 </li>
               ))}
             </ul>
+          )}
+          {interested.length > INTERESTED_SHOWN && (
+            <p className="lf-hint" style={{ margin: '8px 0 0' }}>
+              {`Showing the ${INTERESTED_SHOWN} most recently updated; more leads you can see asked about it.`}
+            </p>
           )}
         </section>
       )}

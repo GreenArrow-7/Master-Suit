@@ -1,14 +1,18 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { prisma } from '@/lib/db';
+import { randomBytes } from 'node:crypto';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { Queue } from 'bullmq';
+import { prisma, withTx } from '@/lib/db';
 import { POST as logActivity } from '@/app/api/v1/activities/route';
+import { DELETE as deleteActivity } from '@/app/api/v1/activities/[id]/route';
 import { POST as createLead } from '@/app/api/v1/leads/route';
 import { PATCH as editSource } from '@/app/api/v1/lead-sources/route';
 import { GET as readScoring, PUT as saveScoring } from '@/app/api/v1/lead-scoring/route';
 import { ensureLeadSources } from '@/services/leads/leadSources';
 import { takeEnquiry } from '@/services/leads/intake';
-import { runScoreDecay } from '@/services/leads/scoring';
-import { grantPermissions, seedTwoTenants, type Fixture } from '../helpers/fixtures';
-import { get, patch, post, put as send } from '../helpers/request';
+import { runScoreDecay, scoreActivity } from '@/services/leads/scoring';
+import { createWorkspaceUser, grantPermissions, seedTwoTenants, type Fixture } from '../helpers/fixtures';
+import { createSessionToken } from '../helpers/session';
+import { del, get, patch, post, put as send } from '../helpers/request';
 
 /**
  * Lead scoring (Lead Eagle audit row M4-11): a lead starts at its source's
@@ -29,6 +33,16 @@ const DAY = 86_400_000;
 const lead = (id: string) => prisma.lead.findFirstOrThrow({ where: { tenantId, id } });
 const history = (leadId: string) =>
   prisma.leadScoreHistory.findMany({ where: { tenantId, leadId }, orderBy: { createdAt: 'asc' } });
+const newLead = (fullName: string, data: Record<string, unknown> = {}) =>
+  prisma.lead.create({
+    data: {
+      tenantId,
+      reference: `SC-${randomBytes(4).toString('hex')}`,
+      fullName,
+      stageId: fixture.a.stageId,
+      ...data,
+    },
+  });
 
 beforeAll(async () => {
   fixture = await seedTwoTenants();
@@ -96,6 +110,46 @@ describe('a logged activity moves the score by its type (M4-11)', () => {
     await post(logActivity, '/api/v1/activities', { typeId: callTypeId, leadId: id }, admin);
     expect((await lead(id)).score).toBe(100);
     expect(await history(id)).toEqual([expect.objectContaining({ delta: 1, scoreAfter: 100 })]);
+  });
+
+  it('a deleted activity takes its points back, once', async () => {
+    const id = (await newLead('Deleted Call', { score: 10 })).id;
+    const logged = await post(logActivity, '/api/v1/activities', { typeId: callTypeId, leadId: id }, admin);
+    expect((await lead(id)).score).toBe(13);
+
+    const gone = await del(deleteActivity, `/api/v1/activities/${logged.body.id}`, admin);
+    expect(gone.status, JSON.stringify(gone.body)).toBe(200);
+    expect((await lead(id)).score).toBe(10);
+    expect((await history(id)).map((h) => [h.delta, h.scoreAfter])).toEqual([
+      [3, 13],
+      [-3, 10],
+    ]);
+    expect((await history(id))[1]!.reason).toContain('Outbound call');
+    // Deleting it again takes nothing more.
+    await del(deleteActivity, `/api/v1/activities/${logged.body.id}`, admin);
+    expect((await lead(id)).score).toBe(10);
+  });
+
+  it('two activities logged on one lead at the same moment both count', async () => {
+    const id = (await newLead('Two At Once', { score: 10 })).id;
+    const by = { tenantId, source: 'race-test' } as never;
+    const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    // The first holds its transaction open after its move; the second runs meanwhile.
+    const first = withTx(tenantId, async (tx) => {
+      await scoreActivity(tx, by, { id: 'race-first', leadId: id, typeId: callTypeId });
+      await held;
+    });
+    await pause(400);
+    const second = withTx(tenantId, (tx) =>
+      scoreActivity(tx, by, { id: 'race-second', leadId: id, typeId: callTypeId }),
+    );
+    await pause(400);
+    release();
+    await Promise.all([first, second]);
+    expect((await lead(id)).score).toBe(16);
+    expect((await history(id)).map((h) => h.scoreAfter).sort()).toEqual([13, 16]);
   });
 });
 
@@ -216,8 +270,80 @@ describe('the nightly decay (M4-11)', () => {
     expect((await lead(idle)).score).toBe(20);
   });
 
-  it('runs from the maintenance queue every night', async () => {
-    const { MAINTENANCE_JOBS } = await import('@/workers/maintenance');
+  it('leaves a lead in a won stage alone, and decays one never worked from when it came in', async () => {
+    await put({ decayDays: 7, decayAmount: 5, isActive: true });
+    const now = new Date();
+    const won = await prisma.leadStage.create({
+      data: {
+        tenantId,
+        key: `won-${randomBytes(3).toString('hex')}`,
+        name: 'Won',
+        category: 'CONVERSION',
+        position: 90,
+      },
+    });
+    const sold = await newLead('Sold Lead', {
+      stageId: won.id,
+      score: 30,
+      lastActivityAt: new Date(now.getTime() - 30 * DAY),
+    });
+    const untouched = await newLead('Never Worked', { score: 30, createdAt: new Date(now.getTime() - 10 * DAY) });
+    const recent = await newLead('Came In Today', { score: 30 });
+
+    await runScoreDecay(now, [tenantId]);
+    expect((await lead(sold.id)).score).toBe(30);
+    expect((await lead(untouched.id)).score).toBe(25);
+    expect((await lead(recent.id)).score).toBe(30);
+  });
+
+  it("only the workspace's first decay rule runs, so switching it off stops the decay", async () => {
+    await put({ decayDays: 7, decayAmount: 5, isActive: false });
+    // What two administrators saving at the same moment could leave behind.
+    await prisma.scoringRule.create({
+      data: { tenantId, name: 'Score decay', triggerType: 'DECAY', decayDays: 7, decayAmount: 5, isActive: true },
+    });
+    const untouched = await newLead('Second Rule', { score: 30, createdAt: new Date(Date.now() - 10 * DAY) });
+
+    await runScoreDecay(new Date(), [tenantId]);
+    expect((await lead(untouched.id)).score).toBe(30);
+    expect((await get(readScoring, '/api/v1/lead-scoring', admin)).body).toEqual({
+      decay: { decayDays: 7, decayAmount: 5, isActive: false },
+    });
+  });
+
+  it('setting the points or the decay needs settings:MANAGE_CONFIGURATION', async () => {
+    const suffix = randomBytes(4).toString('hex');
+    const role = await prisma.role.create({ data: { tenantId, key: `viewer-${suffix}`, name: 'Viewer', rank: 80 } });
+    await grantPermissions(tenantId, role.id, [
+      ['settings', 'VIEW'],
+      ['leads', 'VIEW'],
+    ]);
+    const user = await createWorkspaceUser({
+      tenantId,
+      roleId: role.id,
+      email: `viewer-${suffix}@a.test`,
+      fullName: 'Viewer',
+    });
+    const viewer = await createSessionToken(tenantId, user.id);
+    expect((await get(readScoring, '/api/v1/lead-scoring', viewer)).status).toBe(200);
+    const decay = { decayDays: 7, decayAmount: 5, isActive: true };
+    expect((await send(saveScoring, '/api/v1/lead-scoring', decay, viewer)).status).toBe(403);
+    expect((await patch(editSource, `/api/v1/lead-sources?id=${walkInId}`, { weight: 5 }, viewer)).status).toBe(403);
+  });
+
+  it('runs from the maintenance queue every night at 03:40', async () => {
+    const { MAINTENANCE_JOBS, armMaintenanceScheduler } = await import('@/workers/maintenance');
     expect(Object.keys(MAINTENANCE_JOBS)).toContain('lead-score-decay');
+    const armed = vi.spyOn(Queue.prototype, 'upsertJobScheduler').mockResolvedValue(undefined as never);
+    try {
+      await armMaintenanceScheduler();
+      expect(armed).toHaveBeenCalledWith(
+        'lead-score-decay-daily',
+        { pattern: '40 3 * * *' },
+        { name: 'lead-score-decay' },
+      );
+    } finally {
+      armed.mockRestore();
+    }
   });
 });

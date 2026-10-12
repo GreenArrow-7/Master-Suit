@@ -11,6 +11,7 @@
  * score. Every move is a LeadScoreHistory row, saying why, and an audit row.
  * The arithmetic is pinned in tests/unit/lead-scoring.spec.ts.
  */
+import { Prisma } from '@prisma/client';
 import { prisma, withPlatformTx, withTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { audit, type SystemActor } from '@/lib/security/audit';
@@ -55,28 +56,42 @@ export async function withSourceScore(db: Db, tenantId: string, sourceId: string
   return { sourceId, score: applyDelta(0, entry?.weight || entry?.parent?.weight || 0) };
 }
 
+/**
+ * A workspace's decay rule is its first DECAY rule: two admins saving at once
+ * can leave a second, which the screen, the API and the nightly run all ignore.
+ */
+export const FIRST_RULE = [{ createdAt: 'asc' as const }, { id: 'asc' as const }];
+
 /** The workspace's decay rule as Administration → Sources shows it, or null when it has none. */
 export async function decayRule(db: Db, tenantId: string) {
   const rule = await db.scoringRule.findFirst({
     where: { tenantId, triggerType: DECAY_TRIGGER },
+    orderBy: FIRST_RULE,
     select: { decayDays: true, decayAmount: true, isActive: true },
   });
   return rule && { decayDays: rule.decayDays ?? 0, decayAmount: rule.decayAmount ?? 0, isActive: rule.isActive };
 }
 
-/** One move of a lead's score, read and written in `tx`, with its reason; nothing when it would not move. */
+/**
+ * One move of a lead's score, read and written in `tx`, with its reason;
+ * nothing when it would not move. The row is locked first, so two moves at
+ * once (two activities, an activity and the decay) apply one after the other
+ * instead of one overwriting the other. `idleBy`: only if the lead's last
+ * activity is no later (the decay's check, made again under the lock).
+ */
 async function moveScore(
   tx: TxClient,
   by: Ctx | SystemActor,
   leadId: string,
   delta: number,
   reason: string,
-  extra: { ruleId?: string; at?: Date; activityId?: string } = {},
+  extra: { ruleId?: string; at?: Date; activityId?: string; idleBy?: Date } = {},
 ) {
-  const lead = await tx.lead.findFirst({
-    where: { tenantId: by.tenantId, id: leadId },
-    select: { id: true, score: true },
-  });
+  const idle = extra.idleBy ? Prisma.sql`AND COALESCE("lastActivityAt", "createdAt") <= ${extra.idleBy}` : Prisma.empty;
+  const [lead] = await tx.$queryRaw<{ id: string; score: number }[]>`
+    SELECT "id", "score" FROM "Lead"
+     WHERE "tenantId" = ${by.tenantId} AND "id" = ${leadId} ${idle}
+       FOR UPDATE`;
   if (!lead) return null;
   const after = applyDelta(lead.score, delta);
   if (after === lead.score) return null;
@@ -86,6 +101,7 @@ async function moveScore(
       tenantId: by.tenantId,
       leadId: lead.id,
       ruleId: extra.ruleId ?? null,
+      activityId: extra.activityId ?? null,
       delta: after - lead.score,
       scoreAfter: after,
       reason,
@@ -127,6 +143,31 @@ export async function scoreActivity(
 }
 
 /**
+ * A deleted activity takes back what it moved its lead's score by (as moved,
+ * after the 0–100 clamp), in the transaction that just deleted it. Net of any
+ * earlier take-back, so it never takes twice; an activity logged before
+ * scoring existed moved nothing and takes nothing.
+ */
+export async function unscoreActivity(tx: TxClient, ctx: Ctx, activityId: string) {
+  const activity = await tx.activity.findFirst({
+    // Named, or the guard's soft-delete filter would hide the row just deleted.
+    where: { tenantId: ctx.tenantId, id: activityId, deletedAt: { not: null } },
+    select: { leadId: true, type: { select: { name: true } } },
+  });
+  if (!activity?.leadId) return null;
+  const { _sum } = await tx.leadScoreHistory.aggregate({
+    where: { tenantId: ctx.tenantId, leadId: activity.leadId, activityId },
+    _sum: { delta: true },
+  });
+  const given = _sum.delta ?? 0;
+  if (!given) return null;
+  const back = -given;
+  return moveScore(tx, ctx, activity.leadId, back, `${activity.type.name} deleted ${back > 0 ? '+' : ''}${back}`, {
+    activityId,
+  });
+}
+
+/**
  * The nightly decay, for every workspace with an active rule (or the named
  * ones: a test sweeps only its own). Open leads only, as recycling reads them:
  * a closed-out lead or one in a won or lost stage keeps its score. Idempotent:
@@ -139,8 +180,11 @@ export async function runScoreDecay(now = new Date(), tenantIds?: string[]) {
     (tx) =>
       tx.$queryRaw<{ id: string; tenantId: string; decayDays: number; decayAmount: number }[]>`
       SELECT "id", "tenantId", "decayDays", "decayAmount"
-        FROM "ScoringRule"
-       WHERE "isActive" AND "triggerType" = 'DECAY' AND "decayDays" > 0 AND "decayAmount" > 0`,
+        FROM (SELECT DISTINCT ON ("tenantId") *
+                FROM "ScoringRule"
+               WHERE "triggerType" = 'DECAY'
+               ORDER BY "tenantId", "createdAt", "id") AS first
+       WHERE "isActive" AND "decayDays" > 0 AND "decayAmount" > 0`,
   );
   let leads = 0;
   for (const rule of rules) {
@@ -196,7 +240,7 @@ async function decayWorkspace(
   for (const lead of candidates) {
     if (!decayDue(lead.lastActivityAt ?? lead.createdAt, lead.scoreHistory[0]?.createdAt ?? null, now, days)) continue;
     const after = await withTx(tenantId, (tx) =>
-      moveScore(tx, by, lead.id, -rule.decayAmount, reason, { ruleId: rule.id, at: now }),
+      moveScore(tx, by, lead.id, -rule.decayAmount, reason, { ruleId: rule.id, at: now, idleBy: cutoff }),
     );
     if (after !== null) moved += 1;
   }

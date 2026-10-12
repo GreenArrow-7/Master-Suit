@@ -15,7 +15,7 @@ import { prisma } from '@/lib/db';
 import { DELETE as unlink, POST as link } from '@/app/api/v1/leads/[id]/interests/route';
 import LeadDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
 import ProjectDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/projects/[id]/page';
-import { createWorkspaceUser, grantPermissions, seedTwoTenants, type Fixture } from '../helpers/fixtures';
+import { createWorkspaceUser, grantPermissions, seedTwoTenants, type Fixture, type Grants } from '../helpers/fixtures';
 import { createSessionToken } from '../helpers/session';
 import { pageText } from '../helpers/render';
 import { del, post } from '../helpers/request';
@@ -57,6 +57,19 @@ const listing = (tenant: string, title: string) =>
     },
     select: { id: true },
   });
+/** A session for a new member of workspace A whose role holds `grants` at ORGANIZATION. */
+const member = async (name: string, grants: Grants) => {
+  const suffix = randomBytes(4).toString('hex');
+  const role = await prisma.role.create({ data: { tenantId, key: `${name}-${suffix}`, name, rank: 80 } });
+  await grantPermissions(tenantId, role.id, grants);
+  const user = await createWorkspaceUser({
+    tenantId,
+    roleId: role.id,
+    email: `${name}-${suffix}@a.test`,
+    fullName: name,
+  });
+  return createSessionToken(tenantId, user.id);
+};
 
 beforeAll(async () => {
   fixture = await seedTwoTenants();
@@ -173,15 +186,59 @@ describe('a lead names the projects and listings it asked about (M4-06)', () => 
     expect(text).not.toContain('Elsewhere Gardens');
     expect(text).not.toContain('Elsewhere listing');
 
-    // Without listings:VIEW the picker offers no listing.
+    // Without listings:VIEW the picker offers no listing, and a listing linked to the lead is not named either.
+    expect((await post(link, url(agentLeadId), { listingId }, admin)).status).toBe(200);
     cookieJar.value = agent;
     const own = await pageText(LeadDetailPage({ params: Promise.resolve({ id: agentLeadId }) }));
     expect(own).toContain('Creek Vista');
     expect(own).not.toContain('Two-bed in Marina Heights');
+    await del(unlink, `${url(agentLeadId)}?listingId=${listingId}`, admin);
+  });
+
+  it('changing the links needs leads:EDIT; a role that only views the lead is refused', async () => {
+    const viewer = await member('viewer', [
+      ['leads', 'VIEW'],
+      ['projects', 'VIEW'],
+      ['listings', 'VIEW'],
+    ]);
+    const leadId = fixture.a.leadIds[0]!;
+    expect((await post(link, url(leadId), { projectId: creek }, viewer)).status).toBe(403);
+    expect((await del(unlink, `${url(leadId)}?projectId=${marina}`, viewer)).status).toBe(403);
+    expect(await prisma.leadProject.count({ where: { tenantId, leadId, projectId: creek } })).toBe(0);
+    expect(await prisma.leadProject.count({ where: { tenantId, leadId, projectId: marina } })).toBe(1);
   });
 });
 
 describe('the project page lists the leads interested in it (M4-06)', () => {
+  it('not to a role that may see projects but not leads', async () => {
+    cookieJar.value = await member('projects-only', [['projects', 'VIEW']]);
+    const text = await pageText(ProjectDetailPage({ params: Promise.resolve({ id: marina }) }));
+    expect(text).toContain('Marina Heights');
+    expect(text).not.toContain('Interested leads');
+    expect(text).not.toContain('manath Lead 0');
+  });
+
+  it('says so when it shows only the latest 50', async () => {
+    const busy = (await project(tenantId, 'Busy Tower')).id;
+    const suffix = randomBytes(3).toString('hex');
+    const many = Array.from({ length: 51 }, (_, i) => ({
+      id: `busy${suffix}${String(i).padStart(3, '0')}`,
+      tenantId,
+      reference: `BUSY-${suffix}-${i}`,
+      fullName: `Busy Lead ${i}`,
+      stageId: fixture.a.stageId,
+    }));
+    await prisma.lead.createMany({ data: many });
+    await prisma.leadProject.createMany({ data: many.map((l) => ({ tenantId, leadId: l.id, projectId: busy })) });
+
+    cookieJar.value = admin;
+    const text = await pageText(ProjectDetailPage({ params: Promise.resolve({ id: busy }) }));
+    expect(text).toContain('Showing the 50 most recently updated');
+    expect(new Set(text.match(/Busy Lead \d+/g)).size).toBe(50);
+    const few = await pageText(ProjectDetailPage({ params: Promise.resolve({ id: marina }) }));
+    expect(few).not.toContain('Showing the 50 most recently updated');
+  });
+
   it('only those the viewer may see', async () => {
     await post(link, url(agentLeadId), { projectId: marina }, agent);
 

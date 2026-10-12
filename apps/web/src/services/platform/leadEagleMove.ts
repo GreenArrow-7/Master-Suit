@@ -36,6 +36,7 @@ import { platformAudit } from '@/lib/security/audit';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { nextReference } from '@/services/shared/reference';
+import { dayBounds } from '@/services/targets/dailyBoard';
 
 type Id = string;
 type When = string | Date;
@@ -311,6 +312,10 @@ export async function moveCompany(
     throw new Error(`${snap.company.slug} was already moved into this workspace (audit record of ${on}).`);
   }
 
+  // A handover date becomes the end of that day in the workspace's zone, as the composer stores one (M4-08).
+  const tenant = await prisma.tenant.findFirst({ where: { id: tenantId }, select: { timezone: true } });
+  const timeZone = tenant?.timezone || 'Asia/Dubai';
+
   // People, by email. Never created: an account is the owner's to invite.
   const people = await prisma.user.findMany({
     where: { tenantId, deletedAt: null },
@@ -463,7 +468,9 @@ export async function moveCompany(
                 budgetMax: lead.budgetMax,
                 // The areas and the handover date are the requirement's own fields (M4-05, M4-08).
                 locations: lead.preferredLocations,
-                possessionBy: date(lead.handoverBy ?? null),
+                possessionBy: lead.handoverBy
+                  ? dayBounds(new Date(lead.handoverBy).toISOString().slice(0, 10), timeZone).to
+                  : null,
                 ownerId,
               },
             });

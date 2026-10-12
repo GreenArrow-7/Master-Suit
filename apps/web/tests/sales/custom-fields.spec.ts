@@ -15,6 +15,10 @@ import { prisma } from '@/lib/db';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
 import { GET as listFields, PATCH as editField, POST as addField } from '@/app/api/v1/custom-fields/route';
 import { PATCH as patchLead } from '@/app/api/v1/leads/[id]/route';
+import { POST as createLead } from '@/app/api/v1/leads/route';
+import SmartViewsPage from '@/app/(workspace)/[workspaceSlug]/sales/smart-views/page';
+import { customCells } from '@/services/leads/customFields';
+import { customPatch } from '@/lib/leads/customPatch';
 import { GET as readColumns, PUT as saveColumns } from '@/app/api/v1/admin/grid-columns/route';
 import LeadDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
 import LeadsPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/page';
@@ -64,6 +68,7 @@ beforeAll(async () => {
     await grantPermissions(t.tenantId, roleId, [
       ['settings', 'VIEW'],
       ['settings', 'MANAGE_CONFIGURATION'],
+      ['smartviews', 'VIEW'],
     ]);
   }
   const suffix = randomBytes(4).toString('hex');
@@ -233,6 +238,8 @@ describe('the fields on a lead (M4-13)', () => {
       [{ family_size: 'four' }, 'Family size'],
       [{ visa_status: 'Tourist' }, 'Visa'],
       [{ visa_expiry: '2027-02-30' }, 'Visa expiry'],
+      // Larger than the value column holds (Decimal(20,6)): refused by name, not a 500.
+      [{ family_size: '1e15' }, 'Family size'],
       [{ shoe_size: '42' }, 'shoe_size'],
       [{ employer: '' }, 'Employer'],
     ];
@@ -247,6 +254,80 @@ describe('the fields on a lead (M4-13)', () => {
     );
     await patch(editField, `${API}?id=${visa!.id}`, { isActive: true }, admin);
     await patch(editField, `${API}?id=${employer.id}`, { isRequired: false }, admin);
+  });
+
+  it('Edit details sends each changed field, and a required one left empty, so saving is refused by its name', async () => {
+    const fields = [
+      { key: 'employer', isRequired: true },
+      { key: 'visa_status', isRequired: false },
+      { key: 'added_since', isRequired: false },
+    ];
+    const start = { employer: '', visa_status: 'Golden' };
+    // Only the city changed, and Employer is required and empty: Employer goes too.
+    expect(customPatch(fields, { ...start }, start)).toEqual({ employer: null });
+    expect(customPatch(fields, { employer: 'Emirates', visa_status: 'Visit ' }, start)).toEqual({
+      employer: 'Emirates',
+      visa_status: 'Visit',
+    });
+    expect(customPatch(fields, { employer: 'Emirates', visa_status: '' }, { ...start, employer: 'Emirates' })).toEqual({
+      visa_status: null,
+    });
+    // A field the page loaded without (defined since) reads as empty on either side: no crash, nothing sent.
+    expect(customPatch(fields, { employer: 'Emirates', visa_status: 'Golden' }, { employer: 'Emirates' })).toEqual({
+      visa_status: 'Golden',
+    });
+    expect(customPatch(fields, { employer: 'Emirates' }, { employer: 'Emirates' })).toBeUndefined();
+
+    const employer = (await defs()).find((d) => d.key === 'employer')!;
+    await patch(editField, `${API}?id=${employer.id}`, { isRequired: true }, admin);
+    try {
+      const custom = customPatch([{ ...employer, isRequired: true }], { employer: '' }, { employer: '' });
+      const res = await patch(patchLead, leadUrl(agentLeadId), { city: 'Sharjah', custom }, agent);
+      expect(res.status).toBe(422);
+      expect(res.body.detail).toContain('Employer');
+      expect((await prisma.lead.findFirstOrThrow({ where: { tenantId, id: agentLeadId } })).city).not.toBe('Sharjah');
+    } finally {
+      await patch(editField, `${API}?id=${employer.id}`, { isRequired: false }, admin);
+    }
+  });
+
+  it('a lead created through the API has its field values checked; a key no field defines is kept as given', async () => {
+    const bad = await post(
+      createLead,
+      '/api/v1/leads',
+      { fullName: 'Api Wrong Type', custom: { family_size: '1.5M' } },
+      admin,
+    );
+    expect(bad.status, JSON.stringify(bad.body)).toBe(422);
+    expect(bad.body.detail).toContain('Family size');
+    const huge = await post(
+      createLead,
+      '/api/v1/leads',
+      { fullName: 'Api Too Big', custom: { family_size: 1e15 } },
+      admin,
+    );
+    expect(huge.status).toBe(422);
+    expect(await prisma.lead.count({ where: { tenantId, fullName: { in: ['Api Wrong Type', 'Api Too Big'] } } })).toBe(
+      0,
+    );
+
+    const ok = await post(
+      createLead,
+      '/api/v1/leads',
+      {
+        fullName: 'Api Typed Lead',
+        custom: { family_size: '4', visa_expiry: '2027-06-30', visa_status: '', crm_ref: 'X-1' },
+      },
+      admin,
+    );
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    const row = await prisma.lead.findFirstOrThrow({ where: { tenantId, id: ok.body.id } });
+    expect(row.customData).toEqual({ family_size: 4, visa_expiry: '2027-06-30', crm_ref: 'X-1' });
+    const values = await prisma.leadCustomFieldValue.findMany({
+      where: { tenantId, leadId: ok.body.id },
+      include: { definition: { select: { key: true } } },
+    });
+    expect(values.map((v) => v.definition.key).sort()).toEqual(['family_size', 'visa_expiry']);
   });
 
   it("follows the lead's scope: another's lead answers 404 before any check", async () => {
@@ -276,16 +357,35 @@ describe('the fields on a lead (M4-13)', () => {
     const saved = await put(
       saveColumns,
       '/api/v1/admin/grid-columns',
-      { object: 'LEAD', columns: ['stage', 'cf:visa_status'] },
+      { object: 'LEAD', columns: ['stage', 'cf:visa_status', 'cf:visa_expiry'] },
       admin,
     );
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
-    expect(saved.body.columns).toEqual(['reference', 'fullName', 'stage', 'cf:visa_status']);
+    expect(saved.body.columns).toEqual(['reference', 'fullName', 'stage', 'cf:visa_status', 'cf:visa_expiry']);
 
     cookieJar.value = admin;
-    const text = await pageText(LeadsPage({ searchParams: Promise.resolve({}) }));
-    expect(text).toContain('Visa');
-    expect(text).toContain('Golden');
+    // The leads list and a smart view alike; a date reads DD/MM/YYYY, as on the Overview.
+    for (const page of [
+      LeadsPage({ searchParams: Promise.resolve({}) }),
+      SmartViewsPage({ searchParams: Promise.resolve({}) }),
+    ]) {
+      const text = await pageText(page);
+      expect(text).toContain('Visa');
+      expect(text).toContain('Golden');
+      expect(text).toContain('30/06/2027');
+      expect(text).not.toContain('2027-06-30');
+    }
+  });
+
+  it('only the chosen columns of customData reach a grid row', () => {
+    const columns = [
+      { key: 'stage', label: 'Stage' },
+      { key: 'cf:visa_status', label: 'Visa' },
+      { key: 'cf:visa_expiry', label: 'Visa expiry', date: true },
+    ];
+    const data = { visa_status: 'Golden', visa_expiry: '2027-06-30', family_size: 4, metaLeadgen: { formId: 'f-1' } };
+    expect(customCells(columns, data)).toEqual({ 'cf:visa_status': 'Golden', 'cf:visa_expiry': '30/06/2027' });
+    expect(customCells(columns, null)).toEqual({ 'cf:visa_status': null, 'cf:visa_expiry': null });
   });
 });
 

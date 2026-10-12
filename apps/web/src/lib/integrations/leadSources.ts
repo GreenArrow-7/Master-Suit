@@ -158,11 +158,15 @@ const TYPES: [RegExp, PropertyType][] = [
 ];
 const SCALE: Record<string, number> = { k: 1e3, thousand: 1e3, m: 1e6, mn: 1e6, million: 1e6 };
 
-/** "AED 3,500,000", "60k - 80k", "1.5M": every amount in it, in order. */
+/**
+ * "AED 3,500,000", "60k - 80k", "1.5M": every amount in it, in order. One above
+ * the composer's ceiling (1e12) is not a budget and is left out: the budget
+ * columns overflow near 1e16, and a failed insert would lose the whole enquiry.
+ */
 const amounts = (text: string) =>
-  [...text.toLowerCase().matchAll(/(\d[\d,]*(?:\.\d+)?)\s*(thousand|million|mn|k|m)?\b/g)].map(([, n, unit]) =>
-    Math.round(Number(n!.replace(/,/g, '')) * (unit ? SCALE[unit]! : 1)),
-  );
+  [...text.toLowerCase().matchAll(/(\d[\d,]*(?:\.\d+)?)\s*(thousand|million|mn|k|m)?\b/g)]
+    .map(([, n, unit]) => Math.round(Number(n!.replace(/,/g, '')) * (unit ? SCALE[unit]! : 1)))
+    .filter((amount) => amount <= 1e12);
 
 /**
  * An enquiry's wants as a requirement (M6-29), or null when it states none or

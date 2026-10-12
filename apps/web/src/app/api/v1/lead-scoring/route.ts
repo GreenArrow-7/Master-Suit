@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
-import { decayRule, DECAY_TRIGGER } from '@/services/leads/scoring';
+import { decayRule, DECAY_TRIGGER, FIRST_RULE } from '@/services/leads/scoring';
 
 /**
  * The workspace's score decay (Lead Eagle audit row M4-11): a lead loses
@@ -34,6 +34,7 @@ export const PUT = route(
   async ({ ctx, body }) => {
     const existing = await prisma.scoringRule.findFirst({
       where: { tenantId: ctx.tenantId, triggerType: DECAY_TRIGGER },
+      orderBy: FIRST_RULE,
       select: { id: true },
     });
     const data = { ...body, updatedById: ctx.actor.id };

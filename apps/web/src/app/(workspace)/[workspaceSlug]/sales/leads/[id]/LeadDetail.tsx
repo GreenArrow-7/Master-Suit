@@ -7,6 +7,7 @@ import { useModuleBase } from '@/components/workspace/SalesLink';
 import { dialable, whatsappLink } from '@/components/workspace/CallLink';
 import SourcePicker, { type SourceOption } from '@/components/forms/SourcePicker';
 import { parseTags } from '@/lib/leads/tags';
+import { customPatch } from '@/lib/leads/customPatch';
 import Field from '@/components/forms/Field';
 import DateInput from '@/components/forms/DateInput';
 import { formatTypedDate } from '@/lib/dates';
@@ -148,7 +149,6 @@ interface Props {
   /** What the interest pickers offer; null where the viewer cannot see projects or listings. */
   projectOptions: { id: string; name: string }[] | null;
   listingOptions: { id: string; reference: string; title: string }[] | null;
-  opens: { projects: boolean; listings: boolean };
   /** The requirement's page, where the viewer may open it. */
   matchesHref: string | null;
   canEdit: boolean;
@@ -198,7 +198,6 @@ export default function LeadDetail({
   customFields,
   projectOptions,
   listingOptions,
-  opens,
   matchesHref,
   canEdit,
   canDeleteDocuments,
@@ -373,7 +372,6 @@ export default function LeadDetail({
                 projectOptions={projectOptions}
                 listingOptions={listingOptions}
                 canEdit={canEdit}
-                opens={opens}
               />
             </div>
           )}
@@ -762,8 +760,8 @@ function OverviewTab({
       if (sourceId !== lead.sourceId) patch.sourceId = sourceId;
       const tags = parseTags(form.tags);
       if (tags.join(',') !== lead.tags.join(',')) patch.tags = tags;
-      const changed = customFields.filter((f) => custom[f.key]!.trim() !== customStart[f.key]);
-      if (changed.length) patch.custom = Object.fromEntries(changed.map((f) => [f.key, custom[f.key]!.trim() || null]));
+      const customValues = customPatch(customFields, custom, customStart);
+      if (customValues) patch.custom = customValues;
       if (Object.keys(patch).length > 0) await patchLead(patch);
       setEditing(false);
     } catch (e: any) {

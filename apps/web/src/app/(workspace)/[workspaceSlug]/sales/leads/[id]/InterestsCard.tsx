@@ -8,9 +8,9 @@ type Project = { id: string; name: string };
 type Listing = { id: string; reference: string; title: string };
 
 /**
- * The projects and listings the lead asked about (M4-06). The pickers offer
- * what the viewer can see; each link opens its project or listing where the
- * viewer may.
+ * The projects and listings the lead asked about (M4-06). The page passes only
+ * those the viewer may see, each a link to its project or listing, and the
+ * pickers offer only what the viewer can see.
  */
 export default function InterestsCard({
   leadId,
@@ -19,7 +19,6 @@ export default function InterestsCard({
   projectOptions,
   listingOptions,
   canEdit,
-  opens,
 }: {
   leadId: string;
   projects: Project[];
@@ -28,7 +27,6 @@ export default function InterestsCard({
   projectOptions: Project[] | null;
   listingOptions: Listing[] | null;
   canEdit: boolean;
-  opens: { projects: boolean; listings: boolean };
 }) {
   const { busy, run, note } = useRun();
   const [projectId, setProjectId] = useState('');
@@ -41,13 +39,15 @@ export default function InterestsCard({
     }, 'Added.');
   const remove = (query: string) => run(() => send(`${url}?${query}`, 'DELETE'), 'Removed.');
 
-  const chip = (key: string, label: string, href: string | null, query: string) => (
+  const chip = (key: string, label: string, href: string, query: string) => (
     <li
       key={key}
       className="lf-chip"
       style={{ display: 'inline-flex', gap: 6, alignItems: 'center', maxWidth: '100%' }}
     >
-      <span style={{ overflowWrap: 'anywhere' }}>{href ? <SalesLink href={href}>{label}</SalesLink> : label}</span>
+      <span style={{ overflowWrap: 'anywhere' }}>
+        <SalesLink href={href}>{label}</SalesLink>
+      </span>
       {canEdit && (
         <button
           type="button"
@@ -76,16 +76,9 @@ export default function InterestsCard({
         </p>
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {projects.map((p) =>
-            chip(`p-${p.id}`, p.name, opens.projects ? `/projects/${p.id}` : null, `projectId=${p.id}`),
-          )}
+          {projects.map((p) => chip(`p-${p.id}`, p.name, `/projects/${p.id}`, `projectId=${p.id}`))}
           {listings.map((l) =>
-            chip(
-              `l-${l.id}`,
-              `${l.reference} · ${l.title}`,
-              opens.listings ? `/listings/${l.id}` : null,
-              `listingId=${l.id}`,
-            ),
+            chip(`l-${l.id}`, `${l.reference} · ${l.title}`, `/listings/${l.id}`, `listingId=${l.id}`),
           )}
         </ul>
       )}

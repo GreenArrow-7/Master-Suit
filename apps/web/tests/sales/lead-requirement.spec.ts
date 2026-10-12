@@ -177,6 +177,20 @@ describe('the requirement composer on the lead page (M4-05, M4-08)', () => {
     expect((await put(saveRequirement, url(fixture.a.leadIds[1]!), full, fixture.b.cookie)).status).toBe(404);
     expect((await put(saveRequirement, url(agentLeadId), full, agent)).status).toBe(200);
     expect(await open(fixture.a.leadIds[1]!)).toEqual([]);
+
+    // Seeing the lead is not enough: writing its requirement is editing it.
+    const suffix = randomBytes(4).toString('hex');
+    const role = await prisma.role.create({ data: { tenantId, key: `viewer-${suffix}`, name: 'Viewer', rank: 80 } });
+    await grantPermissions(tenantId, role.id, [['leads', 'VIEW']]);
+    const user = await createWorkspaceUser({
+      tenantId,
+      roleId: role.id,
+      email: `viewer-${suffix}@a.test`,
+      fullName: 'Viewer',
+    });
+    const viewer = await createSessionToken(tenantId, user.id);
+    expect((await put(saveRequirement, url(fixture.a.leadIds[1]!), full, viewer)).status).toBe(403);
+    expect(await open(fixture.a.leadIds[1]!)).toEqual([]);
   });
 
   it('the lead page shows the requirement, its date as the workspace reads it', async () => {
@@ -201,6 +215,23 @@ describe('the requirement composer on the lead page (M4-05, M4-08)', () => {
     const page = await pageText(RequirementPage({ params: Promise.resolve({ id: requirement!.id }) }));
     expect(page).toContain('Dubai Marina, JLT');
     expect(page).toContain('Duplex');
+  });
+
+  it("reads the possession date in the workspace's own time zone, not Dubai's", async () => {
+    const leadId = fixture.a.leadIds[3]!;
+    await prisma.tenant.update({ where: { id: tenantId }, data: { timezone: 'America/New_York' } });
+    try {
+      const res = await put(saveRequirement, url(leadId), { purpose: 'BUY', possessionBy: '2027-03-01' }, admin);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const [row] = await open(leadId);
+      // The end of 1 March in New York (UTC-5 until mid-March).
+      expect(row!.possessionBy!.toISOString()).toBe('2027-03-02T04:59:59.999Z');
+      const text = await pageText(LeadDetailPage({ params: Promise.resolve({ id: leadId }) }));
+      expect(text).toContain('2027-03-01');
+      expect(text).not.toContain('2027-03-02');
+    } finally {
+      await prisma.tenant.update({ where: { id: tenantId }, data: { timezone: 'Asia/Dubai' } });
+    }
   });
 
   it('the possession date is matched against when a listing is available (M4-08)', async () => {
@@ -287,6 +318,44 @@ describe('an enquiry that says what it wants writes the requirement (M4-05, M6-2
     expect(requirementFrom({})).toBeNull();
     // A budget with no purpose is taken as buying.
     expect(requirementFrom({ budget: '2,000,000' })).toMatchObject({ purpose: 'BUY', budgetMax: 2_000_000 });
+    // An amount no budget column holds (the composer's own ceiling is 1e12) is left out, not stored.
+    expect(requirementFrom({ type: 'Villa', budget: 'AED 50000000000000000' })).toMatchObject({
+      propertyTypes: ['VILLA'],
+      budgetMin: null,
+      budgetMax: null,
+    });
+    expect(requirementFrom({ budget: '999999999999 million' })).toBeNull();
+    expect(requirementFrom({ budget: '9'.repeat(400) })).toBeNull();
+  });
+
+  it('an enquiry with a budget no column can hold still becomes a lead', async () => {
+    const result = await takeEnquiry(
+      tenantId,
+      parseEnquiry(pf({ property_type: 'Villa', budget: 'AED 50000000000000000' })),
+      origin,
+    );
+    expect(result).toMatchObject({ created: true });
+    const [row, ...more] = await open((result as { leadId: string }).leadId);
+    expect(more).toHaveLength(0);
+    expect(row).toMatchObject({ propertyTypes: ['VILLA'], budgetMin: null, budgetMax: null });
+  });
+
+  it('a repeat enquiry that says what it wants writes the requirement the first did not', async () => {
+    const client = { name: 'Repeat Client', phone: `052${String(Date.now()).slice(-7)}` };
+    const first = await takeEnquiry(tenantId, parseEnquiry(pf({ client, message: 'Call me' })), origin);
+    const leadId = (first as { leadId: string }).leadId;
+    expect(await open(leadId)).toEqual([]);
+
+    const again = await takeEnquiry(
+      tenantId,
+      parseEnquiry(pf({ client, offering_type: 'Rent', budget: '120k' })),
+      origin,
+    );
+    expect(again).toMatchObject({ leadId, created: false });
+    const [row, ...more] = await open(leadId);
+    expect(more).toHaveLength(0);
+    expect(row).toMatchObject({ purpose: 'RENT' });
+    expect(row!.budgetMax!.toString()).toBe('120000');
   });
 
   it('a Property Finder enquiry with a budget produces a requirement row, shown on the lead page and matched', async () => {
