@@ -71,8 +71,8 @@ Node 22 or newer (CI uses 24).
   owner does: lead reads go through `leadScope` (placing a waiting lead from
   the Allocation queue excepted). A lead's requirement on its page and its
   interest links (projects, listings) are the lead's: written under
-  `leads:EDIT` on its scope, an interest naming only a project or listing the
-  caller can see. HR's predicates are in `src/services/hr/access.ts`. A manager's authority over
+  `leads:EDIT` on its scope, an interest naming, and the lead page showing,
+  only a project or listing the caller can see. HR's predicates are in `src/services/hr/access.ts`. A manager's authority over
   people stops at their reporting line (`reportingLine`, `src/services/hr/leave.ts`).
   A task is read under `tasks` wherever it shows, a lead's page included, and
   a follow-up under `leads` (`src/services/leads/nextFollowUp.ts`); a task is
@@ -126,9 +126,10 @@ Node 22 or newer (CI uses 24).
   requests work in every workspace; everything else in HR needs HRMS.
 - **Lead scores** move by event, each a LeadScoreHistory row and an audit row
   (`src/services/leads/scoring.ts`): a new lead starts at its source's
-  `weight`, a logged activity adds its type's `scoreDelta`, and the nightly
-  `lead-score-decay` job applies the workspace's DECAY `ScoringRule` (off
-  unless set). The post-call AI temperature still sets the score outright.
+  `weight`, a logged activity adds its type's `scoreDelta` (taken back if the
+  activity is deleted), and the nightly `lead-score-decay` job applies the
+  workspace's first DECAY `ScoringRule` (off unless set). Each move locks the
+  lead's row. The post-call AI temperature still sets the score outright.
 - **Background jobs.** One `JOBS` table in `src/workers/jobs.ts`, keyed by queue;
   `src/workers/index.ts` starts a worker per queue. CI's observability gate reads
   that table, so keep it a literal.
