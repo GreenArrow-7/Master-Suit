@@ -4,7 +4,7 @@ import { prisma, withTx } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
-import { visibilityWhere } from '@/lib/security/visibility';
+import { leadScope } from '@/lib/security/record-scope';
 import { coldDataScope } from '@/services/leads/coldData';
 import { takeEnquiry } from '@/services/leads/intake';
 
@@ -80,7 +80,7 @@ export const POST = route(
     // happen (intake.ts), but the screen must not open a 404. Same rule as the
     // lead page, so the flag can never disagree with it.
     const visible = !!(await prisma.lead.findFirst({
-      where: { ...(await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true })), id: leadId },
+      where: { ...(await leadScope(ctx, 'VIEW', { includeUnassigned: true })), id: leadId },
       select: { id: true },
     }));
     return { ...result, visible };

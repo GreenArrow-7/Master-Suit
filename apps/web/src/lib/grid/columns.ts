@@ -94,6 +94,7 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'email', label: 'Email', hideMobile: true },
     { key: 'phone', label: 'Phone', hideMobile: true },
     { key: 'grade', label: 'Grade', hideMobile: true },
+    { key: 'tags', label: 'Tags', hideMobile: true },
     { key: 'updatedAt', label: 'Updated', hideMobile: true },
   ],
   ACCOUNT: [

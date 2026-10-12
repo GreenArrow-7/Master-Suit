@@ -579,4 +579,39 @@ describe('USERDEL-002: open work is handed over, never left with a suspended acc
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(await statusOf(idle.id)).toBe('SUSPENDED');
   });
+
+  it('a deactivated account stops being second owner of the open leads it worked, on the record', async () => {
+    const helper = await member('cowork', staffRoleId);
+    const owner = await member('coworkowner', staffRoleId);
+    const lead = (reference: string, stage: string) =>
+      prisma.lead.create({
+        data: {
+          tenantId,
+          reference: `${reference}-${suffix}`,
+          fullName: reference,
+          stageId: stage,
+          ownerId: owner.id,
+          secondaryOwnerId: helper.id,
+        },
+      });
+    const open = await lead('cowork-open', stageId);
+    const won = await lead('cowork-won', wonStageId);
+
+    const res = await deactivate({ userId: helper.id });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    // Left in place, the account's former managers would keep reaching a lead owned elsewhere.
+    expect(await prisma.lead.findFirst({ where: { tenantId, id: open.id } })).toMatchObject({
+      ownerId: owner.id,
+      secondaryOwnerId: null,
+    });
+    // History, like a closed lead's owner, keeps naming the person.
+    expect(await prisma.lead.findFirst({ where: { tenantId, id: won.id } })).toMatchObject({
+      secondaryOwnerId: helper.id,
+    });
+    const entry = await prisma.auditLog.findFirst({
+      where: { tenantId, objectType: 'user', recordId: helper.id, event: 'OWNER_CHANGED' },
+      select: { metadata: true, actorUserId: true },
+    });
+    expect(entry).toMatchObject({ actorUserId: orgAdminId, metadata: { leadIds: [open.id] } });
+  });
 });

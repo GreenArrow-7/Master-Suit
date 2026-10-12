@@ -90,6 +90,34 @@ test.describe('Lead Eagle, from the platform portal to a lead', () => {
       expect(refused.status()).toBe(403);
     });
 
+    await test.step('a sub-source added under Admin is offered on the lead form and named in Source Analysis (M4-03)', async () => {
+      const sub = `Marina ${run}`;
+      await page.goto(at('/admin/lead-sources'));
+      const website = page.getByRole('region', { name: 'Source Website' });
+      await website.getByLabel('Add a sub-source to Website').fill(sub);
+      await website.getByRole('button', { name: 'Add' }).click();
+      await expect(page.getByRole('textbox', { name: `Sub-source ${sub}` })).toBeVisible();
+      // On a phone the editor fits the screen.
+      const desktop = page.viewportSize()!;
+      await page.setViewportSize({ width: 390, height: 844 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+      await page.setViewportSize(desktop);
+
+      await page.goto(at('/lead-eagle/leads/new'));
+      await page.getByLabel('Full name').fill(`Sourced ${run}`);
+      await page.getByLabel('Phone').fill(`+97155${String(Date.now()).slice(-7)}`);
+      await page.getByLabel('Source', { exact: true }).selectOption({ label: 'Website' });
+      await page.getByLabel('Sub-source').selectOption({ label: sub });
+      await page.getByLabel('Nationality').fill('Emirati');
+      await page.getByRole('button', { name: 'Create lead' }).click();
+      await expect(page).toHaveURL(new RegExp(`/${eagle.slug}/lead-eagle/leads/c[a-z0-9]{20,}$`));
+      await expect(page.getByText(`Website · ${sub}`)).toBeVisible();
+      await expect(page.getByText('Emirati')).toBeVisible();
+
+      await page.goto(at('/lead-eagle/reports?report=source-analysis'));
+      await expect(page.getByText(`Website / ${sub}`)).toBeVisible();
+    });
+
     await test.step('a /sales/ or /realty/ link lands on the same screen under Lead Eagle', async () => {
       for (const folder of ['sales', 'realty']) {
         await page.goto(at(`/${folder}/leads/${leadId}`));

@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { AppError } from '@/lib/errors';
 import { env } from '@/lib/env';
 import { readUpload } from '@/lib/api/read-body';
-import { visibilityWhere } from '@/lib/security/visibility';
+import { leadScope } from '@/lib/security/record-scope';
 import { audit } from '@/lib/security/audit';
 import { scanBuffer } from '@/lib/antivirus';
 import { putObject } from '@/lib/storage';
@@ -26,7 +26,7 @@ export const POST = route(
 
     const leadId = String(form.get('leadId') ?? '');
     if (!leadId) throw new AppError(422, 'validation-failed', 'A lead is required.');
-    const scope = await visibilityWhere(ctx, 'leads', 'EDIT', { includeUnassigned: true });
+    const scope = await leadScope(ctx, 'EDIT', { includeUnassigned: true });
     const lead = await prisma.lead.findFirst({ where: { ...scope, id: leadId }, select: { id: true } });
     if (!lead) throw new AppError(404, 'not-found', 'Lead not found.');
 

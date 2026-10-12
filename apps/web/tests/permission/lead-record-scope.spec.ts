@@ -56,8 +56,9 @@ import { DELETE as deleteEvent, GET as readEvent, PATCH as patchEvent } from '@/
 import { POST as queueEventCalls } from '@/app/api/v1/events/[id]/calls/route';
 import { GET as listFollowUps } from '@/app/api/v1/follow-ups/route';
 import { PATCH as patchFollowUp } from '@/app/api/v1/follow-ups/[id]/route';
-import { POST as createLead } from '@/app/api/v1/leads/route';
+import { GET as listLeads, POST as createLead } from '@/app/api/v1/leads/route';
 import { POST as bulkAssign } from '@/app/api/v1/leads/assign/route';
+import { GET as exportLeads } from '@/app/api/v1/leads/export/route';
 import { DELETE as deleteLead, GET as getLead, PATCH as patchLead } from '@/app/api/v1/leads/[id]/route';
 import { POST as closeOut } from '@/app/api/v1/leads/[id]/close-out/route';
 import { DELETE as removePhone, POST as addPhone } from '@/app/api/v1/leads/[id]/phones/route';
@@ -86,12 +87,16 @@ import ConfigurableGrid from '@/components/workspace/ConfigurableGrid';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
 import { entityRoute } from '@/lib/nav/entityRoute';
 import LeadGrid from '@/app/(workspace)/[workspaceSlug]/sales/leads/LeadGrid';
+import LeadDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
 import SmartViewsPage from '@/app/(workspace)/[workspaceSlug]/sales/smart-views/page';
 import SocialLeadsPage from '@/app/(workspace)/[workspaceSlug]/sales/social-leads/page';
 import SocialLeadList from '@/components/workspace/SocialLeadList';
 import type { PermissionAction, VisibilityScope } from '@prisma/client';
 import { createWorkspaceUser, grantPermissions, seedHierarchy, type Hierarchy, type Member } from '../helpers/fixtures';
 import { createSessionToken } from '../helpers/session';
+import { buildActor, buildCtx } from '../helpers/ctx';
+import { executeTool } from '@/lib/ai/assistant/tools';
+import type { PermissionMap } from '@/lib/security/rbac';
 import { del, get, patch, post } from '../helpers/request';
 
 /**
@@ -1573,6 +1578,149 @@ describe('the follow-ups and tasks lists', () => {
     } finally {
       await swap('LEAD_EAGLE', 'SALES');
     }
+  });
+});
+
+/**
+ * A second person who works a lead (`secondaryOwnerId`, M4-09) reaches it as
+ * its owner does, at every scope: by id, in the list, on the page and on its
+ * writes. Naming one follows the ASSIGN scope, as naming the owner does.
+ */
+describe('a secondary owner', () => {
+  /** Owned by repB1 (another team); repA1 works it too. */
+  let shared: string;
+  /** Owned by repOtherRegion; repA2 (team A) works it too. */
+  let teamShared: string;
+  let ownAssignerLead: string;
+  const leadPage = (id: string) => LeadDetailPage({ params: Promise.resolve({ id }) });
+  const listed = async (cookie: string) => {
+    const res = await get(listLeads, '/api/v1/leads?limit=100', cookie);
+    expect(res.status).toBe(200);
+    return (res.body.data as { id: string }[]).map((l) => l.id);
+  };
+
+  beforeAll(async () => {
+    const make = async (reference: string, ownerId: string, secondaryOwnerId: string | null) =>
+      (
+        await prisma.lead.create({
+          data: { tenantId: h.tenantId, reference, fullName: reference, stageId, ownerId, secondaryOwnerId },
+        })
+      ).id;
+    shared = await make('SHARED-OWN', h.repB1.id, h.repA1.id);
+    teamShared = await make('SHARED-TEAM', h.repOtherRegion.id, h.repA2.id);
+    ownAssignerLead = await make('OWN-ASSIGNER', ownAssigner.id, null);
+  });
+
+  it('OWN: the secondary owner reaches the lead as its owner does; a teammate does not', async () => {
+    const url = `/api/v1/leads/${shared}`;
+    expect((await get(getLead, url, h.repA1.cookie)).status).toBe(200);
+    expect((await patch(patchLead, url, { fullName: 'Shared, edited' }, h.repA1.cookie)).status).toBe(200);
+    expect(await listed(h.repA1.cookie)).toContain(shared);
+    cookieJar.value = h.repA1.cookie;
+    await expect(leadPage(shared)).resolves.toBeTruthy();
+
+    const theirs = await get(getLead, url, h.repA2.cookie);
+    expect(theirs.status).toBe(404);
+    expect(theirs.body.detail).toBe('Lead not found.');
+    expect(await listed(h.repA2.cookie)).not.toContain(shared);
+    cookieJar.value = h.repA2.cookie;
+    await expect(leadPage(shared)).rejects.toThrow(/;404$/);
+  });
+
+  it('TEAM and wider: a manager sees a lead a member of theirs works as its secondary owner', async () => {
+    for (const manager of [h.teamManagerA, h.branchManager, h.regionalManager, h.director]) {
+      const res = await get(getLead, `/api/v1/leads/${teamShared}`, manager.cookie);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(await listed(manager.cookie)).toContain(teamShared);
+    }
+    expect(await listed(h.repB1.cookie)).not.toContain(teamShared);
+  });
+
+  it('naming one follows the ASSIGN scope', async () => {
+    const name = (leadId: string, userId: string, cookie: string) =>
+      patch(patchLead, `/api/v1/leads/${leadId}`, { secondaryOwnerId: userId }, cookie);
+    const outside = await name(h.repA1.leadId, h.repB1.id, h.teamManagerA.cookie);
+    expect(outside.status).toBe(404);
+    expect(outside.body.detail).toBe('User not found.');
+    const inside = await name(h.repA1.leadId, h.repA2.id, h.teamManagerA.cookie);
+    expect(inside.status, JSON.stringify(inside.body)).toBe(200);
+    expect(inside.body.secondaryOwnerId).toBe(h.repA2.id);
+    // ASSIGN at OWN reaches nobody else; without ASSIGN the field is ignored.
+    expect((await name(ownAssignerLead, h.repA1.id, ownAssigner.cookie)).status).toBe(404);
+    const ignored = await name(h.repA1.leadId, h.repB1.id, h.repA1.cookie);
+    expect(ignored.status).toBe(200);
+    expect(ignored.body.secondaryOwnerId).toBe(h.repA2.id);
+  });
+
+  it('the assistant’s day lists a breached lead to its secondary owner, not to a teammate', async () => {
+    await prisma.lead.update({ where: { tenantId: h.tenantId, id: shared }, data: { slaState: 'BREACHED' } });
+    const breached = async (member: { id: string }) => {
+      const ctx = buildCtx(
+        buildActor({
+          id: member.id,
+          tenantId: h.tenantId,
+          permissions: new Map([['leads:VIEW', 'OWN']]) as PermissionMap,
+        }),
+      );
+      const day = await executeTool(ctx, 'getMyDay', {});
+      return (day.data as { slaBreachedLeads: { id: string }[] }).slaBreachedLeads.map((lead) => lead.id);
+    };
+    expect(await breached(h.repA1)).toContain(shared);
+    expect(await breached(h.repA2)).not.toContain(shared);
+  });
+
+  it('the assistant’s lead search keeps the caller’s scope whatever it filters on', async () => {
+    const found = async (member: { id: string }, args: Record<string, unknown>) => {
+      const ctx = buildCtx(
+        buildActor({
+          id: member.id,
+          tenantId: h.tenantId,
+          permissions: new Map([['leads:VIEW', 'OWN']]) as PermissionMap,
+        }),
+      );
+      const res = await executeTool(ctx, 'searchLeads', args);
+      return (res.data as { leads: { id: string }[] }).leads.map((lead) => lead.id);
+    };
+    // A name search: the secondary owner finds the lead, a teammate does not.
+    expect(await found(h.repA1, { q: 'shared' })).toContain(shared);
+    expect(await found(h.repA2, { q: 'shared' })).not.toContain(shared);
+    // A view whose filter is an OR of its own.
+    const old = new Date(Date.now() - 60 * 864e5);
+    await prisma.lead.update({
+      where: { tenantId: h.tenantId, id: teamShared },
+      data: { createdAt: old, lastActivityAt: null },
+    });
+    expect(await found(h.repA2, { view: 'no_activity_30d' })).toContain(teamShared);
+    expect(await found(h.repA1, { view: 'no_activity_30d' })).not.toContain(teamShared);
+  });
+
+  it('the export and the dashboard count a lead its secondary owner works, and nobody else’s', async () => {
+    const exported = async (cookie: string) => {
+      const res = await exportLeads(new Request('http://localhost/api/v1/leads/export', { headers: { cookie } }), {
+        params: Promise.resolve({}),
+      });
+      expect(res.status).toBe(200);
+      return res.text();
+    };
+    expect(await exported(h.repA1.cookie)).toContain('SHARED-OWN');
+    expect(await exported(h.repA2.cookie)).not.toContain('SHARED-OWN');
+
+    const activeLeads = async (member: { id: string; cookie: string }) => {
+      cookieJar.value = member.cookie;
+      const tree = await DashboardPage({ params: Promise.resolve({ workspaceSlug: slug }) });
+      const kpi = elements(tree).find(
+        (el) =>
+          el.props.className === 'lf-kpi' &&
+          (el.props.children as ReactElement<{ children: unknown }>[])[0]?.props.children === 'My active leads',
+      );
+      return Number((kpi!.props.children as ReactElement<{ children: unknown }>[])[1]!.props.children);
+    };
+    const theirs = (id: string) =>
+      prisma.lead.count({
+        where: { tenantId: h.tenantId, deletedAt: null, OR: [{ ownerId: id }, { secondaryOwnerId: id }] },
+      });
+    expect(await activeLeads(h.repA1)).toBe(await theirs(h.repA1.id));
+    expect(await activeLeads(h.repA2)).toBe(await theirs(h.repA2.id));
   });
 });
 

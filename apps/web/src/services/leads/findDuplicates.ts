@@ -15,6 +15,12 @@ export interface DuplicateProbe {
   otherPhones?: string[];
   fullName?: string | null;
   excludeId?: string;
+  /**
+   * Skip a rule on the name alone. An edit of a phone or email (updateLead)
+   * passes the lead's name so a rule pairing it with the phone applies, but a
+   * name another lead shared before the edit is not what the edit changed.
+   */
+  ignoreNameOnly?: boolean;
 }
 
 /**
@@ -39,6 +45,7 @@ export async function findDuplicates(tenantId: string, probe: DuplicateProbe): P
   const found = new Map<string, DuplicateMatch>();
 
   for (const rule of active) {
+    if (probe.ignoreNameOnly && rule.matchFields.every((field: string) => field === 'fullName')) continue;
     const where = buildWhere(rule.matchFields, probe);
     if (!where) continue;
 

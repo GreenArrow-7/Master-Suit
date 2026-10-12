@@ -8,12 +8,14 @@ import type { Ctx } from '@/lib/security/rbac';
 import { assertLeadInScope } from '@/lib/security/record-scope';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
+import { refuseDuplicate } from '@/services/leads/updateLead';
 
 /**
  * A lead's other numbers (LeadPhone), governed like `phone` itself: whoever may
  * edit the lead and see and edit its phone field may add or remove one — a role
  * that sees the numbers masked (no `leads:VIEW_SENSITIVE_FIELDS`) may not. A
- * number the lead already has answers 409 from the unique index.
+ * number the lead already has answers 409 from the unique index; one another
+ * lead holds answers create's 409, as an edit of the main number does (M4-51).
  */
 const params = z.object({ id: z.string().cuid() });
 
@@ -52,6 +54,7 @@ export const POST = route(
     const normalized = normalizePhone(body.phone);
     if (!normalized) throw Invalid([{ field: 'phone', code: 'invalid', message: 'Enter a phone number.' }]);
     await assertMayEditPhones(ctx, params.id);
+    await refuseDuplicate(ctx, params.id, { phone: body.phone });
     return withTx(ctx.tenantId, async (tx) => {
       const lead = await assertLeadInScope(ctx, params.id, tx, 'EDIT');
       if (lead.phoneNormalized === normalized) throw Conflict('That is already this lead’s main number.');
