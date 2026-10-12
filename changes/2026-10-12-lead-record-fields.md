@@ -7,16 +7,23 @@
   on, and never for a masked number.
 - Each workspace has its own catalogue of sources and sub-sources, under
   Administration → Settings → Sources. A lead takes one entry, picked on the
-  lead form and on the Overview, plus a free-text campaign. Portal and Google
-  Ads enquiries land on their portal's entry, and the source reports group by
-  entry.
+  lead form and on the Overview, plus a free-text campaign. Portal, Google
+  Ads, Meta lead-ad and website-form enquiries land on their entry, and the
+  source reports group by entry.
 - Nationality.
 - A second owner, who reaches the lead as its owner does, at every scope.
 - Tags typed on the form and on the Overview, and a Tags column for the grid.
 - Changing a phone or email to a value another lead holds answers 409, as
-  create does.
+  create does, and so does adding another lead's number under Other numbers.
 
-**One migration (102 in all):** `20261012004000_lead_record_fields`.
+Also, from the review of this change: the assistant's searches (leads,
+accounts, contacts, opportunities) no longer drop the caller's scope when
+they search by text or by a view whose filter is an OR. That was on `main`
+before this change.
+
+**One migration (102 in all):** `20261012004000_lead_record_fields`. It adds
+the columns and the catalogue table, and seeds the catalogue for every
+workspace that already works leads.
 
 **Why.** The Lead Eagle gap audit of 11 Oct (rows M4-02, M4-03, M4-07, M4-09,
 M4-10, M4-51). This is part 4A, first half, of the owner's brief "Build to
@@ -33,24 +40,32 @@ change:
 
 **Where** (under `apps/web/`)
 
-- `prisma/schema.prisma` and the migration add these columns on `Lead`:
-  `phoneIsWhatsapp` (default true), `sourceId`, `campaignName`, `nationality`
-  and `secondaryOwnerId`, with an index on `(tenantId, secondaryOwnerId)`.
-  They also add a `LeadSource` table (tenant, parent, key, name, isActive,
-  position) under forced row-level security.
+- `prisma/schema.prisma` and the migration:
+  - These columns on `Lead`: `phoneIsWhatsapp` (default true), `sourceId`,
+    `campaignName`, `nationality` and `secondaryOwnerId`, with an index on
+    `(tenantId, secondaryOwnerId)`.
+  - A `LeadSource` table (tenant, parent, key, name, isActive, position) under
+    forced row-level security.
+  - The ten defaults for every workspace with an active Sales, Real Estate
+    or Lead Eagle entitlement and no catalogue yet. Ids are cuid-shaped, as
+    the API validates them.
 - `src/services/leads/leadSources.ts`:
   - `DEFAULT_LEAD_SOURCES`: the ten defaults.
   - `sourceKey`: keeps letters of any script; a name with no letters or digits
     gets a random key.
-  - `ensureLeadSources`: the idempotent seed.
-  - `listLeadSources`, `leadSourceIdFor`, `assertLeadSource` (another
-    workspace's entry answers 404), `leadSourceLabel`.
+  - `ensureLeadSources`: the idempotent seed, called only on writes
+    (provisioning, an administrator's first change, a lead arriving with a key).
+  - `listLeadSources` (reads only), `leadSourceIdFor`, `assertLeadSource`
+    (another workspace's entry answers 404), `leadSourceLabel`.
 - `src/app/api/v1/lead-sources/route.ts`: GET needs `settings:VIEW`. POST and
-  `PATCH ?id=` need `settings:MANAGE_CONFIGURATION` and are audited.
+  `PATCH ?id=` need `settings:MANAGE_CONFIGURATION` and are audited. A name
+  its parent already has (any case) answers 409. The key is only an id: one
+  another entry already holds gets a random suffix.
   `productModule: LEAD_MODULES`.
 - `src/app/(workspace)/[workspaceSlug]/admin/lead-sources/` (`page.tsx`,
-  `SourceEditor.tsx`) is the new screen. `src/lib/nav/workspaceNav.ts` adds
-  the Sources tab after Lead Stages.
+  `SourceEditor.tsx`) is the new screen. Its lead counts are of the leads the
+  viewer may see (`leadScope`), and it shows none without `leads:VIEW`.
+  `src/lib/nav/workspaceNav.ts` adds the Sources tab after Lead Stages.
 - `src/components/forms/useRun.tsx`: `send` and `useRun`, moved out of
   `admin/lead-stages/StageEditor.tsx` and shared by both editors.
 - `src/components/forms/SourcePicker.tsx`: a Source select, then a Sub-source
@@ -59,8 +74,8 @@ change:
 - `src/components/workspace/CallLink.tsx`: `whatsappLink(raw, flagged)`. Every
   WhatsApp link is built here, so the flag and the mask both apply.
 - `sales/leads/new/` (`LeadForm.tsx`, `page.tsx`) and `sales/leads/[id]/`
-  (`page.tsx`, `LeadDetail.tsx`): the new fields, the Second owner menu, and
-  the editable tags.
+  (`page.tsx`, `LeadDetail.tsx`): the new fields, the Second owner menu
+  (which leaves out the owner), and the editable tags.
 - `sales/leads/LeadGrid.tsx` (`leadCell`, the `tags` cell),
   `src/lib/grid/columns.ts` (the Tags column), and `sales/leads/page.tsx` and
   `sales/smart-views/page.tsx` (both select tags).
@@ -70,9 +85,14 @@ change:
 - `src/services/leads/updateLead.ts`:
   - `refuseDuplicate`: the same rules (`findDuplicates`) and the same 409 as
     create, but only for the fields that change, and never matching the lead
-    itself. A lead outside the caller's scope answers 404 first.
+    itself. The lead's name goes in the probe, so a rule pairing it with the
+    phone applies; a rule on the name alone does not (`ignoreNameOnly` in
+    `findDuplicates.ts`). A lead outside the caller's scope answers 404 first.
   - The secondary owner is named under the same ASSIGN (or REASSIGN) scope as
-    the owner, through `assertAssignableUser`.
+    the owner, through `assertAssignableUser`. Naming the owner answers 422;
+    making the second owner the owner clears the second owner.
+- `src/app/api/v1/leads/[id]/phones/route.ts`: adding an other number runs
+  `refuseDuplicate` too.
 - `src/lib/security/visibility.ts` (`coOwnerFields`) and `record-scope.ts`:
   - `leadScope(ctx, action, opts)` is `visibilityWhere` on leads with the
     secondary owner counted as an owner.
@@ -81,17 +101,30 @@ change:
     (API, page, Smart Views, export, the legacy route), the lead page, the
     workspace, Sales and Real Estate dashboards, the Sales overview, cold data,
     the site-visit picker, documents, campaign audiences, event invitees,
-    triage, bulk assign and the assistant.
+    triage's list, bulk assign and the assistant.
+  - The one exception is placing a waiting lead from the Allocation queue
+    (`assignFromTriage`, `services/distribution/triageQueue.ts`). It keeps
+    `visibilityWhere`: it checks no assignee, so it relies on reaching only
+    owned leads below ORGANIZATION.
+- `src/services/leads/assign.ts` (`handOverOpenWork`): deactivating or
+  removing a member also ends their second ownership of open leads, with one
+  audit row naming the leads.
 - `src/services/leads/intake.ts`: an enquiry takes the entry whose key is its
-  connection's kind.
+  connection's kind. `src/services/meta/applyEvent.ts` (Meta lead ads) takes
+  `meta`, and `src/app/api/v1/public/forms/route.ts` takes `website`.
 - `src/services/leadership/reports.ts`: Source to Booking, Source Analysis and
-  Lead Quality key on the entry.
+  Lead Quality key on the entry. Groups that share a label are added up from
+  sums and counts, so the average first response counts only answered leads.
+- `src/lib/ai/assistant/tools.ts`: `searchLeads`, `searchAccounts`,
+  `searchContacts` and `searchOpportunities` build their filter with
+  `mergeWhere` (`lib/api/where.ts`).
 - `src/services/platform/provisioning.ts`: seeds the catalogue for a new lead
   workspace.
 - `src/services/platform/leadEagleMove.ts` and `scripts/move-lead-eagle.ts`:
   the move tool carries nationality, the secondary owner, the main number's
   WhatsApp flag (the standalone's primary `LeadPhone`) and the campaign.
-- `docs/01-PERMISSIONS.md`: the secondary owner counts in scope.
+- `docs/01-PERMISSIONS.md`: the secondary owner counts in scope, with the
+  triage exception and the hand-over.
 
 **Behaviour.** For customers on production:
 
@@ -100,13 +133,15 @@ change:
   removes the lead page's WhatsApp button. A masked number never had one.
 - **Sources screen.** Administration → Settings → Sources is new in Sales,
   Real Estate and Lead Eagle workspaces. Reading it needs `settings:VIEW`;
-  changing it needs `settings:MANAGE_CONFIGURATION`. The ten defaults appear
-  the first time a lead screen, the API or an enquiry needs them:
+  changing it needs `settings:MANAGE_CONFIGURATION`. Every such workspace has
+  the ten defaults from the deploy on:
   - Property Finder, Bayut, Dubizzle, Google Ads, Meta
   - Website, Walk-in, Referral, Cold data, Other
 
   An administrator adds sources and sub-sources, renames them, or stops
-  offering them on the form. Nothing is deleted.
+  offering them on the form. Nothing is deleted. A name already used beside
+  it is refused; a renamed entry's old name is free again. Each entry shows
+  how many of the viewer's leads carry it.
 
 - **Lead form.** New fields: On WhatsApp, Nationality, Source, Sub-source,
   Campaign and Tags.
@@ -117,21 +152,31 @@ change:
 - **Lead grid.** A Tags column can be added under Columns. It is not shown by
   default.
 - **Source reports.** A lead with an entry counts under it ("Website / Marina
-  launch"). Existing leads have none and count as before. Portal and Google
-  Ads leads that arrive from now on count under "Property Finder", "Bayut",
-  "Dubizzle" or "Google Ads". Before, Source Analysis showed them as
-  "marketplace" or "ad lead form".
+  launch"). Existing leads have none and count as before. Portal, Google Ads,
+  Meta lead-ad and website-form leads that arrive from now on count under
+  their entry. Before, Source Analysis showed them as "marketplace", "ad lead
+  form" or "public form".
 - **Second owner.** The second owner, and the managers whose scope covers
-  them, list, open and edit the lead as they would their own. Naming someone
-  outside the caller's ASSIGN scope answers 404 "User not found.". The
-  change is audited.
+  them, reach the lead as its owner does. They list, open and edit it, and,
+  where their role allows, reassign it (to someone their ASSIGN scope
+  reaches) and delete it. Placing it from the Allocation queue still follows
+  the owner alone. Naming someone outside the caller's ASSIGN scope answers
+  404 "User not found."; naming the owner answers 422. The change is audited.
+  When a member is deactivated or removed, they stop being second owner of
+  their open leads.
 - **Duplicate check on edit.** Changing a lead's phone or email to another
   lead's main number, other number or email answers 409 with create's
   sentence, for example "A lead with this phoneNormalized already exists
-  (LD-000123).". The Overview shows that sentence above the details. Before,
-  the change was saved.
-- **Assistant.** "What should I focus on today" lists SLA-breached and hot
-  leads the caller works as second owner.
+  (LD-000123).". Adding another lead's number under Other numbers answers the
+  same. The Overview shows that sentence above the details. Before, the
+  change was saved.
+- **Assistant.**
+  - "What should I focus on today" lists SLA-breached and hot leads the caller
+    works as second owner.
+  - Its lead, account, contact and opportunity searches now stay within the
+    caller's scope. Before, a search by text, or the "no activity in 30 days"
+    and "overdue follow-up" views, could return records from the whole
+    workspace to someone below ORGANIZATION scope.
 
 **Decisions taken** (defaults the owner accepted):
 
@@ -143,21 +188,29 @@ change:
     and the public forms, and is switched off per lead, so nothing changes on
     deploy.
 - **M4-03:**
-  - Existing workspaces get the catalogue lazily on first use; new lead
-    workspaces get it at provisioning. There is no data migration.
+  - Existing lead workspaces get the catalogue from the migration; new ones
+    get it at provisioning. No screen writes it on a read.
   - The enum `source` and `sourceDetail` stay as the pipeline writes them. A
     lead points at one entry: the sub-source when one is chosen, otherwise the
     source.
-  - Entries are switched off, never deleted.
+  - Entries are switched off, never deleted. The API still accepts a
+    switched-off entry, so a lead or an enquiry may keep carrying it.
 - **M4-07:** `Lead.nationality` is free text, rather than surfacing
   `ClientProfile`.
-- **M4-09:** The secondary owner counts as an owner in every lead scope
-  check. Follow-ups, tasks, activities by id and the per-person report rollups
-  still key on the owner.
+- **M4-09:**
+  - The secondary owner counts as an owner in every lead scope check,
+    reassigning and deleting included. Follow-ups, tasks, activities by id and
+    the per-person report rollups still key on the owner.
+  - Placing a waiting lead from the Allocation queue does not count the
+    second owner.
+  - One person is never both owner and second owner.
+  - Deactivating or removing a member ends their second ownership of open
+    leads; closed leads keep naming them, as they keep naming an owner.
 - **M4-10:** Tags are typed comma-separated, not entered as chips.
 - **M4-51:**
   - Only the phone or email being changed is checked, against every other
-    lead's main number, other numbers and email.
+    lead's main number, other numbers and email. A rule that pairs the name
+    with the phone applies; a rule on the name alone does not.
   - A lead outside the caller's scope answers 404 before any 409.
 
 **Verified.** On the rig (scratch database at 101 migrations plus this one).
@@ -222,28 +275,62 @@ Review fixes, each failing first on this branch's earlier state (logs
 - The assistant's day spread the `leadScope` function instead of its `where`.
   Every call threw "Lead.findMany was issued without a tenantId filter".
 
-Also green:
+Second review round. Each new or changed case failed with the round's
+non-test files put back to b8356a16 (`r1-4a1-r2-base.log`: 14 failed, 491
+passed, and the 3 backfill cases skipped behind their failing setup):
 
-- `tests/permission`, `tests/sales` and `tests/ai`: 76 files, 1,455 tests.
+- Other numbers: "+971 50 941 0001: expected 200 to be 409".
+- A configured name-and-phone rule on edit: "expected 200 to be 409".
+- Lead Quality across two pipeline sources: "expected { …(6) } to match
+  object { leads: 3, score: 40, … }". It showed 35 min, not 28.
+- The Sources screen's count for an OWN viewer: "expected 3 to be +0".
+- Naming the owner as second owner: "expected 200 to be 422".
+- A renamed entry's old name: "expected 409 to be 200". Re-adding the
+  current name: "expected 200 to be 409".
+- A read wrote the defaults: "expected [ { …(6) }, … ] to deeply equal []".
+  The migration had no backfill: "expected [] to have a length of 1".
+- Triage placement by a second owner at OWN: "promise resolved … instead of
+  rejecting".
+- Deactivation left the second owner: "expected { …(72) } to match object".
+- Meta and website-form leads had no entry: "expected { tenantId: 'tenant-a',
+  … } to match object" and "expected null to deeply equal { key: 'website' }".
+- The assistant's lead search as an OWN agent: "expected [ … ] to not include
+  '<lead id>'". The source guard: "not to match /where\.OR\s*=/".
+- The export and the dashboard counting a second owner's lead pass on
+  b8356a16. With their call sites put back to `visibilityWhere` they fail:
+  "expected … to contain 'SHARED-OWN'" (`r1-4a1-r2-callsites.log`) and
+  "expected 2 to be 3" (`callsites2`).
+- The source report case also passes run alone (`-t`), and it creates its own
+  sub-source now.
+
+Also green, after the second round:
+
+- `tests/permission`, `tests/sales` and `tests/ai`: 76 files, 1,466 tests
+  (`r1-4a1-r2-wide1.log`).
 - `tests/tenant`, `unit`, `platform`, `security`, `integration`, `identity`
-  and `hr` without the retention specs: 182 files, 2,601 tests, 2 skipped.
-  The two retention specs alone: 4 and 7 tests.
-- `tsc` and prettier are clean. eslint has no errors; its 22 warnings were
-  all there before.
+  and `hr` without the retention specs: 182 files, 2,606 tests, 2 skipped
+  (`wide2`). The two retention specs alone: 4 and 7 tests.
+- `tsc` and prettier are clean. eslint has no errors; its warnings (10 in the
+  second round's files) were all there before.
+- The rig database took the migration's backfill statement as written
+  (`prisma db execute`, the migration role).
 
 Browser, on the rig's dev server:
 
-- `crm-lifecycle` (5 passed): the form takes a phone, On WhatsApp, Website and
-  a new sub-source, a campaign, a nationality and tags. The Overview shows
-  them, with the WhatsApp button. A tag added in Edit details is still a badge
-  after a refresh.
+- `crm-lifecycle` (6 passed in the second round): the form takes a phone, On
+  WhatsApp, Website and a new sub-source, a campaign, a nationality and tags.
+  The Overview shows them, with the WhatsApp button. A tag added in Edit
+  details is still a badge after a refresh. Unticking On WhatsApp removes the
+  button, still gone after a reload, and ticking it brings it back. Changing
+  Phone to another lead's number shows create's sentence, with the editor
+  still open.
 - `lead-eagle-workspace` (1 passed), in a Lead-Eagle-only workspace: the
   administrator adds a sub-source under Website on Admin → Sources, which
   fits 390 px. It is selectable on the lead form, and Source Analysis names
   "Website / <sub-source>".
-- `lead-contact-masking` and `workspace-navigation` (11 passed).
-- `every-route` (4 passed). Its route lists do not name the Sources screen;
-  `lead-eagle-workspace` opens it.
+- `lead-contact-masking` (3 passed) and `every-route` (4 passed) in the second
+  round; `workspace-navigation` in the first. `every-route`'s lists do not
+  name the Sources screen; `lead-eagle-workspace` opens it.
 - Sources, the lead form and the lead page were captured at 390 px in light
   and dark themes. None scrolls sideways, and all use tokens only.
 
@@ -261,7 +348,10 @@ Browser, on the rig's dev server:
   the lead's owner, not the second owner.
 - The leads list's Mine chip shows the leads the caller owns, not the ones
   they are second owner of. The default list shows both.
-- Deactivating a member hands on the leads they own. Leads where they are
-  second owner keep them in that role.
+- Bulk assign and automatic distribution can make a lead's second owner its
+  owner too; only the lead page's change (`updateLead`) clears it.
 - The 409 sentence names the matched field as stored ("phoneNormalized"), as
   create's always has.
+- Merging `main` (#168) needs `admin/lead-sources/layout.tsx`, a copy of
+  `admin/lead-stages/layout.tsx` (NotInPlan outside a lead product), and a
+  "Lead sources is part of …" case in `module-entitlement.spec.ts`.

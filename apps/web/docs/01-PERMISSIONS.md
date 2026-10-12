@@ -37,7 +37,11 @@ module at `TEAM` or wider; otherwise they are invisible. This is what makes an
 
 A lead's `secondaryOwnerId` counts as an owner at every scope: a lead is in
 scope when either its owner or its secondary owner resolves (`leadScope` and
-`assertLeadInScope`, `lib/security/record-scope.ts`).
+`assertLeadInScope`, `lib/security/record-scope.ts`), for every action,
+reassigning and deleting included. The exception is placing a waiting lead
+from the Allocation queue (`assignFromTriage`), which checks no assignee and
+so follows the owner alone. Deactivating or removing a member ends their
+second ownership of open leads (`handOverOpenWork`).
 
 ## 3. Default role matrix
 

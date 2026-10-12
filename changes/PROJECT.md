@@ -60,7 +60,8 @@ Node 22 or newer (CI uses 24).
   loaded by id is checked with `assertRecordInScope`
   (`src/lib/security/record-scope.ts`): out of scope answers 404, like a
   missing id. A lead's second owner (`secondaryOwnerId`) reaches it as its
-  owner does: lead reads go through `leadScope`. HR's predicates are in `src/services/hr/access.ts`. A manager's authority over
+  owner does: lead reads go through `leadScope` (placing a waiting lead from
+  the Allocation queue excepted). HR's predicates are in `src/services/hr/access.ts`. A manager's authority over
   people stops at their reporting line (`reportingLine`, `src/services/hr/leave.ts`).
   A task is read under `tasks` wherever it shows, a lead's page included, and
   a follow-up under `leads` (`src/services/leads/nextFollowUp.ts`); a task is
