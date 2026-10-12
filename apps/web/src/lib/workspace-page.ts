@@ -5,7 +5,7 @@ import { resolveCtx } from '@/lib/auth/session';
 import { requireWorkspace } from '@/lib/workspace';
 import { can, type Action, type Ctx } from '@/lib/security/rbac';
 import { recordPlatformAccess } from '@/lib/auth/service-identity';
-import { assertAnyModuleEntitlement } from '@/lib/security/entitlements';
+import { assertAnyModuleEntitlement, hasAnyModuleEntitlement } from '@/lib/security/entitlements';
 import type { ProductModuleKey as ProductModule } from '@/lib/modules/catalogue';
 
 export interface WorkspacePageOptions {
@@ -76,6 +76,16 @@ export async function requestWorkspace(ctx: Ctx, slug: string, module?: ProductM
   const workspace = await workspaceRecord(ctx, slug);
   if (module) await assertAnyModuleEntitlement(workspace.id, module);
   return workspace;
+}
+
+/**
+ * Whether the workspace's plan includes the module (any one of a list), for a
+ * module layout choosing between its screens and `NotInPlan`. Only the
+ * entitlement answers false; a broken session or a database fault still throws.
+ */
+export async function workspaceOwns(slug: string, module: ProductModule | readonly ProductModule[]) {
+  const workspace = await workspaceRecord(await requestCtx(), slug);
+  return hasAnyModuleEntitlement(workspace.id, module);
 }
 
 export async function resolveWorkspacePage(workspaceSlug: string, options: WorkspacePageOptions) {

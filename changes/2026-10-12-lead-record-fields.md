@@ -66,6 +66,9 @@ change:
   `SourceEditor.tsx`) is the new screen. Its lead counts are of the leads the
   viewer may see (`leadScope`), and it shows none without `leads:VIEW`.
   `src/lib/nav/workspaceNav.ts` adds the Sources tab after Lead Stages.
+  Its `layout.tsx`, a copy of `admin/lead-stages/layout.tsx` (#168), shows
+  `NotInPlan` ("Lead sources is part of Sales, Real Estate or Lead Eagle.")
+  in a workspace with no lead product; `module-entitlement.spec.ts` covers it.
 - `src/components/forms/useRun.tsx`: `send` and `useRun`, moved out of
   `admin/lead-stages/StageEditor.tsx` and shared by both editors.
 - `src/components/forms/SourcePicker.tsx`: a Source select, then a Sub-source
@@ -352,6 +355,3 @@ Browser, on the rig's dev server:
   owner too; only the lead page's change (`updateLead`) clears it.
 - The 409 sentence names the matched field as stored ("phoneNormalized"), as
   create's always has.
-- Merging `main` (#168) needs `admin/lead-sources/layout.tsx`, a copy of
-  `admin/lead-stages/layout.tsx` (NotInPlan outside a lead product), and a
-  "Lead sources is part of …" case in `module-entitlement.spec.ts`.

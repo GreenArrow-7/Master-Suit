@@ -1,3 +1,5 @@
+import type { ProductModuleKey } from '@/lib/modules/catalogue';
+
 /**
  * The registers Real Estate shares with Sales, as route roots under both
  * `/{slug}/sales/` and `/{slug}/realty/`.
@@ -46,21 +48,60 @@ export const LEAD_EAGLE_SHARED_ROOTS = [
   'cold-data',
 ] as const;
 
-/** The same screen under another product root, or null when that product has none. */
-function equivalent(url: string, product: string, roots: readonly string[]): string | null {
-  const match = /^\/([^/?#]+)\/sales\/([^/?#]+)(.*)$/.exec(url);
-  if (!match) return null;
-  const [, slug, root, rest] = match;
-  if (!roots.includes(root!)) return null;
-  return `/${slug}/${product}/${root}${rest}`;
+/** Each module folder and its product, in the order a link prefers them: Sales, the fullest, first. */
+const FOLDERS = [
+  ['sales', 'SALES'],
+  ['realty', 'REAL_ESTATE'],
+  ['lead-eagle', 'LEAD_EAGLE'],
+] as const;
+
+/** The module folders that carry a screen root. Every shared register is under `/sales/` too. */
+function foldersCarrying(root: string): readonly string[] {
+  if ((LEAD_EAGLE_SHARED_ROOTS as readonly string[]).includes(root)) return ['sales', 'realty', 'lead-eagle'];
+  if ((REALTY_SHARED_ROOTS as readonly string[]).includes(root)) return ['sales', 'realty'];
+  // Lead Eagle's board and properties are Real Estate's pages, re-exported.
+  if (root === 'dashboard' || root === 'properties') return ['realty', 'lead-eagle'];
+  return [];
 }
 
 /**
- * The same screen under Real Estate, or null when Real Estate has none.
- *
- * `/acme/sales/leads/42?tab=calls` → `/acme/realty/leads/42?tab=calls`.
+ * HR screens every plan has outside People, at the workspace root: check-in is
+ * self-service, and a workspace without HR keeps attendance, its requests and
+ * work locations there (the moved check-in page under People says why).
  */
-export const realtyEquivalent = (url: string) => equivalent(url, 'realty', REALTY_SHARED_ROOTS);
+const OUTSIDE_PEOPLE: readonly (readonly [RegExp, string])[] = [
+  [/^check-in$/, 'check-in'],
+  [/^attendance$/, 'attendance'],
+  [/^requests$/, 'attendance/requests'],
+  [/^work-locations$/, 'admin/work-locations'],
+  [/^employees\/([^/]+)\/face$/, 'admin/work-locations/$1/face'],
+];
 
-/** The same screen under Lead Eagle, or null when Lead Eagle has none. */
-export const leadEagleEquivalent = (url: string) => equivalent(url, 'lead-eagle', LEAD_EAGLE_SHARED_ROOTS);
+/**
+ * Where else the screen at `url` lives: each product that carries it under
+ * another folder, with the screen's address there (Sales, then Real Estate,
+ * then Lead Eagle), or `null` as the product for a screen every plan has.
+ *
+ * Record links (the bell, a push notification, the assistant) are built as
+ * `/sales/...` (lib/nav/entityRoute.ts), and old bookmarks name whichever
+ * folder they were made in, so a module layout sends a workspace without its
+ * product to the same screen under one it has (components/workspace/NotInPlan.tsx).
+ *
+ * `/acme/realty/leads/42?tab=calls` → `[['SALES', '/acme/sales/leads/42?tab=calls'],
+ * ['LEAD_EAGLE', '/acme/lead-eagle/leads/42?tab=calls']]`.
+ */
+export function sameScreenElsewhere(url: string): [ProductModuleKey | null, string][] {
+  const match = /^\/([^/?#]+)\/(sales|realty|lead-eagle|people)\/([^?#]*)(.*)$/.exec(url);
+  if (!match) return [];
+  const [, slug, folder, path, query] = match as unknown as [string, string, string, string, string];
+  if (folder === 'people') {
+    const moved = OUTSIDE_PEOPLE.find(([from]) => from.test(path));
+    return moved ? [[null, `/${slug}/${path.replace(moved[0], moved[1])}${query}`]] : [];
+  }
+  const carriers = foldersCarrying(path.split('/')[0]!);
+  if (!carriers.includes(folder)) return [];
+  return FOLDERS.filter(([other]) => other !== folder && carriers.includes(other)).map(([other, product]) => [
+    product,
+    `/${slug}/${other}/${path}${query}`,
+  ]);
+}

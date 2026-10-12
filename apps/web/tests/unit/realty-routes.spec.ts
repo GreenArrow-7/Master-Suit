@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { REALTY_SHARED_ROOTS, realtyEquivalent } from '@/lib/nav/realtyShared';
+import { REALTY_SHARED_ROOTS, sameScreenElsewhere } from '@/lib/nav/realtyShared';
 import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 
 /**
@@ -132,10 +132,12 @@ describe('the APIs behind the shared screens admit a Real Estate workspace', () 
 });
 
 describe('a /sales/ link reaches a Real-Estate-only workspace', () => {
+  const realtyEquivalent = (url: string) => new Map(sameScreenElsewhere(url)).get('REAL_ESTATE') ?? null;
+
   /**
    * Notification, push and assistant links are built as `/sales/...`
-   * (lib/nav/entityRoute.ts). The Sales layout sends a workspace without Sales
-   * to the Real Estate screen for the same record rather than to the dashboard.
+   * (lib/nav/entityRoute.ts). The Sales layout's NotInPlan sends a workspace
+   * without Sales to the Real Estate screen for the same record.
    */
   it('maps a shared record to the same record under Real Estate', () => {
     expect(realtyEquivalent('/acme/sales/leads/42?tab=calls')).toBe('/acme/realty/leads/42?tab=calls');
@@ -149,10 +151,22 @@ describe('a /sales/ link reaches a Real-Estate-only workspace', () => {
     expect(realtyEquivalent('/acme/people/leads')).toBeNull();
   });
 
-  it('the Sales layout uses it', () => {
-    const layout = read(path.join(APP, 'sales', 'layout.tsx'));
-    expect(layout).toContain('realtyEquivalent(');
-    expect(layout).toContain("'REAL_ESTATE'");
+  it('the Sales layout uses it, through NotInPlan', () => {
+    expect(read(path.join(APP, 'sales', 'layout.tsx'))).toContain('<NotInPlan slug={workspaceSlug} module="SALES" />');
+    const notInPlan = read(path.join(web, 'src', 'components', 'workspace', 'NotInPlan.tsx'));
+    expect(notInPlan).toContain('sameScreenElsewhere(');
+  });
+
+  it('a /realty/ or /lead-eagle/ link reaches the same screen under any product that carries it, Sales first', () => {
+    expect(sameScreenElsewhere('/acme/realty/leads/42?tab=calls')).toEqual([
+      ['SALES', '/acme/sales/leads/42?tab=calls'],
+      ['LEAD_EAGLE', '/acme/lead-eagle/leads/42?tab=calls'],
+    ]);
+    expect(sameScreenElsewhere('/acme/realty/events')).toEqual([['SALES', '/acme/sales/events']]);
+    expect(sameScreenElsewhere('/acme/lead-eagle/properties')).toEqual([['REAL_ESTATE', '/acme/realty/properties']]);
+    expect(sameScreenElsewhere('/acme/realty/opportunities')).toEqual([]);
+    expect(sameScreenElsewhere('/acme/people/check-in')).toEqual([[null, '/acme/check-in']]);
+    expect(sameScreenElsewhere('/acme/people/leave')).toEqual([]);
   });
 });
 

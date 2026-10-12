@@ -89,24 +89,31 @@ export async function hasModuleEntitlement(tenantId: string, module: ProductModu
   }
 }
 
+/** "Sales", "Sales or Real Estate", "Sales, Real Estate or Lead Eagle". */
+export function moduleNames(module: ProductModule | readonly ProductModule[]): string {
+  return new Intl.ListFormat('en-GB', { type: 'disjunction' }).format(
+    [module].flat().map((name) => MODULE_LABEL[name]),
+  );
+}
+
+/** Whether the workspace may use any one of the modules; see `hasModuleEntitlement`. */
+export async function hasAnyModuleEntitlement(tenantId: string, module: ProductModule | readonly ProductModule[]) {
+  for (const candidate of [module].flat()) if (await hasModuleEntitlement(tenantId, candidate)) return true;
+  return false;
+}
+
 /**
  * Entitlement for a screen or route that may belong to more than one product.
  *
- * Any one of them is enough, and the refusal that surfaces is the last one, so
- * a workspace entitled to neither is told about a module the surface actually
- * belongs to rather than getting a generic message.
+ * Any one of them is enough, and the refusal names them all. It used to pass
+ * on the last one's, so a Lead-Eagle-only workspace asking for events (Sales or
+ * Real Estate) was told "Real Estate is not enabled for this company".
  */
 export async function assertAnyModuleEntitlement(tenantId: string, module: ProductModule | readonly ProductModule[]) {
   if (typeof module === 'string') return assertModuleEntitlement(tenantId, module);
-  let refusal: unknown;
-  for (const candidate of module) {
-    try {
-      return await assertModuleEntitlement(tenantId, candidate);
-    } catch (error) {
-      refusal = error;
-    }
+  if (!(await hasAnyModuleEntitlement(tenantId, module))) {
+    throw Forbidden(`${moduleNames(module)} is not enabled for this company.`);
   }
-  throw refusal;
 }
 
 /**
