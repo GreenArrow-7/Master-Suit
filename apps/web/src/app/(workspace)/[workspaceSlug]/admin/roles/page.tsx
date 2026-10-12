@@ -2,7 +2,7 @@ import Link from 'next/link';
 import ListHeader from '@/components/workspace/ListHeader';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
-import { can } from '@/lib/security/rbac';
+import { can, SCOPE_RANK } from '@/lib/security/rbac';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
 import PermissionMatrix, { type MatrixRow } from '@/components/workspace/PermissionMatrix';
@@ -10,6 +10,8 @@ import { listRoles, permissionMatrix, roleAssignmentHistory } from '@/services/i
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 
 export const metadata = { title: 'Roles & permissions' };
+
+const scopeLabel = (scope: string) => scope.charAt(0) + scope.slice(1).toLowerCase();
 
 const stamp = (value: Date) =>
   new Intl.DateTimeFormat('en-GB', {
@@ -142,6 +144,13 @@ export default async function Page({
             >
               <span className="lf-roles__row-head">
                 <strong>{role.name}</strong>
+                {/* The role's own scope, as the roles API returns it (M2-03), and how far its grants reach when wider. */}
+                <span className="lf-roles__scope" title="Default scope, and the widest any permission reaches">
+                  · {scopeLabel(role.defaultScope)}
+                  {role.widestScope &&
+                    SCOPE_RANK[role.widestScope] > SCOPE_RANK[role.defaultScope] &&
+                    ` (up to ${scopeLabel(role.widestScope)})`}
+                </span>
                 {role.isSystem && <span className="lf-roles__default">default</span>}
                 {!role.isActive && <span className="lf-roles__default">inactive</span>}
               </span>

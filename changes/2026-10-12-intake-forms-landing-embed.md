@@ -157,5 +157,17 @@ hr, ai; the retention specs apart) 259 files, 4078 passed, 2 skipped;
   Company Administrator publishes forms, and can grant them from Roles.
 - `docs/03-API.md` still describes an older `/public/forms/{key}/submit`
   contract (stale before this change).
-- The test counts are from the branch before the merge-up with main (#168);
-  re-run the touched specs and E2E on the merged commit.
+
+**Merge-up with main (#165–#168), 13 Oct.** Only `changes/README.md`
+conflicted (both rows kept). Under #168's `NotInPlan` the new screens open
+under whichever lead product the plan has: `/lead-eagle/forms` and
+`/realty/forms` go to `/sales/forms` in a Sales-only workspace, `/sales/` and
+`/lead-eagle/` ones to `/realty/` in a Real-Estate-only one, `/sales/` and
+`/realty/` ones to `/lead-eagle/` in a Lead-Eagle-only one, and the same for
+landing pages; with no lead product the page reads "Forms is part of Sales,
+Real Estate or Lead Eagle." A case in `tests/permission/module-entitlement.spec.ts`
+holds this. On the merged tree: `tsc --noEmit` clean; the branch's specs with
+`page-access` and `module-entitlement` 8 files, 931/931; `tests/` permission,
+sales, tenant, unit 159 files, 2828 passed, 2 skipped, and the three retention
+specs (which clear each other's rows when run together) one at a time 4/4,
+7/7, 1/1; E2E `embed-form.spec.ts` and `lead-eagle-workspace.spec.ts` 5/5.

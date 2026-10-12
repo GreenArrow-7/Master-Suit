@@ -1,13 +1,23 @@
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { ReactElement } from 'react';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+// Admin > Roles reads the session from the request's cookie, set per case.
+const cookieJar = vi.hoisted(() => ({ value: '' }));
+vi.mock('next/headers', () => ({
+  headers: async () => new Headers({ cookie: cookieJar.value, 'x-pathname': '/' }),
+  cookies: async () => ({ get: () => undefined }),
+}));
+
 import { prisma, withPlatformTx } from '@/lib/db';
 import { provisionLeadWork } from '@/services/platform/provisioning';
 import { POST as wizardCreate } from '@/app/api/v1/platform/workspaces/route';
 import { PATCH as editWorkspace } from '@/app/api/v1/platform/workspaces/[workspaceId]/route';
 import { PATCH as editSubscription } from '@/app/api/v1/platform/subscriptions/[subscriptionId]/route';
 import { GET as rolesApi } from '@/app/api/v1/workspaces/[workspaceSlug]/roles/[action]/route';
+import RolesPage from '@/app/(workspace)/[workspaceSlug]/admin/roles/page';
 import { GET as leadsList, POST as leadCreate } from '@/app/api/v1/leads/route';
 import { GET as leadsExport } from '@/app/api/v1/leads/export/route';
 import { GET as followUps } from '@/app/api/v1/follow-ups/route';
@@ -22,7 +32,7 @@ import { GET as visitGet, PATCH as visitChange } from '@/app/api/v1/site-visits/
 import { POST as visitPunch } from '@/app/api/v1/site-visits/[id]/punch/route';
 import { ctxForUser } from '@/lib/auth/session';
 import { leaderQueues } from '@/services/visits/lifecycle';
-import { createWorkspaceUser } from '../helpers/fixtures';
+import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import { get, patch, post } from '../helpers/request';
 import { createPlatformSessionToken, createSessionToken } from '../helpers/session';
 
@@ -204,6 +214,62 @@ describe('the Lead Eagle starter roles', () => {
     const roles = await adminRoles(wizardMade);
     expect(roles.map(({ name, defaultScope, isSystem }) => ({ name, defaultScope, isSystem }))).toEqual(ADMIN_ROLES);
     expect(roles.filter((role) => !role.isSystem).every((role) => role.editable)).toBe(true);
+  });
+
+  it('the Admin > Roles screen shows each role’s scope beside its name, as the API gives it', async () => {
+    const { slug } = await prisma.tenant.findUniqueOrThrow({ where: { id: wizardMade } });
+    const admin = await prisma.user.findFirstOrThrow({
+      where: { tenantId: wizardMade, role: { key: 'company_admin' } },
+    });
+    cookieJar.value = await createSessionToken(wizardMade, admin.id);
+    const screen = async () =>
+      RolesPage({ params: Promise.resolve({ workspaceSlug: slug }), searchParams: Promise.resolve({}) });
+
+    const elements = (node: unknown): ReactElement<Record<string, unknown>>[] => {
+      if (Array.isArray(node)) return node.flatMap(elements);
+      if (!node || typeof node !== 'object' || !('props' in node)) return [];
+      const el = node as ReactElement<Record<string, unknown>>;
+      return [el, ...elements(el.props.children)];
+    };
+    const text = (node: unknown): string =>
+      typeof node === 'string'
+        ? node
+        : Array.isArray(node)
+          ? node.map(text).join('')
+          : node && typeof node === 'object' && 'props' in node
+            ? text((node as ReactElement<{ children?: unknown }>).props.children)
+            : '';
+    const rows = async () =>
+      elements(await screen())
+        .filter((el) => el.props.className === 'lf-roles__row')
+        .map((row) => {
+          const parts = elements(row.props.children);
+          const name = text(parts.find((el) => el.type === 'strong'));
+          return `${name} ${text(parts.find((el) => el.props.className === 'lf-roles__scope'))}`;
+        });
+    expect(await rows()).toEqual([
+      'Agent · Own',
+      'Company Administrator · Organization',
+      'Manager · Organization',
+      'Team Lead · Team',
+      'Telecaller · Own',
+      'Viewer · Organization',
+    ]);
+
+    // A role's own scope is only the default for new grants; access follows each
+    // grant. A role made at Own (the New role form's default) whose grants reach
+    // the whole workspace says so, rather than reading "Own".
+    const custom = await prisma.role.create({
+      data: { tenantId: wizardMade, key: `desk-${suffix}`, name: 'Desk Lead', rank: 45, defaultScope: 'OWN' },
+    });
+    try {
+      await grantPermissions(wizardMade, custom.id, [['leads', 'VIEW']], 'ORGANIZATION');
+      await grantPermissions(wizardMade, custom.id, [['tasks', 'VIEW']], 'OWN');
+      expect(await rows()).toContain('Desk Lead · Own (up to Organization)');
+    } finally {
+      await prisma.rolePermission.deleteMany({ where: { tenantId: wizardMade, roleId: custom.id } });
+      await prisma.role.deleteMany({ where: { tenantId: wizardMade, id: custom.id } });
+    }
   });
 
   it('gives each role what its job needs: telecallers no contact details or exports, viewers only VIEW', async () => {
