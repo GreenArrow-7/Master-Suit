@@ -60,6 +60,10 @@ describe('the shared registers exist under Real Estate', () => {
     const sales = pages('sales').filter(isShared).sort();
     expect(sharedRealtyRoutes.sort()).toEqual(sales);
   });
+
+  it('counts Targets among them: the daily calling quota is lead work in every lead module', () => {
+    expect(SHARED).toContain('targets');
+  });
 });
 
 describe('the Real Estate routes re-export rather than reimplement', () => {

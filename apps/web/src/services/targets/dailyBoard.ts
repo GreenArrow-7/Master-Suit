@@ -12,7 +12,8 @@ import { maskCallNumbers } from '@/services/leads/createLead';
  * typed in. A manager reads the board; a seller reads their own row.
  *
  * Definitions, so the numbers mean one thing everywhere:
- *   called      distinct leads with a completed or attempted call by the seller today
+ *   called      distinct leads with a completed or attempted call by the seller today,
+ *               plus distinct cold records they called (an Activity on the record, M5-06)
  *   connected   completed calls whose outcome says someone answered
  *   not answered  completed/missed calls nobody answered (no answer, busy, voicemail)
  *   cold        answered, not interested (or wrong number)
@@ -118,77 +119,94 @@ export async function dailyBoard(ctx: Ctx, date?: string): Promise<DailyBoard> {
   const caller = userIds.length === 0 ? {} : { callerId: { in: userIds } };
   const ids = userIds.length === 0 ? {} : { id: { in: userIds } };
 
-  const [users, targets, assigned, calls, distinctCalled, followUps, meetings, opportunities, deals, attendance] =
-    await Promise.all([
-      prisma.user.findMany({ where: { tenantId, deletedAt: null, ...ids }, select: { id: true, fullName: true } }),
-      prisma.employeeTarget.findMany({
-        where: {
-          tenantId,
-          metric: 'LEADS_CALLED',
-          periodStart: { lte: to },
-          periodEnd: { gte: from },
-          ...(userIds.length === 0 ? {} : { userId: { in: userIds } }),
-        },
-        select: { id: true, userId: true, targetValue: true, period: true, periodStart: true },
-        orderBy: { periodStart: 'desc' },
-      }),
-      prisma.lead.groupBy({
-        by: ['ownerId'],
-        where: { tenantId, deletedAt: null, status: null, ...owner },
-        _count: { _all: true },
-      }),
-      prisma.call.findMany({
-        where: { tenantId, deletedAt: null, status: { in: ['COMPLETED', 'MISSED'] }, createdAt: within, ...caller },
-        select: { callerId: true, outcome: true, status: true, durationSecs: true },
-      }),
-      prisma.call.findMany({
-        where: {
-          tenantId,
+  const [
+    users,
+    targets,
+    assigned,
+    calls,
+    distinctCalled,
+    coldCalled,
+    followUps,
+    meetings,
+    opportunities,
+    deals,
+    attendance,
+  ] = await Promise.all([
+    prisma.user.findMany({ where: { tenantId, deletedAt: null, ...ids }, select: { id: true, fullName: true } }),
+    prisma.employeeTarget.findMany({
+      where: {
+        tenantId,
+        metric: 'LEADS_CALLED',
+        periodStart: { lte: to },
+        periodEnd: { gte: from },
+        ...(userIds.length === 0 ? {} : { userId: { in: userIds } }),
+      },
+      select: { id: true, userId: true, targetValue: true, period: true, periodStart: true },
+      orderBy: { periodStart: 'desc' },
+    }),
+    prisma.lead.groupBy({
+      by: ['ownerId'],
+      where: { tenantId, deletedAt: null, status: null, ...owner },
+      _count: { _all: true },
+    }),
+    prisma.call.findMany({
+      where: { tenantId, deletedAt: null, status: { in: ['COMPLETED', 'MISSED'] }, createdAt: within, ...caller },
+      select: { callerId: true, outcome: true, status: true, durationSecs: true },
+    }),
+    prisma.call.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        status: { in: ['COMPLETED', 'MISSED', 'FAILED'] },
+        createdAt: within,
+        leadId: { not: null },
+        ...caller,
+      },
+      select: { callerId: true, leadId: true },
+      distinct: ['callerId', 'leadId'],
+    }),
+    // A cold call is a logged call: one row per (caller, record) today.
+    prisma.activity.findMany({
+      where: { tenantId, deletedAt: null, dataRecordId: { not: null }, occurredAt: within, ...owner },
+      select: { ownerId: true, dataRecordId: true },
+      distinct: ['ownerId', 'dataRecordId'],
+    }),
+    prisma.followUpTask.groupBy({
+      by: ['ownerId'],
+      where: { tenantId, createdAt: within, ...owner },
+      _count: { _all: true },
+    }),
+    prisma.task.groupBy({
+      by: ['ownerId'],
+      where: { tenantId, createdAt: within, type: { key: 'meeting' }, ...owner },
+      _count: { _all: true },
+    }),
+    prisma.opportunity.groupBy({
+      by: ['ownerId'],
+      where: { tenantId, deletedAt: null, createdAt: within, ...owner },
+      _count: { _all: true },
+    }),
+    prisma.opportunity.groupBy({
+      by: ['ownerId'],
+      where: { tenantId, deletedAt: null, status: 'WON', updatedAt: within, ...owner },
+      _count: { _all: true },
+    }),
+    prisma.hrAttendanceRecord.findMany({
+      where: {
+        tenantId,
+        workDate: within,
+        employee: {
           deletedAt: null,
-          status: { in: ['COMPLETED', 'MISSED', 'FAILED'] },
-          createdAt: within,
-          leadId: { not: null },
-          ...caller,
+          membership: userIds.length === 0 ? { salesUserId: { not: null } } : { salesUserId: { in: userIds } },
         },
-        select: { callerId: true, leadId: true },
-        distinct: ['callerId', 'leadId'],
-      }),
-      prisma.followUpTask.groupBy({
-        by: ['ownerId'],
-        where: { tenantId, createdAt: within, ...owner },
-        _count: { _all: true },
-      }),
-      prisma.task.groupBy({
-        by: ['ownerId'],
-        where: { tenantId, createdAt: within, type: { key: 'meeting' }, ...owner },
-        _count: { _all: true },
-      }),
-      prisma.opportunity.groupBy({
-        by: ['ownerId'],
-        where: { tenantId, deletedAt: null, createdAt: within, ...owner },
-        _count: { _all: true },
-      }),
-      prisma.opportunity.groupBy({
-        by: ['ownerId'],
-        where: { tenantId, deletedAt: null, status: 'WON', updatedAt: within, ...owner },
-        _count: { _all: true },
-      }),
-      prisma.hrAttendanceRecord.findMany({
-        where: {
-          tenantId,
-          workDate: within,
-          employee: {
-            deletedAt: null,
-            membership: userIds.length === 0 ? { salesUserId: { not: null } } : { salesUserId: { in: userIds } },
-          },
-        },
-        select: {
-          checkInAt: true,
-          checkOutAt: true,
-          employee: { select: { membership: { select: { salesUserId: true } } } },
-        },
-      }),
-    ]);
+      },
+      select: {
+        checkInAt: true,
+        checkOutAt: true,
+        employee: { select: { membership: { select: { salesUserId: true } } } },
+      },
+    }),
+  ]);
 
   const rows = new Map<string, DailyBoardRow>();
   const row = (userId: string) => {
@@ -234,6 +252,7 @@ export async function dailyBoard(ctx: Ctx, date?: string): Promise<DailyBoard> {
   for (const g of assigned) if (g.ownerId) row(g.ownerId).leadsAssigned += g._count._all;
   // One row per (caller, lead) already: the query asks for them distinct.
   for (const c of distinctCalled) row(c.callerId).leadsCalled += 1;
+  for (const a of coldCalled) if (a.ownerId) row(a.ownerId).leadsCalled += 1;
   for (const c of calls) {
     const r = row(c.callerId);
     if (c.status === 'COMPLETED') {

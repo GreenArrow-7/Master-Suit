@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-12 | [Cold data follows the lead scope; a cold call is a logged call that counts toward the daily target and the check-out gate](2026-10-12-cold-data-scope-calls.md) | - | Lead Eagle, cold data, targets |
 | 2026-10-11 | [Team leads see their team's follow-ups and tasks](2026-10-11-team-follow-ups-tasks.md) | #167 | security, Lead Eagle |
 | 2026-10-11 | [TEAM scope meant the whole workspace for calls and events; work could be handed to anyone](2026-10-11-record-scope-team.md) | #165 | security |
 | 2026-10-11 | [Release f9c0c1a](2026-10-11-release-f9c0c1a.md) | #145, #163 | release |

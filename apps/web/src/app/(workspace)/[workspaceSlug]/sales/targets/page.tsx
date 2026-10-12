@@ -1,5 +1,8 @@
 import { requirePageAccess, SELF_SERVICE } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
+import { assignableUsers } from '@/lib/security/record-scope';
+import { visibilityWhere } from '@/lib/security/visibility';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import SignOff from './SignOff';
@@ -97,8 +100,14 @@ function TargetCard({
   );
 }
 
+/**
+ * Targets are lead work, so every lead module opens this (M5-06: a Lead-Eagle
+ * workspace's daily calling quota lives here). The team section follows the
+ * caller's `leads:ASSIGN` scope, as `POST /targets` does: the people offered
+ * and the targets listed are those of the people the caller may hand work to.
+ */
 export default async function TargetsPage() {
-  const ctx = await requirePageAccess({ module: 'SALES', permission: SELF_SERVICE });
+  const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: SELF_SERVICE });
   const now = new Date();
 
   const managesTargets = can(ctx, 'leads', 'ASSIGN') && atLeast(ctx, 'leads', 'ASSIGN', 'TEAM');
@@ -111,19 +120,16 @@ export default async function TargetsPage() {
     }),
     managesTargets
       ? prisma.employeeTarget.findMany({
-          where: { tenantId: ctx.tenantId, periodEnd: { gte: now } },
+          where: {
+            ...(await visibilityWhere(ctx, 'leads', 'ASSIGN', { ownerField: 'userId' })),
+            periodEnd: { gte: now },
+          },
           include: { progress: true, user: { select: { id: true, fullName: true } } },
           orderBy: [{ periodStart: 'desc' }],
           take: 100,
         })
       : Promise.resolve([]),
-    managesTargets
-      ? prisma.user.findMany({
-          where: { tenantId: ctx.tenantId, status: 'ACTIVE', deletedAt: null },
-          orderBy: { fullName: 'asc' },
-          select: { id: true, fullName: true },
-        })
-      : Promise.resolve([]),
+    managesTargets ? assignableUsers(ctx, 'leads', 'ASSIGN') : Promise.resolve([]),
   ]);
 
   const outstanding = mine.reduce((sum, t) => sum + Math.max(0, t.targetValue - achievedFor(t)), 0);

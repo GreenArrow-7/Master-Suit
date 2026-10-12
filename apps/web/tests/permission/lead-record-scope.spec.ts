@@ -49,6 +49,7 @@ import { GET as readTranscript, POST as storeTranscript } from '@/app/api/v1/cal
 import { POST as createCaptureLink } from '@/app/api/v1/capture-links/route';
 import { PATCH as patchCaptureLink } from '@/app/api/v1/capture-links/[id]/route';
 import { PATCH as patchColdRecord } from '@/app/api/v1/cold-data/[id]/route';
+import { POST as convertColdRecord } from '@/app/api/v1/cold-data/[id]/convert/route';
 import { POST as assignColdList } from '@/app/api/v1/cold-data/assign/route';
 import { GET as listEvents, POST as createEvent } from '@/app/api/v1/events/route';
 import { DELETE as deleteEvent, GET as readEvent, PATCH as patchEvent } from '@/app/api/v1/events/[id]/route';
@@ -68,6 +69,8 @@ import { POST as createWorkspaceLead } from '@/app/api/v1/workspaces/[workspaceS
 import DashboardPage from '@/app/(workspace)/[workspaceSlug]/dashboard/page';
 import CalendarPage from '@/app/(workspace)/[workspaceSlug]/sales/calendar/page';
 import CallAuditsPage from '@/app/(workspace)/[workspaceSlug]/sales/call-audits/page';
+import ColdDataPage from '@/app/(workspace)/[workspaceSlug]/sales/cold-data/page';
+import { ListAssign, RecordAssign } from '@/app/(workspace)/[workspaceSlug]/sales/cold-data/ColdDataActions';
 import CallActions from '@/app/(workspace)/[workspaceSlug]/sales/calls/[id]/CallActions';
 import CoachingNotes from '@/app/(workspace)/[workspaceSlug]/sales/calls/[id]/CoachingNotes';
 import CallPage from '@/app/(workspace)/[workspaceSlug]/sales/calls/[id]/page';
@@ -1576,5 +1579,71 @@ describe('the follow-ups and tasks lists', () => {
 describe('deleting', () => {
   it('takes the caller’s own lead', async () => {
     expect((await del(deleteLead, `/api/v1/leads/${h.repA1.leadId}`, h.repA1.cookie)).status).toBe(200);
+  });
+});
+
+/**
+ * Cold data under the lead's rule (M5-05): a record by id and the Cold Data
+ * screen follow the caller's `leads` scope — TEAM is the resolved owners, not
+ * the caller alone and not the workspace. `coldDataScope` was own-or-all.
+ */
+describe('cold data by id and on its screen, at TEAM scope', () => {
+  const workAs = (id: string, as: Member) =>
+    patch(patchColdRecord, `/api/v1/cold-data/${id}`, { status: 'INTERESTED' }, as.cookie);
+  const statusOf = async (id: string) =>
+    (await prisma.dataRecord.findFirstOrThrow({ where: { tenantId: h.tenantId, id }, select: { status: true } }))
+      .status;
+  const coldDataPage = async (cookie: string) => {
+    cookieJar.value = cookie;
+    const tree = await ColdDataPage({ searchParams: Promise.resolve({}) });
+    return {
+      records: elements(tree)
+        .filter((el) => el.type === RecordAssign)
+        .map((el) => el.props.id as string),
+      offered: (elements(tree).find((el) => el.type === ListAssign)?.props.agents as { id: string }[] | undefined)?.map(
+        (user) => user.id,
+      ),
+    };
+  };
+
+  it('a team manager works the team’s record and not another team’s, which answers as a missing id', async () => {
+    const ours = await coldRecordOf(h.repA2.id);
+    const theirs = await coldRecordOf(h.repB1.id);
+    expect((await workAs(ours.id, h.teamManagerA)).status).toBe(200);
+    const refused = await workAs(theirs.id, h.teamManagerA);
+    const missing = await workAs(MISSING, h.teamManagerA);
+    expect(refused.status).toBe(404);
+    expect(refused.body.detail).toBe(missing.body.detail);
+    expect(await statusOf(theirs.id)).toBe('NOT_CONTACTED');
+    const converted = await post(
+      convertColdRecord,
+      `/api/v1/cold-data/${theirs.id}/convert`,
+      {},
+      h.teamManagerA.cookie,
+      { id: theirs.id },
+    );
+    expect(converted.status).toBe(404);
+    expect(await statusOf(theirs.id)).toBe('NOT_CONTACTED');
+    // The director reaches both; a rep only its own.
+    expect((await workAs(theirs.id, h.director)).status).toBe(200);
+    expect((await workAs(ours.id, h.repA1)).status).toBe(404);
+    expect((await workAs(ours.id, h.repA2)).status).toBe(200);
+  });
+
+  it('the screen lists the team’s records, descendant team included, and offers the team', async () => {
+    const ours = await coldRecordOf(h.repA1.id);
+    const below = await coldRecordOf(h.repSubTeam.id);
+    const theirs = await coldRecordOf(h.repB1.id);
+    const loose = await prisma.dataRecord.create({
+      data: { tenantId: h.tenantId, fullName: 'Cold', batch: `list-${fresh()}`, ownerId: null },
+    });
+    const { records, offered } = await coldDataPage(h.teamManagerA.cookie);
+    expect(records).toEqual(expect.arrayContaining([ours.id, below.id]));
+    expect(records).not.toContain(theirs.id);
+    expect(records).not.toContain(loose.id);
+    expect(offered).toEqual(expect.arrayContaining([h.repA1.id, h.repA2.id, h.repSubTeam.id]));
+    expect(offered).not.toContain(h.repB1.id);
+    const director = await coldDataPage(h.director.cookie);
+    expect(director.records).toEqual(expect.arrayContaining([ours.id, theirs.id, loose.id]));
   });
 });

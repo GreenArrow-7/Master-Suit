@@ -27,7 +27,7 @@ export default async function ColdDataPage({
 }) {
   const params = await searchParams;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['leads', 'VIEW'] });
-  const scope = coldDataScope(ctx);
+  const scope = await coldDataScope(ctx);
   const status = params.status && params.status in STATUS_LABEL ? (params.status as DataStatus) : undefined;
   const canAssign = can(ctx, 'leads', 'ASSIGN');
 

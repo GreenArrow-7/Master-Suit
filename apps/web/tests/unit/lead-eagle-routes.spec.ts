@@ -35,6 +35,10 @@ describe('Lead Eagle is a module', () => {
     expect(LEAD_MODULES).toEqual(['SALES', 'REAL_ESTATE', 'LEAD_EAGLE']);
   });
 
+  it('counts Targets among its shared registers: the daily calling quota is lead work', () => {
+    expect(LEAD_EAGLE_SHARED_ROOTS).toContain('targets');
+  });
+
   it('gates its URLs on its own entitlement', () => {
     expect(read(path.join(APP, 'lead-eagle', 'layout.tsx'))).toContain(
       "requestWorkspace(ctx, workspaceSlug, 'LEAD_EAGLE')",
