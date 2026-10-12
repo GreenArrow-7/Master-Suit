@@ -19,7 +19,7 @@ function pageTitle(pathname: string): string {
   if (!leaf || leaf === 'dashboard') return 'Overview';
   // A record id is not a page name; fall back to its section.
   const words = /^[a-z0-9]{16,}$/i.test(leaf) ? (segments[segments.length - 2] ?? leaf) : leaf;
-  const spaced = words.replace(/-/g, ' ');
+  const spaced = words.replace(/[-_]/g, ' ');
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 

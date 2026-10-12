@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
 
@@ -18,6 +19,8 @@ export interface ProviderCard {
   lastSyncAt: string | null;
   errorMessage: string | null;
   webhookUrl: string | null;
+  /** A connected lead source's own screen: its deliveries and field mapping. */
+  manageHref: string | null;
 }
 
 /**
@@ -359,6 +362,8 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   /** Second press confirms; blurring the button forgets the first one. */
   const [confirmRemove, setConfirmRemove] = useState(false);
+  /** A signing secret this workspace issued on connecting (Custom webhook): shown once, here. */
+  const [issued, setIssued] = useState<string | null>(null);
 
   const configured = provider.status !== 'NOT_CONFIGURED';
 
@@ -395,6 +400,8 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
     }
 
     const verdict = data.verification;
+    if (data.signingSecret) setIssued(data.signingSecret);
+    else if (action === 'disconnect') setIssued(null);
     setMessage({
       tone: verdict?.ok === false ? 'error' : 'ok',
       text:
@@ -435,6 +442,11 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {provider.manageHref && (
+            <Link className="lf-btn lf-btn--secondary lf-btn--sm" href={provider.manageHref}>
+              Deliveries and field mapping
+            </Link>
+          )}
           <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(!open)}>
             {open ? 'Close' : configured ? 'Configure' : 'Connect'}
           </button>
@@ -507,6 +519,29 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
               allows it.
             </p>
           )}
+        </div>
+      )}
+
+      {issued && (
+        <div style={{ marginTop: 12 }} role="status">
+          <div className="lf-label">Signing secret: copy it now, it is not shown again</div>
+          <code
+            style={{
+              display: 'block',
+              overflowWrap: 'anywhere',
+              minWidth: 0,
+              padding: '8px 10px',
+              fontSize: 'var(--lf-text-xs)',
+              background: 'var(--lf-surface-2)',
+              borderRadius: 6,
+            }}
+          >
+            {issued}
+          </code>
+          <p className="lf-hint" style={{ marginTop: 4 }}>
+            Sign each delivery with HMAC-SHA256 of the raw body under this secret, hex, in the X-Signature header. Lost
+            it? Remove the key and connect again for a new one.
+          </p>
         </div>
       )}
 

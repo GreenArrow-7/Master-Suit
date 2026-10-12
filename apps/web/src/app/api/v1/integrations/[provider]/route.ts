@@ -1,9 +1,12 @@
+import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Invalid, NotFound } from '@/lib/errors';
 import { connectionMetadata, connectionCredentials, wrapCredentials } from '@/lib/integrations/connection';
 import { CREDENTIAL_ALSO_SETTINGS, providerSpec } from '@/lib/integrations/registry';
+import { isLeadSource, MAPPABLE_FIELDS, type MappableField } from '@/lib/integrations/leadSources';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { verifyConnection } from '@/lib/integrations/verify';
 
 const params = z.object({ provider: z.string().min(2).max(40) });
@@ -71,6 +74,10 @@ export const PUT = route(
       if (typeof setting === 'string' && setting) credentials[key] = setting;
     }
 
+    // Issued here, once: the response is the only time anybody sees it.
+    const signingSecret = spec.issuesSecret && !credentials.secret ? randomBytes(32).toString('hex') : undefined;
+    if (signingSecret) credentials.secret = signingSecret;
+
     const missing = spec.credentials.filter((f) => f.secret && !credentials[f.key]);
     if (missing.length) {
       throw Invalid(
@@ -110,7 +117,43 @@ export const PUT = route(
       select: { id: true, provider: true, status: true, webhookKey: true, metadata: true, lastSyncAt: true },
     });
 
-    return { ...connection, verification: verdict };
+    return { ...connection, verification: verdict, ...(signingSecret && { signingSecret }) };
+  },
+);
+
+const fieldMapBody = z
+  .object({
+    /** `{ senderKey: leadField }`, the whole map; `{}` clears it. */
+    fieldMap: z
+      .record(z.string().trim().min(1).max(100), z.enum(Object.keys(MAPPABLE_FIELDS) as [MappableField]))
+      .refine((map) => Object.keys(map).length <= 50, { message: 'Map at most 50 fields.' }),
+  })
+  .strict();
+
+/**
+ * A lead source's field map (M6-20): which of the sender's fields is the lead's
+ * name, number, budget… Read by services/leads/intake.ts before the enquiry is
+ * parsed, so it also applies to a stored delivery replayed afterwards.
+ */
+export const PATCH = route(
+  {
+    module: 'integrations',
+    productModule: LEAD_MODULES,
+    action: 'MANAGE_CONFIGURATION',
+    params,
+    body: fieldMapBody,
+    auditEvent: 'INTEGRATION_MODIFIED',
+  },
+  async ({ ctx, params, body }) => {
+    if (!isLeadSource(params.provider)) throw NotFound('Lead source');
+    const where = { tenantId_provider: { tenantId: ctx.tenantId, provider: params.provider } };
+    const connection = await prisma.integrationConnection.findUnique({ where, select: { metadata: true } });
+    if (!connection) throw NotFound('Connection');
+    await prisma.integrationConnection.update({
+      where,
+      data: { metadata: { ...(connection.metadata as Record<string, unknown>), fieldMap: body.fieldMap } },
+    });
+    return { provider: params.provider, fieldMap: body.fieldMap };
   },
 );
 

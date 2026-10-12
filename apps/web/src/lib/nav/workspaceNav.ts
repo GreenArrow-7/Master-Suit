@@ -1168,8 +1168,10 @@ function definitions(slug: string): SectionDef[] {
             {
               label: 'Integrations',
               href: a('/integrations'),
+              // A lead source's deliveries and field map, opened from its card.
+              aliases: [a('/lead-sources')],
               permission: 'integrations',
-              keywords: 'meta whatsapp telephony',
+              keywords: 'meta whatsapp telephony webhook lead sources deliveries',
             },
             {
               label: 'Channels',

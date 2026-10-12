@@ -15,6 +15,8 @@ export const LEAD_SOURCES = {
   bayut: { label: 'Bayut', source: 'MARKETPLACE' },
   dubizzle: { label: 'Dubizzle', source: 'MARKETPLACE' },
   google_ads: { label: 'Google Ads lead forms', source: 'AD_LEAD_FORM' },
+  // Any sender without an adapter of its own: a website, a CRM, Zapier (M6-08).
+  custom_webhook: { label: 'Custom webhook', source: 'WEBHOOK' },
 } as const;
 
 export type LeadSourceKey = keyof typeof LEAD_SOURCES;
@@ -127,8 +129,41 @@ const DETAILS: [label: string, keys: string[]][] = [
   ['Budget', ['budget', 'pricerange', 'price', 'budgetmax', 'pricemax']],
 ];
 
-export function parseEnquiry(payload: Record<string, unknown>): Enquiry {
+/**
+ * The lead fields an administrator may map a sender's field to (M6-20), each
+ * with the parser key it is read as. Each key is the first one its field reads,
+ * so a mapped value wins over whatever the parser would have guessed.
+ */
+export const MAPPABLE_FIELDS = {
+  fullName: { label: 'Full name', key: 'clientname' },
+  firstName: { label: 'First name', key: 'firstname' },
+  lastName: { label: 'Last name', key: 'lastname' },
+  phone: { label: 'Phone', key: 'clientphone' },
+  email: { label: 'Email', key: 'clientemail' },
+  message: { label: 'Message', key: 'message' },
+  reference: { label: 'Reference (source detail)', key: 'listingreference' },
+  purpose: { label: 'Purpose', key: 'purpose' },
+  propertyType: { label: 'Property type', key: 'propertytype' },
+  area: { label: 'Area', key: 'location' },
+  bedrooms: { label: 'Bedrooms', key: 'bedrooms' },
+  budget: { label: 'Budget', key: 'budget' },
+} as const;
+
+export type MappableField = keyof typeof MAPPABLE_FIELDS;
+/** `{ senderKey: leadField }`; a nested sender field is `parent.field`. */
+export type FieldMap = Record<string, MappableField>;
+
+/** The map stored in a connection's settings, or none. */
+export const fieldMapOf = (metadata: unknown): FieldMap =>
+  ((metadata as { fieldMap?: FieldMap } | null)?.fieldMap ?? {}) as FieldMap;
+
+export function parseEnquiry(payload: Record<string, unknown>, fieldMap: FieldMap = {}): Enquiry {
   const flat = flatten(payload);
+  // Applied before anything is read. `parent.field` is the flattened `parentfield`.
+  for (const [sender, field] of Object.entries(fieldMap)) {
+    const value = flat.get(key(sender));
+    if (value && Object.hasOwn(MAPPABLE_FIELDS, field)) flat.set(MAPPABLE_FIELDS[field].key, value);
+  }
   const get = (...keys: string[]) => keys.map((k) => flat.get(k)).find(Boolean) ?? null;
 
   const first = get('firstname');
@@ -162,7 +197,8 @@ export function parseEnquiry(payload: Record<string, unknown>): Enquiry {
       get('clientemail', 'contactemail', 'customeremail', 'email', 'emailaddress', 'workemail')?.toLowerCase() ?? null,
     phones: [...new Set(phones)],
     message: get('message', 'comments', 'comment', 'enquiry', 'inquiry', 'notes'),
-    reference: get('listingreference', 'propertyreference', 'referencenumber', 'listingid', 'formid'),
+    // `source_detail` is the Custom webhook's documented name for it.
+    reference: get('listingreference', 'propertyreference', 'referencenumber', 'listingid', 'formid', 'sourcedetail'),
     details: DETAILS.flatMap(([label, keys]) => {
       const v = get(...keys);
       return v ? [`${label}: ${v}`] : [];

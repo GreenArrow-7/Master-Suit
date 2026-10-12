@@ -15,7 +15,13 @@ import { enqueue } from '@/lib/queue';
 import { audit } from '@/lib/security/audit';
 import { assertAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitlements';
 import type { Ctx } from '@/lib/security/rbac';
-import { LEAD_SOURCES, parseEnquiry, type Enquiry, type LeadSourceKey } from '@/lib/integrations/leadSources';
+import {
+  fieldMapOf,
+  LEAD_SOURCES,
+  parseEnquiry,
+  type Enquiry,
+  type LeadSourceKey,
+} from '@/lib/integrations/leadSources';
 import { findDuplicates } from './findDuplicates';
 import { normalizePhone } from './normalizePhone';
 import { nextReference } from '../shared/reference';
@@ -38,8 +44,13 @@ export async function applyEnquiry({ tenantId, provider, externalId, source }: E
   // workspace that can no longer open its leads.
   await assertAnyModuleEntitlement(tenantId, LEAD_MODULES);
 
-  // Stored as the raw body: see the receiver.
-  const enquiry = parseEnquiry(JSON.parse(event.payload as string));
+  // Stored as the raw body: see the receiver. Read through the source's field
+  // map as it is now, so a replay after the map is fixed reads it right.
+  const connection = await prisma.integrationConnection.findUnique({
+    where: { tenantId_provider: { tenantId, provider: source } },
+    select: { metadata: true },
+  });
+  const enquiry = parseEnquiry(JSON.parse(event.payload as string), fieldMapOf(connection?.metadata));
   if (enquiry.isTest) return { skipped: 'test' as const };
 
   const { label, source: recordSource } = LEAD_SOURCES[source];
