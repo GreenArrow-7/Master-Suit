@@ -73,6 +73,14 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
     if (input.ownerId && input.ownerId !== before.ownerId) {
       await assertAssignableUser(ctx, tx, 'leads', action, input.ownerId);
     }
+    // One person is never both: naming the owner is refused, and the second owner made owner ends that role.
+    const owner = input.ownerId !== undefined ? input.ownerId : before.ownerId;
+    if (input.secondaryOwnerId && input.secondaryOwnerId === owner) {
+      refuse('secondaryOwnerId', 'The second owner must be someone other than the owner.');
+    }
+    if (input.secondaryOwnerId === undefined && owner && before.secondaryOwnerId === owner) {
+      input.secondaryOwnerId = null;
+    }
     if (input.secondaryOwnerId && input.secondaryOwnerId !== before.secondaryOwnerId) {
       await assertAssignableUser(ctx, tx, 'leads', action, input.secondaryOwnerId);
     }
@@ -224,12 +232,19 @@ export async function deleteLead(ctx: Ctx, id: string) {
  * The duplicate check create runs (M4-51): a phone or email changed to a value
  * another lead holds — its main number, one of its other numbers, or its email,
  * normalised — answers the same 409. Only the fields that change are probed, so
- * an edit of something else never trips on a duplicate that was there already;
- * a name alone never matches. Outside the transaction, as create's is: the
- * duplicate rules read through the global client. A lead outside the caller's
- * scope answers 404 first, never the 409 that would confirm it exists.
+ * an edit of something else never trips on a duplicate that was there already.
+ * The lead's name goes in too, so a rule pairing it with the phone applies as on
+ * create; a rule on the name alone does not, since the edit did not change it.
+ * Also the check for a number added under "Other numbers" (leads/[id]/phones).
+ * Outside the transaction, as create's is: the duplicate rules read through the
+ * global client. A lead outside the caller's scope answers 404 first, never the
+ * 409 that would confirm it exists.
  */
-async function refuseDuplicate(ctx: Ctx, id: string, input: UpdateLeadInput) {
+export async function refuseDuplicate(
+  ctx: Ctx,
+  id: string,
+  input: Pick<UpdateLeadInput, 'phone' | 'email' | 'fullName'>,
+) {
   if (input.phone === undefined && input.email === undefined) return;
   const current = await assertLeadInScope(ctx, id, prisma, 'EDIT');
   const phoneNormalized = input.phone !== undefined ? normalizePhone(input.phone) : null;
@@ -239,7 +254,12 @@ async function refuseDuplicate(ctx: Ctx, id: string, input: UpdateLeadInput) {
     email: email && email !== current.email ? email : null,
   };
   if (!probe.phoneNormalized && !probe.email) return;
-  const [match] = await findDuplicates(ctx.tenantId, { ...probe, excludeId: id });
+  const [match] = await findDuplicates(ctx.tenantId, {
+    ...probe,
+    fullName: input.fullName ?? current.fullName,
+    ignoreNameOnly: true,
+    excludeId: id,
+  });
   if (match) throw Conflict(`A lead with this ${match.matchedOn} already exists (${match.reference}).`);
 }
 

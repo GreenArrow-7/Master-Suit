@@ -202,7 +202,7 @@ export async function provisionLeadWork(
 ): Promise<void> {
   if (!modules.some((module) => (LEAD_MODULES as readonly string[]).includes(module))) return;
   if (modules.includes('LEAD_EAGLE') && !before.includes('LEAD_EAGLE')) await provisionStarterRoles(tx, tenantId);
-  // The source catalogue (M4-03): the same seed the screens and intake apply on first use.
+  // The source catalogue (M4-03); workspaces from before it got it from the migration's backfill.
   await ensureLeadSources(tx, tenantId);
   if ((await tx.leadStage.count({ where: { tenantId } })) === 0) {
     await tx.leadStage.createMany({

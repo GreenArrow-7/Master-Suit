@@ -328,6 +328,31 @@ describe('the duplicate check on edit (M4-51)', () => {
     expect(theirs.status).toBe(404);
     expect(theirs.body.detail).toBe('Lead not found.');
   });
+
+  it('adding another lead’s number as an other number is refused the same way', async () => {
+    const cookie = fixture.a.cookie;
+    const make = async (fullName: string, phone: string) => {
+      const res = await post(createLead, '/api/v1/leads', { fullName, phone }, cookie);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return res.body as { id: string; reference: string };
+    };
+    const holder = await make('Second number holder', '050 941 0001');
+    expect((await post(addPhone, `/api/v1/leads/${holder.id}/phones`, { phone: '050 941 0002' }, cookie)).status).toBe(
+      200,
+    );
+    const taker = await make('Second number taker', '050 941 0003');
+    const url = `/api/v1/leads/${taker.id}/phones`;
+
+    // Its main number and its other number: create's 409 and sentence.
+    for (const phone of ['+971 50 941 0001', '0509410002']) {
+      const res = await post(addPhone, url, { phone }, cookie);
+      expect(res.status, phone).toBe(409);
+      expect(res.body.detail).toBe(`A lead with this phoneNormalized already exists (${holder.reference}).`);
+    }
+    expect(await prisma.leadPhone.count({ where: { tenantId, leadId: taker.id } })).toBe(0);
+    // A number nobody holds is still added.
+    expect((await post(addPhone, url, { phone: '050 941 0004' }, cookie)).status).toBe(200);
+  });
 });
 
 describe('a lead’s other numbers', () => {

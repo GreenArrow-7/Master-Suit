@@ -11,7 +11,8 @@ interface Entry {
   name: string;
   parentId: string | null;
   isActive: boolean;
-  leads: number;
+  /** Of the leads the viewer may see; null without `leads:VIEW`. */
+  leads: number | null;
 }
 
 const API = '/api/v1/lead-sources';
@@ -67,7 +68,7 @@ function EntryRow({ entry, canEdit, heading }: { entry: Entry; canEdit: boolean;
   const [name, setName] = useState(entry.name);
   const [isActive, setIsActive] = useState(entry.isActive);
   const dirty = name.trim() !== entry.name || isActive !== entry.isActive;
-  const leads = `${entry.leads} lead${entry.leads === 1 ? '' : 's'}`;
+  const leads = entry.leads === null ? null : `${entry.leads} lead${entry.leads === 1 ? '' : 's'}`;
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
       {canEdit ? (
@@ -82,7 +83,7 @@ function EntryRow({ entry, canEdit, heading }: { entry: Entry; canEdit: boolean;
       ) : (
         <span style={{ flex: '1 1 160px', fontWeight: heading ? 600 : undefined }}>{entry.name}</span>
       )}
-      <Badge tone="slate">{leads}</Badge>
+      {leads && <Badge tone="slate">{leads}</Badge>}
       {canEdit ? (
         <label style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />

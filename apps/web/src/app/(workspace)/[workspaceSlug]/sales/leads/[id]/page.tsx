@@ -33,7 +33,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     where: { ...scope, id },
     include: {
       stage: true,
-      owner: { select: { fullName: true, email: true } },
+      owner: { select: { id: true, fullName: true, email: true } },
       secondaryOwner: { select: { id: true, fullName: true } },
       leadSource: { select: { id: true, name: true, parentId: true, parent: { select: { name: true } } } },
       activities: {

@@ -122,6 +122,43 @@ test.describe('CRM lifecycle', () => {
     await expect(page.getByText(`${TAG}-later`, { exact: true })).toBeVisible();
   });
 
+  test('WhatsApp follows the main number’s flag, and another lead’s number is refused as on create', async ({
+    page,
+  }) => {
+    await login(page, workspace.adminEmail, workspace.adminPassword);
+    const theirPhone = `+97152${String(Date.now()).slice(-7)}`;
+    const holder = await post(page.request, 'leads', { fullName: `E2E Holder ${run}`, phone: theirPhone });
+    await page.goto(at(`/leads/${leadId}`));
+    const edit = async () => {
+      await page.getByRole('button', { name: /More/ }).click();
+      await page.getByRole('button', { name: 'Edit details' }).click();
+    };
+    const save = page.getByRole('button', { name: 'Save', exact: true });
+    const whatsapp = page.getByRole('button', { name: 'WhatsApp', exact: true });
+    await expect(whatsapp).toBeVisible();
+
+    // The main number's checkbox comes first; the second is the other-number form's.
+    await edit();
+    await page.getByLabel('On WhatsApp').first().uncheck();
+    await save.click();
+    await expect(whatsapp).toHaveCount(0, { timeout: 30_000 });
+    await page.reload();
+    await expect(page.getByText(LEAD_NAME).first()).toBeVisible();
+    await expect(whatsapp).toHaveCount(0);
+    await edit();
+    await page.getByLabel('On WhatsApp').first().check();
+    await save.click();
+    await expect(whatsapp).toBeVisible({ timeout: 30_000 });
+
+    // Create's sentence, above the details, and the editor stays open with the value.
+    await edit();
+    await page.getByLabel('Phone', { exact: true }).fill(theirPhone);
+    await save.click();
+    await expect(page.getByText(`already exists (${holder.reference}).`)).toBeVisible({ timeout: 30_000 });
+    await expect(save).toBeVisible();
+    await expect(page.getByLabel('Phone', { exact: true })).toHaveValue(theirPhone);
+  });
+
   test('an activity, a task and a follow-up attach to the lead', async ({ page }) => {
     await login(page, workspace.adminEmail, workspace.adminPassword);
 

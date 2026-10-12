@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { can } from '@/lib/security/rbac';
+import { leadScope } from '@/lib/security/record-scope';
 import { requirePageAccess } from '@/lib/workspace-page';
 import ListHeader from '@/components/workspace/ListHeader';
 import { listLeadSources } from '@/services/leads/leadSources';
@@ -11,17 +12,25 @@ export const metadata = { title: 'Lead sources' };
 /**
  * Where leads come from, as this workspace names it (M4-03): each source and
  * its sub-sources, offered on the lead form and grouped in the source reports.
- * Seeded on first use; an entry is deactivated, never deleted.
+ * An entry is deactivated, never deleted. Each one's lead count is of the leads
+ * the viewer may see, and there is none for a viewer without `leads:VIEW`.
  */
 export default async function LeadSourcesPage() {
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['settings', 'VIEW'] });
+  const seesLeads = can(ctx, 'leads', 'VIEW');
   const [entries, counted] = await Promise.all([
     listLeadSources(prisma, ctx.tenantId),
-    prisma.lead.groupBy({
-      by: ['sourceId'],
-      where: { tenantId: ctx.tenantId, deletedAt: null, sourceId: { not: null } },
-      _count: { _all: true },
-    }),
+    seesLeads
+      ? prisma.lead.groupBy({
+          by: ['sourceId'],
+          where: {
+            ...(await leadScope(ctx, 'VIEW', { includeUnassigned: true })),
+            deletedAt: null,
+            sourceId: { not: null },
+          },
+          _count: { _all: true },
+        })
+      : [],
   ]);
   const leads = new Map(counted.map((row) => [row.sourceId, row._count._all]));
 
@@ -39,7 +48,7 @@ export default async function LeadSourcesPage() {
       />
       <SourceEditor
         canEdit={can(ctx, 'settings', 'MANAGE_CONFIGURATION')}
-        entries={entries.map((entry) => ({ ...entry, leads: leads.get(entry.id) ?? 0 }))}
+        entries={entries.map((entry) => ({ ...entry, leads: seesLeads ? (leads.get(entry.id) ?? 0) : null }))}
       />
     </>
   );

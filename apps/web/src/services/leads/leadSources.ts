@@ -38,10 +38,12 @@ export const sourceKey = (name: string, parentKey?: string | null) => {
 
 /**
  * Seeds the defaults for a workspace that has no catalogue yet, and nothing
- * for one that has: called by provisioning for a new lead workspace and on
- * first use by the screens and intake, so a workspace from before the
- * catalogue existed gets it the first time anyone needs it. Idempotent, and
- * safe under two concurrent first uses (the unique key skips the duplicate).
+ * for one that has. Only on a write: provisioning (a new lead workspace), an
+ * administrator's first change, and a lead arriving with a key (intake, Meta,
+ * public forms). Workspaces that worked leads before the catalogue existed got
+ * it from the migration (20261012004000_lead_record_fields), so no screen writes
+ * it on a read — a read-only platform session included. Idempotent, and safe
+ * under two concurrent first uses (the unique key skips the duplicate).
  */
 export async function ensureLeadSources(db: Db, tenantId: string): Promise<void> {
   if ((await db.leadSource.count({ where: { tenantId } })) > 0) return;
@@ -51,9 +53,8 @@ export async function ensureLeadSources(db: Db, tenantId: string): Promise<void>
   });
 }
 
-/** The catalogue in its order (position, then name); a sub-source names its source in `parentId`. */
+/** The catalogue in its order (position, then name); a sub-source names its source in `parentId`. Reads only. */
 export async function listLeadSources(db: Db, tenantId: string) {
-  await ensureLeadSources(db, tenantId);
   return db.leadSource.findMany({
     where: { tenantId },
     orderBy: [{ position: 'asc' }, { name: 'asc' }],

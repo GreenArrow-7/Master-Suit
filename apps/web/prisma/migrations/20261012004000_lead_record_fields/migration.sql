@@ -51,3 +51,31 @@ CREATE POLICY tenant_isolation ON "LeadSource" FOR ALL
     "tenantId" = nullif(current_setting('app.tenant_id', true), '')
     OR current_setting('app.platform_admin', true) = 'on'
   );
+
+-- M4-03: the catalogue for every workspace that works leads (Sales, Real Estate,
+-- Lead Eagle), so no screen has to write it on a first read. New workspaces get
+-- it at provisioning (provisionLeadWork); the list is DEFAULT_LEAD_SOURCES
+-- (services/leads/leadSources.ts). Ids are cuid-shaped ('c' and 32 hex), as the
+-- API validates them. A workspace that already has a catalogue keeps it.
+INSERT INTO "LeadSource" ("id", "tenantId", "key", "name", "position", "updatedAt")
+SELECT 'c' || replace(gen_random_uuid()::text, '-', ''), t."id", s.key, s.name, s.position, now()
+FROM "Tenant" t
+CROSS JOIN (VALUES
+  ('property_finder', 'Property Finder', 0),
+  ('bayut', 'Bayut', 1),
+  ('dubizzle', 'Dubizzle', 2),
+  ('google_ads', 'Google Ads', 3),
+  ('meta', 'Meta', 4),
+  ('website', 'Website', 5),
+  ('walk_in', 'Walk-in', 6),
+  ('referral', 'Referral', 7),
+  ('cold_data', 'Cold data', 8),
+  ('other', 'Other', 9)
+) AS s(key, name, position)
+WHERE t."deletedAt" IS NULL
+  AND EXISTS (
+    SELECT 1 FROM "ModuleEntitlement" e
+    WHERE e."tenantId" = t."id" AND e."module" IN ('SALES', 'REAL_ESTATE', 'LEAD_EAGLE') AND e."state" <> 'CANCELED'
+  )
+  AND NOT EXISTS (SELECT 1 FROM "LeadSource" x WHERE x."tenantId" = t."id")
+ON CONFLICT DO NOTHING;

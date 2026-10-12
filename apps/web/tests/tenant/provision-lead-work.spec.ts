@@ -2,8 +2,10 @@ import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { provisionLeadWork } from '@/services/platform/provisioning';
+import { DEFAULT_LEAD_SOURCES } from '@/services/leads/leadSources';
 import { POST as wizardCreate } from '@/app/api/v1/platform/workspaces/route';
 import { PATCH as editWorkspace } from '@/app/api/v1/platform/workspaces/[workspaceId]/route';
 import { PATCH as editSubscription } from '@/app/api/v1/platform/subscriptions/[subscriptionId]/route';
@@ -43,6 +45,15 @@ async function workspace(label: string) {
   return tenant.id;
 }
 
+const sourceKeys = async (tenantId: string) =>
+  (
+    await prisma.leadSource.findMany({
+      where: { tenantId },
+      orderBy: [{ position: 'asc' }, { key: 'asc' }],
+      select: { key: true },
+    })
+  ).map((source) => source.key);
+
 const counts = async (tenantId: string) => ({
   stages: await prisma.leadStage.count({ where: { tenantId } }),
   activityTypes: await prisma.activityType.count({ where: { tenantId } }),
@@ -79,6 +90,76 @@ describe('provisionLeadWork', () => {
   it('leaves a workspace’s own stages alone, and still fills what is empty', async () => {
     await withPlatformTx((tx) => provisionLeadWork(tx, customised, ['SALES']));
     expect(await counts(customised)).toEqual({ stages: 1, activityTypes: 6, taskTypes: 4 });
+  });
+
+  it('seeds the source catalogue before any screen asks for it, once, and none for HR alone (M4-03)', async () => {
+    expect(await sourceKeys(fresh)).toEqual(DEFAULT_LEAD_SOURCES.map(([key]) => key));
+    await withPlatformTx((tx) => provisionLeadWork(tx, fresh, ['SALES']));
+    expect(await sourceKeys(fresh)).toHaveLength(DEFAULT_LEAD_SOURCES.length);
+    const hrOnly = await workspace('hr-sources');
+    await withPlatformTx((tx) => provisionLeadWork(tx, hrOnly, ['HRMS']));
+    expect(await sourceKeys(hrOnly)).toEqual([]);
+  });
+});
+
+/**
+ * The catalogue for workspaces that worked leads before it existed: seeded by
+ * the migration, so no screen writes it on a first read. Run here as written,
+ * limited to this spec's workspaces like the repair migration below.
+ */
+describe('the catalogue backfill in 20261012004000_lead_record_fields', () => {
+  const sql = readFileSync(
+    path.join(__dirname, '..', '..', 'prisma', 'migrations', '20261012004000_lead_record_fields', 'migration.sql'),
+    'utf8',
+  );
+  const run = (ids: string[]) =>
+    withPlatformTx(async (tx) => {
+      const scoped = sql.replaceAll(
+        'WHERE t."deletedAt" IS NULL',
+        `WHERE t."deletedAt" IS NULL AND t."id" IN (${ids.map((id) => `'${id}'`).join(', ')})`,
+      );
+      const inserts = scoped.split(/;\s*\n/).filter((part) => /INSERT INTO "LeadSource"/.test(part));
+      expect(inserts).toHaveLength(1);
+      for (const statement of inserts) await tx.$executeRawUnsafe(statement);
+    });
+  const entitle = (tenantId: string, module: 'SALES' | 'LEAD_EAGLE' | 'HRMS', state: 'ACTIVE' | 'CANCELED') =>
+    prisma.moduleEntitlement.create({ data: { tenantId, module, state } });
+
+  let leadEagle = '';
+  let ownCatalogue = '';
+  let hrOnly = '';
+  let cancelled = '';
+
+  beforeAll(async () => {
+    leadEagle = await workspace('s-eagle');
+    ownCatalogue = await workspace('s-own');
+    hrOnly = await workspace('s-hr');
+    cancelled = await workspace('s-cancelled');
+    await entitle(leadEagle, 'LEAD_EAGLE', 'ACTIVE');
+    await entitle(ownCatalogue, 'SALES', 'ACTIVE');
+    await prisma.leadSource.create({ data: { tenantId: ownCatalogue, key: 'expo', name: 'Expo' } });
+    await entitle(hrOnly, 'HRMS', 'ACTIVE');
+    await entitle(cancelled, 'SALES', 'CANCELED');
+    await run([leadEagle, ownCatalogue, hrOnly, cancelled]);
+  });
+
+  it('gives a lead workspace the ten defaults, with ids the API accepts', async () => {
+    expect(await sourceKeys(leadEagle)).toEqual(DEFAULT_LEAD_SOURCES.map(([key]) => key));
+    const rows = await prisma.leadSource.findMany({ where: { tenantId: leadEagle }, select: { id: true, name: true } });
+    for (const row of rows) expect(z.string().cuid().safeParse(row.id).success, row.id).toBe(true);
+    expect(rows.map((row) => row.name)).toEqual(expect.arrayContaining(['Property Finder', 'Walk-in', 'Cold data']));
+  });
+
+  it('keeps a workspace’s own catalogue, and touches neither HR alone nor a cancelled lead module', async () => {
+    expect(await sourceKeys(ownCatalogue)).toEqual(['expo']);
+    expect(await sourceKeys(hrOnly)).toEqual([]);
+    expect(await sourceKeys(cancelled)).toEqual([]);
+  });
+
+  it('adds nothing when it runs again', async () => {
+    await run([leadEagle, ownCatalogue]);
+    expect(await sourceKeys(leadEagle)).toHaveLength(DEFAULT_LEAD_SOURCES.length);
+    expect(await sourceKeys(ownCatalogue)).toEqual(['expo']);
   });
 });
 

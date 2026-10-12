@@ -95,10 +95,6 @@ const catalogueLabel = (lead: {
   leadSource: Parameters<typeof leadSourceLabel>[0];
 }) => leadSourceLabel(lead.leadSource, ' / ') ?? sourceLabel(lead.source, lead.sourceDetail);
 const LEAD_SOURCE = { select: { name: true, parent: { select: { name: true } } } };
-/** Two groups' means folded into one, weighted by their lead counts; null when neither has one. */
-// ponytail: weighted by leads, not by the rows that carry the value; exact only while every lead in a group has one.
-const avg = (a: number | null | undefined, na: number, b: number | null, nb: number) =>
-  a == null ? b : b == null ? a : (a * na + b * nb) / (na + nb);
 
 export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise<Report> {
   const tenantId = ctx.tenantId;
@@ -507,8 +503,10 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
         prismaRead.lead.groupBy({
           by: ['source', 'sourceId'],
           where: { tenantId, deletedAt: null, createdAt: within, ...owned(userIds) },
-          _count: { _all: true },
-          _avg: { score: true, firstResponseMins: true },
+          // Sums and counts, not means: two groups that share a label add up exactly,
+          // and a lead not yet answered (firstResponseMins null) counts in neither.
+          _count: { _all: true, firstResponseMins: true },
+          _sum: { score: true, firstResponseMins: true },
         }),
         prismaRead.lead.groupBy({
           by: ['source', 'sourceId'],
@@ -530,17 +528,17 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
       // Two entries can share a label only when one is the enum's: fold them together.
       const bySource = new Map<
         string,
-        { source: string; leads: number; score: number | null; response: number | null }
+        { source: string; leads: number; score: number; answered: number; minutes: number }
       >();
       for (const row of grouped) {
         const source = labelOf(row);
-        const prior = bySource.get(source);
-        const n = row._count._all;
+        const prior = bySource.get(source) ?? { source, leads: 0, score: 0, answered: 0, minutes: 0 };
         bySource.set(source, {
           source,
-          leads: (prior?.leads ?? 0) + n,
-          score: avg(prior?.score, prior?.leads ?? 0, row._avg.score, n),
-          response: avg(prior?.response, prior?.leads ?? 0, row._avg.firstResponseMins, n),
+          leads: prior.leads + row._count._all,
+          score: prior.score + (row._sum.score ?? 0),
+          answered: prior.answered + row._count.firstResponseMins,
+          minutes: prior.minutes + (row._sum.firstResponseMins ?? 0),
         });
       }
       const convertedBy = new Map<string, number>();
@@ -582,8 +580,8 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
               leads: total,
               converted: won,
               rate,
-              score: s.score === null ? null : Math.round(s.score),
-              response: s.response === null ? null : `${Math.round(s.response)} min`,
+              score: total === 0 ? null : Math.round(s.score / total),
+              response: s.answered === 0 ? null : `${Math.round(s.minutes / s.answered)} min`,
             };
           })
           .sort((a, b) => Number(b.leads ?? 0) - Number(a.leads ?? 0)),

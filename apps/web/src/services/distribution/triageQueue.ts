@@ -14,6 +14,7 @@ import { logger } from '@/lib/logger';
 import { audit } from '@/lib/security/audit';
 import { assertPermission, type Ctx } from '@/lib/security/rbac';
 import { leadScope } from '@/lib/security/record-scope';
+import { visibilityWhere } from '@/lib/security/visibility';
 import { lockAndVerify, DEFAULT_POLICY, policyFromRule } from './eligibility';
 import { explainReason, resolveTriageEntry, type TriageDetail, type TriageReason } from './triage';
 import { enqueueNotice, withdrawNotice } from '@/services/notifications/outbox';
@@ -207,7 +208,9 @@ export async function assignFromTriage(input: ManualAssignInput): Promise<Manual
   // leads, and every waiting lead is unassigned, so only ORGANIZATION places
   // one, and there everyone active is assignable. Adding `includeUnassigned`
   // here opens placement to team leads: add that check in the same change.
-  const leadWhere = await leadScope(ctx, 'ASSIGN');
+  // Not `leadScope` for the same reason: a waiting lead's second owner (or their
+  // manager) would reach it, and place it with anyone.
+  const leadWhere = await visibilityWhere(ctx, 'leads', 'ASSIGN');
   const visible = await prisma.lead.findFirst({
     where: { ...leadWhere, id: entry.leadId, deletedAt: null },
     select: { id: true, ownerId: true, teamId: true },

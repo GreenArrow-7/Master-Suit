@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { mergeWhere, type WhereFragment } from '@/lib/api/where';
 import { can, type Action, type Ctx } from '@/lib/security/rbac';
 import { eventListScope, leadScope } from '@/lib/security/record-scope';
 import { visibilityWhere } from '@/lib/security/visibility';
@@ -191,7 +192,10 @@ export const TOOLS: ToolDef[] = [
     requires: [['leads', 'VIEW']],
     execute: async (ctx, args) => {
       const scope = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
-      const where: Record<string, unknown> = { ...scope };
+      // Field filters here; a view or a search that is an OR of its own goes beside
+      // them, and mergeWhere ANDs all of it with the scope (whose OR is the scope).
+      const where: Record<string, unknown> = {};
+      let view: WhereFragment = null;
       const now = new Date();
       switch (args.view) {
         case 'mine':
@@ -204,7 +208,7 @@ export const TOOLS: ToolDef[] = [
           // The assistant answers with the asker's own reach, like every other
           // surface. Reading the stored column here would let someone ask the
           // assistant a question their own screens refuse to answer.
-          Object.assign(where, obligationWhere(await obligationAccess(ctx, 'scope'), 'overdue', now));
+          view = obligationWhere(await obligationAccess(ctx, 'scope'), 'overdue', now);
           break;
         case 'sla_breached':
           where.slaState = 'BREACHED';
@@ -219,28 +223,32 @@ export const TOOLS: ToolDef[] = [
           where.score = { gte: 70 };
           break;
         case 'no_activity_30d':
-          where.OR = [
-            { lastActivityAt: { lt: new Date(now.getTime() - 30 * 864e5) } },
-            { lastActivityAt: null, createdAt: { lt: new Date(now.getTime() - 30 * 864e5) } },
-          ];
+          view = {
+            OR: [
+              { lastActivityAt: { lt: new Date(now.getTime() - 30 * 864e5) } },
+              { lastActivityAt: null, createdAt: { lt: new Date(now.getTime() - 30 * 864e5) } },
+            ],
+          };
           break;
         case 'converted':
           where.stage = { category: 'CONVERSION' };
           break;
       }
-      if (args.q) {
-        where.OR = [
-          { fullName: { contains: args.q, mode: 'insensitive' } },
-          { company: { contains: args.q, mode: 'insensitive' } },
-          ...contactSearch(ctx, await loadFieldRules(ctx, 'LEAD'), String(args.q)),
-        ];
-      }
+      const search = args.q
+        ? {
+            OR: [
+              { fullName: { contains: args.q, mode: 'insensitive' } },
+              { company: { contains: args.q, mode: 'insensitive' } },
+              ...contactSearch(ctx, await loadFieldRules(ctx, 'LEAD'), String(args.q)),
+            ],
+          }
+        : null;
       if (args.stage) where.stage = { name: { contains: args.stage, mode: 'insensitive' } };
       if (args.ownerName) where.owner = { fullName: { contains: args.ownerName, mode: 'insensitive' } };
 
       const limit = Math.min(Number(args.limit) || 8, 15);
       const rows = await prisma.lead.findMany({
-        where,
+        where: mergeWhere(scope, view, search, where),
         orderBy: [{ score: 'desc' }, { updatedAt: 'desc' }],
         take: limit,
         select: LEAD_SELECT,
@@ -456,15 +464,16 @@ export const TOOLS: ToolDef[] = [
     requires: [['accounts', 'VIEW']],
     execute: async (ctx, args) => {
       const scope = await visibilityWhere(ctx, 'accounts', 'VIEW', { includeUnassigned: true });
-      const where: Record<string, unknown> = { ...scope };
-      if (args.q) {
-        where.OR = [
-          { name: { contains: args.q, mode: 'insensitive' } },
-          { industry: { contains: args.q, mode: 'insensitive' } },
-        ];
-      }
+      const search = args.q
+        ? {
+            OR: [
+              { name: { contains: args.q, mode: 'insensitive' } },
+              { industry: { contains: args.q, mode: 'insensitive' } },
+            ],
+          }
+        : null;
       const rows = await prisma.account.findMany({
-        where,
+        where: mergeWhere(scope, search),
         take: Math.min(Number(args.limit) || 5, 10),
         orderBy: { updatedAt: 'desc' },
         select: {
@@ -517,18 +526,20 @@ export const TOOLS: ToolDef[] = [
     requires: [['contacts', 'VIEW']],
     execute: async (ctx, args) => {
       const scope = await visibilityWhere(ctx, 'contacts', 'VIEW', { includeUnassigned: true });
-      const where: Record<string, unknown> = { ...scope };
-      if (args.phoneEndsWith) where.phone = { endsWith: String(args.phoneEndsWith).replace(/\D/g, '') };
-      else if (args.q) {
-        where.OR = [
-          { fullName: { contains: args.q, mode: 'insensitive' } },
-          { email: { contains: args.q, mode: 'insensitive' } },
-          { phone: { contains: args.q } },
-          { account: { name: { contains: args.q, mode: 'insensitive' } } },
-        ];
-      }
+      const search = args.phoneEndsWith
+        ? { phone: { endsWith: String(args.phoneEndsWith).replace(/\D/g, '') } }
+        : args.q
+          ? {
+              OR: [
+                { fullName: { contains: args.q, mode: 'insensitive' } },
+                { email: { contains: args.q, mode: 'insensitive' } },
+                { phone: { contains: args.q } },
+                { account: { name: { contains: args.q, mode: 'insensitive' } } },
+              ],
+            }
+          : null;
       const rows = await prisma.contact.findMany({
-        where,
+        where: mergeWhere(scope, search),
         take: Math.min(Number(args.limit) || 8, 15),
         orderBy: { updatedAt: 'desc' },
         select: {
@@ -564,7 +575,7 @@ export const TOOLS: ToolDef[] = [
     requires: [['opportunities', 'VIEW']],
     execute: async (ctx, args) => {
       const scope = await visibilityWhere(ctx, 'opportunities', 'VIEW', { includeUnassigned: true });
-      const where: Record<string, unknown> = { ...scope };
+      const where: Record<string, unknown> = {};
       if (args.status) where.status = String(args.status).toUpperCase();
       if (args.closingWithinDays) {
         where.expectedCloseDate = {
@@ -573,14 +584,16 @@ export const TOOLS: ToolDef[] = [
         };
         where.status = 'OPEN';
       }
-      if (args.q) {
-        where.OR = [
-          { name: { contains: args.q, mode: 'insensitive' } },
-          { account: { name: { contains: args.q, mode: 'insensitive' } } },
-        ];
-      }
+      const search = args.q
+        ? {
+            OR: [
+              { name: { contains: args.q, mode: 'insensitive' } },
+              { account: { name: { contains: args.q, mode: 'insensitive' } } },
+            ],
+          }
+        : null;
       const rows = await prisma.opportunity.findMany({
-        where,
+        where: mergeWhere(scope, search, where),
         take: Math.min(Number(args.limit) || 8, 15),
         orderBy: [{ expectedCloseDate: 'asc' }, { updatedAt: 'desc' }],
         select: {

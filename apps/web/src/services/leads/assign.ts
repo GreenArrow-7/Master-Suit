@@ -148,6 +148,7 @@ export async function handOverOpenWork(
   handOver: HandOver,
   why: 'deactivated' | 'removed',
 ): Promise<OpenWork> {
+  await endSecondOwnership(ctx, tx, from.id, why);
   const work = await countOpenWork(tx, ctx.tenantId, from.id);
   if (work.leads + work.followUps + work.tasks === 0) return work;
 
@@ -227,4 +228,35 @@ export async function handOverOpenWork(
     tx,
   );
   return work;
+}
+
+/**
+ * A departing member stops being second owner of the open leads they worked
+ * (M4-09). Their team rows stay, so left in place the leads would stay in their
+ * former managers' scope however far from it the owner sits. Closed leads keep
+ * naming them, as they keep naming an owner. One audit row, like the hand-over's.
+ */
+async function endSecondOwnership(ctx: Ctx, tx: TxClient, userId: string, why: 'deactivated' | 'removed') {
+  const where = {
+    tenantId: ctx.tenantId,
+    secondaryOwnerId: userId,
+    deletedAt: null,
+    stage: { is: { category: 'OPEN' as const } },
+    AND: [OPEN_LEADS_WHERE],
+  };
+  const leads = await tx.lead.findMany({ where, select: { id: true } });
+  if (!leads.length) return;
+  await tx.lead.updateMany({ where, data: { secondaryOwnerId: null, updatedById: ctx.actor.id } });
+  await audit(
+    ctx,
+    {
+      event: 'OWNER_CHANGED',
+      objectType: 'user',
+      recordId: userId,
+      previousValue: { secondaryOwnerId: userId },
+      newValue: { secondaryOwnerId: null },
+      metadata: { action: `account.${why}.second_owner_ended`, leadIds: leads.map((lead) => lead.id) },
+    },
+    tx,
+  );
 }

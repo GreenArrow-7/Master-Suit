@@ -114,7 +114,7 @@ interface LeadData {
   stageReason: string | null;
   /** Why distribution chose the owner, when it did. */
   assignedWhy: string | null;
-  owner: { fullName: string; email: string } | null;
+  owner: { id: string; fullName: string; email: string } | null;
   /** A second person who works the lead, reaching it as the owner does. */
   secondaryOwner: { id: string; fullName: string } | null;
   activities: Activity[];
@@ -579,16 +579,19 @@ export default function LeadDetail({
                           >
                             None
                           </button>
-                          {users.map((u) => (
-                            <button
-                              key={u.id}
-                              className="lf-menu__item"
-                              aria-current={u.id === lead.secondaryOwner?.id ? 'true' : undefined}
-                              onClick={() => handleSecondary(u.id)}
-                            >
-                              {u.fullName}
-                            </button>
-                          ))}
+                          {/* Never the owner too: the API refuses it (422). */}
+                          {users
+                            .filter((u) => u.id !== lead.owner?.id)
+                            .map((u) => (
+                              <button
+                                key={u.id}
+                                className="lf-menu__item"
+                                aria-current={u.id === lead.secondaryOwner?.id ? 'true' : undefined}
+                                onClick={() => handleSecondary(u.id)}
+                              >
+                                {u.fullName}
+                              </button>
+                            ))}
                         </Dropdown>
                       )}
                     </>

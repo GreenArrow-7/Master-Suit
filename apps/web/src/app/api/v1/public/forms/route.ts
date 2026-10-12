@@ -6,6 +6,7 @@ import { enqueue } from '@/lib/queue';
 import { nextReference } from '@/services/shared/reference';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { findDuplicates } from '@/services/leads/findDuplicates';
+import { leadSourceIdFor } from '@/services/leads/leadSources';
 import { utmFrom } from '@/services/leads/utm';
 
 /**
@@ -127,6 +128,8 @@ export const POST = route(
               stageId: stage.id,
               source: 'PUBLIC_FORM',
               sourceDetail: form.key,
+              // The workspace's Website entry (M4-03), for the source reports.
+              sourceId: await leadSourceIdFor(tx, tenant.id, 'website'),
               // They wrote to us asking to be contacted; that is implied consent,
               // not granted-in-writing.
               consentStatus: 'IMPLIED',
