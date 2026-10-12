@@ -8,7 +8,7 @@
  * connected again keeps its history.
  */
 import { prisma, withTx } from '@/lib/db';
-import { AppError, NotFound } from '@/lib/errors';
+import { AppError, Conflict, NotFound } from '@/lib/errors';
 import { isLeadSource } from '@/lib/integrations/leadSources';
 import { enqueue, RETRY } from '@/lib/queue';
 import { audit } from '@/lib/security/audit';
@@ -43,11 +43,12 @@ async function storedProvider(ctx: Ctx, provider: string) {
   return { startsWith: `${provider}:` };
 }
 
-export async function listDeliveries(ctx: Ctx, provider: string, page = 1) {
+/** Newest first, a page at a time; `cursor` is the last delivery of the page before. */
+export async function listDeliveries(ctx: Ctx, provider: string, cursor?: string) {
   const rows = await prisma.webhookEvent.findMany({
     where: { tenantId: ctx.tenantId, provider: await storedProvider(ctx, provider) },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    skip: (page - 1) * PAGE_SIZE,
+    ...(cursor && { cursor: { id: cursor }, skip: 1 }),
     take: PAGE_SIZE + 1,
     select: {
       id: true,
@@ -66,8 +67,7 @@ export async function listDeliveries(ctx: Ctx, provider: string, page = 1) {
     shown.map((r) => r.leadId),
   );
   return {
-    page,
-    hasMore: rows.length > PAGE_SIZE,
+    nextCursor: rows.length > PAGE_SIZE ? shown[shown.length - 1]!.id : null,
     deliveries: shown.map((r) => {
       const lead = r.leadId ? leads.get(r.leadId) : undefined;
       return {
@@ -82,7 +82,18 @@ export async function listDeliveries(ctx: Ctx, provider: string, page = 1) {
   };
 }
 
-/** Queue the stored body again, read through the source's field map as it is now. */
+/** Whether the queue still holds a delivery: a job waiting, or a retry due. */
+export const inFlight = (status: DeliveryStatus) => status === 'queued' || status === 'retrying';
+
+/**
+ * Queue the stored body again, read through the source's field map as it is now.
+ *
+ * Only once the queue is done with it (worked, or given up on): a replay beside
+ * a job still waiting or retrying would run the delivery twice at once. A
+ * delivery that made or joined a lead and finds that lead again changes
+ * nothing (services/leads/intake.ts); one that now reads as somebody else makes
+ * or joins that lead instead.
+ */
 export async function replayDelivery(ctx: Ctx, provider: string, id: string) {
   const stored = await storedProvider(ctx, provider);
   const event = await withTx(ctx.tenantId, async (tx) => {
@@ -92,6 +103,7 @@ export async function replayDelivery(ctx: Ctx, provider: string, id: string) {
         provider: true,
         externalId: true,
         processed: true,
+        processedAt: true,
         attempts: true,
         errorMessage: true,
         outcome: true,
@@ -99,11 +111,15 @@ export async function replayDelivery(ctx: Ctx, provider: string, id: string) {
       },
     });
     if (!event) throw NotFound('Delivery');
-    // A fresh count, so the replay gets the queue's full set of attempts.
-    await tx.webhookEvent.update({
-      where: { tenantId: ctx.tenantId, id },
+    if (inFlight(statusOf(event)))
+      throw Conflict('The queue is still working on this delivery. Replay it once it has.');
+    // A fresh count, so the replay gets the queue's full set of attempts. Claimed
+    // on what was just read, so of two replays at once only one goes ahead.
+    const { count } = await tx.webhookEvent.updateMany({
+      where: { tenantId: ctx.tenantId, id, processed: event.processed, attempts: event.attempts },
       data: { processed: false, processedAt: null, attempts: 0, errorMessage: null },
     });
+    if (count === 0) throw Conflict('This delivery is already being replayed.');
     await audit(
       ctx,
       {
@@ -129,6 +145,24 @@ export async function replayDelivery(ctx: Ctx, provider: string, id: string) {
   // `fresh`: the same payload's job id would converge on the finished (or failed) job BullMQ keeps.
   const job = { tenantId: ctx.tenantId, provider: event.provider, externalId: event.externalId, source: provider };
   if (!(await enqueue('webhook', 'lead-source.enquiry', job, { fresh: true }))) {
+    // Put back as it was, with its last error, rather than left "Queued" with no job behind it.
+    await withTx(ctx.tenantId, async (tx) => {
+      const { processed, processedAt, attempts, errorMessage } = event;
+      await tx.webhookEvent.updateMany({
+        where: { tenantId: ctx.tenantId, id, processed: false, attempts: 0 },
+        data: { processed, processedAt, attempts, errorMessage },
+      });
+      await audit(
+        ctx,
+        {
+          event: 'INTEGRATION_MODIFIED',
+          objectType: 'webhook_event',
+          recordId: id,
+          metadata: { action: 'delivery.replay_failed', provider, reason: 'queue-unavailable' },
+        },
+        tx,
+      );
+    });
     throw new AppError(503, 'queue-unavailable', 'The queue could not be reached. Replay it again shortly.');
   }
   return { id, status: 'queued' as const };

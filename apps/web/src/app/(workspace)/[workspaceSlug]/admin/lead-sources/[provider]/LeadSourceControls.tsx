@@ -57,7 +57,8 @@ export function FieldMapEditor({
       <p className="lf-hint" style={{ marginTop: 0, marginBottom: 'var(--lf-space-4)' }}>
         Without a mapping, a delivery is read for name, first_name, last_name, phone, mobile, email, message and
         source_detail, and the portals’ own field names. Map any other field the sender uses here; a field inside
-        another is parent.field.
+        another is parent.field. A mapped name or phone is the only one read: any other the delivery carries is set
+        aside.
       </p>
       <div className="lf-stack" style={{ ['--lf-stack-gap' as string]: '12px' } as React.CSSProperties}>
         {rows.map(([key, field], i) => (

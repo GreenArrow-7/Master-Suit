@@ -1,11 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import { Invalid, NotFound } from '@/lib/errors';
 import { connectionMetadata, connectionCredentials, wrapCredentials } from '@/lib/integrations/connection';
 import { CREDENTIAL_ALSO_SETTINGS, providerSpec } from '@/lib/integrations/registry';
-import { isLeadSource, MAPPABLE_FIELDS, type MappableField } from '@/lib/integrations/leadSources';
+import { fieldMapOf, isLeadSource, MAPPABLE_FIELDS, type MappableField } from '@/lib/integrations/leadSources';
+import { audit } from '@/lib/security/audit';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { verifyConnection } from '@/lib/integrations/verify';
 
@@ -133,7 +134,8 @@ const fieldMapBody = z
 /**
  * A lead source's field map (M6-20): which of the sender's fields is the lead's
  * name, number, budget… Read by services/leads/intake.ts before the enquiry is
- * parsed, so it also applies to a stored delivery replayed afterwards.
+ * parsed, so it also applies to a stored delivery replayed afterwards. Audited
+ * with the map before and after: it decides which lead each delivery joins.
  */
 export const PATCH = route(
   {
@@ -142,16 +144,29 @@ export const PATCH = route(
     action: 'MANAGE_CONFIGURATION',
     params,
     body: fieldMapBody,
-    auditEvent: 'INTEGRATION_MODIFIED',
   },
   async ({ ctx, params, body }) => {
     if (!isLeadSource(params.provider)) throw NotFound('Lead source');
     const where = { tenantId_provider: { tenantId: ctx.tenantId, provider: params.provider } };
-    const connection = await prisma.integrationConnection.findUnique({ where, select: { metadata: true } });
-    if (!connection) throw NotFound('Connection');
-    await prisma.integrationConnection.update({
-      where,
-      data: { metadata: { ...(connection.metadata as Record<string, unknown>), fieldMap: body.fieldMap } },
+    await withTx(ctx.tenantId, async (tx) => {
+      const connection = await tx.integrationConnection.findUnique({ where, select: { id: true, metadata: true } });
+      if (!connection) throw NotFound('Connection');
+      await tx.integrationConnection.update({
+        where,
+        data: { metadata: { ...(connection.metadata as Record<string, unknown>), fieldMap: body.fieldMap } },
+      });
+      await audit(
+        ctx,
+        {
+          event: 'INTEGRATION_MODIFIED',
+          objectType: 'integrations',
+          recordId: connection.id,
+          previousValue: { fieldMap: fieldMapOf(connection.metadata) },
+          newValue: { fieldMap: body.fieldMap },
+          metadata: { action: 'field_map.saved', provider: params.provider },
+        },
+        tx,
+      );
     });
     return { provider: params.provider, fieldMap: body.fieldMap };
   },

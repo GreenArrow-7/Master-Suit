@@ -10,7 +10,7 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { can } from '@/lib/security/rbac';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { workspaceTimezone } from '@/services/hr/attendance';
-import { listDeliveries, type DeliveryStatus } from '@/services/leads/deliveries';
+import { inFlight, listDeliveries, type DeliveryStatus } from '@/services/leads/deliveries';
 import { FieldMapEditor, ReplayButton } from './LeadSourceControls';
 
 export const metadata = { title: 'Lead source' };
@@ -37,7 +37,7 @@ export default async function LeadSourcePage({
   searchParams,
 }: {
   params: Promise<{ workspaceSlug: string; provider: string }>;
-  searchParams: Promise<{ tab?: string; page?: string }>;
+  searchParams: Promise<{ tab?: string; cursor?: string }>;
 }) {
   const { workspaceSlug, provider } = await params;
   const query = await searchParams;
@@ -51,9 +51,10 @@ export default async function LeadSourcePage({
 
   const canEdit = can(ctx, 'integrations', 'MANAGE_CONFIGURATION');
   const mapping = query.tab === 'mapping';
-  const page = Math.max(1, Number.parseInt(query.page ?? '', 10) || 1);
+  // An id, as the API takes it; anything else is the first page.
+  const cursor = /^c[a-z0-9]{20,40}$/.test(query.cursor ?? '') ? query.cursor : undefined;
   const here = `/${workspaceSlug}/admin/lead-sources/${provider}`;
-  const list = mapping ? null : await listDeliveries(ctx, provider, page);
+  const list = mapping ? null : await listDeliveries(ctx, provider, cursor);
 
   return (
     <>
@@ -66,7 +67,8 @@ export default async function LeadSourcePage({
         help={
           <p>
             Every delivery is stored as it arrived before anything reads it. Replay one after changing the field
-            mapping, or after the queue gave up on it, and it is read again with the mapping as it is now.
+            mapping, or after the queue gave up on it, and it is read again with the mapping as it is now. A delivery
+            that finds the lead it made again changes nothing on it; correct that lead on the lead itself.
           </p>
         }
       />
@@ -79,7 +81,7 @@ export default async function LeadSourcePage({
         </Link>
       </nav>
       {list ? (
-        deliveries(list, await workspaceTimezone(ctx), { provider, page, here, slug: workspaceSlug, canEdit })
+        deliveries(list, await workspaceTimezone(ctx), { provider, cursor, here, slug: workspaceSlug, canEdit })
       ) : (
         <FieldMapEditor
           provider={provider}
@@ -94,15 +96,15 @@ export default async function LeadSourcePage({
 
 /** The Deliveries tab: received in the workspace's time zone, newest first. */
 function deliveries(
-  { deliveries, hasMore }: Awaited<ReturnType<typeof listDeliveries>>,
+  { deliveries, nextCursor }: Awaited<ReturnType<typeof listDeliveries>>,
   timeZone: string,
   {
     provider,
-    page,
+    cursor,
     here,
     slug,
     canEdit,
-  }: { provider: string; page: number; here: string; slug: string; canEdit: boolean },
+  }: { provider: string; cursor?: string; here: string; slug: string; canEdit: boolean },
 ) {
   const when = new Intl.DateTimeFormat('en-GB', { timeZone, dateStyle: 'medium', timeStyle: 'short' });
 
@@ -136,19 +138,22 @@ function deliveries(
             ),
             d.attempts,
             d.error ?? '—',
-            ...(canEdit ? [<ReplayButton key="replay" provider={provider} id={d.id} />] : []),
+            // The queue still holds a queued or retrying one; replaying it beside that job would run it twice.
+            ...(canEdit
+              ? [inFlight(d.status) ? '—' : <ReplayButton key="replay" provider={provider} id={d.id} />]
+              : []),
           ];
         })}
       />
-      {(page > 1 || hasMore) && (
+      {(cursor || nextCursor) && (
         <nav style={{ display: 'flex', gap: 'var(--lf-space-3)', marginTop: 'var(--lf-space-4)' }} aria-label="Pages">
-          {page > 1 && (
-            <Link className="lf-btn lf-btn--secondary lf-btn--sm" href={`${here}?page=${page - 1}`}>
-              Newer
+          {cursor && (
+            <Link className="lf-btn lf-btn--secondary lf-btn--sm" href={here}>
+              Newest
             </Link>
           )}
-          {hasMore && (
-            <Link className="lf-btn lf-btn--secondary lf-btn--sm" href={`${here}?page=${page + 1}`}>
+          {nextCursor && (
+            <Link className="lf-btn lf-btn--secondary lf-btn--sm" href={`${here}?cursor=${nextCursor}`}>
               Older
             </Link>
           )}

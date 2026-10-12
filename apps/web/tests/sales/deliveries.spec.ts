@@ -40,10 +40,12 @@ const PATH = '/api/v1/integrations/custom_webhook/deliveries';
 const params = { provider: 'custom_webhook' };
 let ws: Awaited<ReturnType<typeof leadEagleWorkspace>>;
 let other: Awaited<ReturnType<typeof leadEagleWorkspace>>;
+let hrOnly: Awaited<ReturnType<typeof leadEagleWorkspace>>;
 let key = '';
 let stored = '';
 /** Integrations to read, leads at OWN scope: sees the deliveries, opens only its own leads. */
 let viewerCookie = '';
+let viewerId = '';
 /** Leads only. */
 let outsiderCookie = '';
 const number = `05${String(Date.now()).slice(-8)}`;
@@ -61,6 +63,19 @@ const event = (externalId: string, minutesAgo: number, extra: Record<string, unk
       ...extra,
     },
   });
+const row = (externalId: string) =>
+  prisma.webhookEvent.findFirstOrThrow({ where: { tenantId: ws.tenantId, provider: stored, externalId } });
+const theLead = () =>
+  prisma.lead.findFirstOrThrow({ where: { tenantId: ws.tenantId, phoneNormalized: `+971${number.slice(1)}` } });
+const render = (cookie: string) => {
+  cookieJar.value = cookie;
+  return pageText(
+    DeliveriesPage({
+      params: Promise.resolve({ workspaceSlug: ws.slug, provider: 'custom_webhook' }),
+      searchParams: Promise.resolve({}),
+    }),
+  );
+};
 
 beforeAll(async () => {
   ws = await leadEagleWorkspace('deliveries', [
@@ -72,6 +87,15 @@ beforeAll(async () => {
     ['integrations', 'VIEW'],
     ['integrations', 'MANAGE_CONFIGURATION'],
   ]);
+  // A workspace that bought HR only: no lead product, so no lead sources.
+  hrOnly = await leadEagleWorkspace('deliveries-hr', [
+    ['integrations', 'VIEW'],
+    ['integrations', 'MANAGE_CONFIGURATION'],
+  ]);
+  await prisma.moduleEntitlement.updateMany({ where: { tenantId: hrOnly.tenantId }, data: { module: 'HRMS' } });
+  await prisma.integrationConnection.create({
+    data: { tenantId: hrOnly.tenantId, provider: 'custom_webhook', status: 'CONNECTED' },
+  });
   const connection = await prisma.integrationConnection.create({
     data: {
       tenantId: ws.tenantId,
@@ -94,6 +118,7 @@ beforeAll(async () => {
     email: `viewer@${ws.slug}.test`,
     fullName: 'Viewer',
   });
+  viewerId = viewer.id;
   viewerCookie = await createSessionToken(ws.tenantId, viewer.id);
   const outsiderRole = await prisma.role.create({
     data: { tenantId: ws.tenantId, key: 'outsider', name: 'Outsider', rank: 60, defaultScope: 'ORGANIZATION' },
@@ -126,18 +151,17 @@ beforeAll(async () => {
 afterAll(async () => {
   await ws.cleanup();
   await other.cleanup();
+  await hrOnly.cleanup();
 });
 
 describe('the Deliveries tab', () => {
   it('lists every delivery newest first, with its outcome, attempts, last error and the lead it made', async () => {
     const res = await get(list, PATH, ws.cookie, params);
     expect(res.status).toBe(200);
-    expect(res.body.hasMore).toBe(false);
+    expect(res.body.nextCursor).toBeNull();
     const rows = res.body.deliveries as { status: string; attempts: number; error: string | null; lead: unknown }[];
     expect(rows.map((r) => r.status)).toEqual(['created', 'queued', 'retrying', 'dead_lettered']);
-    const lead = await prisma.lead.findFirstOrThrow({
-      where: { tenantId: ws.tenantId, phoneNormalized: `+971${number.slice(1)}` },
-    });
+    const lead = await theLead();
     expect(rows[0]).toMatchObject({ attempts: 1, error: null, lead: { id: lead.id, name: 'Maya Saad' } });
     expect(rows[2]).toMatchObject({ attempts: 2, error: 'connection reset', lead: null });
     expect(rows[3]).toMatchObject({ attempts: 5, error: 'tenant has no default lead stage', lead: null });
@@ -148,9 +172,16 @@ describe('the Deliveries tab', () => {
     expect(res.status).toBe(200);
     expect(res.body.deliveries[0]).toMatchObject({ status: 'created', lead: null });
     expect(JSON.stringify(res.body)).not.toContain('Maya Saad');
+
+    // Once it is theirs, they see whose it is.
+    const lead = await theLead();
+    await prisma.lead.update({ where: { tenantId: ws.tenantId, id: lead.id }, data: { ownerId: viewerId } });
+    const own = await get(list, PATH, viewerCookie, params);
+    expect(own.body.deliveries[0]).toMatchObject({ lead: { id: lead.id, name: 'Maya Saad' } });
+    await prisma.lead.update({ where: { tenantId: ws.tenantId, id: lead.id }, data: { ownerId: ws.userId } });
   });
 
-  it('pages twenty-five at a time', async () => {
+  it('pages twenty-five at a time, by cursor', async () => {
     await prisma.webhookEvent.createMany({
       data: Array.from({ length: 25 }, (_, i) => ({
         tenantId: ws.tenantId,
@@ -164,8 +195,9 @@ describe('the Deliveries tab', () => {
     });
     const first = await get(list, PATH, ws.cookie, params);
     expect(first.body.deliveries).toHaveLength(25);
-    expect(first.body.hasMore).toBe(true);
-    const second = await get(list, `${PATH}?page=2`, ws.cookie, params);
+    expect(first.body.nextCursor).toBe(first.body.deliveries[24].id);
+    const second = await get(list, `${PATH}?cursor=${first.body.nextCursor}`, ws.cookie, params);
+    expect(second.status).toBe(200);
     expect(second.body.deliveries).toHaveLength(4);
     expect(second.body.deliveries.map((r: { status: string }) => r.status)).toEqual([
       'processed',
@@ -173,36 +205,55 @@ describe('the Deliveries tab', () => {
       'processed',
       'processed',
     ]);
-    expect(second.body.hasMore).toBe(false);
+    expect(second.body.nextCursor).toBeNull();
+  });
+
+  it('will not replay a delivery the queue still holds', async () => {
+    const before = await row('retrying');
+    vi.mocked(enqueue).mockClear();
+    expect((await post(replay, PATH, { id: before.id }, ws.cookie, params)).status).toBe(409);
+    expect((await post(replay, PATH, { id: (await row('waiting')).id }, ws.cookie, params)).status).toBe(409);
+    expect(await row('retrying')).toMatchObject({ processed: false, attempts: 2, errorMessage: 'connection reset' });
+    expect(vi.mocked(enqueue)).not.toHaveBeenCalled();
+  });
+
+  it('leaves a delivery as it was when the queue cannot take the replay', async () => {
+    const dead = await row('gave-up');
+    vi.mocked(enqueue).mockResolvedValueOnce(null);
+    expect((await post(replay, PATH, { id: dead.id }, ws.cookie, params)).status).toBe(503);
+    expect(await row('gave-up')).toMatchObject({
+      processed: false,
+      attempts: 5,
+      errorMessage: 'tenant has no default lead stage',
+    });
   });
 
   it('replays a delivery the queue gave up on: queued again, its count reset, and audited', async () => {
-    const dead = await prisma.webhookEvent.findFirstOrThrow({
-      where: { tenantId: ws.tenantId, externalId: 'gave-up' },
-    });
+    const dead = await row('gave-up');
     vi.mocked(enqueue).mockClear();
     const res = await post(replay, PATH, { id: dead.id }, ws.cookie, params);
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ id: dead.id, status: 'queued' });
 
-    expect(await prisma.webhookEvent.findFirstOrThrow({ where: { tenantId: ws.tenantId, id: dead.id } })).toMatchObject(
-      {
-        processed: false,
-        attempts: 0,
-        errorMessage: null,
-      },
-    );
+    expect(await row('gave-up')).toMatchObject({ processed: false, attempts: 0, errorMessage: null });
     expect(vi.mocked(enqueue)).toHaveBeenCalledWith(
       'webhook',
       'lead-source.enquiry',
       { tenantId: ws.tenantId, provider: stored, externalId: 'gave-up', source: 'custom_webhook' },
       { fresh: true },
     );
-    const trail = await prisma.auditLog.findFirstOrThrow({
+    const trail = await prisma.auditLog.findMany({
       where: { tenantId: ws.tenantId, objectType: 'webhook_event', recordId: dead.id },
+      orderBy: { occurredAt: 'asc' },
     });
-    expect(trail).toMatchObject({ event: 'INTEGRATION_MODIFIED', actorUserId: ws.userId });
-    expect(trail.metadata).toMatchObject({
+    // The attempt the queue could not take is on the record too, and said so.
+    expect(trail.map((t) => (t.metadata as { action: string }).action)).toEqual([
+      'delivery.replayed',
+      'delivery.replay_failed',
+      'delivery.replayed',
+    ]);
+    expect(trail.at(-1)).toMatchObject({ event: 'INTEGRATION_MODIFIED', actorUserId: ws.userId });
+    expect(trail.at(-1)!.metadata).toMatchObject({
       action: 'delivery.replayed',
       provider: 'custom_webhook',
       previous: { attempts: 5, error: 'tenant has no default lead stage' },
@@ -210,23 +261,45 @@ describe('the Deliveries tab', () => {
 
     // The replay runs through the worker like the first delivery did.
     await work(ws.tenantId, 'custom_webhook');
-    expect(await prisma.webhookEvent.findFirstOrThrow({ where: { tenantId: ws.tenantId, id: dead.id } })).toMatchObject(
-      {
-        processed: true,
-        attempts: 1,
-        outcome: 'created',
-      },
+    expect(await row('gave-up')).toMatchObject({ processed: true, attempts: 1, outcome: 'created' });
+  });
+
+  it('replays a delivery that made its lead without telling anyone the client came back', async () => {
+    const lead = await theLead();
+    const made = await prisma.webhookEvent.findFirstOrThrow({
+      where: { tenantId: ws.tenantId, provider: stored, leadId: lead.id },
+    });
+    const notes = () => prisma.activity.count({ where: { tenantId: ws.tenantId, leadId: lead.id } });
+    const notified = () => prisma.notification.count({ where: { tenantId: ws.tenantId, recordId: lead.id } });
+    const before = [await notes(), await notified()];
+
+    expect((await post(replay, PATH, { id: made.id }, ws.cookie, params)).status).toBe(200);
+    await work(ws.tenantId, 'custom_webhook');
+
+    // The same enquiry, matched to the lead it made: no second note, no "enquired again".
+    expect([await notes(), await notified()]).toEqual(before);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          tenantId: ws.tenantId,
+          recordId: lead.id,
+          metadata: { path: ['action'], equals: 'lead.enquired_again' },
+        },
+      }),
+    ).toBe(0);
+    expect(await prisma.webhookEvent.findFirstOrThrow({ where: { tenantId: ws.tenantId, id: made.id } })).toMatchObject(
+      { processed: true, outcome: 'created', leadId: lead.id },
     );
   });
 
   it('is for those who manage integrations, in their own workspace only', async () => {
-    const dead = await prisma.webhookEvent.findFirstOrThrow({
-      where: { tenantId: ws.tenantId, externalId: 'waiting' },
-    });
+    const dead = await row('waiting');
     expect((await get(list, PATH, outsiderCookie, params)).status).toBe(403);
     expect((await post(replay, PATH, { id: dead.id }, outsiderCookie, params)).status).toBe(403);
     // Reading is not replaying.
     expect((await post(replay, PATH, { id: dead.id }, viewerCookie, params)).status).toBe(403);
+    // A workspace without a lead product.
+    expect((await get(list, PATH, hrOnly.cookie, params)).status).toBe(403);
     // Another workspace: no connection of its own, and this one's delivery is not found.
     expect((await get(list, PATH, other.cookie, params)).status).toBe(404);
     await prisma.integrationConnection.create({
@@ -240,14 +313,16 @@ describe('the Deliveries tab', () => {
     );
   });
 
-  it('is a screen under Admin, with the outcome in words and the lead linked', async () => {
-    cookieJar.value = ws.cookie;
-    const text = await pageText(
-      DeliveriesPage({
-        params: Promise.resolve({ workspaceSlug: ws.slug, provider: 'custom_webhook' }),
-        searchParams: Promise.resolve({}),
-      }),
-    );
+  it('is a screen under Admin, with the outcome in words, the time in the workspace’s zone and the lead linked', async () => {
+    await prisma.tenant.update({ where: { id: ws.tenantId }, data: { timezone: 'America/New_York' } });
+    const newest = await prisma.webhookEvent.findFirstOrThrow({
+      where: { tenantId: ws.tenantId, provider: stored },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+    const when = (timeZone: string) =>
+      new Intl.DateTimeFormat('en-GB', { timeZone, dateStyle: 'medium', timeStyle: 'short' }).format(newest.createdAt);
+
+    const text = await render(ws.cookie);
     expect(text).toContain('Custom webhook');
     expect(text).toContain('Deliveries');
     expect(text).toContain('Field mapping');
@@ -256,5 +331,12 @@ describe('the Deliveries tab', () => {
     expect(text).toContain(`/${ws.slug}/sales/leads/`);
     expect(text).toContain('Processed');
     expect(text).toContain('Last error');
+    expect(text).toContain(when('America/New_York'));
+    expect(text).not.toContain(when('Asia/Dubai'));
+    // A Replay button for a delivery that has been worked.
+    expect(text).toContain(newest.id);
+
+    // Read-only for a viewer: no Replay.
+    expect(await render(viewerCookie)).not.toContain(newest.id);
   });
 });

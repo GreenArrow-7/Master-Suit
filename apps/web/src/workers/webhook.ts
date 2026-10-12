@@ -19,17 +19,19 @@ export const applyWebhookEvent = (data: ApplyMetaEventJob & { externalId: string
 /**
  * Property portals, Google Ads lead forms and Custom webhooks: services/leads/intake.ts.
  * What became of the delivery is kept on it for the Deliveries tab. A job that
- * found the event already worked returns nothing and leaves the outcome alone.
+ * found the event already worked, or a replay that found the lead it made,
+ * leaves the outcome as it was.
  */
 export const applyLeadSourceEvent = (data: EnquiryJob) =>
   stamped(
     data,
     () => applyEnquiry(data),
     (result) =>
-      result &&
-      (result.skipped
-        ? { outcome: result.skipped, leadId: null }
-        : { outcome: result.created ? 'created' : 'attached', leadId: result.leadId }),
+      !result || 'unchanged' in result
+        ? undefined
+        : result.skipped
+          ? { outcome: result.skipped, leadId: null }
+          : { outcome: result.created ? 'created' : 'attached', leadId: result.leadId },
   );
 
 async function stamped<T>(

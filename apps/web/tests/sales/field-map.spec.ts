@@ -4,8 +4,10 @@ import { wrapCredentials } from '@/lib/integrations/connection';
 import { parseEnquiry } from '@/lib/integrations/leadSources';
 import { PATCH as saveMap } from '@/app/api/v1/integrations/[provider]/route';
 import { POST as replay } from '@/app/api/v1/integrations/[provider]/deliveries/route';
+import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import { patch, post } from '../helpers/request';
 import { deliver, leadEagleWorkspace, sign, work } from '../helpers/leadSource';
+import { createSessionToken } from '../helpers/session';
 
 /**
  * A field mapping per lead source (audit row M6-20): an administrator names
@@ -15,7 +17,10 @@ import { deliver, leadEagleWorkspace, sign, work } from '../helpers/leadSource';
  */
 const SECRET = 'field-map-signing-secret';
 let ws: Awaited<ReturnType<typeof leadEagleWorkspace>>;
+let hrOnly: Awaited<ReturnType<typeof leadEagleWorkspace>>;
 let key = '';
+/** integrations:VIEW only. */
+let viewerCookie = '';
 const number = `05${String(Date.now()).slice(-8)}`;
 
 beforeAll(async () => {
@@ -33,15 +38,36 @@ beforeAll(async () => {
       },
     })
   ).webhookKey;
+
+  const role = await prisma.role.create({
+    data: { tenantId: ws.tenantId, key: 'map-viewer', name: 'Viewer', rank: 50, defaultScope: 'OWN' },
+  });
+  await grantPermissions(ws.tenantId, role.id, [['integrations', 'VIEW']]);
+  const viewer = await createWorkspaceUser({
+    tenantId: ws.tenantId,
+    roleId: role.id,
+    email: `viewer@${ws.slug}.test`,
+    fullName: 'Map Viewer',
+  });
+  viewerCookie = await createSessionToken(ws.tenantId, viewer.id);
+
+  hrOnly = await leadEagleWorkspace('field-map-hr', [
+    ['integrations', 'VIEW'],
+    ['integrations', 'MANAGE_CONFIGURATION'],
+  ]);
+  await prisma.moduleEntitlement.updateMany({ where: { tenantId: hrOnly.tenantId }, data: { module: 'HRMS' } });
+  await prisma.integrationConnection.create({
+    data: { tenantId: hrOnly.tenantId, provider: 'custom_webhook', status: 'CONNECTED' },
+  });
 });
 
 afterAll(async () => {
   await ws.cleanup();
+  await hrOnly.cleanup();
 });
 
-const mapPath = '/api/v1/integrations/custom_webhook';
-const saveFieldMap = (fieldMap: Record<string, string>, provider = 'custom_webhook') =>
-  patch(saveMap, `/api/v1/integrations/${provider}`, { fieldMap }, ws.cookie, { provider });
+const saveFieldMap = (fieldMap: Record<string, string>, provider = 'custom_webhook', cookie = ws.cookie) =>
+  patch(saveMap, `/api/v1/integrations/${provider}`, { fieldMap }, cookie, { provider });
 
 describe('the field map', () => {
   it('reads a mapped sender field as the lead field, at any depth, over the parser’s own guess', () => {
@@ -60,22 +86,50 @@ describe('the field map', () => {
     expect(mapped.details).toContain('Budget: 2.5M');
   });
 
+  it('reads a mapped name or number only from the mapped field, whatever else the body carries', () => {
+    const payload = {
+      form: { name: 'Spring Campaign' },
+      fname: 'Lina',
+      lname: 'Farah',
+      phone: '044001122',
+      customer_mobile: '0501234567',
+      data: { customer: { contact_mail: 'Lina@Example.com' } },
+    };
+    const mapped = parseEnquiry(payload, {
+      fname: 'firstName',
+      lname: 'lastName',
+      customer_mobile: 'phone',
+      'data.customer.contact_mail': 'email',
+    });
+    // Not the form's name, and not the office number beside the client's.
+    expect(mapped.fullName).toBe('Lina Farah');
+    expect(mapped.phones).toEqual(['0501234567']);
+    expect(mapped.email).toBe('lina@example.com');
+  });
+
   it('is saved on the connection by an administrator, and refuses a field it cannot map to', async () => {
     const saved = await saveFieldMap({ customer: 'fullName', mobile_no: 'phone' });
     expect(saved.status).toBe(200);
     expect(saved.body.fieldMap).toEqual({ customer: 'fullName', mobile_no: 'phone' });
     const row = await prisma.integrationConnection.findUniqueOrThrow({ where: { webhookKey: key } });
     expect((row.metadata as { fieldMap?: unknown }).fieldMap).toEqual({ customer: 'fullName', mobile_no: 'phone' });
-    expect(
-      await prisma.auditLog.count({
-        where: { tenantId: ws.tenantId, event: 'INTEGRATION_MODIFIED', metadata: { path: ['path'], equals: mapPath } },
-      }),
-    ).toBe(1);
+    // The map decides which lead a delivery joins, so the record says what it was and what it became.
+    const trail = await prisma.auditLog.findFirstOrThrow({
+      where: { tenantId: ws.tenantId, event: 'INTEGRATION_MODIFIED', recordId: row.id },
+    });
+    expect(trail).toMatchObject({
+      actorUserId: ws.userId,
+      previousValue: { fieldMap: {} },
+      newValue: { fieldMap: { customer: 'fullName', mobile_no: 'phone' } },
+    });
 
     expect((await saveFieldMap({ owner: 'ownerId' })).status).toBe(422);
     // Not a lead source, and a lead source this workspace has not connected.
     expect((await saveFieldMap({ a: 'phone' }, 'twilio')).status).toBe(404);
     expect((await saveFieldMap({ a: 'phone' }, 'bayut')).status).toBe(404);
+    // Reading integrations is not configuring them, and a workspace without a lead product has no lead sources.
+    expect((await saveFieldMap({ a: 'phone' }, 'custom_webhook', viewerCookie)).status).toBe(403);
+    expect((await saveFieldMap({ a: 'phone' }, 'custom_webhook', hrOnly.cookie)).status).toBe(403);
     await saveFieldMap({});
   });
 

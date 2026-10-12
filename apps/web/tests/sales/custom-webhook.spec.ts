@@ -96,19 +96,55 @@ describe('a Custom webhook lead source', () => {
     expect(note.notes).toContain('Two-bed in JVC, ready to move');
   });
 
+  it('reads first_name and last_name when the body has no name', async () => {
+    const number = phone();
+    expect((await signed({ first_name: 'Hala', last_name: 'Mansour', phone: number })).status).toBe(200);
+    await work(ws.tenantId, 'custom_webhook');
+    const lead = await prisma.lead.findFirstOrThrow({
+      where: { tenantId: ws.tenantId, phoneNormalized: `+971${number.slice(1)}` },
+    });
+    expect(lead.fullName).toBe('Hala Mansour');
+  });
+
   it('answers a retry with the same Idempotency-Key 200 and makes nothing new', async () => {
     const number = phone();
     const body = { name: 'Sami Aziz', phone: number };
     const idempotencyKey = `retry-${number}`;
     expect((await signed(body, idempotencyKey)).status).toBe(200);
-    await work(ws.tenantId, 'custom_webhook');
-    // The same delivery again, and then a different body under the same key.
+    // Retried before the worker has run, and again after.
     expect((await signed(body, idempotencyKey)).status).toBe(200);
-    expect((await signed({ ...body, phone: phone() + '9' }, idempotencyKey)).status).toBe(200);
+    await work(ws.tenantId, 'custom_webhook');
+    expect((await signed(body, idempotencyKey)).status).toBe(200);
     await work(ws.tenantId, 'custom_webhook');
 
     expect(await prisma.webhookEvent.count({ where: { tenantId: ws.tenantId, externalId: idempotencyKey } })).toBe(1);
     expect(await prisma.lead.count({ where: { tenantId: ws.tenantId, fullName: 'Sami Aziz' } })).toBe(1);
+  });
+
+  it('refuses a key reused for a different body, so the second enquiry is not lost behind a 200', async () => {
+    const number = phone();
+    const idempotencyKey = `static-${number}`;
+    expect((await signed({ name: 'Nour Saleh', phone: number }, idempotencyKey)).status).toBe(200);
+    const second = await signed({ name: 'Karim Saleh', phone: phone() + '9' }, idempotencyKey);
+    expect(second.status).toBe(409);
+    expect(await prisma.webhookEvent.count({ where: { tenantId: ws.tenantId, externalId: idempotencyKey } })).toBe(1);
+  });
+
+  it('takes a signed body once, whatever key it is resent under', async () => {
+    const number = phone();
+    const body = { name: 'Rami Khoury', phone: number };
+    expect((await signed(body, `first-${number}`)).status).toBe(200);
+    await work(ws.tenantId, 'custom_webhook');
+    const before = await prisma.webhookEvent.count({ where: { tenantId: ws.tenantId } });
+    // Somebody who captured the delivery cannot sign another body, but can mint keys.
+    expect((await signed(body, `second-${number}`)).status).toBe(200);
+    expect((await signed(body, `third-${number}`)).status).toBe(200);
+    expect(await prisma.webhookEvent.count({ where: { tenantId: ws.tenantId } })).toBe(before);
+    await work(ws.tenantId, 'custom_webhook');
+    const lead = await prisma.lead.findFirstOrThrow({
+      where: { tenantId: ws.tenantId, phoneNormalized: `+971${number.slice(1)}` },
+    });
+    expect(await prisma.activity.count({ where: { tenantId: ws.tenantId, leadId: lead.id } })).toBe(1);
   });
 
   it('refuses a body signed with anything else, and stores nothing', async () => {

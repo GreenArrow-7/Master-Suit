@@ -3,6 +3,7 @@ import { env } from '../env';
 import { logger } from '../logger';
 import { deleteObject } from '../storage';
 import { deleteCapture, purgeExpiredCaptures } from '@/services/hr/captureVault';
+import { sweepExpiredIdempotency } from '@/services/idempotency';
 
 /**
  * Data retention: the sweep that makes every stated retention window real.
@@ -104,6 +105,8 @@ const RETENTION_TABLES: {
 
 export interface RetentionResult {
   oldWebhookEvents: number;
+  /** Idempotency-Key records past their 24 h (services/idempotency.ts). */
+  expiredIdempotency: number;
   expiredSessions: number;
   attendanceCaptures: number;
   purgeSummary: Record<string, number>;
@@ -122,6 +125,7 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
   const now = new Date();
   const result: RetentionResult = {
     oldWebhookEvents: 0,
+    expiredIdempotency: 0,
     expiredSessions: 0,
     attendanceCaptures: 0,
     purgeSummary: {},
@@ -257,6 +261,18 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
   if (result.oldWebhookEvents > 0) {
     logger.info({ count: result.oldWebhookEvents, dryRun }, 'retention: purged old webhook events');
   }
+
+  // ── 2b. Idempotency-Key records past their 24 h ─────────────────────────────
+  //
+  // A lookup already treats an expired record as unknown; this is what keeps the
+  // stored answers (lead records among them) from outliving the 24 h promised.
+  result.expiredIdempotency = dryRun
+    ? await withPlatformTx(async (tx) => {
+        const [row] = await tx.$queryRaw<{ count: bigint }[]>`
+          SELECT count(*) FROM "IdempotentRequest" WHERE "expiresAt" < ${now}`;
+        return Number(row?.count ?? 0);
+      })
+    : (await sweepExpiredIdempotency(now)).removed;
 
   // ── 3. Soft-deleted records older than 90 days ─────────────────────────────
   const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);

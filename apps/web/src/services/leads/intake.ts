@@ -37,7 +37,7 @@ export interface EnquiryJob {
 export async function applyEnquiry({ tenantId, provider, externalId, source }: EnquiryJob) {
   const event = await prisma.webhookEvent.findUnique({
     where: { tenantId_provider_externalId: { tenantId, provider, externalId } },
-    select: { payload: true, processed: true },
+    select: { payload: true, processed: true, leadId: true },
   });
   if (!event || event.processed) return;
   // Thrown, so the delivery waits, stored, rather than becoming a lead in a
@@ -58,6 +58,7 @@ export async function applyEnquiry({ tenantId, provider, externalId, source }: E
     label,
     source: recordSource,
     sourceDetail: enquiry.reference ? `${source}:${enquiry.reference}` : source,
+    reached: event.leadId,
   });
 }
 
@@ -71,6 +72,12 @@ export interface EnquiryOrigin {
   ownerId?: string | null;
   /** The person who sent it in (cold data); none is the system, audited as `sourceDetail`. */
   actor?: Ctx;
+  /**
+   * The lead this enquiry already made or joined: a replayed delivery. Matching
+   * it again is the same enquiry, not the client coming back, so nothing is
+   * written and nobody is told.
+   */
+  reached?: string | null;
 }
 
 export async function takeEnquiry(
@@ -104,6 +111,8 @@ export async function takeEnquiry(
       fullName: enquiry.fullName,
     })
   ).find((m) => m.matchedOn !== 'fullName');
+
+  if (match && match.id === origin.reached) return { leadId: match.id, created: false, unchanged: true as const };
 
   const { label, source: recordSource, ownerId } = origin;
   const note = [

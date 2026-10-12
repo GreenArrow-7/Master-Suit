@@ -10,7 +10,8 @@ import { login, strongPassword, uniq } from './helpers';
  * M6-22): an administrator connects it and is shown its signing secret once, a
  * signed delivery (sent twice under one Idempotency-Key) becomes one lead
  * through the worker, the Deliveries tab shows it with the lead it made, and a
- * replay runs it again. The tab fits a phone in the dark theme.
+ * replay reads it again without passing it off as a new enquiry. The card with
+ * its secret and both tabs fit a phone in the dark theme.
  *
  * Needs the BullMQ worker running beside the dev server, as CI's E2E job has.
  */
@@ -85,6 +86,19 @@ test.describe('a Custom webhook lead source and its deliveries', () => {
       await card.screenshot({ path: testInfo.outputPath('custom-webhook-connected.png') });
     });
 
+    await test.step('the card, secret showing, fits a phone in the dark theme', async () => {
+      const size = page.viewportSize();
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.evaluate(() => {
+        document.documentElement.dataset.theme = 'dark';
+      });
+      await expect(card.getByText('Signing secret: copy it now, it is not shown again')).toBeVisible();
+      expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark');
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+      await card.screenshot({ path: testInfo.outputPath('custom-webhook-connected-390-dark.png') });
+      if (size) await page.setViewportSize(size);
+    });
+
     await test.step('a signed delivery, retried under the same Idempotency-Key, makes one lead', async () => {
       const body = JSON.stringify({ name: `Hook Buyer ${run}`, phone: number, message: 'Sea view, two beds' });
       const headers = {
@@ -113,23 +127,31 @@ test.describe('a Custom webhook lead source and its deliveries', () => {
       await expect(page.getByRole('link', { name: `Hook Buyer ${run}` })).toBeVisible();
     });
 
-    await test.step('Replay runs it again: the lead it made already holds the number', async () => {
+    await test.step('Replay reads it again, and the lead it made is not told the client came back', async () => {
+      const replayedAt = new Date();
       await page.getByRole('button', { name: 'Replay' }).click();
       await expect
         .poll(
-          async () =>
-            (await prisma.webhookEvent.findFirst({ where: { tenantId, externalId: `delivery-${run}` } }))?.outcome,
+          async () => {
+            const event = await prisma.webhookEvent.findFirst({ where: { tenantId, externalId: `delivery-${run}` } });
+            return event?.processed && event.processedAt && event.processedAt >= replayedAt ? event.outcome : null;
+          },
           { timeout: 90_000 },
         )
-        .toBe('attached');
+        .toBe('created');
       await page.reload();
-      await expect(page.getByText('Added to an existing lead')).toBeVisible();
+      await expect(page.getByText('Lead created')).toHaveCount(1);
       await page.screenshot({ path: testInfo.outputPath('deliveries-after-replay.png'), fullPage: true });
       expect(
         await prisma.auditLog.count({
           where: { tenantId, objectType: 'webhook_event', event: 'INTEGRATION_MODIFIED' },
         }),
       ).toBe(1);
+      const lead = await prisma.lead.findFirstOrThrow({
+        where: { tenantId, phoneNormalized: `+971${number.slice(1)}` },
+      });
+      expect(await prisma.activity.count({ where: { tenantId, leadId: lead.id } })).toBe(1);
+      expect(await prisma.notification.count({ where: { tenantId, recordId: lead.id, kind: 'lead.enquiry' } })).toBe(0);
     });
 
     await test.step('the field mapping is saved from its tab', async () => {

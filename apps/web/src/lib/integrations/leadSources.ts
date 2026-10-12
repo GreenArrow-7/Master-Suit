@@ -131,8 +131,9 @@ const DETAILS: [label: string, keys: string[]][] = [
 
 /**
  * The lead fields an administrator may map a sender's field to (M6-20), each
- * with the parser key it is read as. Each key is the first one its field reads,
- * so a mapped value wins over whatever the parser would have guessed.
+ * with the parser key it is read as. A mapped field is read from the sender's
+ * field alone: each key is the first one its field reads, and a mapped name
+ * (full, or first and last) or phone also sets aside every other guess.
  */
 export const MAPPABLE_FIELDS = {
   fullName: { label: 'Full name', key: 'clientname' },
@@ -150,7 +151,11 @@ export const MAPPABLE_FIELDS = {
 } as const;
 
 export type MappableField = keyof typeof MAPPABLE_FIELDS;
-/** `{ senderKey: leadField }`; a nested sender field is `parent.field`. */
+/**
+ * `{ senderKey: leadField }`. A nested sender field is `parent.field`; a deeper
+ * one is read by its last two names (`data.client.phone` as `client.phone`),
+ * the way the payload is flattened.
+ */
 export type FieldMap = Record<string, MappableField>;
 
 /** The map stored in a connection's settings, or none. */
@@ -160,15 +165,21 @@ export const fieldMapOf = (metadata: unknown): FieldMap =>
 export function parseEnquiry(payload: Record<string, unknown>, fieldMap: FieldMap = {}): Enquiry {
   const flat = flatten(payload);
   // Applied before anything is read. `parent.field` is the flattened `parentfield`.
+  const mapped = new Set<MappableField>();
   for (const [sender, field] of Object.entries(fieldMap)) {
-    const value = flat.get(key(sender));
-    if (value && Object.hasOwn(MAPPABLE_FIELDS, field)) flat.set(MAPPABLE_FIELDS[field].key, value);
+    const value = flat.get(key(sender.split('.').slice(-2).join('')));
+    if (value && Object.hasOwn(MAPPABLE_FIELDS, field)) {
+      flat.set(MAPPABLE_FIELDS[field].key, value);
+      mapped.add(field);
+    }
   }
   const get = (...keys: string[]) => keys.map((k) => flat.get(k)).find(Boolean) ?? null;
 
   const first = get('firstname');
   const last = get('lastname');
-  const phones = [
+  // A mapped first or last name is the client's, over a guessed `name` (the form's, the campaign's).
+  const byParts = !mapped.has('fullName') && (mapped.has('firstName') || mapped.has('lastName'));
+  const guessedPhones = [
     'clientphone',
     'clientmobile',
     'contactphone',
@@ -184,6 +195,8 @@ export function parseEnquiry(payload: Record<string, unknown>, fieldMap: FieldMa
   ]
     .map((k) => flat.get(k))
     .filter((p): p is string => !!p);
+  // A mapped number is the client's; any other the body carries is not (an office, an agent).
+  const phones = mapped.has('phone') ? [flat.get(MAPPABLE_FIELDS.phone.key)!] : guessedPhones;
 
   return {
     // Only keys that name the lead itself. A bare `id` or `reference` may be the
@@ -191,7 +204,7 @@ export function parseEnquiry(payload: Record<string, unknown>, fieldMap: FieldMa
     // listing sharing an id would drop the second as a retry.
     externalId: get('leadid', 'leaduuid'),
     fullName:
-      get('clientname', 'contactname', 'customername', 'fullname', 'name') ??
+      (byParts ? null : get('clientname', 'contactname', 'customername', 'fullname', 'name')) ??
       ([first, last].filter(Boolean).join(' ') || null),
     email:
       get('clientemail', 'contactemail', 'customeremail', 'email', 'emailaddress', 'workemail')?.toLowerCase() ?? null,

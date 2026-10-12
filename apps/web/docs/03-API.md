@@ -168,17 +168,22 @@ issued when it is connected and shown once.
 
 - Sign the raw body: `X-Signature: sha256=<hex HMAC-SHA256 of the body>`.
 - Send an `Idempotency-Key`: a retry under the same key stores nothing new and
-  is answered 200 like the first.
+  is answered 200 like the first; the same key with a different body is 409.
+  A body already received is the same delivery under any key.
 - The body is a JSON object. Read by default: `name` (or `first_name` and
   `last_name`), `phone`, `email`, `message`, `source_detail`. Any other
   field is read through the source's field mapping (`parent.field` for a
   nested one).
 - 200 `{}` means stored; the worker makes the lead. Every delivery is on the
-  source's Deliveries tab with what became of it, and can be replayed there.
+  source's Deliveries tab with what became of it, and can be replayed there
+  once the queue is done with it.
 
 `Idempotency-Key` on the API itself (§2): per workspace, method and path, by
 the same caller; a retry with the same body gets the first 2xx answer back
 without running again, and a different body or caller under the key is 409.
+Routes whose answer is a credential shown once, or whose body carries a
+password, ignore it: your own password and two-factor (`identity/self`), and an
+administrator's password reset and account creation (`identity/{action}`).
 
 ## 7. API keys
 

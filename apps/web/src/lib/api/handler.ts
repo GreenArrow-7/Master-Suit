@@ -63,6 +63,14 @@ export interface RouteSpec<PS extends ZodTypeAny, QS extends ZodTypeAny, BS exte
    * made. Customer roles are untouched. See lib/auth/sensitive-access.ts.
    */
   sensitive?: string;
+  /**
+   * `false`: `Idempotency-Key` is ignored. For a route whose answer is a
+   * credential handed out once (a temporary password) or whose body carries a
+   * password: the replay store would keep the one readable, and a fast hash of
+   * the other, for 24 h. `selfService` routes (your own password, your own
+   * authenticator and its recovery codes) are left out without saying so.
+   */
+  idempotent?: false;
 }
 
 export interface HandlerArgs<P, Q, B> {
@@ -186,8 +194,11 @@ export function route<
       //
       // `Idempotency-Key` (docs/03-API.md §2): a JSON POST or PATCH retried with
       // the same key gets the first answer back and runs nothing. Looked up after
-      // authorization and validation, so a key never stands in for either.
-      const idem = wantsJson ? idempotencyOf(req, ctx, url, rawBody) : null;
+      // the route's permission and validation, so a key never stands in for
+      // either. A check made inside the handler (record scope) is not re-run: for
+      // 24 h the same caller can get back the answer it was already given.
+      const idem =
+        wantsJson && !spec.selfService && spec.idempotent !== false ? idempotencyOf(req, ctx, url, rawBody) : null;
       const replay = idem && (await findReplay<unknown>(idem));
       const result = replay ? replay.result : scrubSecrets(await handler({ ctx: ctx!, params, query, body, req }));
       if (idem && !replay && !(result instanceof Response)) await remember(idem, result ?? { ok: true });
