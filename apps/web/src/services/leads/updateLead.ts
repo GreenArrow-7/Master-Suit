@@ -1,11 +1,13 @@
-import { withTx } from '@/lib/db';
-import { AppError, NotFound } from '@/lib/errors';
-import { auditDiff } from '@/lib/security/audit';
+import { prisma, withTx, type TxClient } from '@/lib/db';
+import { AppError, Forbidden, NotFound } from '@/lib/errors';
+import { audit, auditDiff } from '@/lib/security/audit';
 import { assertAssignableUser, assertLeadInScope } from '@/lib/security/record-scope';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { enqueue } from '@/lib/queue';
 import { notifyCrm } from '../crm/notify';
 import { recordTargetProgress } from '../targets/progress';
+import { dayBounds } from '../targets/dailyBoard';
+import { withRecompute } from './nextFollowUp';
 import { normalizePhone } from './normalizePhone';
 
 export interface UpdateLeadInput {
@@ -21,6 +23,10 @@ export interface UpdateLeadInput {
   stageId?: string;
   /** Why it moves: required when the target stage says so. */
   stageReason?: string;
+  /** What the target stage books (lib/leads/stageBookings.ts): its time, and a visit's project. */
+  visitAt?: string;
+  projectId?: string;
+  meetingAt?: string;
   ownerId?: string | null;
   [k: string]: unknown;
 }
@@ -72,7 +78,11 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
         refuse('stageReason', `Choose one of ${stage.name}'s reasons: ${stage.reasons.join(', ')}.`);
       }
       const after = { ...before, ...input } as Record<string, unknown>;
-      const missing = stage.requiredFields.filter((field) => !String(after[field] ?? '').trim());
+      // A site visit is to somewhere: booking one names its project too.
+      const needs = stage.requiredFields.includes('visitAt')
+        ? [...stage.requiredFields, 'projectId']
+        : stage.requiredFields;
+      const missing = needs.filter((field) => !String(after[field] ?? '').trim());
       if (missing.length) refuse(missing[0]!, `${stage.name} needs: ${missing.join(', ')}.`);
       enteredReason = reason;
       stageChangedTo = stage.name;
@@ -88,6 +98,7 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
           reason,
         },
       });
+      await book(ctx, tx, before, stage.requiredFields, input);
     }
 
     if (input.ownerId !== undefined && input.ownerId !== before.ownerId) {
@@ -197,6 +208,129 @@ export async function deleteLead(ctx: Ctx, id: string) {
     });
     await auditDiff(ctx, 'lead', id, before, { ...before, deletedAt: new Date() }, tx);
   });
+}
+
+/**
+ * The projects a stage's site visit may name, for the mini-form's picker: the
+ * catalogue, to a role that reads it (as `GET /projects`). `book` holds a
+ * request to the same rule.
+ */
+export async function bookableProjects(ctx: Ctx) {
+  if (!can(ctx, 'projects', 'VIEW')) return [];
+  // ponytail: the first 500 by name; a search picker when a catalogue outgrows it.
+  return prisma.project.findMany({
+    where: { tenantId: ctx.tenantId, deletedAt: null },
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' },
+    take: 500,
+  });
+}
+
+/**
+ * What the stage books as the lead enters it (M4-18): a site visit to a project
+ * of the caller's catalogue, a meeting task, or both — written and audited in
+ * the transaction that moves the stage, so a failure here leaves the lead where
+ * it was. Both are the caller's, as when booked from the Visits or Tasks screen.
+ */
+async function book(
+  ctx: Ctx,
+  tx: TxClient,
+  lead: { id: string; fullName: string },
+  fields: string[],
+  input: UpdateLeadInput,
+) {
+  const visit = fields.includes('visitAt');
+  const meeting = fields.includes('meetingAt');
+  if (!visit && !meeting) return;
+  const { timezone } = await tx.tenant.findFirstOrThrow({ where: { id: ctx.tenantId }, select: { timezone: true } });
+
+  if (visit) {
+    if (!can(ctx, 'visits', 'CREATE')) throw Forbidden('Your role cannot book a site visit.');
+    const project = can(ctx, 'projects', 'VIEW')
+      ? await tx.project.findFirst({
+          where: { tenantId: ctx.tenantId, id: String(input.projectId), deletedAt: null },
+          select: { id: true },
+        })
+      : null;
+    if (!project) throw NotFound('Project');
+    const scheduledAt = instant('visitAt', input.visitAt, timezone);
+    // The visit register's rule (POST /site-visits): it is forward.
+    if (scheduledAt.getTime() < Date.now() - 86_400_000) {
+      refuse('visitAt', 'A site visit is booked ahead; log a past one as an activity.');
+    }
+    const row = await tx.siteVisit.create({
+      data: {
+        tenantId: ctx.tenantId,
+        ownerId: ctx.actor.id,
+        createdById: ctx.actor.id,
+        updatedById: ctx.actor.id,
+        leadId: lead.id,
+        projectId: project.id,
+        scheduledAt,
+      },
+      select: { id: true },
+    });
+    await audit(
+      ctx,
+      {
+        event: 'RECORD_CREATED',
+        objectType: 'visits',
+        recordId: row.id,
+        newValue: { leadId: lead.id, projectId: project.id, scheduledAt },
+      },
+      tx,
+    );
+  }
+
+  if (meeting) {
+    const dueAt = instant('meetingAt', input.meetingAt, timezone);
+    const type = await tx.taskType.findFirst({
+      where: { tenantId: ctx.tenantId, key: 'meeting' },
+      select: { id: true },
+    });
+    if (!type) refuse('meetingAt', 'This workspace has no Meeting task type to book the meeting with.');
+    // The lead's next follow-up may now be this meeting.
+    const task = await withRecompute(tx, ctx.tenantId, [lead.id], () =>
+      tx.task.create({
+        data: {
+          tenantId: ctx.tenantId,
+          typeId: type.id,
+          category: 'APPOINTMENT',
+          title: `Meeting with ${lead.fullName}`,
+          leadId: lead.id,
+          ownerId: ctx.actor.id,
+          createdById: ctx.actor.id,
+          startAt: dueAt,
+          dueAt,
+        },
+        select: { id: true },
+      }),
+    );
+    await audit(
+      ctx,
+      { event: 'RECORD_CREATED', objectType: 'tasks', recordId: task.id, newValue: { leadId: lead.id, dueAt } },
+      tx,
+    );
+  }
+}
+
+/**
+ * "YYYY-MM-DDTHH:mm" (what the date fields send) is a time on the workspace's
+ * clock; an ISO instant with its offset is itself.
+ */
+function instant(field: string, value: unknown, timeZone: string): Date {
+  const text = String(value ?? '');
+  const wall = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(text);
+  // ponytail: the zone's offset at that day's midnight, so a zone with daylight
+  // saving is an hour out on its change day; the UAE has none.
+  const at =
+    wall && !Number.isNaN(Date.parse(`${text}Z`))
+      ? new Date(dayBounds(wall[1]!, timeZone).from.getTime() + (Number(wall[2]) * 60 + Number(wall[3])) * 60_000)
+      : /T.+(Z|[+-]\d{2}:\d{2})$/.test(text)
+        ? new Date(text)
+        : new Date(NaN);
+  if (Number.isNaN(at.getTime())) refuse(field, `${field} must be a date and time, e.g. 2026-11-20T16:30.`);
+  return at;
 }
 
 /** A 422 whose detail is the sentence the screen shows. */

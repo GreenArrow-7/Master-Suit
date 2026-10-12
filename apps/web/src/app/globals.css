@@ -1414,6 +1414,36 @@ a:hover {
 .lf-rail--lost .lf-rail__seg[data-state='active'] {
   background: var(--lf-slate);
 }
+/* The exits apart from the ladder (M4-45): beside it, below it on a phone. */
+.lf-rails {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lf-space-2);
+}
+.lf-rails > .lf-rail {
+  flex: 2 1 320px;
+}
+.lf-rails > .lf-rail--exits {
+  flex: 1 1 360px;
+}
+/* Named, so each reads as a way out on offer; on a phone too, where the
+   ladder's other segments become ticks. */
+.lf-rail--exits .lf-rail__seg[data-state='pending'] {
+  background: var(--lf-surface);
+  color: var(--lf-ink-3);
+}
+.lf-rail--exits .lf-rail__seg > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 760px) {
+  .lf-rail--exits .lf-rail__seg:not([data-state='active']) {
+    flex: 1 1 0;
+    padding: 0 4px;
+    font-size: var(--lf-text-2xs);
+  }
+}
 
 /* ── Data grid ───────────────────────────────────────────────────────────── */
 .lf-grid-wrap {
@@ -4189,6 +4219,22 @@ a:hover {
   z-index: 60;
   display: flex;
   justify-content: flex-end;
+}
+/* The same sheet as the browser's modal <dialog> (the stage mini-form): it
+   sits in the top layer, above the shell, so the browser's own frame goes. */
+dialog.lf-drawer {
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--lf-ink);
+}
+dialog.lf-drawer::backdrop {
+  background: transparent;
 }
 .lf-drawer__scrim {
   position: absolute;

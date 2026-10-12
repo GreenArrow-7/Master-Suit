@@ -8,7 +8,7 @@ import SalesLink from '@/components/workspace/SalesLink';
 import { columnPriority, type ColumnDef } from '@/lib/grid/columns';
 import { summarizeBulk, type BulkFailure, type BulkOutcome } from '@/lib/grid/bulkOutcomes';
 import RowDetails from '@/components/workspace/RowDetails';
-import StageReason, { asksForReason, type ReasonedStage } from '@/components/workspace/StageReason';
+import StageReason, { asksBeforeMove, type ReasonedStage, type StageMove } from '@/components/workspace/StageReason';
 
 export interface LeadRow {
   id: string;
@@ -38,6 +38,7 @@ export default function LeadGrid({
   rows,
   columns,
   stages,
+  projects,
   users,
   taskTypes,
   canAssign,
@@ -48,6 +49,8 @@ export default function LeadGrid({
   rows: LeadRow[];
   columns: ColumnDef[];
   stages: (ReasonedStage & { key: string })[];
+  /** The mini-form's site visit picker (bookableProjects). */
+  projects: { id: string; name: string }[];
   users: { id: string; fullName: string }[];
   taskTypes: { id: string; name: string }[];
   canAssign: boolean;
@@ -61,7 +64,7 @@ export default function LeadGrid({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'updatedAt', dir: 'desc' });
   const [action, setAction] = useState<BulkAction | null>(null);
-  /** The chosen stage, while it waits for its reason. */
+  /** The chosen stage, while its mini-form is open. */
   const [reasonFor, setReasonFor] = useState<ReasonedStage | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<BulkOutcome | null>(null);
@@ -131,6 +134,8 @@ export default function LeadGrid({
     );
     setBusy(false);
     if (failures.length) {
+      // The mini-form closes so the refusals show; choosing the stage again reopens it.
+      setReasonFor(null);
       // Only what failed stays selected: a retry must not add a second task to,
       // or re-send, the leads that worked. The refresh shows those their new state.
       setSelected(new Set(failures.map((f) => f.id)));
@@ -175,8 +180,8 @@ export default function LeadGrid({
     router.refresh();
   }
 
-  const changeStage = (stageId: string, stageReason = '') =>
-    run((leadId) => post(`/api/v1/leads/${leadId}`, { stageId, ...(stageReason && { stageReason }) }, 'PATCH'));
+  const changeStage = (stageId: string, move: StageMove = {}) =>
+    run((leadId) => post(`/api/v1/leads/${leadId}`, { stageId, ...move }, 'PATCH'));
 
   const addTask = (form: FormData) =>
     run((leadId) =>
@@ -318,15 +323,6 @@ export default function LeadGrid({
                 </label>
               )}
 
-              {action === 'stage' && reasonFor && (
-                <StageReason
-                  stage={reasonFor}
-                  busy={busy}
-                  onMove={(reason) => void changeStage(reasonFor.id, reason)}
-                  onCancel={() => setReasonFor(null)}
-                />
-              )}
-
               {action === 'stage' && !reasonFor && (
                 <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
                   Move to stage
@@ -336,7 +332,7 @@ export default function LeadGrid({
                     disabled={busy}
                     onChange={(event) => {
                       const stage = stages.find((s) => s.id === event.target.value);
-                      if (stage && asksForReason(stage)) setReasonFor(stage);
+                      if (stage && asksBeforeMove(stage)) setReasonFor(stage);
                       else if (stage) void changeStage(stage.id);
                     }}
                   >
@@ -437,6 +433,17 @@ export default function LeadGrid({
             </div>
           )}
         </div>
+      )}
+
+      {/* Outside the bar, whose colours it would otherwise inherit. */}
+      {action === 'stage' && reasonFor && (
+        <StageReason
+          stage={reasonFor}
+          projects={projects}
+          busy={busy}
+          onMove={(move) => void changeStage(reasonFor.id, move)}
+          onCancel={() => setReasonFor(null)}
+        />
       )}
 
       <div className="lf-grid-wrap" style={{ overflowX: 'auto' }}>

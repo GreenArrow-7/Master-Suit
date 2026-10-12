@@ -9,6 +9,7 @@ import { prisma } from '@/lib/db';
 import { SIMPLE_NAMED_LEAD_FILTERS } from '@/lib/leads/namedFilters';
 import { contactSearch, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
+import { bookableProjects } from '@/services/leads/updateLead';
 import LeadGrid from './LeadGrid';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -116,7 +117,7 @@ export default async function LeadsPage({
   // are reached only through their own chip.
   const where = mergeWhere(scope, extra, search, params.filter === 'closed_out' ? null : OPEN_LEADS_WHERE);
 
-  const [rows, stages, users, taskTypes, setting] = await Promise.all([
+  const [rows, stages, users, taskTypes, setting, projects] = await Promise.all([
     prisma.lead.findMany({
       where,
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
@@ -143,7 +144,7 @@ export default async function LeadsPage({
     prisma.leadStage.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null },
       orderBy: { position: 'asc' },
-      select: { id: true, key: true, name: true, requiresReason: true, reasons: true },
+      select: { id: true, key: true, name: true, requiresReason: true, reasons: true, requiredFields: true },
     }),
     // Bulk assign offers whom the API accepts.
     assignableUsers(ctx, 'leads', 'ASSIGN'),
@@ -156,6 +157,7 @@ export default async function LeadsPage({
       where: { tenantId: ctx.tenantId },
       select: { gridColumns: true },
     }),
+    bookableProjects(ctx),
   ]);
 
   const columns = resolveColumns('LEAD', storedColumnsFor(setting?.gridColumns, 'LEAD'));
@@ -304,6 +306,7 @@ export default async function LeadsPage({
           rows={data as any}
           columns={columns}
           stages={stages}
+          projects={projects}
           users={users}
           taskTypes={taskTypes}
           canAssign={can(ctx, 'leads', 'ASSIGN')}

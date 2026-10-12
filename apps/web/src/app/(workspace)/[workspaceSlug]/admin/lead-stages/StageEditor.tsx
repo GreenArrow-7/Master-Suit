@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
 import Field from '@/components/forms/Field';
 import { FIELD_LABELS, LEAD_FIELDS } from '@/lib/leads/importMapping';
+import { BOOKING_LABELS } from '@/lib/leads/stageBookings';
 
 type Category = 'OPEN' | 'CONVERSION' | 'TERMINAL_NEGATIVE' | 'TERMINAL_JUNK';
 
@@ -28,8 +29,11 @@ const CATEGORIES: [Category, string][] = [
   ['TERMINAL_NEGATIVE', 'Lost'],
   ['TERMINAL_JUNK', 'Junk'],
 ];
-/** The name is always there; these may be required before a lead enters a stage. */
-const FIELDS = LEAD_FIELDS.filter((field) => field !== 'fullName');
+/** The name is always there; these may be required before a lead enters a stage, or booked as it does. */
+const FIELDS: [string, string][] = [
+  ...LEAD_FIELDS.filter((field) => field !== 'fullName').map((field): [string, string] => [field, FIELD_LABELS[field]]),
+  ...Object.entries(BOOKING_LABELS),
+];
 
 async function send(url: string, method: string, body?: unknown) {
   const res = await fetch(url, {
@@ -207,7 +211,7 @@ function StageCard({ stage, api, canEdit }: { stage: StageRow; api: string; canE
         <div style={{ gridColumn: '1 / -1' }}>
           <div className="lf-label">Must be filled before a lead enters it</div>
           <div style={{ display: 'flex', gap: 'var(--lf-space-3)', flexWrap: 'wrap', marginTop: 4 }}>
-            {FIELDS.map((field) => (
+            {FIELDS.map(([field, label]) => (
               <label
                 key={field}
                 style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}
@@ -224,7 +228,7 @@ function StageCard({ stage, api, canEdit }: { stage: StageRow; api: string; canE
                     }))
                   }
                 />
-                {FIELD_LABELS[field]}
+                {label}
               </label>
             ))}
           </div>

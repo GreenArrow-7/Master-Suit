@@ -8,6 +8,7 @@ import { loadFieldRules, applyFieldSecurity, seesField } from '@/lib/security/fi
 import { can, scopeFor } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { asLeadPhone, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
+import { bookableProjects } from '@/services/leads/updateLead';
 import StageRail from '@/components/ui/StageRail';
 import LeadDetail from './LeadDetail';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -69,12 +70,20 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     },
   });
 
-  const [lead, stages, activityTypes, taskTypes, tenantUsers, rules] = await Promise.all([
+  const [lead, stages, activityTypes, taskTypes, tenantUsers, rules, projects] = await Promise.all([
     leadPromise,
     prisma.leadStage.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null },
       orderBy: { position: 'asc' },
-      select: { id: true, key: true, name: true, category: true, requiresReason: true, reasons: true },
+      select: {
+        id: true,
+        key: true,
+        name: true,
+        category: true,
+        requiresReason: true,
+        reasons: true,
+        requiredFields: true,
+      },
     }),
     prisma.activityType.findMany({
       where: { tenantId: ctx.tenantId, isActive: true },
@@ -88,6 +97,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     // The owner menu offers whom updateLead accepts.
     assignableUsers(ctx, 'leads', can(ctx, 'leads', 'ASSIGN') ? 'ASSIGN' : 'REASSIGN'),
     loadFieldRules(ctx, 'LEAD'),
+    bookableProjects(ctx),
   ]);
   if (!lead) notFound();
 
@@ -194,6 +204,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       <LeadDetail
         lead={serializedLead}
         stages={stages}
+        projects={projects}
         activityTypes={activityTypes}
         taskTypes={taskTypes}
         users={tenantUsers}

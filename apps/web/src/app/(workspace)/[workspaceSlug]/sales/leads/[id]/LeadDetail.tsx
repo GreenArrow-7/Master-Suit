@@ -7,7 +7,7 @@ import { useModuleBase } from '@/components/workspace/SalesLink';
 import { dialable } from '@/components/workspace/CallLink';
 import Field from '@/components/forms/Field';
 import TaskComposer from '../../tasks/TaskComposer';
-import StageReason, { asksForReason } from '@/components/workspace/StageReason';
+import StageReason, { asksBeforeMove, type StageMove } from '@/components/workspace/StageReason';
 import { sendOrQueue } from '@/lib/offline';
 
 type Tab = 'Overview' | 'Timeline' | 'Tasks' | 'Notes' | 'Documents';
@@ -33,6 +33,7 @@ interface Stage {
   name: string;
   requiresReason: boolean;
   reasons: string[];
+  requiredFields: string[];
 }
 
 interface Activity {
@@ -115,6 +116,8 @@ interface LeadData {
 interface Props {
   lead: LeadData;
   stages: Stage[];
+  /** The mini-form's site visit picker (bookableProjects). */
+  projects: { id: string; name: string }[];
   activityTypes: ActivityType[];
   taskTypes: TaskType[];
   users: User[];
@@ -158,6 +161,7 @@ async function sendLater(url: string, method: string, body: unknown, label: stri
 export default function LeadDetail({
   lead,
   stages,
+  projects,
   activityTypes,
   taskTypes,
   users,
@@ -181,7 +185,7 @@ export default function LeadDetail({
 
   // -- Stage dropdown --
   const [showStageMenu, setShowStageMenu] = useState(false);
-  /** A stage that asks for a reason waits here until one is given. */
+  /** A stage that asks for a reason, or books something, waits here for its mini-form. */
   const [pendingStage, setPendingStage] = useState<Stage | null>(null);
 
   // -- More menu (edit / delete) --
@@ -238,9 +242,9 @@ export default function LeadDetail({
     })();
   };
 
-  const moveTo = (target: Stage, reason: string) =>
+  const moveTo = (target: Stage, move: StageMove) =>
     void withBusy(async () => {
-      await patchLead({ stageId: target.id, ...(reason && { stageReason: reason }) });
+      await patchLead({ stageId: target.id, ...move });
       setPendingStage(null);
     })();
 
@@ -248,8 +252,9 @@ export default function LeadDetail({
     setShowStageMenu(false);
     const target = stages.find((s) => s.key === stageKey);
     if (!target) return;
-    if (asksForReason(target)) setPendingStage(target);
-    else moveTo(target, '');
+    if (!asksBeforeMove(target)) return moveTo(target, {});
+    setError(null);
+    setPendingStage(target);
   };
 
   const followUpOverdue = lead.nextFollowUpAt ? new Date(lead.nextFollowUpAt) < new Date() : false;
@@ -438,17 +443,14 @@ export default function LeadDetail({
             </div>
 
             {pendingStage && (
-              <div style={{ margin: 'var(--lf-space-3) 0' }}>
-                <div className="lf-label" style={{ marginBottom: 6 }}>
-                  {pendingStage.requiresReason ? 'Why is it moving?' : 'Reason (optional)'}
-                </div>
-                <StageReason
-                  stage={pendingStage}
-                  busy={busy}
-                  onMove={(reason) => moveTo(pendingStage, reason)}
-                  onCancel={() => setPendingStage(null)}
-                />
-              </div>
+              <StageReason
+                stage={pendingStage}
+                projects={projects}
+                busy={busy}
+                error={error}
+                onMove={(move) => moveTo(pendingStage, move)}
+                onCancel={() => setPendingStage(null)}
+              />
             )}
 
             <dl className="lf-kv">
