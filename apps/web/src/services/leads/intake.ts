@@ -17,6 +17,7 @@ import { assertAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitle
 import type { Ctx } from '@/lib/security/rbac';
 import { LEAD_SOURCES, parseEnquiry, type Enquiry, type LeadSourceKey } from '@/lib/integrations/leadSources';
 import { findDuplicates } from './findDuplicates';
+import { leadSourceIdFor } from './leadSources';
 import { normalizePhone } from './normalizePhone';
 import { nextReference } from '../shared/reference';
 
@@ -47,6 +48,8 @@ export async function applyEnquiry({ tenantId, provider, externalId, source }: E
     label,
     source: recordSource,
     sourceDetail: enquiry.reference ? `${source}:${enquiry.reference}` : source,
+    // The workspace's catalogue entry for this kind of connection (M4-03).
+    sourceId: await leadSourceIdFor(prisma, tenantId, source),
   });
 }
 
@@ -56,6 +59,8 @@ export interface EnquiryOrigin {
   label: string;
   source: RecordSource;
   sourceDetail: string;
+  /** The catalogue entry (LeadSource) a new lead is attributed to. */
+  sourceId?: string | null;
   /** Straight to this agent; none leaves it to distribution. */
   ownerId?: string | null;
   /** The person who sent it in (cold data); none is the system, audited as `sourceDetail`. */
@@ -176,6 +181,7 @@ export async function takeEnquiry(
         stageId: stage.id,
         source: recordSource,
         sourceDetail: origin.sourceDetail,
+        sourceId: origin.sourceId ?? null,
         // They asked to be contacted.
         consentStatus: 'IMPLIED',
         slaDueAt,

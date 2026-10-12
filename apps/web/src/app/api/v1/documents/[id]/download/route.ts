@@ -4,7 +4,7 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Forbidden, NotFound } from '@/lib/errors';
 import { getObject } from '@/lib/storage';
-import { visibilityWhere } from '@/lib/security/visibility';
+import { leadScope } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -33,7 +33,7 @@ export const GET = route(
       throw Forbidden('This file is not available for download.');
     }
     if (document.leadId) {
-      const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
+      const scope = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
       const lead = await prisma.lead.findFirst({ where: { ...scope, id: document.leadId }, select: { id: true } });
       if (!lead) throw NotFound('Document');
     }

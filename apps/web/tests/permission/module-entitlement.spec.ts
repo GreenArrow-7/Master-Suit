@@ -369,7 +369,7 @@ describe('a screen or route outside the plan says which products carry it', () =
     expect(page).not.toContain('platform provider');
   });
 
-  it('every module layout says so: HR, Sales alone, and lead stages, which any lead product carries', async () => {
+  it('every module layout says so: HR, Sales alone, and lead stages and sources, which any lead product carries', async () => {
     expect(await shown(await PeopleLayout(open(salesOnly, '/people/leave')))).toContain('Leave is part of HR.');
     expect(await shown(await SalesLayout(open(realtyOnly, '/sales/opportunities')))).toContain(
       'Opportunities is part of Sales.',
@@ -377,6 +377,10 @@ describe('a screen or route outside the plan says which products carry it', () =
     const { default: LeadStagesLayout } = await import('@/app/(workspace)/[workspaceSlug]/admin/lead-stages/layout');
     expect(await shown(await LeadStagesLayout(open(hrOnly, '/admin/lead-stages')))).toContain(
       'Lead stages is part of Sales, Real Estate or Lead Eagle.',
+    );
+    const { default: LeadSourcesLayout } = await import('@/app/(workspace)/[workspaceSlug]/admin/lead-sources/layout');
+    expect(await shown(await LeadSourcesLayout(open(hrOnly, '/admin/lead-sources')))).toContain(
+      'Lead sources is part of Sales, Real Estate or Lead Eagle.',
     );
   });
 

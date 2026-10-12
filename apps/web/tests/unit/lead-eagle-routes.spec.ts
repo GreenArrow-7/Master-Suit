@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { LEAD_EAGLE_SHARED_ROOTS, sameScreenElsewhere } from '@/lib/nav/realtyShared';
+import { buildNavigation } from '@/lib/nav/workspaceNav';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 
@@ -116,5 +117,25 @@ describe('a /sales/ link reaches a Lead-Eagle-only workspace', () => {
 
   it('lead-eagle is a module root for module-relative links', () => {
     expect(read(path.join(web, 'src', 'components', 'workspace', 'SalesLink.tsx'))).toContain("'lead-eagle'");
+  });
+});
+
+describe('the Administration screens every lead module shares', () => {
+  const admin = path.join(APP, 'admin');
+
+  it.each(['lead-stages', 'lead-sources'])('admin/%s admits Lead Eagle, with its API', (screen) => {
+    expect(read(path.join(admin, screen, 'page.tsx'))).toContain('module: LEAD_MODULES');
+  });
+
+  it('the source catalogue API admits Lead Eagle', () => {
+    expect(read(path.join(API, 'lead-sources', 'route.ts'))).toContain('productModule: LEAD_MODULES');
+  });
+
+  it('a Lead-Eagle-only administrator is offered Lead Stages and Sources under Settings', () => {
+    const tabs = buildNavigation({ slug: 'eagle', modules: ['LEAD_EAGLE'], permitted: ['settings'] })
+      .flatMap((section) => section.areas)
+      .flatMap((area) => area.tabs)
+      .map((tab) => tab.href);
+    expect(tabs).toEqual(expect.arrayContaining(['/eagle/admin/lead-stages', '/eagle/admin/lead-sources']));
   });
 });

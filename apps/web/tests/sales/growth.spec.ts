@@ -138,10 +138,12 @@ describe('forms — the lead-gen loop', () => {
 
     const lead = await prisma.lead.findFirst({
       where: { tenantId, fullName: 'Walk-in Visitor' },
-      include: { submissions: true },
+      include: { submissions: true, leadSource: { select: { key: true } } },
     });
     expect(lead).not.toBeNull();
     expect(lead!.source).toBe('PUBLIC_FORM');
+    // The workspace's Website entry (M4-03), so Source Analysis counts it there.
+    expect(lead!.leadSource).toEqual({ key: 'website' });
     expect(lead!.submissions.length).toBe(1);
   });
 

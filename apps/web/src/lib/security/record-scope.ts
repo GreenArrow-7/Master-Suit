@@ -1,7 +1,12 @@
 import { prisma, type TxClient } from '@/lib/db';
 import { AppError, NotFound } from '@/lib/errors';
 import { can, scopeFor, type Action, type Ctx } from '@/lib/security/rbac';
-import { assertRecordVisible, resolveOwnerIds, visibilityWhere } from '@/lib/security/visibility';
+import {
+  assertRecordVisible,
+  resolveOwnerIds,
+  visibilityWhere,
+  type VisibilityOptions,
+} from '@/lib/security/visibility';
 
 /**
  * The calls a caller may reach for `action`, as a `where`: a call is its
@@ -138,8 +143,26 @@ export async function assignableUsers(ctx: Ctx, module: string, action: Action) 
 export async function assertLeadInScope(ctx: Ctx, leadId: string, db: TxClient | typeof prisma, action: Action) {
   const lead = await db.lead.findFirst({ where: { tenantId: ctx.tenantId, id: leadId, deletedAt: null } });
   if (!lead) throw NotFound('Lead');
-  await assertRecordInScope(ctx, 'leads', lead, db, action, 'Lead');
+  try {
+    await assertRecordInScope(ctx, 'leads', lead, db, action, 'Lead');
+  } catch (err) {
+    // The secondary owner works the lead as its owner does (`leadScope`). Only
+    // when one is named: with none, the check would read it as unassigned.
+    if (!lead.secondaryOwnerId || !(err instanceof AppError && err.status === 404)) throw err;
+    await assertRecordInScope(ctx, 'leads', lead, db, action, 'Lead', 'secondaryOwnerId');
+  }
   return lead;
+}
+
+/**
+ * The leads a caller reaches for `action`, as a `where` on Lead: `visibilityWhere`
+ * for `leads`, where the lead's secondary owner counts as its owner. Every read
+ * of the Lead model goes through here rather than `visibilityWhere(ctx, 'leads')`,
+ * which other lead work (follow-ups, cold data, social enquiries) applies to its
+ * own rows, none of which has a second owner.
+ */
+export function leadScope(ctx: Ctx, action: Action = 'VIEW', opts: Omit<VisibilityOptions, 'ownerField'> = {}) {
+  return visibilityWhere(ctx, 'leads', action, { ...opts, coOwnerFields: ['secondaryOwnerId'] });
 }
 
 /**
@@ -154,9 +177,10 @@ export async function assertRecordInScope(
   db: TxClient | typeof prisma,
   action: Action,
   label: string,
+  ownerField?: string,
 ) {
   try {
-    await assertRecordVisible(ctx, module, record, db, action);
+    await assertRecordVisible(ctx, module, record, db, action, ownerField);
   } catch (err) {
     if (err instanceof AppError && err.status === 403) throw NotFound(label);
     throw err;
@@ -246,7 +270,7 @@ export async function leadsInScope(ctx: Ctx, ids: (string | null)[]) {
   const leads =
     wanted.length > 0 && scopeFor(ctx, 'leads', 'VIEW') !== 'NONE'
       ? await prisma.lead.findMany({
-          where: { ...(await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true })), id: { in: wanted } },
+          where: { ...(await leadScope(ctx, 'VIEW', { includeUnassigned: true })), id: { in: wanted } },
           select: { id: true, fullName: true },
         })
       : [];

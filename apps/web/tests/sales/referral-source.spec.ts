@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
 import { POST as createLead } from '@/app/api/v1/leads/route';
 import { runReport } from '@/services/leadership/reports';
+import { ensureLeadSources } from '@/services/leads/leadSources';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { post } from '../helpers/request';
@@ -74,6 +75,34 @@ describe('Referral as a lead source', () => {
     expect(toBooking.rows.find((r) => r.source === 'Bayut')).toBeUndefined();
     expect(toBooking.rows.map((r) => typeof r.source)).toEqual(toBooking.rows.map(() => 'string'));
     const analysis = await runReport(ctx, 'source-analysis', range);
+    expect(analysis.rows.find((r) => r.source === 'referral')).toMatchObject({ leads: 2 });
+  });
+
+  it('files a referral picked from the catalogue under its Referral entry (M4-03)', async () => {
+    // What the lead form sends once Source is the catalogue's Referral entry.
+    await ensureLeadSources(prisma, tenantId);
+    const entry = await prisma.leadSource.findFirstOrThrow({ where: { tenantId, key: 'referral' } });
+    const res = await post(
+      createLead,
+      '/api/v1/leads',
+      {
+        fullName: 'Catalogue Referral',
+        phone: '0501112236',
+        source: 'REFERRAL',
+        sourceDetail: 'A partner',
+        sourceId: entry.id,
+      },
+      fixture.a.cookie,
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const ctx = buildCtx(buildActor({ id: fixture.a.userId, tenantId, grants: [['reports', 'VIEW']] }));
+    const range = { from: new Date(Date.now() - 86_400_000), to: new Date(Date.now() + 86_400_000) };
+    // Source to Booking folds the entry and the enum's label into one Referral row.
+    const toBooking = await runReport(ctx, 'source-to-booking', range);
+    expect(toBooking.rows.find((r) => r.source === 'Referral')).toMatchObject({ leads: 3 });
+    // Source Analysis groups by entry: the catalogue's Referral beside the enum's.
+    const analysis = await runReport(ctx, 'source-analysis', range);
+    expect(analysis.rows.find((r) => r.source === 'Referral')).toMatchObject({ leads: 1 });
     expect(analysis.rows.find((r) => r.source === 'referral')).toMatchObject({ leads: 2 });
   });
 });

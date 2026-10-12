@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
-import { callScope } from '@/lib/security/record-scope';
+import { callScope, leadScope } from '@/lib/security/record-scope';
 import { myEmployee } from '@/services/hr/leave';
 import AiInsight from '@/components/ui/AiInsight';
 import { names } from '@/services/leadership/rollups';
@@ -111,7 +111,7 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
   const showTasks = showSales && can(ctx, 'tasks', 'VIEW');
   const salesQuery = showSales
     ? Promise.all([
-        visibilityWhere(ctx, 'leads', 'VIEW'),
+        leadScope(ctx, 'VIEW'),
         showOpportunities ? visibilityWhere(ctx, 'opportunities', 'VIEW') : Promise.resolve(null),
         // Follow-ups key on ownerId like leads do; they carry the lead module's
         // grant because they are lead work.

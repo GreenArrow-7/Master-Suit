@@ -13,7 +13,7 @@ import {
   assertFilterableFields,
   seesField,
 } from '@/lib/security/fieldSecurity';
-import { visibilityWhere } from '@/lib/security/visibility';
+import { leadScope } from '@/lib/security/record-scope';
 import { obligationAccess, obligationWhere, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import { createLead, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
@@ -57,7 +57,7 @@ export const GET = route(
   async ({ ctx, query }) => {
     const rules = await loadFieldRules(ctx, 'LEAD');
 
-    const scopeWhere = await visibilityWhere(ctx, 'leads', 'VIEW', {
+    const scopeWhere = await leadScope(ctx, 'VIEW', {
       includeUnassigned: query.includeUnassigned,
     });
 
@@ -145,7 +145,13 @@ const createBody = z
       .default('MANUAL'),
     /** For a REFERRAL, who referred the lead (M6-15); otherwise free text. */
     sourceDetail: z.string().max(160).optional(),
+    /** A catalogue entry (LeadSource) of this workspace: the sub-source chosen, or the source. */
+    sourceId: z.string().cuid().optional(),
+    campaignName: z.string().trim().max(120).optional(),
     campaignId: z.string().cuid().optional(),
+    nationality: z.string().trim().max(80).optional(),
+    /** The main number is on WhatsApp; on unless switched off. */
+    phoneIsWhatsapp: z.boolean().optional(),
     stageId: z.string().cuid().optional(),
     ownerId: z.string().cuid().optional(),
     priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).default('MEDIUM'),
