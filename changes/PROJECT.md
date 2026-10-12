@@ -110,7 +110,9 @@ Node 22 or newer (CI uses 24).
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
   P2002 answers 409 and P2025 404, a zod failure 422 — let the database say
   "already exists" or "not found" instead of reading first. `route()` honours
-  `Idempotency-Key` on JSON POST and PATCH (24 h, `IdempotentRequest`).
+  `Idempotency-Key` on JSON POST and PATCH (24 h, `IdempotentRequest`, swept
+  nightly); a route that answers with a credential declares `idempotent: false`
+  (`selfService` routes are out already).
 - **Audit.** The rule for new code: every write should leave an AuditLog row,
   through the route's `auditEvent`, or `audit(ctx, …)`
   (`src/lib/security/audit.ts`) where the route cannot say enough. A write no
