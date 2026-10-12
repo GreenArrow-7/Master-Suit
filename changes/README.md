@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-13 | [Lead requirement, interest links, custom fields and scoring on the lead page](2026-10-12-lead-requirement-interest-fields.md) | - | Lead Eagle, leads |
 | 2026-10-12 | [Lead record fields: WhatsApp on the main number, sources and sub-sources, nationality, a second owner, tags, a duplicate check on edit](2026-10-12-lead-record-fields.md) | #169 | Lead Eagle, leads |
 | 2026-10-11 | [Admin > Roles showed no scopes; a screen outside the plan went to the dashboard without a word](2026-10-11-roles-scope-and-module-pages.md) | #168 | fix, roles, Lead Eagle |
 | 2026-10-11 | [Team leads see their team's follow-ups and tasks](2026-10-11-team-follow-ups-tasks.md) | #167 | security, Lead Eagle |
