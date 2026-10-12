@@ -472,6 +472,31 @@ function definitions(slug: string): SectionDef[] {
           ],
         },
         {
+          // Lead sources every lead module has (M6-06, M6-09); a workspace with
+          // Lead Eagle beside Real Estate browses its addresses here.
+          key: 'realty-sources',
+          label: 'Lead Sources',
+          icon: 'document',
+          tabs: [
+            {
+              label: 'Forms',
+              href: r('/forms'),
+              aliases: [le('/forms')],
+              permission: 'forms',
+              module: R,
+              keywords: 'web forms website embed snippet',
+            },
+            {
+              label: 'Landing Pages',
+              href: r('/landing-pages'),
+              aliases: [le('/landing-pages')],
+              permission: 'landingpages',
+              module: R,
+              keywords: 'campaign page',
+            },
+          ],
+        },
+        {
           key: 'realty-inventory',
           label: 'Inventory',
           icon: 'company',

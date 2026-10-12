@@ -1,3 +1,5 @@
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { test, expect } from '@playwright/test';
 import { prisma } from '@/lib/db';
 import { uniq } from './helpers';
@@ -5,8 +7,8 @@ import { uniq } from './helpers';
 /**
  * The embeddable snippet (audit row M6-07): a brokerage's own site carries one
  * script tag, which frames the workspace's public form, and a visitor who
- * fills it in becomes a lead. The host page is served from another origin by
- * Playwright's router, so the frame is genuinely cross-site.
+ * fills it in becomes a lead. The host page is served from another origin, so
+ * the frame is cross-origin to the page around it.
  */
 test.describe('the embeddable form snippet', () => {
   const run = uniq();
@@ -60,25 +62,45 @@ test.describe('the embeddable form snippet', () => {
     });
   });
 
+  /**
+   * The brokerage's own site: a real server on another port. Not Playwright's
+   * router: Chrome counts a routed page as public and refuses its request for a
+   * script on a loopback address (Local Network Access), so /embed.js never loads.
+   */
+  let site: Server;
+  let host = '';
+  test.beforeAll(async () => {
+    const app = process.env.APP_URL ?? 'http://localhost:3000';
+    site = createServer((_req, res) => {
+      res.setHeader('content-type', 'text/html');
+      res.end(
+        `<!doctype html><html><body><h1>Brokerage site</h1><script src="${app}/embed.js" data-workspace="${slug}" data-form="${formKey}"></script></body></html>`,
+      );
+    });
+    await new Promise<void>((resolve) => site.listen(0, '127.0.0.1', resolve));
+    host = `http://127.0.0.1:${(site.address() as AddressInfo).port}/`;
+  });
+
   test.afterAll(async () => {
+    site?.close();
     if (tenantId) await prisma.tenant.delete({ where: { id: tenantId } }).catch(() => {});
   });
 
-  test('a third-party page with the script shows the form, and a submission becomes a lead', async ({
-    page,
-    baseURL,
-  }) => {
-    // Plain http, so the page may load the dev server's script without a mixed-content block.
-    await page.route(
-      (url) => url.hostname === 'brokerage.example',
-      (route) =>
-        route.fulfill({
-          contentType: 'text/html',
-          body: `<!doctype html><html><body><h1>Brokerage site</h1><script src="${baseURL}/embed.js" data-workspace="${slug}" data-form="${formKey}"></script></body></html>`,
-        }),
-    );
-    await page.goto('http://brokerage.example/');
+  test('a third-party page with the script shows the form, and a submission becomes a lead', async ({ page }) => {
+    // What the browser said, for a failure that would otherwise read "no iframe".
+    const log: string[] = [];
+    page.on('console', (message) => log.push(`console ${message.type()}: ${message.text()}`));
+    page.on('requestfailed', (request) => log.push(`failed ${request.url()}: ${request.failure()?.errorText}`));
+    page.on('response', (response) => {
+      if (/embed\.js|\/f\//.test(response.url())) log.push(`${response.status()} ${response.url()}`);
+    });
+    await page.goto(host);
     await expect(page.getByRole('heading', { name: 'Brokerage site' })).toBeVisible();
+    try {
+      await expect(page.locator('iframe')).toHaveCount(1);
+    } catch (error) {
+      throw new Error(`${(error as Error).message}\n${log.join('\n')}`);
+    }
 
     const frame = page.frameLocator('iframe');
     await expect(frame.getByRole('heading', { name: 'Talk to us' })).toBeVisible();

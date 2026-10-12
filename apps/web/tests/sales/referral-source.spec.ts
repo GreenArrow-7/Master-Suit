@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
+import { invalidateEntitlements } from '@/lib/security/entitlements';
 import { POST as createLead } from '@/app/api/v1/leads/route';
 import { runReport } from '@/services/leadership/reports';
 import { buildActor, buildCtx } from '../helpers/ctx';
@@ -7,8 +8,9 @@ import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { post } from '../helpers/request';
 
 /**
- * Referral as a lead source (audit row M6-15): a lead records who referred it,
- * and the source reports show Referral beside the portals and forms.
+ * Referral as a lead source (audit row M6-15): a Lead-Eagle-only workspace
+ * records who referred a lead, and the source reports show Referral beside the
+ * portals and forms.
  */
 let fixture: Fixture;
 let tenantId: string;
@@ -16,6 +18,10 @@ let tenantId: string;
 beforeAll(async () => {
   fixture = await seedTwoTenants();
   tenantId = fixture.a.tenantId;
+  // Lead Eagle instead of Sales: the product the row is for.
+  await prisma.moduleEntitlement.updateMany({ where: { tenantId, module: 'SALES' }, data: { state: 'CANCELED' } });
+  await prisma.moduleEntitlement.create({ data: { tenantId, module: 'LEAD_EAGLE', state: 'ACTIVE' } });
+  await invalidateEntitlements(tenantId);
 });
 
 afterAll(async () => {

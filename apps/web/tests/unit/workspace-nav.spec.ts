@@ -384,6 +384,14 @@ describe('Lead Eagle: its own menu only where it is the whole CRM', () => {
     expect(at(leadEagle(['LEAD_EAGLE', 'REAL_ESTATE']), `/${SLUG}/lead-eagle/leads`)).toBe('realty-clients / Leads');
   });
 
+  it('gives way on its website forms and landing pages too: Real Estate and Sales carry them (M6-06, M6-09)', () => {
+    expect(tabsOf(leadEagle(['REAL_ESTATE']), 'realty-sources')).toEqual(['Forms', 'Landing Pages']);
+    expect(at(leadEagle(['LEAD_EAGLE', 'REAL_ESTATE']), `/${SLUG}/lead-eagle/forms`)).toBe('realty-sources / Forms');
+    expect(at(leadEagle(['LEAD_EAGLE', 'SALES']), `/${SLUG}/lead-eagle/landing-pages`)).toBe(
+      'lead-sources / Landing Pages',
+    );
+  });
+
   it('is the phone tab bar for its own URLs, and for shared ones where it is the only CRM', () => {
     expect(activeModule(`/${SLUG}/lead-eagle/leads`, ['LEAD_EAGLE'])).toBe('lead-eagle');
     expect(activeModule(`/${SLUG}/dashboard`, ['LEAD_EAGLE', 'HRMS'])).toBe('lead-eagle');
