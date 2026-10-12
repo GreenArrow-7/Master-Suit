@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { z, ZodError, type ZodTypeAny } from 'zod';
 import { AppError, Conflict, Forbidden, Invalid, MethodNotAllowedError, NotFound, Unauthorized } from '../errors';
 import { logger } from '../logger';
-import { TenantGuardError } from '../db';
+import { TenantGuardError, withTx } from '../db';
 import { resolveCtx, clientIp } from '../auth/session';
 import { authenticateApiKey } from '../auth/apiKey';
 import { requirePlatformServiceActor, recordPlatformAccess } from '../auth/service-identity';
@@ -15,6 +15,7 @@ import { audit, SECRET_KEYS, type AuditEventName } from '../security/audit';
 import { assertAnyModuleEntitlement } from '../security/entitlements';
 import type { ProductModuleKey as ProductModule } from '../modules/catalogue';
 import { recordError, recordRequest } from '../metrics';
+import { findReplay, recordOutcome, type IdempotencyRequest } from '@/services/idempotency';
 
 export interface RouteSpec<PS extends ZodTypeAny, QS extends ZodTypeAny, BS extends ZodTypeAny> {
   module: string;
@@ -182,10 +183,18 @@ export function route<
       // and live TOTP secrets. Per-route selects are the real fix; this is the
       // net under them, and it is here because this is the one place every
       // response body passes through.
-      const result = scrubSecrets(await handler({ ctx: ctx!, params, query, body, req }));
+      //
+      // `Idempotency-Key` (docs/03-API.md §2): a JSON POST or PATCH retried with
+      // the same key gets the first answer back and runs nothing. Looked up after
+      // authorization and validation, so a key never stands in for either.
+      const idem = wantsJson ? idempotencyOf(req, ctx, url, rawBody) : null;
+      const replay = idem && (await findReplay<unknown>(idem));
+      const result = replay ? replay.result : scrubSecrets(await handler({ ctx: ctx!, params, query, body, req }));
+      if (idem && !replay && !(result instanceof Response)) await remember(idem, result ?? { ok: true });
 
       // 6. Audit ───────────────────────────────────────────────────────────────
-      if (ctx && spec.auditEvent) {
+      // A replay did nothing, so there is nothing to record.
+      if (ctx && spec.auditEvent && !replay) {
         await audit(ctx, {
           event: spec.auditEvent,
           objectType: spec.module,
@@ -285,6 +294,37 @@ export function route<
       return response;
     }
   };
+}
+
+/**
+ * The request's `Idempotency-Key`, as services/idempotency.ts keys it: per
+ * workspace, method and path, by this actor, for this body and query. Kept 24 h.
+ */
+function idempotencyOf(req: Request, ctx: Ctx | null, url: URL, rawBody: unknown): IdempotencyRequest | null {
+  const requestKey = req.headers.get('idempotency-key')?.trim();
+  if (!requestKey || !ctx || !['POST', 'PATCH'].includes(req.method)) return null;
+  if (requestKey.length > 255) {
+    throw Invalid([{ field: 'Idempotency-Key', code: 'too_long', message: 'Use a key of at most 255 characters.' }]);
+  }
+  return {
+    tenantId: ctx.tenantId,
+    operation: `${req.method} ${url.pathname}`,
+    requestKey,
+    actorUserId: ctx.actor.id,
+    // Strings: `fingerprint` sorts and keeps top-level keys only.
+    input: { body: JSON.stringify(rawBody), query: url.search },
+  };
+}
+
+/** The answer, for the retry. Losing the record costs the retry its replay, never the request its result. */
+async function remember(idem: IdempotencyRequest, result: unknown) {
+  try {
+    await withTx(idem.tenantId, (tx) => recordOutcome(tx, idem, result));
+  } catch (err) {
+    // ponytail: no in-flight claim, so two concurrent first attempts both run and
+    // the later one keeps no record; claim the key before the handler if callers race their own retries.
+    logger.warn({ err: (err as Error).message, operation: idem.operation }, 'idempotency record not kept');
+  }
 }
 
 /**
