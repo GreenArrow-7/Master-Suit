@@ -113,8 +113,9 @@ Node 22 or newer (CI uses 24).
   stage's reason, fields and bookings are checked in `updateLead` (a lead
   created straight into a stage is not, yet): `visitAt` or `meetingAt` in its
   `requiredFields` books a site visit or a meeting task in the same
-  transaction (`src/lib/leads/stageBookings.ts`). A screen that moves a lead
-  opens the `StageReason` mini-form when `asksBeforeMove` says so.
+  transaction (`src/lib/leads/stageBookings.ts`); only a move books, so a
+  booking sent with no move is refused 422. A screen that moves a lead opens
+  the `StageReason` mini-form when `asksBeforeMove` says so.
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
   P2002 answers 409 and P2025 404, a zod failure 422 — let the database say
   "already exists" or "not found" instead of reading first.
