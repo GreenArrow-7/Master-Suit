@@ -251,7 +251,8 @@ export default function LeadDetail({
   const handleStageChange = (stageKey: string) => {
     setShowStageMenu(false);
     const target = stages.find((s) => s.key === stageKey);
-    if (!target) return;
+    // The stage it is already in: nothing moves, so nothing is asked or booked.
+    if (!target || target.key === lead.stage.key) return;
     if (!asksBeforeMove(target)) return moveTo(target, {});
     setError(null);
     setPendingStage(target);

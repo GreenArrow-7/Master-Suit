@@ -7,6 +7,7 @@ import { enqueue } from '@/lib/queue';
 import { notifyCrm } from '../crm/notify';
 import { recordTargetProgress } from '../targets/progress';
 import { dayBounds } from '../targets/dailyBoard';
+import { BOOKING_FIELDS } from '@/lib/leads/stageBookings';
 import { withRecompute } from './nextFollowUp';
 import { normalizePhone } from './normalizePhone';
 
@@ -61,13 +62,19 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
 
   const updated = await withTx(ctx.tenantId, async (tx) => {
     const before = await assertLeadInScope(ctx, id, tx, 'EDIT');
+    // Only a move into a stage books (below): a visit or meeting sent with no
+    // move, e.g. to the stage the lead is already in, would vanish without a word.
+    const moving = !!input.stageId && input.stageId !== before.stageId;
+    if (!moving && [...BOOKING_FIELDS, 'projectId'].some((field) => input[field] !== undefined)) {
+      refuse('stageId', 'The lead is already in this stage: book the visit or meeting from Site visits or Tasks.');
+    }
     // The new owner: someone the scope of the action that allows the change reaches.
     if (input.ownerId && input.ownerId !== before.ownerId) {
       const action = can(ctx, 'leads', 'ASSIGN') ? 'ASSIGN' : 'REASSIGN';
       await assertAssignableUser(ctx, tx, 'leads', action, input.ownerId);
     }
 
-    if (input.stageId && input.stageId !== before.stageId) {
+    if (moving) {
       const stage = await tx.leadStage.findFirst({ where: { tenantId: ctx.tenantId, id: input.stageId } });
       if (!stage) throw NotFound('Lead stage');
       // A stage that claims something happened carries the evidence: its reason,
@@ -213,10 +220,10 @@ export async function deleteLead(ctx: Ctx, id: string) {
 /**
  * The projects a stage's site visit may name, for the mini-form's picker: the
  * catalogue, to a role that reads it (as `GET /projects`). `book` holds a
- * request to the same rule.
+ * request to the same rule. None where no stage books a visit: nothing asks.
  */
-export async function bookableProjects(ctx: Ctx) {
-  if (!can(ctx, 'projects', 'VIEW')) return [];
+export async function bookableProjects(ctx: Ctx, stages: { requiredFields: string[] }[]) {
+  if (!can(ctx, 'projects', 'VIEW') || !stages.some((stage) => stage.requiredFields.includes('visitAt'))) return [];
   // ponytail: the first 500 by name; a search picker when a catalogue outgrows it.
   return prisma.project.findMany({
     where: { tenantId: ctx.tenantId, deletedAt: null },
@@ -285,7 +292,7 @@ async function book(
   if (meeting) {
     const dueAt = instant('meetingAt', input.meetingAt, timezone);
     const type = await tx.taskType.findFirst({
-      where: { tenantId: ctx.tenantId, key: 'meeting' },
+      where: { tenantId: ctx.tenantId, key: 'meeting', isActive: true },
       select: { id: true },
     });
     if (!type) refuse('meetingAt', 'This workspace has no Meeting task type to book the meeting with.');

@@ -5,9 +5,11 @@
  * for a site visit, which also names its project, `meetingAt` for a meeting).
  * Moving a lead there takes the booking in the same request: the site visit or
  * the meeting task is written in the transaction that moves the stage, audited,
- * and without the fields the move is refused 422, so no screen and no API
- * caller can claim a visit nobody booked. The project is one the caller's
- * picker offers: the catalogue, to a role that reads it.
+ * and without the fields the move is refused 422, so no move, from a screen or
+ * the API, claims a visit nobody booked (creating a lead in such a stage is not
+ * a move, and is not checked: changes/2026-10-12-lead-eagle-pipeline-stages.md).
+ * A booking sent with no move is refused rather than dropped. The project is one
+ * the caller's picker offers: the catalogue, to a role that reads it.
  *
  * Checked on the route and on the lead page server component (what it hands
  * the rail and the mini-form).
@@ -30,12 +32,13 @@ vi.mock('next/headers', () => ({
 
 import { prisma } from '@/lib/db';
 import { PATCH as patchLead } from '@/app/api/v1/leads/[id]/route';
+import { PATCH as patchStage, POST as postStage } from '@/app/api/v1/workspaces/[workspaceSlug]/sales/stages/route';
 import LeadPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
 import LeadDetail from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/LeadDetail';
 import StageRail from '@/components/ui/StageRail';
 import StageReason from '@/components/workspace/StageReason';
 import { createWorkspaceUser, grantPermissions, seedTwoTenants, type Fixture, type Grants } from '../helpers/fixtures';
-import { patch } from '../helpers/request';
+import { patch, post } from '../helpers/request';
 import { createSessionToken } from '../helpers/session';
 
 const suffix = randomBytes(4).toString('hex');
@@ -94,7 +97,12 @@ beforeAll(async () => {
     ['visits', 'VIEW'],
     ['visits', 'CREATE'],
     ['projects', 'VIEW'],
+    ['settings', 'VIEW'],
+    ['settings', 'MANAGE_CONFIGURATION'],
   ]);
+  // The other company reads its catalogue too, but no stage of its books a visit.
+  const adminB = await prisma.user.findFirstOrThrow({ where: { tenantId: fixture.b.tenantId, id: fixture.b.userId } });
+  await grantPermissions(fixture.b.tenantId, adminB.roleId, [['projects', 'VIEW']]);
   const leadWork: Grants = [
     ['leads', 'VIEW'],
     ['leads', 'EDIT'],
@@ -219,6 +227,8 @@ describe('moving a lead to Site Visit Scheduled', () => {
       fixture.a.cookie,
     );
     expect(past.status).toBe(422);
+    expect(past.body.errors[0].field).toBe('visitAt');
+    expect(past.body.detail).toBe('A site visit is booked ahead; log a past one as an activity.');
     const garbage = await patch(
       patchLead,
       url(leadId),
@@ -226,7 +236,41 @@ describe('moving a lead to Site Visit Scheduled', () => {
       fixture.a.cookie,
     );
     expect(garbage.status).toBe(422);
+    expect(garbage.body.errors[0].field).toBe('visitAt');
+    expect(garbage.body.detail).toMatch(/^visitAt must be a date and time/);
     expect(await stageOf(leadId)).toBe(fixture.a.stageId);
+  });
+
+  it('reads the time on the workspace’s own clock, not Dubai’s', async () => {
+    const { timezone } = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } });
+    await prisma.tenant.update({ where: { id: tenantId }, data: { timezone: 'Asia/Kolkata' } });
+    try {
+      const leadId = await lead('Kolkata clock');
+      const moved = await patch(
+        patchLead,
+        url(leadId),
+        { stageId: visitStage.id, visitAt: `${day}T16:30`, projectId: marina.id },
+        fixture.a.cookie,
+      );
+      expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+      // 16:30 in Kolkata (UTC+5:30) is 11:00 UTC.
+      expect((await visitsOf(leadId))[0]!.scheduledAt.toISOString()).toBe(`${day}T11:00:00.000Z`);
+    } finally {
+      await prisma.tenant.update({ where: { id: tenantId }, data: { timezone } });
+    }
+  });
+
+  it('refuses a visit sent with no move, e.g. to the stage the lead is already in, rather than dropping it', async () => {
+    const leadId = await lead('Already there', visitStage.id);
+    const booking = { visitAt: `${day}T11:00`, projectId: marina.id };
+    for (const body of [{ stageId: visitStage.id, ...booking }, booking]) {
+      const res = await patch(patchLead, url(leadId), body, fixture.a.cookie);
+      expect(res.status, JSON.stringify(body)).toBe(422);
+      expect(res.body.errors[0].field).toBe('stageId');
+    }
+    expect(await visitsOf(leadId)).toEqual([]);
+    // The same stage with nothing to book is still a harmless no-op.
+    expect((await patch(patchLead, url(leadId), { stageId: visitStage.id }, fixture.a.cookie)).status).toBe(200);
   });
 
   it('a project outside the caller’s catalogue is not found, and the stage does not move', async () => {
@@ -263,6 +307,8 @@ describe('moving a lead to Site Visit Scheduled', () => {
     );
     expect(res.status).toBe(403);
     expect(await stageOf(leadId)).toBe(fixture.a.stageId);
+    expect(await prisma.leadStageHistory.count({ where: { tenantId, leadId } })).toBe(0);
+    expect(await visitsOf(leadId)).toEqual([]);
   });
 });
 
@@ -273,6 +319,27 @@ describe('moving a lead to Meeting Scheduled', () => {
     expect(res.status).toBe(422);
     expect(res.body.detail).toBe('Meeting Scheduled needs: meetingAt.');
     expect(await stageOf(leadId)).toBe(fixture.a.stageId);
+    expect(await prisma.task.count({ where: { tenantId, leadId } })).toBe(0);
+  });
+
+  it('is refused while the Meeting task type is switched off, and the stage, history and tasks roll back', async () => {
+    const leadId = await lead('Meeting type off');
+    await prisma.taskType.update({ where: { tenantId, id: meetingType.id }, data: { isActive: false } });
+    try {
+      const res = await patch(
+        patchLead,
+        url(leadId),
+        { stageId: meetingStage.id, meetingAt: `${day}T10:00` },
+        fixture.a.cookie,
+      );
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(res.body.errors[0].field).toBe('meetingAt');
+    } finally {
+      await prisma.taskType.update({ where: { tenantId, id: meetingType.id }, data: { isActive: true } });
+    }
+    expect(await stageOf(leadId)).toBe(fixture.a.stageId);
+    expect(await prisma.leadStageHistory.count({ where: { tenantId, leadId } })).toBe(0);
+    expect(await prisma.task.count({ where: { tenantId, leadId } })).toBe(0);
   });
 
   it('books a meeting task in the same request, the lead’s next follow-up, audited', async () => {
@@ -325,6 +392,43 @@ function segments(rail: ReactElement) {
   }));
 }
 
+describe('Admin > Lead Stages', () => {
+  it('saves a stage that books a visit, and refuses a booking it does not know', async () => {
+    const at = `/api/v1/workspaces/${fixture.a.slug}/sales/stages`;
+    const params = { workspaceSlug: fixture.a.slug };
+    const created = await post(
+      postStage,
+      at,
+      { key: `tour_${suffix}`, name: 'Tour booked', position: 6, requiredFields: ['visitAt'] },
+      fixture.a.cookie,
+      params,
+    );
+    expect(created.status, JSON.stringify(created.body)).toBe(200);
+    try {
+      // What the editor sends on every save: the whole list, booking included.
+      const renamed = await patch(
+        patchStage,
+        `${at}?id=${created.body.id}`,
+        { name: 'Tour on the calendar', requiredFields: ['email', 'visitAt'] },
+        fixture.a.cookie,
+        params,
+      );
+      expect(renamed.status, JSON.stringify(renamed.body)).toBe(200);
+      expect(renamed.body.requiredFields).toEqual(['email', 'visitAt']);
+      const unknown = await post(
+        postStage,
+        at,
+        { key: `when_${suffix}`, name: 'Unknown', position: 7, requiredFields: ['visitWhen'] },
+        fixture.a.cookie,
+        params,
+      );
+      expect(unknown.status).toBe(422);
+    } finally {
+      await prisma.leadStage.deleteMany({ where: { tenantId, key: { in: [`tour_${suffix}`, `when_${suffix}`] } } });
+    }
+  });
+});
+
 describe('the lead page', () => {
   it('shows the rail with the exits apart: the current stage highlighted, an exit not a step after Booked', async () => {
     const atVisit = await lead('On the ladder', visitStage.id);
@@ -353,6 +457,27 @@ describe('the lead page', () => {
       (await leadPage(cookie, leadId)).detail.props.projects.map((project) => project.name);
     expect(await names(fixture.a.cookie)).toEqual(['Marina Heights']);
     expect(await names(cookies.noProjects)).toEqual([]);
+    // A workspace none of whose stages books a visit loads no catalogue at all.
+    const other = (await leadPage(fixture.b.cookie, fixture.b.leadIds[0]!)).detail.props.projects;
+    expect(other).toEqual([]);
+  });
+
+  it('the opportunity page’s compact rail keeps a lost deal apart, with nothing passed', () => {
+    const rail = createElement(StageRail, {
+      stages: [
+        { key: 'prospect', name: 'Prospect', category: 'OPEN' },
+        { key: 'won', name: 'Won', category: 'CONVERSION' },
+        { key: 'lost', name: 'Lost', category: 'TERMINAL_NEGATIVE' },
+      ],
+      currentKey: 'lost',
+      compact: true,
+    });
+    expect(segments(rail)).toEqual([
+      { name: 'Prospect', state: 'pending', exit: false },
+      { name: 'Won', state: 'pending', exit: false },
+      { name: 'Lost', state: 'active', exit: true },
+    ]);
+    expect(renderToStaticMarkup(rail).match(/height:24px/g)).toHaveLength(2);
   });
 
   it('the mini-form asks for the visit’s date, time and project, all required', () => {

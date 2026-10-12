@@ -117,7 +117,7 @@ export default async function LeadsPage({
   // are reached only through their own chip.
   const where = mergeWhere(scope, extra, search, params.filter === 'closed_out' ? null : OPEN_LEADS_WHERE);
 
-  const [rows, stages, users, taskTypes, setting, projects] = await Promise.all([
+  const [rows, stages, users, taskTypes, setting] = await Promise.all([
     prisma.lead.findMany({
       where,
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
@@ -157,8 +157,8 @@ export default async function LeadsPage({
       where: { tenantId: ctx.tenantId },
       select: { gridColumns: true },
     }),
-    bookableProjects(ctx),
   ]);
+  const projects = await bookableProjects(ctx, stages);
 
   const columns = resolveColumns('LEAD', storedColumnsFor(setting?.gridColumns, 'LEAD'));
 

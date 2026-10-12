@@ -183,7 +183,7 @@ export default async function SmartViewsPage({
 
   const rules = await loadFieldRules(ctx, 'LEAD');
 
-  const [rows, stages, counts, users, taskTypes, setting, projects] = await Promise.all([
+  const [rows, stages, counts, users, taskTypes, setting] = await Promise.all([
     prisma.lead.findMany({
       where,
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
@@ -224,8 +224,8 @@ export default async function SmartViewsPage({
       select: { id: true, name: true },
     }),
     prisma.organizationSetting.findUnique({ where: { tenantId: ctx.tenantId }, select: { gridColumns: true } }),
-    bookableProjects(ctx),
   ]);
+  const projects = await bookableProjects(ctx, stages);
   const columns = resolveColumns('LEAD', storedColumnsFor(setting?.gridColumns, 'LEAD'));
 
   // The grid shows the viewer's own obligations, never the stored aggregate —

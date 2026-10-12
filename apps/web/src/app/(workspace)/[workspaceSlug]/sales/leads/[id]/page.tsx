@@ -70,7 +70,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     },
   });
 
-  const [lead, stages, activityTypes, taskTypes, tenantUsers, rules, projects] = await Promise.all([
+  const [lead, stages, activityTypes, taskTypes, tenantUsers, rules] = await Promise.all([
     leadPromise,
     prisma.leadStage.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null },
@@ -97,9 +97,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     // The owner menu offers whom updateLead accepts.
     assignableUsers(ctx, 'leads', can(ctx, 'leads', 'ASSIGN') ? 'ASSIGN' : 'REASSIGN'),
     loadFieldRules(ctx, 'LEAD'),
-    bookableProjects(ctx),
   ]);
   if (!lead) notFound();
+  const projects = await bookableProjects(ctx, stages);
 
   const personalAccess = await obligationAccess(ctx, 'personal');
   const scopedDue = await scopedNextFollowUp(ctx.tenantId, [lead.id], personalAccess);
