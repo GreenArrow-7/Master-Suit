@@ -1075,7 +1075,14 @@ function definitions(slug: string): SectionDef[] {
               href: a('/lead-sources'),
               permission: 'settings',
               module: [S, R, LE],
-              keywords: 'lead source sub-source campaign portal catalogue attribution',
+              keywords: 'lead source sub-source campaign portal catalogue attribution score weight decay',
+            },
+            {
+              label: 'Custom Fields',
+              href: a('/custom-fields'),
+              permission: 'settings',
+              module: [S, R, LE],
+              keywords: 'lead custom field text number date select column',
             },
             {
               label: 'Users',

@@ -82,8 +82,10 @@ export interface LeadEagleCompany {
     budgetMin: string | null;
     budgetMax: string | null;
     preferredLocations: string[];
-    /** Names of the projects it was interested in (Lead Eagle's LeadProject). */
-    projects: string[];
+    /** When they want the handover (Lead Eagle's Lead.handoverBy), when the snapshot carries it. */
+    handoverBy?: When | null;
+    /** The projects it was interested in (Lead Eagle's LeadProject), by id. */
+    projectIds: Id[];
     createdAt: When;
     lastActivityAt: When | null;
     nextFollowUpAt: When | null;
@@ -412,10 +414,7 @@ export async function moveCompany(
               nationality: lead.nationality ?? null,
               phoneIsWhatsapp: Boolean(lead.primaryPhone && lead.primaryIsWhatsapp),
               tags: lead.tags,
-              notes:
-                [lead.notes, lead.projects.length ? `Interested in projects: ${lead.projects.join(', ')}` : null]
-                  .filter(Boolean)
-                  .join('\n') || null,
+              notes: lead.notes,
               score: lead.score,
               createdAt: date(lead.createdAt)!,
               lastActivityAt: date(lead.lastActivityAt),
@@ -449,7 +448,8 @@ export async function moveCompany(
             lead.budgetMin ||
             lead.budgetMax ||
             lead.bedroomsMin ||
-            lead.preferredLocations.length;
+            lead.preferredLocations.length ||
+            lead.handoverBy;
           if (lead.purpose && lead.purpose !== 'SELL' && wants) {
             await tx.clientRequirement.create({
               data: {
@@ -461,7 +461,9 @@ export async function moveCompany(
                 bedroomsMax: lead.bedroomsMax,
                 budgetMin: lead.budgetMin,
                 budgetMax: lead.budgetMax,
-                notes: lead.preferredLocations.length ? `Areas: ${lead.preferredLocations.join(', ')}` : null,
+                // The areas and the handover date are the requirement's own fields (M4-05, M4-08).
+                locations: lead.preferredLocations,
+                possessionBy: date(lead.handoverBy ?? null),
                 ownerId,
               },
             });
@@ -721,6 +723,21 @@ export async function moveCompany(
           projectMap.set(p.id, created.id);
         }
         tally('projects', snap.projects.length, projectMap.size);
+
+        // A lead's interest in a project moves as a link (M4-06), once both have moved.
+        const interests = snap.leads.flatMap((lead) =>
+          lead.projectIds.map((projectId) => ({ leadId: leadMap.get(lead.id), projectId: projectMap.get(projectId) })),
+        );
+        const links = interests.filter((i): i is { leadId: Id; projectId: Id } => !!i.leadId && !!i.projectId);
+        if (links.length) {
+          await tx.leadProject.createMany({ data: links.map((i) => ({ tenantId, ...i })), skipDuplicates: true });
+        }
+        tally('interest links', interests.length, links.length);
+        if (interests.length > links.length) {
+          problems.push(
+            `${interests.length - links.length} interest links are on projects that did not move; they stay behind.`,
+          );
+        }
 
         const unitMap = new Map<Id, Id>();
         for (const u of snap.units) {

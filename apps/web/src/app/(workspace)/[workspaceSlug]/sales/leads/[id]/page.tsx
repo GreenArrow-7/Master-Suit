@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
-import { visibilityWhere } from '@/lib/security/visibility';
+import { assertRecordVisible, visibilityWhere } from '@/lib/security/visibility';
 import { assignableUsers, leadScope } from '@/lib/security/record-scope';
 import { emptyFollowUpLabel, obligationAccess, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import { loadFieldRules, applyFieldSecurity, seesField } from '@/lib/security/fieldSecurity';
@@ -9,6 +9,9 @@ import { can, scopeFor } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { asLeadPhone, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { leadSourceLabel, listLeadSources } from '@/services/leads/leadSources';
+import { openRequirement, requirementForPage } from '@/services/leads/requirement';
+import { fieldForScreen, leadFields } from '@/services/leads/customFields';
+import { workspaceTimezone } from '@/services/hr/attendance';
 import StageRail from '@/components/ui/StageRail';
 import LeadDetail from './LeadDetail';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -69,10 +72,36 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         orderBy: { createdAt: 'asc' },
         select: { id: true, raw: true, normalized: true, label: true, isWhatsapp: true },
       },
+      // The projects and listings it asked about (M4-06), live ones only.
+      projectInterests: {
+        where: { project: { deletedAt: null } },
+        orderBy: { createdAt: 'asc' },
+        select: { project: { select: { id: true, name: true } } },
+      },
+      listingInterests: {
+        where: { listing: { deletedAt: null } },
+        orderBy: { createdAt: 'asc' },
+        select: { listing: { select: { id: true, reference: true, title: true } } },
+      },
     },
   });
+  const seesProjects = can(ctx, 'projects', 'VIEW');
+  const seesListings = can(ctx, 'listings', 'VIEW');
 
-  const [lead, stages, activityTypes, taskTypes, tenantUsers, rules, sources] = await Promise.all([
+  const [
+    lead,
+    stages,
+    activityTypes,
+    taskTypes,
+    tenantUsers,
+    rules,
+    sources,
+    requirement,
+    timeZone,
+    fields,
+    projectOptions,
+    listingOptions,
+  ] = await Promise.all([
     leadPromise,
     prisma.leadStage.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null },
@@ -92,8 +121,38 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     assignableUsers(ctx, 'leads', can(ctx, 'leads', 'ASSIGN') ? 'ASSIGN' : 'REASSIGN'),
     loadFieldRules(ctx, 'LEAD'),
     listLeadSources(prisma, ctx.tenantId),
+    // Read only once the lead is in reach: it is the lead's, scoped like it (M4-05).
+    leadPromise.then((found) => (found ? openRequirement(prisma, ctx.tenantId, found.id) : null)),
+    workspaceTimezone(ctx),
+    leadFields(prisma, ctx.tenantId, { activeOnly: true }),
+    // The interest pickers offer what the viewer can see (M4-06).
+    // ponytail: the first 300 by name or newest; a search box when books outgrow a select.
+    seesProjects
+      ? prisma.project.findMany({
+          where: { tenantId: ctx.tenantId, deletedAt: null },
+          orderBy: { name: 'asc' },
+          take: 300,
+          select: { id: true, name: true },
+        })
+      : null,
+    seesListings
+      ? prisma.listing.findMany({
+          where: { tenantId: ctx.tenantId, deletedAt: null },
+          orderBy: { updatedAt: 'desc' },
+          take: 300,
+          select: { id: true, reference: true, title: true },
+        })
+      : null,
   ]);
   if (!lead) notFound();
+  const customData = (lead.customData ?? {}) as Record<string, unknown>;
+  // The register's page lists the listings that match; offered only where the viewer may open it.
+  const opensRequirement =
+    !!requirement &&
+    (await assertRecordVisible(ctx, 'requirements', requirement, prisma, 'VIEW').then(
+      () => true,
+      () => false,
+    ));
 
   const personalAccess = await obligationAccess(ctx, 'personal');
   const scopedDue = await scopedNextFollowUp(ctx.tenantId, [lead.id], personalAccess);
@@ -137,6 +196,15 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     slaState: lead.slaState,
     score: lead.score,
     grade: lead.grade,
+    requirement: requirementForPage(requirement, timeZone),
+    // The values of the workspace's active fields, and nothing else of customData (M4-13).
+    custom: Object.fromEntries(
+      fields.flatMap((f) => (customData[f.key] == null ? [] : [[f.key, customData[f.key] as string | number]])),
+    ),
+    interests: {
+      projects: lead.projectInterests.map((i) => i.project),
+      listings: lead.listingInterests.map((i) => i.listing),
+    },
     notes: lead.notes,
     tags: lead.tags,
     // The viewer's own next obligation. The stored aggregate is not consulted
@@ -209,6 +277,11 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         users={tenantUsers}
         // The offered entries, plus the lead's own (and its source) should it have been withdrawn since.
         sources={sources.filter((s) => s.isActive || s.id === lead.sourceId || s.id === lead.leadSource?.parentId)}
+        customFields={fields.map(fieldForScreen)}
+        projectOptions={projectOptions}
+        listingOptions={listingOptions}
+        opens={{ projects: seesProjects, listings: seesListings }}
+        matchesHref={opensRequirement ? `/requirements/${requirement!.id}` : null}
         canEdit={can(ctx, 'leads', 'EDIT')}
         canAssign={can(ctx, 'leads', 'ASSIGN')}
         canDelete={can(ctx, 'leads', 'DELETE')}

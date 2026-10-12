@@ -103,7 +103,8 @@ const snapshot = (): LeadEagleCompany => ({
       budgetMin: '1500000.00',
       budgetMax: '2500000.00',
       preferredLocations: ['Dubai Marina', 'JLT'],
-      projects: ['Sidra Villas'],
+      handoverBy: '2027-01-31T00:00:00Z',
+      projectIds: ['p-1'],
       createdAt: '2026-08-01T09:00:00Z',
       lastActivityAt: '2026-09-01T09:00:00Z',
       nextFollowUpAt: null,
@@ -132,7 +133,7 @@ const snapshot = (): LeadEagleCompany => ({
       budgetMin: null,
       budgetMax: null,
       preferredLocations: [],
-      projects: [],
+      projectIds: [],
       createdAt: '2026-08-02T09:00:00Z',
       lastActivityAt: null,
       nextFollowUpAt: null,
@@ -485,7 +486,15 @@ describe('moving a Lead Eagle company', () => {
         // Owned by someone deleted in Lead Eagle, so not among its users.
         leads: [
           ...snap.leads,
-          { ...snap.leads[1]!, id: 'l-3', reference: 'LE-0003', primaryPhone: '0501110004', ownerId: 'u-removed' },
+          {
+            ...snap.leads[1]!,
+            id: 'l-3',
+            reference: 'LE-0003',
+            primaryPhone: '0501110004',
+            ownerId: 'u-removed',
+            // Interested in Sidra Villas, and in a project deleted in Lead Eagle, which does not move.
+            projectIds: ['p-1', 'p-deleted'],
+          },
         ],
         activities: [
           ...snap.activities,
@@ -515,12 +524,14 @@ describe('moving a Lead Eagle company', () => {
         '4 activities and enquiries are on merged duplicates, deleted records or no record; they stay behind.',
         '1 follow-ups are on merged duplicates or deleted leads; they stay behind.',
         '1 units are on projects that did not move; they stay behind.',
+        '1 interest links are on projects that did not move; they stay behind.',
         'A commission of AED 70000.00 is on booking BK-ME-b-5, which did not move; it stays behind.',
       ]),
     );
     expect(report.counts['activities and enquiries']).toEqual({ source: 13, moved: 9 });
     expect(report.counts['follow-ups']).toEqual({ source: 3, moved: 2 });
     expect(report.counts.units).toEqual({ source: 2, moved: 1 });
+    expect(report.counts['interest links']).toEqual({ source: 3, moved: 2 });
     expect(await moved()).toHaveLength(0);
   });
 
@@ -553,7 +564,8 @@ describe('moving a Lead Eagle company', () => {
       campaignName: 'Marina launch',
       nationality: 'Emirati',
       phoneIsWhatsapp: true,
-      notes: 'Prefers mornings\nInterested in projects: Sidra Villas',
+      // The interest is a link now (M4-06), not a line in the notes.
+      notes: 'Prefers mornings',
     });
     expect(aisha!.phones.map((p) => p.normalized)).toEqual(['+971521110002']);
     // The secondary owner moves like the owner; a number with no flag stays off WhatsApp.
@@ -572,7 +584,14 @@ describe('moving a Lead Eagle company', () => {
     });
 
     const requirement = await prisma.clientRequirement.findFirstOrThrow({ where: { tenantId, leadId: aisha!.id } });
-    expect(requirement).toMatchObject({ purpose: 'BUY', bedroomsMin: 2, notes: 'Areas: Dubai Marina, JLT' });
+    // The areas and the handover date are the requirement's own fields (M4-05, M4-08), not notes.
+    expect(requirement).toMatchObject({
+      purpose: 'BUY',
+      bedroomsMin: 2,
+      locations: ['Dubai Marina', 'JLT'],
+      notes: null,
+    });
+    expect(requirement.possessionBy?.toISOString()).toBe('2027-01-31T00:00:00.000Z');
     const history = await prisma.leadStageHistory.findFirstOrThrow({ where: { tenantId, leadId: omar!.id } });
     expect(history).toMatchObject({ toStageId: omar!.stageId, reason: 'Budget' });
     // A note, an inbound call and the enquiry — once, though Lead Eagle wrote it twice.
@@ -594,6 +613,11 @@ describe('moving a Lead Eagle company', () => {
 
     const project = await prisma.project.findFirstOrThrow({ where: { tenantId, name: 'Sidra Villas' } });
     expect(project).toMatchObject({ code: 'LE-SIDRAVILLAS', status: 'READY', possessionStatus: 'READY_TO_MOVE' });
+    // Aisha's interest in it is a link the project page lists (M4-06).
+    expect(await prisma.leadProject.findMany({ where: { tenantId, projectId: project.id } })).toEqual([
+      expect.objectContaining({ leadId: aisha!.id }),
+    ]);
+    expect(report.counts['interest links']).toEqual({ source: 1, moved: 1 });
     expect(await prisma.unitInventory.count({ where: { tenantId, projectId: project.id, status: 'SOLD' } })).toBe(1);
     const listing = await prisma.listing.findFirstOrThrow({ where: { tenantId, reference: 'LS-ME-1' } });
     expect(listing).toMatchObject({ listingType: 'RENT', ownerId: fixture.a.userId });

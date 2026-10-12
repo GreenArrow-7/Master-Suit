@@ -58,7 +58,7 @@ export async function listLeadSources(db: Db, tenantId: string) {
   return db.leadSource.findMany({
     where: { tenantId },
     orderBy: [{ position: 'asc' }, { name: 'asc' }],
-    select: { id: true, key: true, name: true, parentId: true, isActive: true, position: true },
+    select: { id: true, key: true, name: true, parentId: true, isActive: true, position: true, weight: true },
   });
 }
 

@@ -4,6 +4,7 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { can } from '@/lib/security/rbac';
+import { leadScope } from '@/lib/security/record-scope';
 import { releaseExpiredHolds } from '@/services/inventory/unitStatus';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -40,7 +41,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   // on this page and the units below it cannot disagree.
   await releaseExpiredHolds(ctx.tenantId, project.id);
 
-  const [favourite, amenities, peers, units] = await Promise.all([
+  const [favourite, amenities, peers, units, interested] = await Promise.all([
     prisma.projectFavourite.findFirst({
       where: { tenantId: ctx.tenantId, projectId: project.id, userId: ctx.actor.id },
       select: { id: true },
@@ -83,6 +84,23 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         unitPlan: { select: { id: true, name: true, unitType: true } },
       },
     }),
+    // The leads that asked about it (M4-06): only those the viewer may see.
+    can(ctx, 'leads', 'VIEW')
+      ? leadScope(ctx, 'VIEW', { includeUnassigned: true }).then((scope) =>
+          prisma.lead.findMany({
+            where: { ...scope, projectInterests: { some: { projectId: project.id } } },
+            orderBy: { updatedAt: 'desc' },
+            take: 50,
+            select: {
+              id: true,
+              reference: true,
+              fullName: true,
+              stage: { select: { name: true } },
+              owner: { select: { fullName: true } },
+            },
+          }),
+        )
+      : null,
   ]);
 
   const rates = peers.map((p) => p.pricePerSqft!).sort((a, b) => a.comparedTo(b));
@@ -211,6 +229,49 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               </tbody>
             </table>
           </div>
+        </section>
+      )}
+
+      {interested && (
+        <section className="lf-card" style={{ padding: 18 }} aria-label="Interested leads">
+          <h2 className="lf-h2" style={{ fontSize: 'var(--lf-text-lg)', marginTop: 0 }}>
+            Interested leads
+          </h2>
+          {interested.length === 0 ? (
+            <p className="lf-hint" style={{ margin: 0 }}>
+              No lead you can see has asked about this project.
+            </p>
+          ) : (
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
+              {interested.map((lead) => (
+                <li
+                  key={lead.id}
+                  style={{
+                    display: 'flex',
+                    gap: 8,
+                    flexWrap: 'wrap',
+                    alignItems: 'baseline',
+                    fontSize: 'var(--lf-text-sm)',
+                  }}
+                >
+                  <SalesLink href={`/leads/${lead.id}`} style={{ fontWeight: 500 }}>
+                    {lead.fullName}
+                  </SalesLink>
+                  <span
+                    style={{
+                      fontFamily: 'var(--lf-font-mono)',
+                      fontSize: 'var(--lf-text-xs)',
+                      color: 'var(--lf-ink-3)',
+                    }}
+                  >
+                    {lead.reference}
+                  </span>
+                  <Badge tone="slate">{lead.stage.name}</Badge>
+                  <span style={{ color: 'var(--lf-ink-3)' }}>{lead.owner?.fullName ?? 'Unassigned'}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
 
