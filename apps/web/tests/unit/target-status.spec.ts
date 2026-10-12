@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { isBehind, rowTone, targetStatus } from '@/app/(workspace)/[workspaceSlug]/sales/leadership/DailyBoardView';
+import type { ReactElement } from 'react';
+import DailyBoardView, {
+  isBehind,
+  rowTone,
+  targetStatus,
+} from '@/app/(workspace)/[workspaceSlug]/sales/leadership/DailyBoardView';
+import AssignDailyTarget from '@/app/(workspace)/[workspaceSlug]/sales/leadership/AssignDailyTarget';
 import type { DailyBoardRow } from '@/services/targets/dailyBoard';
 
 /**
@@ -84,5 +90,34 @@ describe('the daily target status, in words', () => {
     // dailyBoard leaves `completion` null for a non-positive target, so the row
     // carries a target with no percentage; it must not read as Achieved.
     expect(targetStatus(row({ target: 0, leadsCalled: 0, pending: 0, completion: null })).label).toBe('No target');
+  });
+});
+
+/**
+ * Set target sits only on the rows POST /targets accepts. The board's rows
+ * follow `reports:VIEW`; a target, the caller's `leads:ASSIGN` reach and never
+ * their own below ORGANIZATION (`targetAssignees`). One switch for the whole
+ * board offered the control on rows whose save then failed with a 404.
+ */
+describe('the daily board offers Set target per row', () => {
+  const elements = (node: unknown): ReactElement<Record<string, unknown>>[] => {
+    if (Array.isArray(node)) return node.flatMap(elements);
+    if (!node || typeof node !== 'object' || !('props' in node)) return [];
+    const el = node as ReactElement<Record<string, unknown>>;
+    return [el, ...elements(el.props.children)];
+  };
+
+  it('on the people the viewer may set a target for, and nobody else', () => {
+    const board = { date: '2026-10-12', timeZone: 'Asia/Dubai', from: new Date(), to: new Date() };
+    const tree = DailyBoardView({
+      board: { ...board, rows: [row({ userId: 'mine' }), row({ userId: 'theirs' })] },
+      assignable: new Set(['mine']),
+      detailHref: (userId) => `/leadership/daily/${userId}`,
+    });
+    expect(
+      elements(tree)
+        .filter((el) => el.type === AssignDailyTarget)
+        .map((el) => el.props.userId),
+    ).toEqual(['mine']);
   });
 });

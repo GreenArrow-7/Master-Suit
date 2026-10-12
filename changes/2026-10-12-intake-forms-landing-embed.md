@@ -192,3 +192,13 @@ merged without a marker but with two Source controls. On the merged tree:
 `module-entitlement` 10 files, 969/969; `tests/` permission, sales, tenant,
 unit 160 files, 2872 passed, 2 skipped; E2E `embed-form.spec.ts` and
 `crm-lifecycle.spec.ts` 10/10.
+
+**Merge-up with main (#171), 13 Oct.** `realtyShared.ts` keeps every shared
+root (`forms`, `landing-pages` and #171's `targets`), and `workspace-nav.spec.ts`
+every case; `changes/README.md` keeps all three rows; `PROJECT.md` counts both
+new screens (Real Estate 40, Lead Eagle 29) and names Targets beside forms,
+landing pages and Sources. On the merged tree (104 migrations): `tsc --noEmit`
+clean; the specs above with `cold-call-activity` and `cold-data` 12 files,
+1026/1026; `tests/` permission, sales, tenant, unit 161 files, 2919 passed, 2
+skipped; E2E `embed-form.spec.ts`, `lead-eagle-workspace.spec.ts` (its new
+referral step included) and `crm-lifecycle.spec.ts` 11/11 on a fresh `.next`.

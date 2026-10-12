@@ -27,6 +27,8 @@ function files(root: string, name: string): string[] {
 const SHARED: readonly string[] = LEAD_EAGLE_SHARED_ROOTS;
 const isShared = (route: string) => SHARED.some((root) => route.startsWith(`${root}/`));
 const leadEagleRoutes = files(path.join(APP, 'lead-eagle'), 'page.tsx').filter(isShared);
+/** POST /targets/progress: a hand-typed increment to a target. */
+const PROGRESS_TALLY = 'targets/progress/route.ts';
 const apiRoutes = (roots: readonly string[]) =>
   roots.flatMap((root) => files(path.join(API, root), 'route.ts').map((rel) => `${root}/${rel}`));
 
@@ -34,6 +36,10 @@ describe('Lead Eagle is a module', () => {
   it('is in the catalogue and the lead-work set', () => {
     expect(PRODUCT_MODULE_KEYS).toContain('LEAD_EAGLE');
     expect(LEAD_MODULES).toEqual(['SALES', 'REAL_ESTATE', 'LEAD_EAGLE']);
+  });
+
+  it('counts Targets among its shared registers: the daily calling quota is lead work', () => {
+    expect(LEAD_EAGLE_SHARED_ROOTS).toContain('targets');
   });
 
   it('gates its URLs on its own entitlement', () => {
@@ -90,6 +96,8 @@ describe('the APIs admit Lead Eagle for lead work and nothing else', () => {
     const source = read(path.join(API, route));
     // A listing's portal publishing is marketing, not lead work.
     if (route.includes('/portals/')) expect(source).not.toContain('LEAD_MODULES');
+    // A seller's own unaudited tally stays Sales-only: nothing calls it, and the work itself counts progress.
+    else if (route === PROGRESS_TALLY) expect(source).toContain("productModule: 'SALES'");
     else expect(source).toContain('productModule: LEAD_MODULES');
   });
 

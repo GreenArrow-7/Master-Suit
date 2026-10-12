@@ -25,6 +25,7 @@ import DateInput from '@/components/forms/DateInput';
 import DailyBoardView from './DailyBoardView';
 import LiveRefresh from './LiveRefresh';
 import { dailyBoard } from '@/services/targets/dailyBoard';
+import { targetAssignees } from '@/lib/security/record-scope';
 
 export const metadata = { title: 'Leadership' };
 
@@ -190,6 +191,10 @@ export default async function LeadershipPage({
       view === 'value' ? workspaceValue(ctx.tenantId, range) : null,
     ],
   );
+
+  // Set target only on the rows POST /targets accepts: the board follows
+  // reports:VIEW, the target the person (`targetAssignees`).
+  const assignable = new Set(daily && canAssignTargets ? (await targetAssignees(ctx)).map((user) => user.id) : []);
 
   // names() makes no query for an empty list, which is what the four tabs that
   // never render compliance pass it.
@@ -544,7 +549,7 @@ export default async function LeadershipPage({
           <LiveRefresh />
           <DailyBoardView
             board={daily}
-            canAssign={canAssignTargets}
+            assignable={assignable}
             detailHref={(userId) => `/leadership/daily/${userId}?date=${daily.date}`}
           />
         </>

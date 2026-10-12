@@ -611,6 +611,14 @@ function definitions(slug: string): SectionDef[] {
               module: R,
               keywords: 'funnel source agent performance',
             },
+            {
+              // Self-service, as the Sales entry: your own targets, the team's with leads:ASSIGN.
+              label: 'Targets',
+              href: r('/targets'),
+              aliases: [le('/targets')],
+              module: R,
+              keywords: 'quota goals daily calls cold calls',
+            },
           ],
         },
       ],
@@ -785,6 +793,14 @@ function definitions(slug: string): SectionDef[] {
               module: LE,
               unlessModule: [S, R],
               keywords: 'funnel source agent performance',
+            },
+            {
+              // Self-service, as the Sales entry: your own targets, the team's with leads:ASSIGN.
+              label: 'Targets',
+              href: le('/targets'),
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'quota goals daily calls cold calls',
             },
           ],
         },

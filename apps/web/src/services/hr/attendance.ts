@@ -12,7 +12,7 @@ import { prisma } from '@/lib/db';
 import { dailyTargetShortfall } from '@/services/targets/dailyBoard';
 import { AppError, Conflict, Forbidden, NotFound, isUniqueViolation } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
-import type { Ctx } from '@/lib/security/rbac';
+import { atLeast, type Ctx } from '@/lib/security/rbac';
 import {
   haversineM,
   insideGeofence,
@@ -34,7 +34,8 @@ import {
   verifyLiveness,
   type Detection,
 } from './face';
-import { isHrAdmin, myEmployee, requireEmployee } from './leave';
+import { isAttendanceApprover, mayReadAllEmployees } from './access';
+import { isHrAdmin, myEmployee, reportingLine, requireEmployee } from './leave';
 import { getHrPolicy, type HrPolicy } from './settings';
 import { storeCapture } from './captureVault';
 import { EMPLOYEE_WITH_PERSON } from './publicSelect';
@@ -51,6 +52,19 @@ export type PunchResult =
   | 'REJECTED_STALE_SYNC';
 
 const MAX_FRAME_BYTES = 3 * 1024 * 1024;
+
+/**
+ * Whose attendance the actor may read: everyone for an organisation-wide reader,
+ * the reporting line for a manager who approves attendance, otherwise their own.
+ * A team approver used to read the whole workspace here, while their decisions
+ * and the exception list already stopped at their reporting line.
+ */
+export async function attendanceScope(ctx: Ctx): Promise<{ employeeId?: string | { in: string[] } }> {
+  if (mayReadAllEmployees(ctx) || atLeast(ctx, 'attendance', 'APPROVE', 'ORGANIZATION')) return {};
+  if (isAttendanceApprover(ctx)) return { employeeId: { in: await reportingLine(ctx) } };
+  const self = await myEmployee(ctx);
+  return { employeeId: self?.id ?? '' };
+}
 
 /**
  * The longest a single shift may run before a check-out stops being treated as
