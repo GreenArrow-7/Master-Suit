@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
-import { assertAssignableUser } from '@/lib/security/record-scope';
+import { assertTargetAssignee } from '@/lib/security/record-scope';
 import { visibilityWhere } from '@/lib/security/visibility';
 
 const createBody = z
@@ -29,8 +29,9 @@ const createBody = z
 
 /**
  * Targets are lead work (every lead module, M5-06): a target is set for
- * someone the caller may hand work to (`leads:ASSIGN` scope), and listed for
- * whoever the caller's `leads:VIEW` scope covers. A team lead named anyone.
+ * someone the caller may hand work to (`leads:ASSIGN` scope; below
+ * ORGANIZATION not themselves, `assertTargetAssignee`), and listed for whoever
+ * the caller's `leads:VIEW` scope covers. A team lead named anyone.
  */
 export const POST = route(
   {
@@ -41,7 +42,7 @@ export const POST = route(
     auditEvent: 'TARGET_CREATED',
   },
   async ({ ctx, body }) => {
-    await assertAssignableUser(ctx, prisma, 'leads', 'ASSIGN', body.userId);
+    await assertTargetAssignee(ctx, body.userId);
     return prisma.employeeTarget.create({
       data: { tenantId: ctx.tenantId, createdById: ctx.actor.id, ...body },
     });

@@ -64,7 +64,7 @@ export async function logColdCall(
       select: { id: true, status: true },
     });
     const earlier = await tx.activity.count({
-      where: { tenantId, dataRecordId: id, ownerId: ctx.actor.id, deletedAt: null, occurredAt: { gte: from, lte: to } },
+      where: { tenantId, dataRecordId: id, ownerId: ctx.actor.id, deletedAt: null, createdAt: { gte: from, lte: to } },
     });
     const call = await tx.activity.create({
       data: {

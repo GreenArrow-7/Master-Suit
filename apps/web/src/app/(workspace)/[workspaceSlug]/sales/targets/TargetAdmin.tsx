@@ -13,7 +13,14 @@ import { toDateValue } from '@/lib/dates';
  * POST /api/v1/targets already existed behind leads:ASSIGN; this wires to it.
  */
 
-export default function TargetAdmin({ users }: { users: { id: string; fullName: string }[] }) {
+export default function TargetAdmin({
+  users,
+  metrics = METRICS,
+}: {
+  users: { id: string; fullName: string }[];
+  /** The metrics this workspace's modules can count; all of them by default. */
+  metrics?: readonly (readonly [string, string])[];
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -124,7 +131,7 @@ export default function TargetAdmin({ users }: { users: { id: string; fullName: 
 
         <Field label="What to achieve" htmlFor="tg-metric">
           <select id="tg-metric" className="lf-input" value={form.metric} onChange={set('metric')}>
-            {METRICS.map(([value, label]) => (
+            {metrics.map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>

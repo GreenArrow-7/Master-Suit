@@ -1,6 +1,6 @@
 import { prisma, type TxClient } from '@/lib/db';
 import { AppError, NotFound } from '@/lib/errors';
-import { can, scopeFor, type Action, type Ctx } from '@/lib/security/rbac';
+import { atLeast, can, scopeFor, type Action, type Ctx } from '@/lib/security/rbac';
 import { assertRecordVisible, resolveOwnerIds, visibilityWhere } from '@/lib/security/visibility';
 
 /**
@@ -121,6 +121,33 @@ export async function assignableUsers(ctx: Ctx, module: string, action: Action) 
     select: { id: true, fullName: true },
     orderBy: { fullName: 'asc' },
   });
+}
+
+/**
+ * Targets are set, changed and deleted for the people the caller may hand lead
+ * work to (`leads:ASSIGN`), and below ORGANIZATION never for themselves: a
+ * team lead who could lower, replace or delete their own daily target would
+ * walk past the check-out gate it feeds, as no one decides their own
+ * attendance exception. Out of reach answers 404, as an unknown id does.
+ */
+const setsOwnTarget = (ctx: Ctx) => atLeast(ctx, 'leads', 'ASSIGN', 'ORGANIZATION');
+
+/** The targets the caller may change or delete, as a `where` on EmployeeTarget. */
+export async function targetReach(ctx: Ctx): Promise<Record<string, unknown>> {
+  const where = await visibilityWhere(ctx, 'leads', 'ASSIGN', { ownerField: 'userId' });
+  return setsOwnTarget(ctx) ? where : { ...where, userId: { not: ctx.actor.id } };
+}
+
+/** The people the caller may set a target for: the target picker and the board's Set target. */
+export async function targetAssignees(ctx: Ctx) {
+  const users = await assignableUsers(ctx, 'leads', 'ASSIGN');
+  return setsOwnTarget(ctx) ? users : users.filter((user) => user.id !== ctx.actor.id);
+}
+
+/** One person under `targetAssignees`; anyone else answers 404. */
+export async function assertTargetAssignee(ctx: Ctx, userId: string) {
+  if (userId === ctx.actor.id && !setsOwnTarget(ctx)) throw NotFound('User');
+  await assertAssignableUser(ctx, prisma, 'leads', 'ASSIGN', userId);
 }
 
 /**

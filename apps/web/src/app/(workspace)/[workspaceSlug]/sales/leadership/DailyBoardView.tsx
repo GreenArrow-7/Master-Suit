@@ -77,12 +77,12 @@ export const BOARD_COLUMNS: [label: string, key: keyof DailyBoardRow][] = [
  */
 export default function DailyBoardView({
   board,
-  canAssign,
+  assignable,
   detailHref,
 }: {
   board: DailyBoard;
-  /** leads:ASSIGN at team scope or above. */
-  canAssign: boolean;
+  /** The rows whose target the viewer may set (`targetAssignees`); none hides the column. */
+  assignable: ReadonlySet<string>;
   detailHref: (userId: string) => string;
 }) {
   const totals = board.rows.reduce(
@@ -150,7 +150,7 @@ export default function DailyBoardView({
                 <th style={{ textAlign: 'right' }}>Avg call</th>
                 <th>Check-in</th>
                 <th>Check-out</th>
-                {canAssign && <th>Set target</th>}
+                {assignable.size > 0 && <th>Set target</th>}
               </tr>
             </thead>
             <tbody>
@@ -194,9 +194,11 @@ export default function DailyBoardView({
                       '—'
                     )}
                   </td>
-                  {canAssign && (
+                  {assignable.size > 0 && (
                     <td data-label="Set target" data-priority="secondary">
-                      <AssignDailyTarget userId={r.userId} date={board.date} current={r.target} />
+                      {assignable.has(r.userId) && (
+                        <AssignDailyTarget userId={r.userId} date={board.date} current={r.target} />
+                      )}
                     </td>
                   )}
                 </tr>

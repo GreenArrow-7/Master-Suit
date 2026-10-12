@@ -1,8 +1,7 @@
 import { requirePageAccess, SELF_SERVICE } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
-import { LEAD_MODULES } from '@/lib/security/entitlements';
-import { assignableUsers } from '@/lib/security/record-scope';
-import { visibilityWhere } from '@/lib/security/visibility';
+import { hasModuleEntitlement, LEAD_MODULES, SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { targetAssignees, targetReach } from '@/lib/security/record-scope';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import SignOff from './SignOff';
@@ -15,6 +14,7 @@ import { METRICS } from './metrics';
 export const metadata = { title: 'My Targets' };
 
 const METRIC_LABEL = Object.fromEntries(METRICS);
+const EVENT_METRICS: readonly string[] = ['INVITATIONS_SENT', 'RSVPS_CONFIRMED'];
 
 // One copy in services/targets/progress.ts, shared with the sales overview:
 // two screens computing "achieved" differently is how the same target read
@@ -104,7 +104,10 @@ function TargetCard({
  * Targets are lead work, so every lead module opens this (M5-06: a Lead-Eagle
  * workspace's daily calling quota lives here). The team section follows the
  * caller's `leads:ASSIGN` scope, as `POST /targets` does: the people offered
- * and the targets listed are those of the people the caller may hand work to.
+ * and the targets listed are those of the people the caller may hand work to,
+ * and below ORGANIZATION not the caller's own (`targetReach`). Meeting
+ * invitations and RSVPs come from Events, which only Sales and Real Estate
+ * have, so a Lead-Eagle-only workspace is not offered them.
  */
 export default async function TargetsPage() {
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: SELF_SERVICE });
@@ -112,7 +115,7 @@ export default async function TargetsPage() {
 
   const managesTargets = can(ctx, 'leads', 'ASSIGN') && atLeast(ctx, 'leads', 'ASSIGN', 'TEAM');
 
-  const [mine, teamTargets, users] = await Promise.all([
+  const [mine, teamTargets, users, events] = await Promise.all([
     prisma.employeeTarget.findMany({
       where: { tenantId: ctx.tenantId, userId: ctx.actor.id, periodStart: { lte: now }, periodEnd: { gte: now } },
       include: { progress: true },
@@ -120,17 +123,18 @@ export default async function TargetsPage() {
     }),
     managesTargets
       ? prisma.employeeTarget.findMany({
-          where: {
-            ...(await visibilityWhere(ctx, 'leads', 'ASSIGN', { ownerField: 'userId' })),
-            periodEnd: { gte: now },
-          },
+          where: { ...(await targetReach(ctx)), periodEnd: { gte: now } },
           include: { progress: true, user: { select: { id: true, fullName: true } } },
           orderBy: [{ periodStart: 'desc' }],
           take: 100,
         })
       : Promise.resolve([]),
-    managesTargets ? assignableUsers(ctx, 'leads', 'ASSIGN') : Promise.resolve([]),
+    managesTargets ? targetAssignees(ctx) : Promise.resolve([]),
+    Promise.all(SALES_OR_REALTY.map((module) => hasModuleEntitlement(ctx.tenantId, module))).then((on) =>
+      on.some(Boolean),
+    ),
   ]);
+  const metrics = events ? METRICS : METRICS.filter(([metric]) => !EVENT_METRICS.includes(metric));
 
   const outstanding = mine.reduce((sum, t) => sum + Math.max(0, t.targetValue - achievedFor(t)), 0);
   const dateFmt = (d: Date) => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
@@ -144,9 +148,7 @@ export default async function TargetsPage() {
           <EmptyState
             title="No active targets"
             description={
-              managesTargets
-                ? 'Assign yourself or a teammate a target below.'
-                : 'Your manager has not assigned any targets yet.'
+              managesTargets ? 'Set targets for your team below.' : 'Your manager has not assigned any targets yet.'
             }
           />
         </div>
@@ -186,7 +188,7 @@ export default async function TargetsPage() {
             </div>
           </div>
 
-          <TargetAdmin users={users} />
+          <TargetAdmin users={users} metrics={metrics} />
 
           {teamTargets.length > 0 && (
             <div className="lf-grid-wrap" style={{ overflowX: 'auto' }}>

@@ -15,15 +15,21 @@ vi.mock('next/headers', () => ({
 }));
 
 import { prisma } from '@/lib/db';
+import { PATCH as editActivity } from '@/app/api/v1/activities/[id]/route';
+import { PATCH as finishCall } from '@/app/api/v1/calls/[id]/route';
 import { PATCH as workRecord } from '@/app/api/v1/cold-data/[id]/route';
 import { POST as convertRecord } from '@/app/api/v1/cold-data/[id]/convert/route';
 import { GET as myTargets } from '@/app/api/v1/targets/my/route';
-import { DELETE as deleteTarget } from '@/app/api/v1/targets/[id]/route';
-import { POST as createTarget } from '@/app/api/v1/targets/route';
+import { GET as readBoard } from '@/app/api/v1/targets/daily/route';
+import { DELETE as deleteTarget, PATCH as patchTarget } from '@/app/api/v1/targets/[id]/route';
+import { GET as listTargets, POST as createTarget } from '@/app/api/v1/targets/route';
+import ColdDataPage from '@/app/(workspace)/[workspaceSlug]/sales/cold-data/page';
 import TargetsPage from '@/app/(workspace)/[workspaceSlug]/sales/targets/page';
 import TargetAdmin from '@/app/(workspace)/[workspaceSlug]/sales/targets/TargetAdmin';
+import EntityDelete from '@/components/sales/EntityDelete';
 import { DEFAULT_POLICY } from '@/services/hr/settings';
 import { pendingLeadWork, validatePunch, workspaceTimezone } from '@/services/hr/attendance';
+import { normalizePhone } from '@/services/leads/normalizePhone';
 import { dailyBoard, dailyTargetShortfall } from '@/services/targets/dailyBoard';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import { createWorkspaceUser, grantPermissions, type Grants } from '../helpers/fixtures';
@@ -48,10 +54,13 @@ let admin: { id: string; cookie: string };
 let agent: { id: string; cookie: string };
 let teamLead: { id: string; cookie: string };
 let outsider: { id: string; cookie: string };
+let viewer: { id: string; cookie: string };
 let employee: { id: string; employmentStatus: string };
 let records: { id: string }[] = [];
 
 const agentCtx = () => buildCtx(buildActor({ id: agent.id, tenantId }));
+const leadsCalledToday = async () =>
+  (await dailyBoard(agentCtx())).rows.find((r) => r.userId === agent.id)?.leadsCalled;
 const work = (id: string, body: Record<string, unknown>, cookie = agent.cookie) =>
   patch(workRecord, `/api/v1/cold-data/${id}`, body, cookie, { id });
 const callsOn = (dataRecordId: string) =>
@@ -128,18 +137,29 @@ beforeAll(async () => {
     return { id: user.id, membershipId: user.membershipId, cookie: await createSessionToken(tenantId, user.id) };
   };
   const all = ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'ASSIGN'] as const;
+  // The board reads `reports:VIEW`; check-in times on it, `attendance` (employee:VIEW reads all).
   admin = await member(
     'Admin',
-    await role(
-      'admin',
-      'ORGANIZATION',
-      all.map((a) => ['leads', a] as const),
-    ),
+    await role('admin', 'ORGANIZATION', [
+      ...all.map((a) => ['leads', a] as const),
+      ['reports', 'VIEW'],
+      ['employee', 'VIEW'],
+    ]),
+  );
+  // Lead Eagle's starter Viewer: the whole desk's reports, its own attendance only.
+  viewer = await member(
+    'Viewer',
+    await role('viewer', 'ORGANIZATION', [
+      ['leads', 'VIEW'],
+      ['reports', 'VIEW'],
+    ]),
   );
   const agentRole = await role('agent', 'OWN', [
     ['leads', 'VIEW'],
     ['leads', 'EDIT'],
     ['leads', 'CREATE'],
+    ['calls', 'VIEW'],
+    ['calls', 'EDIT'],
   ]);
   const agentUser = await member('Agent', agentRole);
   agent = agentUser;
@@ -304,6 +324,30 @@ describe('a 100-call daily quota in a Lead-Eagle-only workspace', () => {
     await expect(validatePunch(agentCtx(), employee, 'CHECK_OUT', position, true, targeted)).resolves.toBeTruthy();
   });
 
+  it('counts a call on the day it was logged: editing its time moves it neither out of today nor into it', async () => {
+    const [call] = await callsOn(records[1]!.id);
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const edit = (id: string, occurredAt: Date) =>
+      patch(editActivity, `/api/v1/activities/${id}`, { occurredAt: occurredAt.toISOString() }, agent.cookie, { id });
+    expect((await edit(call!.id, yesterday)).status).toBe(200);
+    expect(await leadsCalledToday()).toBe(QUOTA);
+    // A call logged yesterday, dated today by hand, is still yesterday's.
+    const old = await prisma.activity.create({
+      data: {
+        tenantId,
+        typeId: call!.typeId,
+        dataRecordId: records[QUOTA]!.id,
+        ownerId: agent.id,
+        outcome: 'NOT_REACHABLE',
+        createdAt: yesterday,
+        occurredAt: yesterday,
+      },
+    });
+    expect((await edit(old.id, new Date())).status).toBe(200);
+    expect(await leadsCalledToday()).toBe(QUOTA);
+    expect(await dailyTargetShortfall(agentCtx(), agent.id)).toBe(0);
+  });
+
   it('the Targets page opens under Lead Eagle and reads 100/100 for the agent and the administrator', async () => {
     expect(text(await targetsPage(agent.cookie))).toContain(`${QUOTA} done`);
     expect(text(await targetsPage(agent.cookie))).toContain('0 remaining');
@@ -328,7 +372,8 @@ describe('a 100-call daily quota in a Lead-Eagle-only workspace', () => {
     const offered = elements(await targetsPage(teamLead.cookie)).find((el) => el.type === TargetAdmin)?.props.users as {
       id: string;
     }[];
-    expect(offered.map((u) => u.id).sort()).toEqual([agent.id, teamLead.id].sort());
+    // Below ORGANIZATION, not themselves: their own target is their manager's to set.
+    expect(offered.map((u) => u.id)).toEqual([agent.id]);
     // And the team's targets are listed, nobody else's.
     const page = text(await targetsPage(teamLead.cookie));
     expect(page).toContain('Agent');
@@ -342,6 +387,84 @@ describe('a 100-call daily quota in a Lead-Eagle-only workspace', () => {
     expect(await prisma.employeeTarget.count({ where: { tenantId, id: foreign.id } })).toBe(1);
     expect((await del(deleteTarget, `/api/v1/targets/${ours.body.id}`, teamLead.cookie)).status).toBe(200);
     expect((await del(deleteTarget, `/api/v1/targets/${targetId}`, admin.cookie)).status).toBe(200);
+  });
+
+  it('a team lead cannot set, lower or delete their own target, so the gate it feeds still holds', async () => {
+    const day = {
+      metric: 'LEADS_CALLED',
+      period: 'DAILY',
+      targetValue: 50,
+      periodStart: new Date().toISOString(),
+      periodEnd: new Date(Date.now() + 3_600_000).toISOString(),
+    };
+    const shortfall = () => dailyTargetShortfall(buildCtx(buildActor({ id: teamLead.id, tenantId })), teamLead.id);
+    const own = await post(createTarget, '/api/v1/targets', { ...day, userId: teamLead.id }, admin.cookie);
+    expect(own.status, JSON.stringify(own.body)).toBe(200);
+    expect(await shortfall()).toBe(50);
+
+    const at = `/api/v1/targets/${own.body.id}`;
+    expect(
+      (await post(createTarget, '/api/v1/targets', { ...day, targetValue: 1, userId: teamLead.id }, teamLead.cookie))
+        .status,
+    ).toBe(404);
+    expect((await patch(patchTarget, at, { targetValue: 1 }, teamLead.cookie)).status).toBe(404);
+    expect((await del(deleteTarget, at, teamLead.cookie)).status).toBe(404);
+    expect(
+      await prisma.employeeTarget.findMany({
+        where: { tenantId, userId: teamLead.id },
+        select: { id: true, targetValue: true },
+      }),
+    ).toEqual([{ id: own.body.id, targetValue: 50 }]);
+    expect(await shortfall()).toBe(50);
+    // Their page reads it among their own, with no Delete beside it.
+    const deletes = elements(await targetsPage(teamLead.cookie))
+      .filter((el) => el.type === EntityDelete)
+      .map((el) => el.props.endpoint);
+    expect(deletes).not.toContain(at);
+
+    // The administrator, at ORGANIZATION, removes it (audited) and may set their own.
+    expect((await del(deleteTarget, at, admin.cookie)).status).toBe(200);
+    expect(
+      await prisma.auditLog.findFirst({ where: { tenantId, event: 'RECORD_DELETED', recordId: own.body.id } }),
+    ).toMatchObject({ actorUserId: admin.id });
+    const mine = await post(createTarget, '/api/v1/targets', { ...day, userId: admin.id }, admin.cookie);
+    expect(mine.status, JSON.stringify(mine.body)).toBe(200);
+    await prisma.employeeTarget.delete({ where: { tenantId, id: mine.body.id } });
+  });
+
+  it('lists and changes targets only within the caller’s scope, whoever ?userId= names', async () => {
+    const theirs = await prisma.employeeTarget.create({
+      data: {
+        tenantId,
+        userId: outsider.id,
+        metric: 'LEADS_CALLED',
+        period: 'DAILY',
+        targetValue: 7,
+        periodStart: new Date(),
+        periodEnd: new Date(Date.now() + 3_600_000),
+      },
+    });
+    const listed = async (cookie: string) =>
+      ((await get(listTargets, `/api/v1/targets?userId=${outsider.id}`, cookie)).body.data as { id: string }[]).map(
+        (t) => t.id,
+      );
+    expect(await listed(agent.cookie)).toEqual([]);
+    expect(await listed(teamLead.cookie)).toEqual([]);
+    expect(await listed(admin.cookie)).toContain(theirs.id);
+    expect((await patch(patchTarget, `/api/v1/targets/${theirs.id}`, { targetValue: 1 }, teamLead.cookie)).status).toBe(
+      404,
+    );
+    expect((await prisma.employeeTarget.findFirstOrThrow({ where: { tenantId, id: theirs.id } })).targetValue).toBe(7);
+  });
+
+  it('offers a Lead-Eagle-only workspace no Events metrics, which it could never count', async () => {
+    const metrics = (
+      elements(await targetsPage(admin.cookie)).find((el) => el.type === TargetAdmin)?.props.metrics as
+        (readonly [string, string])[] | undefined
+    )?.map(([metric]) => metric);
+    expect(metrics).toContain('LEADS_CALLED');
+    expect(metrics).not.toContain('INVITATIONS_SENT');
+    expect(metrics).not.toContain('RSVPS_CONFIRMED');
   });
 });
 
@@ -367,5 +490,118 @@ describe('making a lead of a called record', () => {
     expect(await pendingLeadWork(agentCtx(), await workspaceTimezone(agentCtx()))).toBe(0);
     // And the day still counts the record once.
     expect((await dailyBoard(agentCtx())).rows.find((r) => r.userId === agent.id)?.leadsCalled).toBe(QUOTA);
+  });
+
+  it('a call to that lead the same day is the same person: the day and the target count it once', async () => {
+    const midnight = new Date();
+    midnight.setUTCHours(0, 0, 0, 0);
+    const target = await post(
+      createTarget,
+      '/api/v1/targets',
+      {
+        userId: agent.id,
+        metric: 'LEADS_CALLED',
+        period: 'DAILY',
+        targetValue: 5,
+        periodStart: midnight.toISOString(),
+        periodEnd: new Date(midnight.getTime() + 24 * 60 * 60 * 1000 - 1).toISOString(),
+      },
+      admin.cookie,
+    );
+    expect(target.status, JSON.stringify(target.body)).toBe(200);
+    const { convertedLeadId } = await prisma.dataRecord.findFirstOrThrow({ where: { tenantId, id: records[0]!.id } });
+    const before = await leadsCalledToday();
+    const call = await prisma.call.create({
+      data: { tenantId, callerId: agent.id, leadId: convertedLeadId, status: 'IN_PROGRESS' },
+    });
+    const done = await patch(
+      finishCall,
+      `/api/v1/calls/${call.id}`,
+      { status: 'COMPLETED', outcome: 'CONNECTED' },
+      agent.cookie,
+    );
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+    expect(await leadsCalledToday()).toBe(before);
+    const progress = await prisma.targetProgress.findMany({ where: { tenantId, targetId: target.body.id } });
+    expect(progress.reduce((sum, row) => sum + row.achieved, 0)).toBe(0);
+  });
+
+  it('into another agent’s lead: the calls follow the person onto it, though the caller cannot open it', async () => {
+    const phone = normalizePhone('050 999 0777')!;
+    const { id: stageId } = await prisma.leadStage.findFirstOrThrow({ where: { tenantId } });
+    const theirs = await prisma.lead.create({
+      data: {
+        tenantId,
+        reference: `THEIRS-${suffix}`,
+        fullName: 'Their lead',
+        phone,
+        phoneNormalized: phone,
+        stageId,
+        ownerId: outsider.id,
+      },
+    });
+    const record = await prisma.dataRecord.create({
+      data: { tenantId, fullName: 'Known number', phone, batch: 'Known list', ownerId: agent.id },
+    });
+    expect((await work(record.id, { status: 'INTERESTED' })).status).toBe(200);
+    const res = await post(convertRecord, `/api/v1/cold-data/${record.id}/convert`, {}, agent.cookie, {
+      id: record.id,
+    });
+    expect(res.body).toEqual({ leadId: theirs.id, created: false, visible: false });
+    expect((await callsOn(record.id)).map((c) => c.leadId)).toEqual([theirs.id]);
+    expect(
+      await prisma.auditLog.findFirst({
+        where: { tenantId, event: 'RECORD_UPDATED', objectType: 'lead', recordId: theirs.id },
+      }),
+    ).toMatchObject({ actorUserId: agent.id, metadata: { action: 'lead.cold_calls_attached', calls: 1 } });
+  });
+
+  it('deleting a called record keeps its calls: once it is a lead they are the lead’s timeline', async () => {
+    const record = await prisma.dataRecord.create({
+      data: { tenantId, fullName: 'Short-lived', batch: 'Scratch list', ownerId: agent.id },
+    });
+    expect((await work(record.id, { status: 'NOT_REACHABLE' })).status).toBe(200);
+    const [call] = await callsOn(record.id);
+    await prisma.dataRecord.delete({ where: { tenantId, id: record.id } });
+    expect(await prisma.activity.findFirst({ where: { tenantId, id: call!.id } })).toMatchObject({
+      dataRecordId: null,
+    });
+  });
+});
+
+describe('the Cold Data screen at team scope', () => {
+  it('shows a teammate’s number as a lead’s phone reads to the role; the agent dials their own', async () => {
+    const screen = async (cookie: string) => {
+      cookieJar.value = cookie;
+      return ColdDataPage({ searchParams: Promise.resolve({ list: 'Quota list' }) });
+    };
+    const dialled = (tree: unknown) =>
+      elements(tree)
+        .filter((el) => el.type === 'a')
+        .map((el) => el.props.href);
+    const { phone } = await prisma.dataRecord.findFirstOrThrow({ where: { tenantId, id: records[QUOTA]!.id } });
+    // The team lead's role lacks leads:VIEW_SENSITIVE_FIELDS.
+    const lead = await screen(teamLead.cookie);
+    expect(text(lead)).toContain('Cold');
+    expect(text(lead)).not.toContain(phone!);
+    expect(dialled(lead)).not.toContain(`tel:${phone}`);
+    expect(dialled(await screen(agent.cookie))).toContain(`tel:${phone}`);
+  });
+});
+
+describe('check-in times on the daily board', () => {
+  it('follow the viewer’s attendance access: the administrator reads the agent’s, a reports viewer does not', async () => {
+    await prisma.hrAttendanceRecord.create({
+      data: { tenantId, employeeId: employee.id, workDate: new Date(), checkInAt: new Date() },
+    });
+    const agentRow = async (cookie: string) => {
+      const res = await get(readBoard, '/api/v1/targets/daily', cookie, {});
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body.rows as { userId: string; checkInAt: string | null }[]).find((r) => r.userId === agent.id);
+    };
+    expect((await agentRow(admin.cookie))?.checkInAt).toBeTruthy();
+    const seen = await agentRow(viewer.cookie);
+    expect(seen).toBeDefined();
+    expect(seen?.checkInAt).toBeNull();
   });
 });

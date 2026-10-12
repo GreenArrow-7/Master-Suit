@@ -4090,7 +4090,7 @@ model Activity {
   opportunity Opportunity? @relation(fields: [opportunityId], references: [id])
   account     Account?     @relation(fields: [accountId], references: [id])
   owner       User?        @relation("ActivityOwner", fields: [ownerId], references: [id])
-  dataRecord  DataRecord?  @relation(fields: [dataRecordId], references: [id], onDelete: Cascade)
+  dataRecord  DataRecord?  @relation(fields: [dataRecordId], references: [id], onDelete: SetNull)
   documents   Document[]
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)

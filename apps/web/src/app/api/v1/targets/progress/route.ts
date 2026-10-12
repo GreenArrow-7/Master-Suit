@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { LEAD_MODULES } from '@/lib/security/entitlements';
 
 const body = z
   .object({
@@ -11,7 +10,7 @@ const body = z
   .strict();
 
 export const POST = route(
-  { module: 'leads', productModule: LEAD_MODULES, action: 'EDIT', body },
+  { module: 'leads', productModule: 'SALES', action: 'EDIT', body },
   async ({ ctx, body: { targetId, increment } }) => {
     const dateKey = new Date().toISOString().slice(0, 10);
 

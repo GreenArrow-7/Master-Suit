@@ -166,9 +166,13 @@ test.describe('Lead Eagle, from the platform portal to a lead', () => {
       const row = page.getByRole('row', { name });
       await row.getByRole('combobox', { name: 'Outcome' }).selectOption('INTERESTED');
       await expect(row.getByRole('alert')).toHaveCount(0);
-      await expect
-        .poll(() => prisma.activity.count({ where: { tenantId, ownerId: me.id, dataRecord: { fullName: name } } }))
-        .toBe(1);
+      const calls = () =>
+        prisma.activity.count({ where: { tenantId, ownerId: me.id, dataRecord: { fullName: name } } });
+      await expect.poll(calls).toBe(1);
+      await expect(row.getByRole('status')).toHaveText('Call logged.');
+      // A redial that finds the same again is a second call: picking the shown outcome fires nothing.
+      await row.getByRole('button', { name: 'Called again' }).click();
+      await expect.poll(calls).toBe(2);
 
       // Targets sits under Reports in the Lead Eagle menu and reads the call.
       await page.goto(at('/lead-eagle/reports'));

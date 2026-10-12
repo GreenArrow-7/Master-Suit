@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
+import { targetReach } from '@/lib/security/record-scope';
 import type { Ctx } from '@/lib/security/rbac';
-import { visibilityWhere } from '@/lib/security/visibility';
 
 const patchBody = z
   .object({
@@ -12,11 +12,8 @@ const patchBody = z
   })
   .strict();
 
-/** A target by id, for someone the caller's `leads:ASSIGN` scope reaches; outside it, not found (P2025). */
-const reach = async (ctx: Ctx, id: string) => ({
-  ...(await visibilityWhere(ctx, 'leads', 'ASSIGN', { ownerField: 'userId' })),
-  id,
-});
+/** A target by id, under `targetReach`; outside it, not found (P2025). */
+const reach = async (ctx: Ctx, id: string) => ({ ...(await targetReach(ctx)), id });
 
 export const PATCH = route(
   {
@@ -33,9 +30,16 @@ export const PATCH = route(
 );
 
 export const DELETE = route(
-  { module: 'leads', productModule: LEAD_MODULES, action: 'ASSIGN', params: z.object({ id: z.string() }) },
+  {
+    module: 'leads',
+    productModule: LEAD_MODULES,
+    action: 'ASSIGN',
+    params: z.object({ id: z.string() }),
+    auditEvent: 'RECORD_DELETED',
+  },
   async ({ ctx, params }) => {
     await prisma.employeeTarget.delete({ where: await reach(ctx, params.id) });
-    return { ok: true };
+    // The id names the deleted target in the audit row.
+    return { ok: true, id: params.id };
   },
 );

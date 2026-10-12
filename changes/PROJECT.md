@@ -69,9 +69,12 @@ Node 22 or newer (CI uses 24).
   follows the same rule (`coldDataScope(ctx, action)`), and working a cold
   record logs a call on it (`Activity.dataRecordId`) that the daily target
   and the check-out gate count (`services/targets/dailyBoard.ts`); making it a
-  lead moves those calls onto the lead. Targets (`api/v1/targets/**`, the
-  Targets page under Sales, Real Estate and Lead Eagle) are every lead
-  module's and follow the caller's `leads` scope. A
+  lead moves those calls onto the lead. Targets (`api/v1/targets/**` but the
+  Sales-only manual tally `targets/progress`, the Targets page under Sales,
+  Real Estate and Lead Eagle) are every lead module's and follow the caller's
+  `leads` scope; below ORGANIZATION nobody sets, changes or deletes their own
+  (`targetReach`, `targetAssignees`). The daily board shows check-in times
+  only under the viewer's `attendanceScope`. A
   record loaded by id outside the caller's scope answers 404, as a missing id
   does (`src/lib/security/record-scope.ts`). TEAM, BRANCH and REGION mean the
   caller's resolved owners (`resolveOwnerIds`), never the whole workspace, in a
@@ -103,8 +106,10 @@ Node 22 or newer (CI uses 24).
   number it holds serialises it through `applyFieldSecurity`, `asLeadPhone` or
   `maskCallNumbers` (a call's lead side), and builds `tel:` and `wa.me` links
   with `dialable()`, which refuses a mask. A notification names the lead, not
-  its number. Still outside it: the campaign dialer, event invitees, cold data
-  and the inbox (`changes/2026-10-11-lead-contact-masking.md`).
+  its number. Cold Data shows a record's number as stored to its own agent and
+  as a lead's phone reads to the role otherwise. Still outside it: the
+  campaign dialer, event invitees and the inbox
+  (`changes/2026-10-11-lead-contact-masking.md`).
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
   P2002 answers 409 and P2025 404, a zod failure 422 — let the database say
   "already exists" or "not found" instead of reading first.
