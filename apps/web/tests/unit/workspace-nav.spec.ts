@@ -362,6 +362,9 @@ describe('Lead Eagle: its own menu only where it is the whole CRM', () => {
     expect(tabsOf(nav, 'le-reports')).toEqual(['Reports', 'Targets']);
     expect(areas(nav)).not.toContain('realty-clients');
     expect(at(nav, `/${SLUG}/lead-eagle/leads/42`)).toBe('le-leads / Leads');
+    // Its own lead sources (M6-06, M6-09): the website forms and landing pages.
+    expect(tabsOf(nav, 'le-sources')).toEqual(['Forms', 'Landing Pages']);
+    expect(at(nav, `/${SLUG}/lead-eagle/landing-pages`)).toBe('le-sources / Landing Pages');
     expect(at(nav, `/${SLUG}/lead-eagle/targets`)).toBe('le-reports / Targets');
   });
 
@@ -384,6 +387,14 @@ describe('Lead Eagle: its own menu only where it is the whole CRM', () => {
     // Targets too: Real Estate carries the screen, as Lead Eagle and Sales do.
     expect(at(leadEagle(['REAL_ESTATE']), `/${SLUG}/realty/targets`)).toBe('realty-deals / Targets');
     expect(at(leadEagle(['LEAD_EAGLE', 'REAL_ESTATE']), `/${SLUG}/lead-eagle/targets`)).toBe('realty-deals / Targets');
+  });
+
+  it('gives way on its website forms and landing pages too: Real Estate and Sales carry them (M6-06, M6-09)', () => {
+    expect(tabsOf(leadEagle(['REAL_ESTATE']), 'realty-sources')).toEqual(['Forms', 'Landing Pages']);
+    expect(at(leadEagle(['LEAD_EAGLE', 'REAL_ESTATE']), `/${SLUG}/lead-eagle/forms`)).toBe('realty-sources / Forms');
+    expect(at(leadEagle(['LEAD_EAGLE', 'SALES']), `/${SLUG}/lead-eagle/landing-pages`)).toBe(
+      'lead-sources / Landing Pages',
+    );
   });
 
   it('is the phone tab bar for its own URLs, and for shared ones where it is the only CRM', () => {

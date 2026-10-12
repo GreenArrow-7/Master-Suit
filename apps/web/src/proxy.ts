@@ -44,7 +44,9 @@ export default function proxy(request: NextRequest) {
     "img-src 'self' data: blob: https:",
     "font-src 'self' data:",
     "connect-src 'self'",
-    "frame-ancestors 'none'",
+    // The public form, and only it, may sit inside another site's page: that is
+    // what /embed.js does (M6-07). Everything else refuses framing, as before.
+    /^\/f\/[^/]+\/[^/]+$/.test(request.nextUrl.pathname) ? 'frame-ancestors *' : "frame-ancestors 'none'",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

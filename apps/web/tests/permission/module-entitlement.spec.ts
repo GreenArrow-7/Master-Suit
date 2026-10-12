@@ -335,6 +335,25 @@ describe('a screen or route outside the plan says which products carry it', () =
     );
   });
 
+  it('the website forms and landing pages open under whichever lead product the plan has (M6-06, M6-09)', async () => {
+    for (const root of ['forms', 'landing-pages']) {
+      const leadEagle = `/lead-eagle/${root}`;
+      const realty = `/realty/${root}`;
+      const sales = `/sales/${root}`;
+      expect(await sentTo(LeadEagleLayout(open(salesOnly, leadEagle)))).toBe(at(salesOnly, sales));
+      expect(await sentTo(RealtyLayout(open(salesOnly, realty)))).toBe(at(salesOnly, sales));
+      expect(await sentTo(SalesLayout(open(realtyOnly, sales)))).toBe(at(realtyOnly, realty));
+      expect(await sentTo(LeadEagleLayout(open(realtyOnly, leadEagle)))).toBe(at(realtyOnly, realty));
+      expect(await sentTo(SalesLayout(open(leadEagleOnly, sales)))).toBe(at(leadEagleOnly, leadEagle));
+      expect(await sentTo(RealtyLayout(open(leadEagleOnly, realty)))).toBe(at(leadEagleOnly, leadEagle));
+      expect(await RealtyLayout(open(realtyOnly, realty))).toBe('the screen');
+      expect(await LeadEagleLayout(open(leadEagleOnly, leadEagle))).toBe('the screen');
+    }
+    expect(await shown(await LeadEagleLayout(open(hrOnly, '/lead-eagle/forms')))).toContain(
+      'Forms is part of Sales, Real Estate or Lead Eagle.',
+    );
+  });
+
   it('Lead Eagle’s folder, in a workspace with no lead product, names every product that has leads', async () => {
     expect(await shown(await LeadEagleLayout(open(hrOnly, '/lead-eagle/leads')))).toContain(
       'Leads is part of Sales, Real Estate or Lead Eagle.',

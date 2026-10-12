@@ -56,6 +56,10 @@ describe('the shared registers exist under Real Estate', () => {
     expect(sharedRealtyRoutes.length).toBeGreaterThanOrEqual(29);
   });
 
+  it('includes the website forms and landing pages, lead sources every lead module has (M6-06, M6-09)', () => {
+    expect(SHARED).toEqual(expect.arrayContaining(['forms', 'landing-pages']));
+  });
+
   it('covers every shared register Sales has a screen for', () => {
     const sales = pages('sales').filter(isShared).sort();
     expect(sharedRealtyRoutes.sort()).toEqual(sales);

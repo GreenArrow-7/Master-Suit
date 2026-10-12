@@ -4,6 +4,8 @@ import Field from '@/components/forms/Field';
 
 export interface SourceOption {
   id: string;
+  /** Stable across renames: `referral` makes the lead form ask who referred it. */
+  key: string;
   name: string;
   parentId: string | null;
 }

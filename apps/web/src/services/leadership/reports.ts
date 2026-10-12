@@ -85,9 +85,15 @@ const SOURCE_DETAIL: Record<string, string> = {
   capture: 'QR capture',
   data: 'Cold data',
 };
-const sourceLabel = (source: string, detail: string | null) =>
-  SOURCE_DETAIL[detail?.split(':')[0] ?? ''] ??
-  (source === 'API' ? source : source.charAt(0) + source.slice(1).toLowerCase().replace(/_/g, ' '));
+const sourceLabel = (source: string, detail: string | null) => {
+  // A referral's detail is whoever referred it, typed by hand: never an intake key.
+  const key = source === 'REFERRAL' ? '' : (detail?.split(':')[0] ?? '');
+  return Object.hasOwn(SOURCE_DETAIL, key)
+    ? SOURCE_DETAIL[key]!
+    : source === 'API'
+      ? source
+      : source.charAt(0) + source.slice(1).toLowerCase().replace(/_/g, ' ');
+};
 /** The workspace's catalogue entry where the lead has one (M4-03), else the label above. */
 const catalogueLabel = (lead: {
   source: string;

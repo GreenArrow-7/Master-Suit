@@ -34,8 +34,12 @@ export default function LeadForm({ sources }: { sources: SourceOption[] }) {
   const [campaignName, setCampaignName] = useState('');
   const [tags, setTags] = useState('');
   const [priority, setPriority] = useState('MEDIUM');
+  const [referrer, setReferrer] = useState('');
   const [busy, setBusy] = useState(false);
   const { fieldErrors, formError, setFormError, reset, clear, validateRequired, applyProblem } = useFormErrors();
+  // The catalogue's Referral entry (or a sub-source under it) is a REFERRAL lead,
+  // which names who referred it (M6-15).
+  const referral = sources.find((s) => s.id === source.sourceId)?.key === 'referral';
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -48,7 +52,8 @@ export default function LeadForm({ sources }: { sources: SourceOption[] }) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           fullName,
-          source: 'MANUAL',
+          source: referral ? 'REFERRAL' : 'MANUAL',
+          ...(referral && referrer ? { sourceDetail: referrer } : {}),
           priority,
           ...(email ? { email } : {}),
           ...(phone ? { phone, phoneIsWhatsapp } : {}),
@@ -212,6 +217,23 @@ export default function LeadForm({ sources }: { sources: SourceOption[] }) {
         }}
         error={fieldErrors.sourceId}
       />
+
+      {referral && (
+        <Field label="Referred by" htmlFor="sourceDetail" required error={fieldErrors.sourceDetail}>
+          <input
+            id="sourceDetail"
+            name="sourceDetail"
+            className="lf-input"
+            value={referrer}
+            placeholder="A client, a partner, a colleague"
+            required
+            onChange={(e) => {
+              setReferrer(e.target.value);
+              clear('sourceDetail');
+            }}
+          />
+        </Field>
+      )}
 
       <Field label="Campaign" htmlFor="campaignName" error={fieldErrors.campaignName}>
         <input

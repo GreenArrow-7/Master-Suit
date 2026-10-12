@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { slugify } from '@/lib/slug';
 
 /**
@@ -28,7 +29,13 @@ const createBody = z
   .strict();
 
 export const POST = route(
-  { module: 'landingpages', productModule: 'SALES', action: 'CREATE', body: createBody, auditEvent: 'RECORD_CREATED' },
+  {
+    module: 'landingpages',
+    productModule: LEAD_MODULES,
+    action: 'CREATE',
+    body: createBody,
+    auditEvent: 'RECORD_CREATED',
+  },
   async ({ ctx, body }) => {
     const slug = body.slug ?? slugify(body.name);
     if (body.formId) {
