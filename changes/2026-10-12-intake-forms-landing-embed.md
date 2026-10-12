@@ -29,7 +29,7 @@ referral options, and mark M6-27 complete by decision.
 - `src/app/f/…/page.tsx`, `src/app/l/…/page.tsx`, `src/app/c/…/page.tsx`: the public form, landing page and QR capture page are a 404 when the workspace has no usable lead module, like their APIs.
 - `src/app/f/[workspaceSlug]/[formKey]/LeadForm.tsx`, `src/app/l/.../page.tsx`: the landing page sends its slug; the referer regex is gone.
 - `public/embed.js`: reads `data-workspace` / `data-form` off its own script tag and inserts an iframe of `/f/<workspace>/<form>?embed=1` (optional `data-height`, `data-title`); `next.config.ts` caches it for an hour; `src/app/f/.../page.tsx` renders the card alone in embed mode, and `globals.css` drops the page canvas there so the host site shows through; `src/proxy.ts` answers `frame-ancestors *` for `/f/<ws>/<key>` only (`docs/05-SECURITY.md` records the exception); `FormAdmin.tsx` gains **Copy embed code**.
-- `prisma/migrations/20261012004000_record_source_referral`: `RecordSource` gains `REFERRAL` (additive; the 102nd migration). `api/v1/leads/route.ts` accepts it and refuses a referral with no `sourceDetail`; `sales/leads/new/LeadForm.tsx` gets a Source select and a _Referred by_ field; `services/leadership/reports.ts` never reads a referral's detail as an intake key, and looks a detail up only among its own keys.
+- `prisma/migrations/20261012005000_record_source_referral`: `RecordSource` gains `REFERRAL` (additive). `api/v1/leads/route.ts` accepts it and refuses a referral with no `sourceDetail`; `sales/leads/new/LeadForm.tsx` gets a Source select and a _Referred by_ field; `services/leadership/reports.ts` never reads a referral's detail as an intake key, and looks a detail up only among its own keys.
 
 **Behaviour**
 
