@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { dailyBoard } from '@/services/targets/dailyBoard';
 
 const query = z.object({
@@ -15,6 +16,7 @@ const query = z.object({
  * scope (their subtree, the whole workspace, or only themselves); every number
  * is counted from calls, follow-ups, meetings, opportunities and attendance.
  */
-export const GET = route({ module: 'leads', productModule: 'SALES', action: 'VIEW', query }, async ({ ctx, query }) =>
-  dailyBoard(ctx, query.date),
+export const GET = route(
+  { module: 'leads', productModule: LEAD_MODULES, action: 'VIEW', query },
+  async ({ ctx, query }) => dailyBoard(ctx, query.date),
 );

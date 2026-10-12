@@ -359,8 +359,10 @@ describe('Lead Eagle: its own menu only where it is the whole CRM', () => {
       'QR Capture',
       'Cold Data',
     ]);
+    expect(tabsOf(nav, 'le-reports')).toEqual(['Reports', 'Targets']);
     expect(areas(nav)).not.toContain('realty-clients');
     expect(at(nav, `/${SLUG}/lead-eagle/leads/42`)).toBe('le-leads / Leads');
+    expect(at(nav, `/${SLUG}/lead-eagle/targets`)).toBe('le-reports / Targets');
   });
 
   it('offers no money or marketing screens', () => {
@@ -379,6 +381,9 @@ describe('Lead Eagle: its own menu only where it is the whole CRM', () => {
     }
     // And its addresses still light up the Real Estate tab.
     expect(at(leadEagle(['LEAD_EAGLE', 'REAL_ESTATE']), `/${SLUG}/lead-eagle/leads`)).toBe('realty-clients / Leads');
+    // Targets too: Real Estate carries the screen, as Lead Eagle and Sales do.
+    expect(at(leadEagle(['REAL_ESTATE']), `/${SLUG}/realty/targets`)).toBe('realty-deals / Targets');
+    expect(at(leadEagle(['LEAD_EAGLE', 'REAL_ESTATE']), `/${SLUG}/lead-eagle/targets`)).toBe('realty-deals / Targets');
   });
 
   it('is the phone tab bar for its own URLs, and for shared ones where it is the only CRM', () => {

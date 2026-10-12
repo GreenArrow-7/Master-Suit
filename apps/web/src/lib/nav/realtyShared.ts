@@ -25,6 +25,7 @@ export const REALTY_SHARED_ROOTS = [
   'portals',
   'capture-links',
   'cold-data',
+  'targets',
 ] as const;
 
 /**
@@ -46,6 +47,7 @@ export const LEAD_EAGLE_SHARED_ROOTS = [
   'reports',
   'capture-links',
   'cold-data',
+  'targets',
 ] as const;
 
 /** Each module folder and its product, in the order a link prefers them: Sales, the fullest, first. */

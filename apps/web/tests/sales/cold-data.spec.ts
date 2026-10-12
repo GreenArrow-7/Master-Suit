@@ -279,3 +279,106 @@ describe('a list hand-over below organisation-wide access', () => {
     });
   });
 });
+
+/**
+ * Cold data follows the lead scope (Lead Eagle audit, M5-05): TEAM, BRANCH and
+ * REGION are the caller's resolved owners, as leads, calls and the work lists
+ * read them; an unassigned record is ORGANIZATION's to hand out. `coldDataScope`
+ * was own-or-all, so a team lead worked, handed on and converted only their own
+ * records while the lead list beside it showed the team's.
+ */
+describe('cold data follows the lead scope', () => {
+  const LIST6 = 'Expo Jul';
+  let lead: { id: string; cookie: string };
+  let mate: { id: string; cookie: string };
+  let outsider: { id: string; cookie: string };
+  let own: { id: string };
+  let mates: { id: string };
+  let theirs: { id: string };
+  let loose: { id: string };
+  const work = (id: string, cookie: string) =>
+    patch(workRecord, `/api/v1/cold-data/${id}`, { status: 'NOT_REACHABLE' }, cookie, { id });
+  const hand = (id: string, ownerId: string | null, cookie: string) =>
+    patch(workRecord, `/api/v1/cold-data/${id}`, { ownerId }, cookie, { id });
+  const ownerOf = async (id: string) =>
+    (await prisma.dataRecord.findFirstOrThrow({ where: { tenantId, id }, select: { ownerId: true } })).ownerId;
+
+  beforeAll(async () => {
+    const role = await prisma.role.create({
+      data: { tenantId, key: 'team-lead-scope', name: 'Scoped Team Lead', rank: 40, defaultScope: 'TEAM' },
+    });
+    await grantPermissions(
+      tenantId,
+      role.id,
+      [
+        ['leads', 'VIEW'],
+        ['leads', 'EDIT'],
+        ['leads', 'CREATE'],
+        ['leads', 'ASSIGN'],
+      ],
+      'TEAM',
+    );
+    const user = await createWorkspaceUser({
+      tenantId,
+      roleId: role.id,
+      email: `scoped-lead@cold-${tenantId}.test`,
+      fullName: 'Scoped Team Lead',
+    });
+    lead = { id: user.id, cookie: await createSessionToken(tenantId, user.id) };
+    mate = await newAgent('mate');
+    outsider = await newAgent('outsider');
+    const team = await prisma.team.create({ data: { tenantId, name: 'Scoped calling', code: 'SCOPED' } });
+    await prisma.userTeam.createMany({
+      data: [lead.id, mate.id].map((userId) => ({ tenantId, userId, teamId: team.id })),
+    });
+    const add = (fullName: string, phone: string, ownerId: string | null) =>
+      prisma.dataRecord.create({ data: { tenantId, fullName, phone, batch: LIST6, ownerId }, select: { id: true } });
+    own = await add('Team lead’s own', '0507770101', lead.id);
+    mates = await add('Teammate’s', '0507770102', mate.id);
+    theirs = await add('Outsider’s', '0507770103', outsider.id);
+    loose = await add('Nobody’s', '0507770104', null);
+  });
+
+  it('a team lead works the team’s records; an outsider’s and an unassigned one answer as missing', async () => {
+    expect((await work(mates.id, lead.cookie)).status).toBe(200);
+    expect((await work(own.id, lead.cookie)).status).toBe(200);
+    const other = await work(theirs.id, lead.cookie);
+    expect(other.status).toBe(404);
+    expect(other.body.detail).toMatch(/not found/i);
+    expect((await work(loose.id, lead.cookie)).status).toBe(404);
+    // An agent at OWN scope still works only their own.
+    expect((await work(mates.id, outsider.cookie)).status).toBe(404);
+    expect((await work(theirs.id, outsider.cookie)).status).toBe(200);
+  });
+
+  it('hands one of the team’s records on within the team, and not an outsider’s or to one', async () => {
+    expect((await hand(mates.id, lead.id, lead.cookie)).status).toBe(200);
+    expect(await ownerOf(mates.id)).toBe(lead.id);
+    expect((await hand(theirs.id, lead.id, lead.cookie)).status).toBe(404);
+    expect(await ownerOf(theirs.id)).toBe(outsider.id);
+    expect((await hand(mates.id, outsider.id, lead.cookie)).status).toBe(404);
+    expect((await hand(mates.id, mate.id, lead.cookie)).status).toBe(200);
+    expect(await ownerOf(mates.id)).toBe(mate.id);
+  });
+
+  it('a list hand-over moves the team’s records and leaves the rest', async () => {
+    const res = await post(assignList, '/api/v1/cold-data/assign', { batch: LIST6, ownerId: mate.id }, lead.cookie);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.assigned).toBe(2);
+    expect(await ownerOf(own.id)).toBe(mate.id);
+    expect(await ownerOf(mates.id)).toBe(mate.id);
+    expect(await ownerOf(theirs.id)).toBe(outsider.id);
+    expect(await ownerOf(loose.id)).toBeNull();
+  });
+
+  it('converts a teammate’s record into the teammate’s lead, and not an outsider’s', async () => {
+    const res = await post(convert, `/api/v1/cold-data/${mates.id}/convert`, {}, lead.cookie, { id: mates.id });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ created: true, visible: true });
+    expect((await prisma.lead.findFirstOrThrow({ where: { tenantId, id: res.body.leadId } })).ownerId).toBe(mate.id);
+    expect(
+      (await post(convert, `/api/v1/cold-data/${theirs.id}/convert`, {}, lead.cookie, { id: theirs.id })).status,
+    ).toBe(404);
+    expect(await prisma.lead.count({ where: { tenantId, phoneNormalized: '+971507770103' } })).toBe(0);
+  });
+});

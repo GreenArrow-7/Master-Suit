@@ -60,6 +60,10 @@ describe('the shared registers exist under Real Estate', () => {
     const sales = pages('sales').filter(isShared).sort();
     expect(sharedRealtyRoutes.sort()).toEqual(sales);
   });
+
+  it('counts Targets among them: the daily calling quota is lead work in every lead module', () => {
+    expect(SHARED).toContain('targets');
+  });
 });
 
 describe('the Real Estate routes re-export rather than reimplement', () => {
@@ -124,11 +128,15 @@ describe('the APIs behind the shared screens admit a Real Estate workspace', () 
     expect(routes.length).toBeGreaterThanOrEqual(80);
   });
 
-  it.each(routes)('%s asserts either product, not Sales alone', (route) => {
-    const source = read(path.join(API, route));
-    expect(source).not.toMatch(/productModule: 'SALES'/);
-    if (source.includes('productModule')) expect(source).toMatch(/productModule: (SALES_OR_REALTY|LEAD_MODULES)/);
-  });
+  // A seller's own unaudited tally stays Sales-only: nothing calls it (lead-eagle-routes.spec.ts).
+  it.each(routes.filter((route) => route !== 'targets/progress/route.ts'))(
+    '%s asserts either product, not Sales alone',
+    (route) => {
+      const source = read(path.join(API, route));
+      expect(source).not.toMatch(/productModule: 'SALES'/);
+      if (source.includes('productModule')) expect(source).toMatch(/productModule: (SALES_OR_REALTY|LEAD_MODULES)/);
+    },
+  );
 });
 
 describe('a /sales/ link reaches a Real-Estate-only workspace', () => {
