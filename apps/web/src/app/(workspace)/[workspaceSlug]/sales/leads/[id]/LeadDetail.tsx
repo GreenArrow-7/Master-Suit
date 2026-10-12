@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
 import { useModuleBase } from '@/components/workspace/SalesLink';
-import { dialable } from '@/components/workspace/CallLink';
+import { dialable, whatsappLink } from '@/components/workspace/CallLink';
+import SourcePicker, { type SourceOption } from '@/components/forms/SourcePicker';
+import { parseTags } from '@/lib/leads/tags';
 import Field from '@/components/forms/Field';
 import TaskComposer from '../../tasks/TaskComposer';
 import StageReason, { asksForReason } from '@/components/workspace/StageReason';
@@ -79,14 +81,21 @@ interface LeadData {
   phones: { id: string; raw: string; normalized: string; label: string | null; isWhatsapp: boolean }[] | null;
   /** The viewer's role sees these masked: shown, never dialled, mailed or edited. */
   contactMasked: { phone: boolean; email: boolean };
+  /** The main number is on WhatsApp: the WhatsApp action is offered only then. */
+  phoneIsWhatsapp: boolean;
   company: string | null;
   jobTitle: string | null;
   industry: string | null;
   city: string | null;
   country: string | null;
+  nationality: string | null;
   source: string;
   /** Where exactly it came from, when known: a portal, a campaign. */
   sourceDetail: string | null;
+  /** The catalogue entry it is attributed to, and its label ("Website · Marina launch"). */
+  sourceId: string | null;
+  sourceLabel: string | null;
+  campaignName: string | null;
   consentStatus: string;
   priority: string;
   slaState: string;
@@ -105,7 +114,9 @@ interface LeadData {
   stageReason: string | null;
   /** Why distribution chose the owner, when it did. */
   assignedWhy: string | null;
-  owner: { fullName: string; email: string } | null;
+  owner: { id: string; fullName: string; email: string } | null;
+  /** A second person who works the lead, reaching it as the owner does. */
+  secondaryOwner: { id: string; fullName: string } | null;
   activities: Activity[];
   stageChanges: { id: string; at: string; from: string | null; to: string; reason: string | null }[];
   tasks: TaskItem[];
@@ -118,6 +129,8 @@ interface Props {
   activityTypes: ActivityType[];
   taskTypes: TaskType[];
   users: User[];
+  /** The source catalogue offered on edit (Administration → Settings → Sources). */
+  sources: SourceOption[];
   canEdit: boolean;
   canDeleteDocuments: boolean;
   canAssign: boolean;
@@ -161,6 +174,7 @@ export default function LeadDetail({
   activityTypes,
   taskTypes,
   users,
+  sources,
   canEdit,
   canDeleteDocuments,
   canAssign,
@@ -170,14 +184,16 @@ export default function LeadDetail({
   const base = useModuleBase();
   // Null for no number and for a masked one alike: neither is dialled.
   const tel = dialable(lead.phone);
-  const wa = waLink(lead.phoneNormalized ?? lead.phone);
+  // Offered only when the main number is flagged as on WhatsApp (M4-02).
+  const wa = whatsappLink(lead.phoneNormalized ?? lead.phone, lead.phoneIsWhatsapp);
   const [tab, setTab] = useState<Tab>('Overview');
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // -- Assign dropdown --
+  // -- Assign dropdowns: the owner, and the second person who works the lead --
   const [showAssign, setShowAssign] = useState(false);
+  const [showSecondary, setShowSecondary] = useState(false);
 
   // -- Stage dropdown --
   const [showStageMenu, setShowStageMenu] = useState(false);
@@ -235,6 +251,13 @@ export default function LeadDetail({
     setShowAssign(false);
     void withBusy(async () => {
       await patchLead({ ownerId: userId });
+    })();
+  };
+
+  const handleSecondary = (userId: string | null) => {
+    setShowSecondary(false);
+    void withBusy(async () => {
+      await patchLead({ secondaryOwnerId: userId });
     })();
   };
 
@@ -308,6 +331,7 @@ export default function LeadDetail({
               setEditing={setEditing}
               patchLead={patchLead}
               canEdit={canEdit}
+              sources={sources}
             />
           )}
           {tab === 'Timeline' && <TimelineTab lead={lead} activityTypes={activityTypes} router={router} />}
@@ -531,6 +555,52 @@ export default function LeadDetail({
                 </dd>
               </div>
               <div>
+                <dt>Second owner</dt>
+                <dd style={{ position: 'relative' }}>
+                  {canAssign ? (
+                    <>
+                      <button
+                        className="lf-kv__btn"
+                        aria-haspopup="menu"
+                        aria-expanded={showSecondary}
+                        onClick={() => setShowSecondary((v) => !v)}
+                      >
+                        {lead.secondaryOwner?.fullName ?? (
+                          <em style={{ fontStyle: 'normal', color: 'var(--lf-ink-3)' }}>None</em>
+                        )}{' '}
+                        &#9662;
+                      </button>
+                      {showSecondary && (
+                        <Dropdown onClose={() => setShowSecondary(false)}>
+                          <button
+                            className="lf-menu__item"
+                            style={{ color: 'var(--lf-vermillion)' }}
+                            onClick={() => handleSecondary(null)}
+                          >
+                            None
+                          </button>
+                          {/* Never the owner too: the API refuses it (422). */}
+                          {users
+                            .filter((u) => u.id !== lead.owner?.id)
+                            .map((u) => (
+                              <button
+                                key={u.id}
+                                className="lf-menu__item"
+                                aria-current={u.id === lead.secondaryOwner?.id ? 'true' : undefined}
+                                onClick={() => handleSecondary(u.id)}
+                              >
+                                {u.fullName}
+                              </button>
+                            ))}
+                        </Dropdown>
+                      )}
+                    </>
+                  ) : (
+                    (lead.secondaryOwner?.fullName ?? 'None')
+                  )}
+                </dd>
+              </div>
+              <div>
                 <dt>Priority</dt>
                 <dd>
                   <Badge value={lead.priority} />
@@ -598,20 +668,30 @@ function OverviewTab({
   setEditing,
   patchLead,
   canEdit,
+  sources,
 }: {
   lead: Props['lead'];
   editing: boolean;
   setEditing: (v: boolean) => void;
   patchLead: (d: Record<string, unknown>) => Promise<void>;
   canEdit: boolean;
+  sources: SourceOption[];
 }) {
+  // The lead's entry, split back into the source and the sub-source under it.
+  const entry = sources.find((s) => s.id === lead.sourceId);
   const [form, setForm] = useState({
     email: lead.email ?? '',
     phone: lead.phone ?? '',
+    phoneIsWhatsapp: lead.phoneIsWhatsapp,
     company: lead.company ?? '',
     jobTitle: lead.jobTitle ?? '',
     city: lead.city ?? '',
     country: lead.country ?? '',
+    nationality: lead.nationality ?? '',
+    campaignName: lead.campaignName ?? '',
+    sourceId: entry?.parentId ?? entry?.id ?? '',
+    subSourceId: entry?.parentId ? entry.id : '',
+    tags: lead.tags.join(', '),
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -620,13 +700,20 @@ function OverviewTab({
     setSaving(true);
     setErr(null);
     try {
-      const patch: Record<string, string | undefined> = {};
+      const patch: Record<string, unknown> = {};
       if (form.email !== (lead.email ?? '')) patch.email = form.email || undefined;
       if (form.phone !== (lead.phone ?? '')) patch.phone = form.phone || undefined;
+      if (form.phoneIsWhatsapp !== lead.phoneIsWhatsapp) patch.phoneIsWhatsapp = form.phoneIsWhatsapp;
       if (form.company !== (lead.company ?? '')) patch.company = form.company || undefined;
       if (form.jobTitle !== (lead.jobTitle ?? '')) patch.jobTitle = form.jobTitle || undefined;
       if (form.city !== (lead.city ?? '')) patch.city = form.city || undefined;
       if (form.country !== (lead.country ?? '')) patch.country = form.country || undefined;
+      if (form.nationality !== (lead.nationality ?? '')) patch.nationality = form.nationality || null;
+      if (form.campaignName !== (lead.campaignName ?? '')) patch.campaignName = form.campaignName || null;
+      const sourceId = form.subSourceId || form.sourceId || null;
+      if (sourceId !== lead.sourceId) patch.sourceId = sourceId;
+      const tags = parseTags(form.tags);
+      if (tags.join(',') !== lead.tags.join(',')) patch.tags = tags;
       if (Object.keys(patch).length > 0) await patchLead(patch);
       setEditing(false);
     } catch (e: any) {
@@ -635,16 +722,23 @@ function OverviewTab({
     setSaving(false);
   };
 
+  type TextKey = 'email' | 'phone' | 'company' | 'jobTitle' | 'city' | 'country' | 'nationality' | 'campaignName';
   // A masked value is not offered for editing: saving it would write the dots.
-  const fields: [string, string, keyof typeof form | null][] = [
+  const fields: [string, string, TextKey | null][] = [
     ['Email', lead.email ?? '—', lead.contactMasked.email ? null : 'email'],
     ['Phone', lead.phone ?? '—', lead.contactMasked.phone ? null : 'phone'],
     ['Company', lead.company ?? '—', 'company'],
     ['Job title', lead.jobTitle ?? '—', 'jobTitle'],
     ['City', lead.city ?? '—', 'city'],
     ['Country', lead.country ?? '—', 'country'],
+    ['Nationality', lead.nationality ?? '—', 'nationality'],
     ['Industry', lead.industry ?? '—', null],
-    ['Source', [lead.source.replace(/_/g, ' ').toLowerCase(), lead.sourceDetail].filter(Boolean).join(' · '), null],
+    [
+      'Source',
+      lead.sourceLabel ?? [lead.source.replace(/_/g, ' ').toLowerCase(), lead.sourceDetail].filter(Boolean).join(' · '),
+      null,
+    ],
+    ['Campaign', lead.campaignName ?? '—', 'campaignName'],
     ['Consent', lead.consentStatus.toLowerCase(), null],
     ['Created', fmtDate(lead.createdAt), null],
   ];
@@ -665,28 +759,60 @@ function OverviewTab({
             <div key={label}>
               <dt className="lf-label">{label}</dt>
               <dd style={{ margin: '3px 0 0', fontSize: 'var(--lf-text-sm)', overflowWrap: 'anywhere' }}>
-                {editing && key ? (
-                  <input
-                    className="lf-input"
-                    style={{ width: '100%', fontSize: 'var(--lf-text-sm)' }}
-                    value={form[key]}
-                    onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                {editing && label === 'Source' ? (
+                  <SourcePicker
+                    sources={sources}
+                    sourceId={form.sourceId}
+                    subSourceId={form.subSourceId}
+                    onChange={(sourceId, subSourceId) => setForm((f) => ({ ...f, sourceId, subSourceId }))}
+                    idPrefix="edit-"
                   />
+                ) : editing && key ? (
+                  <>
+                    <input
+                      className="lf-input"
+                      aria-label={label}
+                      style={{ width: '100%', fontSize: 'var(--lf-text-sm)' }}
+                      value={form[key]}
+                      onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                    />
+                    {key === 'phone' && (
+                      <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                        <input
+                          type="checkbox"
+                          checked={form.phoneIsWhatsapp}
+                          onChange={(e) => setForm((f) => ({ ...f, phoneIsWhatsapp: e.target.checked }))}
+                        />
+                        On WhatsApp
+                      </label>
+                    )}
+                  </>
                 ) : (
                   value
                 )}
               </dd>
             </div>
           ))}
-          {lead.tags.length > 0 && (
+          {(editing || lead.tags.length > 0) && (
             <div>
               <dt className="lf-label">Tags</dt>
               <dd style={{ margin: '3px 0 0', display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                {lead.tags.map((t) => (
-                  <Badge key={t} tone="slate">
-                    {t}
-                  </Badge>
-                ))}
+                {editing ? (
+                  <input
+                    className="lf-input"
+                    aria-label="Tags, comma-separated"
+                    placeholder="Comma-separated, e.g. vip, investor"
+                    style={{ width: '100%', fontSize: 'var(--lf-text-sm)' }}
+                    value={form.tags}
+                    onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))}
+                  />
+                ) : (
+                  lead.tags.map((t) => (
+                    <Badge key={t} tone="slate">
+                      {t}
+                    </Badge>
+                  ))
+                )}
               </dd>
             </div>
           )}
@@ -708,12 +834,6 @@ function OverviewTab({
     </div>
   );
 }
-
-/** wa.me, or null for no number or a masked one. */
-const waLink = (phone: string | null) => {
-  const number = dialable(phone);
-  return number ? `https://wa.me/${number.replace(/[^0-9]/g, '')}` : null;
-};
 
 const MASKED_NOTE =
   'Your role sees this masked. An administrator can allow it under Roles: leads, view sensitive fields.';
@@ -761,8 +881,8 @@ function OtherNumbers({
           >
             {dialable(p.raw) ? <a href={`tel:${dialable(p.raw)}`}>{p.raw}</a> : <span>{p.raw}</span>}
             {p.label && <span style={{ color: 'var(--lf-ink-3)' }}>{p.label}</span>}
-            {p.isWhatsapp && waLink(p.normalized) && (
-              <a href={waLink(p.normalized)!} target="_blank" rel="noreferrer">
+            {whatsappLink(p.normalized, p.isWhatsapp) && (
+              <a href={whatsappLink(p.normalized, p.isWhatsapp)!} target="_blank" rel="noreferrer">
                 WhatsApp
               </a>
             )}

@@ -1071,6 +1071,13 @@ function definitions(slug: string): SectionDef[] {
               keywords: 'pipeline status sub-status reasons',
             },
             {
+              label: 'Sources',
+              href: a('/lead-sources'),
+              permission: 'settings',
+              module: [S, R, LE],
+              keywords: 'lead source sub-source campaign portal catalogue attribution',
+            },
+            {
               label: 'Users',
               href: a('/users'),
               permission: 'users',

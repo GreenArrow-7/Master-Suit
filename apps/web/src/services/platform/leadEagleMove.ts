@@ -65,9 +65,14 @@ export interface LeadEagleCompany {
     subStatus: string | null;
     lostReason: string | null;
     ownerId: Id | null;
+    /** Lead Eagle's second person on the lead, when its schema has one. */
+    secondaryOwnerId?: Id | null;
     source: string | null;
     campaign: string | null;
     tags: string[];
+    nationality?: string | null;
+    /** The primary LeadPhone row's WhatsApp flag, when the snapshot carries it. */
+    primaryIsWhatsapp?: boolean;
     notes: string | null;
     score: number;
     purpose: 'BUY' | 'RENT' | 'INVEST' | 'SELL' | null;
@@ -321,6 +326,7 @@ export async function moveCompany(
   const lost = (id: Id | null): id is Id => !!id && !userMap.has(id);
   const holders = [
     ...snap.leads.map((l) => l.ownerId),
+    ...snap.leads.map((l) => l.secondaryOwnerId ?? null),
     ...snap.dataRecords.map((r) => r.ownerId),
     ...snap.listings.map((l) => l.agentId),
     ...snap.captureLinks.map((c) => c.assignToId),
@@ -398,9 +404,13 @@ export async function moveCompany(
               stageId,
               stageReason: lead.subStatus ?? lead.lostReason,
               ownerId,
+              secondaryOwnerId: owned(lead.secondaryOwnerId ?? null),
               assignedAt: ownerId ? date(lead.createdAt) : null,
               source: recordSource(lead.source),
               sourceDetail: [lead.source, lead.campaign].filter(Boolean).join(' · ') || null,
+              campaignName: lead.campaign,
+              nationality: lead.nationality ?? null,
+              phoneIsWhatsapp: Boolean(lead.primaryPhone && lead.primaryIsWhatsapp),
               tags: lead.tags,
               notes:
                 [lead.notes, lead.projects.length ? `Interested in projects: ${lead.projects.join(', ')}` : null]

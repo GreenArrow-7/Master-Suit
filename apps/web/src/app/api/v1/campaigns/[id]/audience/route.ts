@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
-import { visibilityWhere } from '@/lib/security/visibility';
+import { leadScope } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -30,7 +30,7 @@ export const POST = route(
 
     // Only leads the caller may see — the picker searches the lead list — move
     // either way; an id outside that counts zero, as bulk assign does.
-    const visible = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
+    const visible = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
     const [added, removed] = await Promise.all([
       body.add.length
         ? prisma.lead.updateMany({

@@ -2,8 +2,7 @@ import type { DataStatus } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { can } from '@/lib/security/rbac';
-import { visibilityWhere } from '@/lib/security/visibility';
-import { assignableUsers } from '@/lib/security/record-scope';
+import { assignableUsers, leadScope } from '@/lib/security/record-scope';
 import { requirePageAccess } from '@/lib/workspace-page';
 import ListHeader from '@/components/workspace/ListHeader';
 import EmptyState from '@/components/ui/EmptyState';
@@ -52,7 +51,7 @@ export default async function ColdDataPage({
       ? (
           await prisma.lead.findMany({
             where: {
-              ...(await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true })),
+              ...(await leadScope(ctx, 'VIEW', { includeUnassigned: true })),
               id: { in: convertedIds },
             },
             select: { id: true },

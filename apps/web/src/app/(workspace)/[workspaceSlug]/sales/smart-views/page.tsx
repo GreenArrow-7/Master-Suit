@@ -1,6 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
-import { visibilityWhere } from '@/lib/security/visibility';
-import { assignableUsers } from '@/lib/security/record-scope';
+import { assignableUsers, leadScope } from '@/lib/security/record-scope';
 import {
   emptyFollowUpLabel,
   obligationAccess,
@@ -172,7 +171,7 @@ export default async function SmartViewsPage({
     filterWhere = { OR: [{ lastActivityAt: null }, { lastActivityAt: { lt: d } }] };
   }
 
-  const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
+  const scope = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
   const search = params.q ? { fullName: { contains: params.q, mode: 'insensitive' as const } } : {};
   // Spreading these would have discarded the visibility clause outright: the
   // "cold" view's filter *is* an `OR`, and so is `scope`'s ownership
@@ -196,6 +195,7 @@ export default async function SmartViewsPage({
         company: true,
         score: true,
         grade: true,
+        tags: true,
         priority: true,
         slaState: true,
         nextFollowUpAt: true,

@@ -1,5 +1,5 @@
 import { requirePageAccess, SELF_SERVICE } from '@/lib/workspace-page';
-import { visibilityWhere } from '@/lib/security/visibility';
+import { leadScope } from '@/lib/security/record-scope';
 import { obligationAccess, obligationWhere } from '@/services/leads/nextFollowUp';
 import { atLeast } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
@@ -388,7 +388,7 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
 
 async function ManagerHome({ ctx }: { ctx: any }) {
   const now = new Date();
-  const where = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
+  const where = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
   const access = await obligationAccess(ctx, 'scope');
 
   const [total, unassigned, overdue, breached, teamTargets, byStage, recent] = await Promise.all([

@@ -4,8 +4,7 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { can } from '@/lib/security/rbac';
-import { assertEventInScope } from '@/lib/security/record-scope';
-import { visibilityWhere } from '@/lib/security/visibility';
+import { assertEventInScope, leadScope } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -37,7 +36,7 @@ export const POST = route(
     const leadIds = [...new Set(body.invitees.flatMap((inv) => inv.leadId ?? []))];
     if (leadIds.length > 0) {
       if (!can(ctx, 'leads', 'VIEW')) throw NotFound('Lead');
-      const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
+      const scope = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
       const found = await prisma.lead.count({ where: { ...scope, id: { in: leadIds }, deletedAt: null } });
       if (found !== leadIds.length) throw NotFound('Lead');
     }

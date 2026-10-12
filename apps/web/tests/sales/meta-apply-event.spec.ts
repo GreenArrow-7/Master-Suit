@@ -31,6 +31,10 @@ vi.mock('@/services/leads/findDuplicates', () => ({ findDuplicates }));
 vi.mock('@/lib/queue', () => ({ enqueue }));
 vi.mock('@/lib/integrations/connection', () => ({ connectionCredentials }));
 vi.mock('@/services/shared/reference', () => ({ nextReference: async () => 'LEAD-1' }));
+// The workspace's catalogue entry for a key (M4-03), as `source-<key>`.
+vi.mock('@/services/leads/leadSources', () => ({
+  leadSourceIdFor: async (_db: unknown, _tenantId: string, key: string) => `source-${key}`,
+}));
 
 const { applyMetaEvent } = await import('@/services/meta/applyEvent');
 
@@ -91,6 +95,8 @@ describe('Meta Lead Ads → CRM', () => {
       phoneNormalized: '+971500000001',
       source: 'AD_LEAD_FORM',
       sourceDetail: 'facebook:form-9',
+      // The seeded Meta entry, so Source Analysis counts it with the Meta leads picked by hand.
+      sourceId: 'source-meta',
     });
     expect(data.customData.metaLeadgen).toMatchObject({ metaLeadgenId: '55', metaAdId: 'ad-1' });
     // Assignment is what eventually notifies the rep (§47, §80).

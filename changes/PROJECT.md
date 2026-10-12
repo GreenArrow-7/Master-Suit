@@ -14,7 +14,7 @@ Paths below are under `apps/web/`.
 | Sales | `sales/` | 75 | leads (spreadsheet import, close-out), contacts, accounts, opportunities, tasks, follow-ups; calls with AI coaching, analysis and audits; campaigns, inbox, forms, landing pages, social leads; dashboards, leadership (productivity, value, daily target); projects, listings, bookings, collections, commissions, proposals, portals |
 | HRMS | `people/` | 32 | employees, users, roles, departments; face check-in, attendance, shifts, roster, leave, overtime; payroll, payslips, WPS; recruitment, performance, documents, compliance |
 | Real Estate | `realty/` | 37 | the Sales property screens as a brokerage works them, plus Properties, allocation (data pool), events with QR passes, lead recycling |
-| Lead Eagle | `lead-eagle/` | 26 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads, follow-ups, tasks, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle and Google Ads lead forms (Admin → Integrations → Lead sources; any lead module). Every lead module also has QR Capture and Cold Data, and Lead Stages under Administration → Settings |
+| Lead Eagle | `lead-eagle/` | 26 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads, follow-ups, tasks, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle and Google Ads lead forms (Admin → Integrations → Lead sources; any lead module). Every lead module also has QR Capture and Cold Data, and Lead Stages and Sources (the source and sub-source catalogue) under Administration → Settings |
 
 Outside the modules: `check-in` and `attendance` (every workspace), `admin/`
 (users, roles, work locations, settings, audit), `profile/`, and the platform
@@ -67,7 +67,9 @@ Node 22 or newer (CI uses 24).
   `atLeast(ctx, module, action, scope)` (`src/lib/security/rbac.ts`). A record
   loaded by id is checked with `assertRecordInScope`
   (`src/lib/security/record-scope.ts`): out of scope answers 404, like a
-  missing id. HR's predicates are in `src/services/hr/access.ts`. A manager's authority over
+  missing id. A lead's second owner (`secondaryOwnerId`) reaches it as its
+  owner does: lead reads go through `leadScope` (placing a waiting lead from
+  the Allocation queue excepted). HR's predicates are in `src/services/hr/access.ts`. A manager's authority over
   people stops at their reporting line (`reportingLine`, `src/services/hr/leave.ts`).
   A task is read under `tasks` wherever it shows, a lead's page included, and
   a follow-up under `leads` (`src/services/leads/nextFollowUp.ts`); a task is

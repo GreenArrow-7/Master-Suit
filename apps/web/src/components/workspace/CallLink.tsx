@@ -27,6 +27,17 @@ export function dialable(raw: unknown): string | null {
 }
 
 /**
+ * The wa.me target for a number the lead said is on WhatsApp (the main
+ * number's `phoneIsWhatsapp`, a LeadPhone's `isWhatsapp`), or null: no number,
+ * not flagged, or masked. Every WhatsApp link is built through here, so the
+ * flag and the mask are honoured everywhere at once.
+ */
+export function whatsappLink(raw: unknown, flagged: boolean): string | null {
+  const number = flagged ? dialable(raw) : null;
+  return number ? `https://wa.me/${number.replace(/[^0-9]/g, '')}` : null;
+}
+
+/**
  * Nothing is rendered without a number: a dead button that silently does
  * nothing is worse than an obvious blank.
  */

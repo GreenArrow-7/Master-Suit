@@ -92,6 +92,8 @@ const snapshot = (): LeadEagleCompany => ({
       source: 'Portal / Bayut',
       campaign: 'Marina launch',
       tags: ['vip'],
+      nationality: 'Emirati',
+      primaryIsWhatsapp: true,
       notes: 'Prefers mornings',
       score: 40,
       purpose: 'INVEST',
@@ -117,6 +119,7 @@ const snapshot = (): LeadEagleCompany => ({
       subStatus: 'Budget',
       lostReason: null,
       ownerId: 'u-ghost',
+      secondaryOwnerId: 'u-agent',
       source: 'Walk-in',
       campaign: null,
       tags: [],
@@ -547,10 +550,20 @@ describe('moving a Lead Eagle company', () => {
       ownerId: fixture.a.userId,
       source: 'MARKETPLACE',
       sourceDetail: 'Portal / Bayut · Marina launch',
+      campaignName: 'Marina launch',
+      nationality: 'Emirati',
+      phoneIsWhatsapp: true,
       notes: 'Prefers mornings\nInterested in projects: Sidra Villas',
     });
     expect(aisha!.phones.map((p) => p.normalized)).toEqual(['+971521110002']);
-    expect(omar).toMatchObject({ ownerId: null, stageReason: 'Budget' });
+    // The secondary owner moves like the owner; a number with no flag stays off WhatsApp.
+    expect(omar).toMatchObject({
+      ownerId: null,
+      secondaryOwnerId: fixture.a.userId,
+      stageReason: 'Budget',
+      nationality: null,
+      phoneIsWhatsapp: false,
+    });
     expect(omar!.stage).toMatchObject({
       key: 'not_interested',
       category: 'TERMINAL_NEGATIVE',
