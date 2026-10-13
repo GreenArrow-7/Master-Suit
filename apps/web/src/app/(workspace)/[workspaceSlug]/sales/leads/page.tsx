@@ -8,6 +8,7 @@ import { prisma } from '@/lib/db';
 import { SIMPLE_NAMED_LEAD_FILTERS } from '@/lib/leads/namedFilters';
 import { contactSearch, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
+import { workspaceTimezone } from '@/services/hr/attendance';
 import LeadGrid from './LeadGrid';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -116,7 +117,7 @@ export default async function LeadsPage({
   // are reached only through their own chip.
   const where = mergeWhere(scope, extra, search, params.filter === 'closed_out' ? null : OPEN_LEADS_WHERE);
 
-  const [rows, stages, users, taskTypes, setting] = await Promise.all([
+  const [rows, stages, users, taskTypes, setting, timeZone] = await Promise.all([
     prisma.lead.findMany({
       where,
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
@@ -158,6 +159,7 @@ export default async function LeadsPage({
       where: { tenantId: ctx.tenantId },
       select: { gridColumns: true },
     }),
+    workspaceTimezone(ctx),
   ]);
 
   // The workspace's custom fields can be columns too (M4-13).
@@ -319,6 +321,7 @@ export default async function LeadsPage({
           canEdit={can(ctx, 'leads', 'EDIT')}
           canDelete={can(ctx, 'leads', 'DELETE')}
           emptyLabel={emptyFollowUpLabel(access, view, ctx.actor.id)}
+          timeZone={timeZone}
         />
       )}
 

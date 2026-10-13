@@ -14,6 +14,7 @@ import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
 import { customCells, customColumns } from '@/services/leads/customFields';
 import { prisma } from '@/lib/db';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
+import { workspaceTimezone } from '@/services/hr/attendance';
 import LeadGrid from '../leads/LeadGrid';
 import EmptyState from '@/components/ui/EmptyState';
 import ViewSidebar from './ViewSidebar';
@@ -182,7 +183,7 @@ export default async function SmartViewsPage({
 
   const rules = await loadFieldRules(ctx, 'LEAD');
 
-  const [rows, stages, counts, users, taskTypes, setting] = await Promise.all([
+  const [rows, stages, counts, users, taskTypes, setting, timeZone] = await Promise.all([
     prisma.lead.findMany({
       where,
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
@@ -225,6 +226,7 @@ export default async function SmartViewsPage({
       select: { id: true, name: true },
     }),
     prisma.organizationSetting.findUnique({ where: { tenantId: ctx.tenantId }, select: { gridColumns: true } }),
+    workspaceTimezone(ctx),
   ]);
   const columns = resolveColumns(
     'LEAD',
@@ -299,6 +301,7 @@ export default async function SmartViewsPage({
             canEdit={can(ctx, 'leads', 'EDIT')}
             canDelete={can(ctx, 'leads', 'DELETE')}
             emptyLabel={emptyFollowUpLabel(access, 'scope', ctx.actor.id)}
+            timeZone={timeZone}
           />
         )}
       </div>
