@@ -1,7 +1,7 @@
 # One-step call log from the lead list; the lead's whole timeline, its done follow-ups and its matching stock
 
-**What.** Lead Eagle part 4D, first half, for every lead module. It is
-stacked on #172 (lead requirement, interest links, custom fields, scoring).
+**What.** Lead Eagle part 4D, first half, for every lead module. It builds
+on #172 (lead requirement, interest links, custom fields, scoring).
 
 - **Call log.** Each lead-list row, its phone card and the lead page have
   Log call, wherever the viewer may edit that lead. One dialog takes what the call found, a note, the minutes and
