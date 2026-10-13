@@ -72,16 +72,18 @@ describe('named lead filters', () => {
     const page = readFileSync('src/app/(workspace)/[workspaceSlug]/sales/leads/page.tsx', 'utf8');
     const exportRoute = readFileSync('src/app/api/v1/leads/export/route.ts', 'utf8');
     const listRoute = readFileSync('src/app/api/v1/leads/route.ts', 'utf8');
+    const listQuery = readFileSync('src/services/leads/leadList.ts', 'utf8');
     for (const [name, source] of [
-      ['screen', page],
-      ['export', exportRoute],
+      ['lead list query', listQuery],
       ['list API', listRoute],
     ] as const) {
       expect(source, `${name} must read the shared map`).toContain('@/lib/leads/namedFilters');
     }
+    // The screen (grid and board) and the export answer through that one query.
+    for (const source of [page, exportRoute]) expect(source).toContain('leadListQuery(ctx, params, rules)');
     // No private copy may come back: a second literal map is how `mine` came to
     // exist on the screen and not in the export.
-    for (const source of [page, exportRoute]) {
+    for (const source of [page, exportRoute, listQuery]) {
       expect(source).not.toMatch(/unassigned:\s*\(\)\s*=>\s*\(\{\s*ownerId:\s*null/);
     }
   });

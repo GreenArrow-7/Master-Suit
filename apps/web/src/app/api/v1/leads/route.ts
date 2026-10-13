@@ -15,7 +15,7 @@ import {
 } from '@/lib/security/fieldSecurity';
 import { leadScope } from '@/lib/security/record-scope';
 import { obligationAccess, obligationWhere, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
-import { createLead, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
+import { createLead, leadSearch, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
 
 /**
@@ -97,7 +97,7 @@ export const GET = route(
       scopeWhere,
       tree ? compileFilterTree('LEAD', tree, ctx) : null,
       namedWhere,
-      query.q ? { fullName: { contains: query.q, mode: 'insensitive' as const } } : null,
+      query.q ? leadSearch(ctx, rules, query.q) : null,
       cursorWhere(query.cursor),
       // `?filter=closed_out` is the one ask that is *for* closed-out leads, so
       // the standing exclusion would make it answer nothing.

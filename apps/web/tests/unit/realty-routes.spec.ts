@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { REALTY_SHARED_ROOTS, sameScreenElsewhere } from '@/lib/nav/realtyShared';
+import { buildNavigation } from '@/lib/nav/workspaceNav';
 import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 
 /**
@@ -63,6 +64,16 @@ describe('the shared registers exist under Real Estate', () => {
   it('covers every shared register Sales has a screen for', () => {
     const sales = pages('sales').filter(isShared).sort();
     expect(sharedRealtyRoutes.sort()).toEqual(sales);
+  });
+
+  it('counts the calendar among them, with a Real Estate tab (M4-22)', () => {
+    expect(SHARED).toContain('calendar');
+    const tabs = buildNavigation({ slug: 'acme', modules: ['REAL_ESTATE'], permitted: ['leads', 'tasks'] })
+      .flatMap((section) => section.areas)
+      .flatMap((area) => area.tabs);
+    const calendar = tabs.find((tab) => tab.href === '/acme/realty/calendar');
+    expect(calendar?.label).toBe('Calendar');
+    expect(calendar?.aliases).toContain('/acme/lead-eagle/calendar');
   });
 
   it('counts Targets among them: the daily calling quota is lead work in every lead module', () => {

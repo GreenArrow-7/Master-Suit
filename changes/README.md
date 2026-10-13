@@ -30,6 +30,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 | Date | Entry | PR | Area |
 |---|---|---|---|
 | 2026-10-13 | [The lead page no longer asks for more database connections than the pool holds](2026-10-13-lead-page-transaction-pressure.md) | - | Lead Eagle, leads, fix |
+| 2026-10-13 | [The lead list gets filter chips, saved views and a board; every lead module gets the calendar; a phone in any format finds its lead](2026-10-13-lead-views-kanban-calendar-search.md) | #179 | Lead Eagle, leads, calendar, search |
 | 2026-10-13 | [One-step call log from the lead list; the lead's whole timeline, its done follow-ups and its matching stock](2026-10-13-lead-call-log-timeline.md) | #178 | Lead Eagle, leads |
 | 2026-10-13 | [A new WhatsApp number or an unknown caller becomes a lead; the portals' lead emails come in through Portal emails](2026-10-13-intake-whatsapp-telephony-email.md) | #177 | Lead Eagle, lead intake |
 | 2026-10-13 | [Lead sources get a Custom webhook, a field mapping and a Deliveries tab; the API honours Idempotency-Key](2026-10-12-intake-webhook-mapping-deliveries.md) | #173 | Lead Eagle, lead intake |
