@@ -16,20 +16,30 @@ function dialLink(raw: unknown): ReactNode {
   return dialable(raw) ? <CallLink number={raw} /> : dash;
 }
 
-function date(value: unknown): ReactNode {
+/** On `timeZone`'s clock, the workspace's: formatted on the server, these otherwise read the server's. */
+function onDay(value: unknown, timeZone?: string): ReactNode {
   if (!value) return dash;
-  return new Date(value as string).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date(value as string).toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone,
+  });
 }
 
-function dateTime(value: unknown): ReactNode {
+function onClock(value: unknown, timeZone?: string): ReactNode {
   if (!value) return dash;
   return new Date(value as string).toLocaleString('en-GB', {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone,
   });
 }
+
+/** The person on the other end: who rang in on an inbound call, not the workspace's line it reached. */
+const otherParty = (row: GridRow) => (row.direction === 'INBOUND' ? row.callerNumber : row.recipientNumber);
 
 function duration(seconds: unknown): ReactNode {
   const total = Number(seconds ?? 0);
@@ -93,7 +103,9 @@ const leadCell = (row: GridRow) => (row.lead ? link(`/leads/${row.lead.id}`, row
  * rather than in thirteen page files is what makes a column reorderable at all —
  * the page no longer decides what sits in which position.
  */
-export function renderCell(object: GridObject, key: string, row: GridRow): ReactNode {
+export function renderCell(object: GridObject, key: string, row: GridRow, timeZone?: string): ReactNode {
+  const date = (value: unknown) => onDay(value, timeZone);
+  const dateTime = (value: unknown) => onClock(value, timeZone);
   switch (object) {
     case 'ACCOUNT':
       switch (key) {
@@ -196,7 +208,7 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
         case 'caller':
           return row.caller?.fullName ?? dash;
         case 'recipientNumber':
-          return <span style={{ fontFamily: 'var(--lf-font-mono)' }}>{row.recipientNumber ?? '—'}</span>;
+          return <span style={{ fontFamily: 'var(--lf-font-mono)' }}>{otherParty(row) ?? '—'}</span>;
         case 'direction':
           return <Badge value={row.direction} />;
         case 'durationSecs':
@@ -219,11 +231,12 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
            * component with no JavaScript and behaves like a link — long-press to
            * copy on mobile, right-click to copy on desktop.
            *
-           * The number the call actually used comes first; the lead's own number
-           * is the fallback, because a scheduled or failed row may never have
-           * recorded one and dialling the lead is still what the user wants.
+           * The other party's number on the call comes first (an inbound call's
+           * caller); the lead's own number is the fallback, because a scheduled
+           * or failed row may never have recorded one and dialling the lead is
+           * still what the user wants.
            */
-          return dialLink(row.recipientNumber ?? row.lead?.phone);
+          return dialLink(otherParty(row) ?? row.lead?.phone);
         default:
           return dash;
       }

@@ -8,7 +8,11 @@
  *   into Dropped only with a reason, and into Pending with no dialog, at 390 px
  *   with no sideways page scroll; the arrow keys on the menu move nothing;
  * - filters applied from the Filters panel are the URL; Save view keeps them
- *   under a name that reopens them, and Delete view removes it;
+ *   under a name that reopens them, and Delete view removes it; four chips in
+ *   force at 390 px leave the page 390 px wide;
+ * - at 1280 and 1440 px the grid's pinned Call cell has its header pinned with
+ *   it, and scrolled to the end the last column stands whole beside it;
+ * - the shortcut reads Ctrl K off a Mac and ⌘K on one;
  * - ⌘K (Ctrl+K) on any screen searches the leads by a number typed in any
  *   format, found through one of the lead's other numbers;
  * - the calendar opens under /lead-eagle/ and shows the meeting the move booked.
@@ -188,6 +192,84 @@ test.describe('Lead Eagle lead views', () => {
       timeout: 30_000,
     });
     await context.close();
+  });
+
+  test('four filter chips at phone width keep the page 390 px wide', async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+    await signIn(page);
+    const stage = await prisma.leadStage.findFirstOrThrow({ where: { tenantId, key: 'pending' } });
+    const source = await prisma.leadSource.findFirstOrThrow({ where: { tenantId }, orderBy: { name: 'asc' } });
+    const today = new Date().toISOString().slice(0, 10);
+    await page.goto(at(`/lead-eagle/leads?stage=${stage.id}&owner=none&source=${source.id}&from=${today}`));
+    const chips = page.getByRole('navigation', { name: 'Filters in force' }).getByRole('link');
+    await expect(chips).toHaveCount(4, { timeout: 60_000 });
+    for (const [i, label] of ['Stage: Pending', 'Owner: Unassigned', 'Source: ', 'Created: '].entries()) {
+      await expect(chips.nth(i)).toContainText(label);
+    }
+    // Each chip's "(remove)" is hidden text; it may not stretch the page past the chips' own scroller.
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await context.close();
+  });
+
+  test('at 1280 and 1440 px the pinned Call cell and its header sit beside the last column', async ({ browser }) => {
+    for (const width of [1280, 1440]) {
+      const context = await browser.newContext({ viewport: { width, height: 900 } });
+      const page = await context.newPage();
+      await signIn(page);
+      await page.goto(at('/lead-eagle/leads'));
+      const row = page.getByRole('row', { name: new RegExp(name) });
+      await expect(row.getByRole('button', { name: `Log call for ${name}` })).toBeVisible({ timeout: 60_000 });
+      const frame = page.locator('.lf-grid-wrap');
+      const heads = page.locator('.lf-grid thead th');
+      const box = async (locator: Locator) => (await locator.boundingBox())!;
+      // The default columns are wider than the frame: the case where a pinned cell covers columns.
+      expect(await frame.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+      // At rest, the pinned header stands over the pinned cell, at the frame's right edge.
+      const head = await box(heads.last());
+      const cell = await box(row.locator('td.lf-grid__actions'));
+      const edge = await box(frame);
+      expect(Math.abs(head.x - cell.x), `${width}: header at ${head.x}, cell at ${cell.x}`).toBeLessThanOrEqual(1);
+      expect(head.x + head.width).toBeLessThanOrEqual(edge.x + edge.width + 1);
+      // Scrolled to the end, the last column's header is whole, beside the pinned one and not under it.
+      await frame.evaluate((el) => el.scrollTo({ left: el.scrollWidth }));
+      const last = await box(heads.nth((await heads.count()) - 2));
+      expect(last.x).toBeGreaterThanOrEqual(edge.x);
+      expect(last.x + last.width, `${width}: last header ends at ${last.x + last.width}`).toBeLessThanOrEqual(
+        (await box(heads.last())).x + 1,
+      );
+      // The pinned headers (Reference on the left, Call on the right) paint over the ones scrolling under them.
+      const onTop = (th: Locator) =>
+        th.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          return document.elementFromPoint(r.x + 4, r.y + r.height / 2)?.closest('th') === el;
+        });
+      expect(await onTop(heads.nth(1)), `${width}: the Reference header is under another`).toBe(true);
+      expect(await onTop(heads.last()), `${width}: the Call header is under another`).toBe(true);
+      await context.close();
+    }
+  });
+
+  test('the shortcut reads Ctrl K off a Mac and ⌘K on one', async ({ browser }) => {
+    const agents = {
+      'Ctrl K':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+      '⌘K': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+    };
+    for (const [key, userAgent] of Object.entries(agents)) {
+      const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, userAgent });
+      const page = await context.newPage();
+      await signIn(page);
+      await page.goto(at('/lead-eagle/dashboard'));
+      await expect(page.locator('.lf-cmdk-trigger kbd')).toHaveText(key, { timeout: 60_000 });
+      const palette = page.getByRole('dialog', { name: 'Search and commands' });
+      await expect(async () => {
+        if (!(await palette.isVisible())) await page.locator('.lf-cmdk-trigger').click();
+        await expect(palette).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 60_000 });
+      await expect(palette.locator('.lf-cmdk__foot')).toContainText(`${key} toggle`);
+      await context.close();
+    }
   });
 
   test('⌘K finds the lead by its other number, typed in another format', async ({ browser }) => {

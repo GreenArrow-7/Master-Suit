@@ -371,6 +371,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         timeZone={timeZone}
         canEdit={can(ctx, 'leads', 'EDIT')}
         canLog={logs(lead)}
+        canCall={can(ctx, 'calls', 'CREATE')}
         canAssign={can(ctx, 'leads', 'ASSIGN')}
         canDelete={can(ctx, 'leads', 'DELETE')}
         // Deleting an attachment is its own authority, not part of editing the

@@ -168,6 +168,8 @@ interface Props {
   canEdit: boolean;
   /** Its call can be logged: `leads:EDIT` reaches this lead. */
   canLog: boolean;
+  /** An assisted call can be placed: `calls:CREATE`, which /calls/new asks for. */
+  canCall: boolean;
   canDeleteDocuments: boolean;
   canAssign: boolean;
   canDelete: boolean;
@@ -219,6 +221,7 @@ export default function LeadDetail({
   timeZone,
   canEdit,
   canLog,
+  canCall,
   canDeleteDocuments,
   canAssign,
   canDelete,
@@ -431,18 +434,21 @@ export default function LeadDetail({
           <section className="lf-panel lf-panel--tight">
             {/* The assisted call is the one primary action on a lead: placed through
                 the workspace's provider with guidance on screen. A plain handset
-                dial stays beside it, and says it carries no assistance. */}
+                dial stays beside it, and says it carries no assistance. Offered to a
+                role that may place a call, as /calls/new is. */}
             <div className="lf-actionrow">
-              <button
-                className="lf-btn lf-btn--sm"
-                disabled={!lead.phone}
-                title={
-                  lead.phone ? 'Place the call through the workspace provider with live guidance' : 'No phone number'
-                }
-                onClick={() => lead.phone && router.push(`${base}/calls/new?leadId=${lead.id}`)}
-              >
-                Call with AI assistance
-              </button>
+              {canCall && (
+                <button
+                  className="lf-btn lf-btn--sm"
+                  disabled={!lead.phone}
+                  title={
+                    lead.phone ? 'Place the call through the workspace provider with live guidance' : 'No phone number'
+                  }
+                  onClick={() => lead.phone && router.push(`${base}/calls/new?leadId=${lead.id}`)}
+                >
+                  Call with AI assistance
+                </button>
+              )}
               {/* A masked number or address is never dialled, mailed or sent to
                   WhatsApp: `dialable` refuses one, and the email is gated on the
                   flag. The assisted call above still works — the server places

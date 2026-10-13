@@ -6,17 +6,23 @@ import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from '@/lib/auth/signOut';
 import { applyTheme, THEMES, THEME_LABELS } from '@/lib/theme';
 import { useTheme } from '@/lib/useTheme';
+import { usePaletteKey } from '@/lib/usePaletteKey';
+import { LEAD_SOURCE_LABELS } from '@/lib/integrations/leadSourceLabels';
 import Badge from '@/components/ui/Badge';
 
 /**
  * The HR breadcrumb's page name, from the path: `/{slug}/people/work-locations`
- * reads as "Work locations". The module root is "Overview".
+ * reads as "Work locations". The module root is "Overview". A lead source's
+ * page is named as its card and heading name it, not by its key.
  */
-function pageTitle(pathname: string): string {
+export function pageTitle(pathname: string): string {
   const segments = pathname.split('/').filter(Boolean);
   // /{slug}/sales/leads → "Leads"; /{slug}/dashboard → "Overview".
   const leaf = segments[segments.length - 1] ?? '';
   if (!leaf || leaf === 'dashboard') return 'Overview';
+  if (segments[segments.length - 2] === 'lead-sources' && Object.hasOwn(LEAD_SOURCE_LABELS, leaf)) {
+    return LEAD_SOURCE_LABELS[leaf as keyof typeof LEAD_SOURCE_LABELS];
+  }
   // A record id is not a page name; fall back to its section.
   const words = /^[a-z0-9]{16,}$/i.test(leaf) ? (segments[segments.length - 2] ?? leaf) : leaf;
   const spaced = words.replace(/[-_]/g, ' ');
@@ -182,6 +188,7 @@ export default function TopBar({
    * so the quick toggle can name the next.
    */
   const theme = useTheme();
+  const paletteKey = usePaletteKey();
 
   // Create dropdown
   const [createOpen, setCreateOpen] = useState(false);
@@ -430,7 +437,7 @@ export default function TopBar({
             <path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.3-4.3" />
           </svg>
           <span>Search or jump to…</span>
-          <kbd>⌘K</kbd>
+          <kbd>{paletteKey}</kbd>
         </button>
       )}
 
@@ -466,7 +473,7 @@ export default function TopBar({
             className="lf-input"
             placeholder={target.placeholder}
             aria-label={target.label}
-            style={{ paddingRight: 46, paddingLeft: 30 }}
+            style={{ paddingRight: 64, paddingLeft: 30 }}
           />
           <kbd
             style={{
@@ -483,7 +490,7 @@ export default function TopBar({
               color: 'var(--lf-ink-3)',
             }}
           >
-            ⌘K
+            {paletteKey}
           </kbd>
         </form>
       )}

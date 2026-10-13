@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { PropertyType } from '@prisma/client';
+import { LEAD_SOURCE_LABELS as L } from './leadSourceLabels';
 
 /**
  * Lead sources that post enquiries to `/api/v1/webhooks/leads/{webhookKey}`:
@@ -12,15 +13,15 @@ import type { PropertyType } from '@prisma/client';
  * and keeps whatever else was sent on the stored event for a replay.
  */
 export const LEAD_SOURCES = {
-  property_finder: { label: 'Property Finder', source: 'MARKETPLACE' },
-  bayut: { label: 'Bayut', source: 'MARKETPLACE' },
-  dubizzle: { label: 'Dubizzle', source: 'MARKETPLACE' },
-  google_ads: { label: 'Google Ads lead forms', source: 'AD_LEAD_FORM' },
+  property_finder: { label: L.property_finder, source: 'MARKETPLACE' },
+  bayut: { label: L.bayut, source: 'MARKETPLACE' },
+  dubizzle: { label: L.dubizzle, source: 'MARKETPLACE' },
+  google_ads: { label: L.google_ads, source: 'AD_LEAD_FORM' },
   // Any sender without an adapter of its own: a website, a CRM, Zapier (M6-08).
-  custom_webhook: { label: 'Custom webhook', source: 'WEBHOOK' },
+  custom_webhook: { label: L.custom_webhook, source: 'WEBHOOK' },
   // The portals' lead emails, posted by the workspace's mail service (M6-12). A
   // lead takes its portal's source and entry (`parsePortalEmail`), never this one.
-  inbound_email: { label: 'Portal emails', source: 'EMAIL_PARSER' },
+  inbound_email: { label: L.inbound_email, source: 'EMAIL_PARSER' },
 } as const;
 
 export type LeadSourceKey = keyof typeof LEAD_SOURCES;

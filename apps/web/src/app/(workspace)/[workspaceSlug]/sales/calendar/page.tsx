@@ -6,6 +6,8 @@ import { can } from '@/lib/security/rbac';
 import { eventListScope, workListScope } from '@/lib/security/record-scope';
 import { hasAnyModuleEntitlement, LEAD_MODULES, SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
+import { applyFieldSecurity, loadFieldRules } from '@/lib/security/fieldSecurity';
+import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { dayBounds, todayKey } from '@/services/targets/dailyBoard';
 import CalendarView from './CalendarView';
@@ -133,10 +135,33 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           }),
           orderBy: [{ scheduledAt: 'asc' }, { id: 'asc' }],
           take: CAP,
-          select: { id: true, kind: true, scheduledAt: true, status: true, project: { select: { name: true } } },
+          select: {
+            id: true,
+            kind: true,
+            scheduledAt: true,
+            status: true,
+            leadId: true,
+            project: { select: { name: true } },
+          },
         })
       : [],
   ]);
+
+  // Who each visit is with, so two visits to one project read apart: the lead's
+  // name as the lead list shows it to this role (masked or left out by a field rule).
+  const visitLeadIds = [...new Set(visits.flatMap((v) => (v.leadId ? [v.leadId] : [])))];
+  const [visitLeads, leadRules] = await Promise.all([
+    visitLeadIds.length
+      ? prisma.lead.findMany({
+          where: { tenantId: ctx.tenantId, id: { in: visitLeadIds } },
+          select: { id: true, fullName: true },
+        })
+      : [],
+    loadFieldRules(ctx, 'LEAD'),
+  ]);
+  const visitLead = new Map(
+    visitLeads.map((l) => [l.id, applyFieldSecurity(ctx, 'LEAD', leadRules, l, LEAD_SENSITIVE_FIELDS).fullName]),
+  );
 
   const at = (date: Date) => ({ date: date.toISOString(), day: todayKey(timeZone, date) });
   const items = [
@@ -181,7 +206,13 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     ...visits.map((v) => ({
       id: `visit-${v.id}`,
       ...at(v.scheduledAt),
-      label: v.kind === 'CLIENT_MEETING' ? 'Meeting' : v.project ? `Site visit · ${v.project.name}` : 'Site visit',
+      label: [
+        v.kind === 'CLIENT_MEETING' ? 'Meeting' : 'Site visit',
+        v.kind === 'CLIENT_MEETING' ? null : v.project?.name,
+        v.leadId && visitLead.get(v.leadId),
+      ]
+        .filter(Boolean)
+        .join(' · '),
       kind: 'visit' as const,
       completed: v.status === 'COMPLETED',
       href: `/site-visits/${v.id}`,

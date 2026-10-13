@@ -241,9 +241,45 @@ describe('the calendar in a Lead-Eagle-only workspace', () => {
     const shown = items.map((item) => item.id);
     expect(shown).not.toContain(`visit-${ids['visit-CANCELLED']}`);
     expect(shown).not.toContain(`visit-${ids['visit-REJECTED']}`);
-    expect(items.find((item) => item.id === `visit-${ids.meeting}`)?.label).toBe('Meeting');
+    // Each names its lead: two visits to one project are told apart.
+    expect(items.find((item) => item.id === `visit-${ids.meeting}`)?.label).toBe('Meeting · Calendar lead');
     expect(items.find((item) => item.id === `visit-${ids['visit-admin']}`)?.label).toBe(
-      `Site visit · Marina ${suffix}`,
+      `Site visit · Marina ${suffix} · Calendar lead`,
+    );
+  });
+
+  it('names a visit’s lead as the lead list reads the name: masked where the role masks it', async () => {
+    const role = await prisma.role.create({
+      data: { tenantId, key: `masked-${suffix}`, name: 'masked', rank: 50, defaultScope: 'ORGANIZATION' },
+    });
+    await grantPermissions(
+      tenantId,
+      role.id,
+      [
+        ['tasks', 'VIEW'],
+        ['visits', 'VIEW'],
+      ],
+      'ORGANIZATION',
+    );
+    await prisma.fieldPermission.create({
+      data: {
+        tenantId,
+        roleId: role.id,
+        objectType: 'LEAD',
+        fieldKey: 'fullName',
+        canView: false,
+        maskStrategy: 'MASK_ALL',
+      },
+    });
+    const user = await createWorkspaceUser({
+      tenantId,
+      roleId: role.id,
+      email: `masked-${suffix}@calendar.test`,
+      fullName: `masked ${suffix}`,
+    });
+    const items = await drawn(await createSessionToken(tenantId, user.id), '2026-12');
+    expect(items.find((item) => item.id === `visit-${ids['visit-admin']}`)?.label).toBe(
+      `Site visit · Marina ${suffix} · •••••••••`,
     );
   });
 

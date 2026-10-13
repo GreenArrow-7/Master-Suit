@@ -1523,6 +1523,20 @@ a:hover {
   background: var(--lf-surface);
   box-shadow: -1px 0 0 var(--lf-line);
 }
+/* Its header pinned with it. Left to scroll, the header row ran on past the
+   pinned cells, so a column's name stood over the buttons hiding its values. */
+.lf-grid th.lf-grid__actions {
+  position: sticky;
+  right: 0;
+  box-shadow: -1px 0 0 var(--lf-line);
+}
+/* A pinned header paints over the headers scrolling under it (they sit at 2),
+   on the header's own ground: at 1, Reference went under Name. */
+.lf-grid th.lf-sticky,
+.lf-grid th.lf-grid__actions {
+  z-index: 3;
+  background: var(--lf-surface-2);
+}
 
 .lf-score {
   display: inline-flex;
@@ -3315,8 +3329,13 @@ a:hover {
    so the transition is a class change rather than a route.
    ───────────────────────────────────────────────────────────────────────────── */
 
+/* Pinned to its containing block's corner. Left where it falls, inside a
+   sideways scroller that is not positioned (a phone's row of filter chips) it
+   sat past the scroller's edge, which does not clip it, and widened the page. */
 .lf-visually-hidden {
   position: absolute;
+  top: 0;
+  left: 0;
   width: 1px;
   height: 1px;
   overflow: hidden;
