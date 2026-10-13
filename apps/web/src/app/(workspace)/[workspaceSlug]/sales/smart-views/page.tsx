@@ -1,5 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
-import { assignableUsers, leadScope } from '@/lib/security/record-scope';
+import { assignableUsers, leadReach, leadScope } from '@/lib/security/record-scope';
 import {
   emptyFollowUpLabel,
   obligationAccess,
@@ -14,6 +14,7 @@ import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
 import { customCells, customColumns } from '@/services/leads/customFields';
 import { prisma } from '@/lib/db';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
+import { workspaceTimezone } from '@/services/hr/attendance';
 import { bookableProjects } from '@/services/leads/updateLead';
 import LeadGrid from '../leads/LeadGrid';
 import EmptyState from '@/components/ui/EmptyState';
@@ -183,7 +184,7 @@ export default async function SmartViewsPage({
 
   const rules = await loadFieldRules(ctx, 'LEAD');
 
-  const [rows, stages, counts, users, taskTypes, setting] = await Promise.all([
+  const [rows, stages, counts, users, taskTypes, setting, timeZone] = await Promise.all([
     prisma.lead.findMany({
       where,
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
@@ -204,6 +205,7 @@ export default async function SmartViewsPage({
         nextFollowUpAt: true,
         updatedAt: true,
         ownerId: true,
+        secondaryOwnerId: true,
         stage: { select: { key: true, name: true, color: true } },
         owner: { select: { fullName: true } },
       },
@@ -226,6 +228,7 @@ export default async function SmartViewsPage({
       select: { id: true, name: true },
     }),
     prisma.organizationSetting.findUnique({ where: { tenantId: ctx.tenantId }, select: { gridColumns: true } }),
+    workspaceTimezone(ctx),
   ]);
   const projects = await bookableProjects(ctx, stages);
   const columns = resolveColumns(
@@ -242,11 +245,14 @@ export default async function SmartViewsPage({
     rows.map((r) => r.id),
     access,
   );
+  // Log call where its route takes the lead.
+  const logs = await leadReach(ctx, 'EDIT');
   const data = rows
-    .map(({ customData, ...r }) => ({
+    .map(({ customData, secondaryOwnerId, ...r }) => ({
       ...r,
       custom: customCells(columns, customData),
       nextFollowUpAt: due.get(r.id) ?? null,
+      canLog: logs({ ownerId: r.ownerId, secondaryOwnerId }),
     }))
     .map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
 
@@ -302,6 +308,7 @@ export default async function SmartViewsPage({
             canEdit={can(ctx, 'leads', 'EDIT')}
             canDelete={can(ctx, 'leads', 'DELETE')}
             emptyLabel={emptyFollowUpLabel(access, 'scope', ctx.actor.id)}
+            timeZone={timeZone}
           />
         )}
       </div>

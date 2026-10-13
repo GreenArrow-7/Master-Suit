@@ -2,8 +2,8 @@ import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { assertRecordVisible, visibilityWhere } from '@/lib/security/visibility';
-import { assignableUsers, leadScope } from '@/lib/security/record-scope';
-import { emptyFollowUpLabel, obligationAccess, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
+import { assignableUsers, leadReach, leadScope, ownerReach, workListScope } from '@/lib/security/record-scope';
+import { emptyFollowUpLabel, obligationAccess, OPEN_STATUSES, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import { loadFieldRules, applyFieldSecurity, seesField } from '@/lib/security/fieldSecurity';
 import { can, scopeFor } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
@@ -13,15 +13,20 @@ import { leadSourceText, listLeadSources } from '@/services/leads/leadSources';
 import { openRequirement, requirementForPage } from '@/services/leads/requirement';
 import { fieldForScreen, leadFields } from '@/services/leads/customFields';
 import { workspaceTimezone } from '@/services/hr/attendance';
+import { leadTimeline, onClock } from '@/services/leads/timeline';
+import { matchesForRequirement } from '@/services/inventory/demand';
 import StageRail from '@/components/ui/StageRail';
 import LeadDetail from './LeadDetail';
 import SalesLink from '@/components/workspace/SalesLink';
+
+/** The matches the Matching stock card reads; the requirement's page lists them all. */
+const STOCK_CAP = 25;
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['leads', 'VIEW'] });
 
-  const [scope, taskScope] = await Promise.all([
+  const [scope, taskScope, followUpScope] = await Promise.all([
     leadScope(ctx, 'VIEW', { includeUnassigned: true }),
     // A Task is read under `tasks`, not `leads` (services/leads/nextFollowUp.ts):
     // the Tasks tab lists what the viewer's Tasks page would, and a role with no
@@ -30,6 +35,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     scopeFor(ctx, 'tasks', 'VIEW') === 'NONE'
       ? { id: { in: [] } }
       : visibilityWhere(ctx, 'tasks', 'VIEW', { ownerField: 'ownerId' }),
+    // A follow-up is read under `leads`, as the Follow-ups page lists them.
+    workListScope(ctx, 'leads', false),
   ]);
   // One round trip, not three: the lookups and field rules depend only on ctx,
   // so they run alongside the lead fetch instead of after it.
@@ -40,11 +47,6 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       owner: { select: { id: true, fullName: true, email: true } },
       secondaryOwner: { select: { id: true, fullName: true } },
       leadSource: { select: { id: true, name: true, parentId: true, parent: { select: { name: true } } } },
-      activities: {
-        orderBy: { occurredAt: 'desc' },
-        take: 50,
-        include: { type: { select: { name: true, key: true } } },
-      },
       tasks: {
         // The tenant guard's soft-delete filter reaches the lead, not what it includes.
         where: { ...taskScope, deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS'] } },
@@ -66,7 +68,6 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           createdAt: true,
         },
       },
-      stageHistory: { orderBy: { createdAt: 'desc' }, take: 50 },
       // The latest only: a manual reassignment after it carries no note, and hides it.
       assignments: { orderBy: { createdAt: 'desc' }, take: 1, select: { note: true } },
       phones: {
@@ -164,6 +165,65 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       () => false,
     ));
 
+  // What it is owed and what was done (M4-47): its open follow-ups beside the
+  // open tasks, and the last 10 done of either, newest first.
+  const [timeline, openFollowUps, doneTasks, doneFollowUps, completes, logs, matched] = await Promise.all([
+    leadTimeline(ctx, lead.id),
+    prisma.followUpTask.findMany({
+      where: {
+        ...followUpScope,
+        tenantId: ctx.tenantId,
+        leadId: lead.id,
+        deletedAt: null,
+        status: { in: [...OPEN_STATUSES] },
+      },
+      orderBy: { dueAt: 'asc' },
+      take: 20,
+      select: { id: true, title: true, dueAt: true, ownerId: true },
+    }),
+    prisma.task.findMany({
+      where: {
+        ...taskScope,
+        tenantId: ctx.tenantId,
+        leadId: lead.id,
+        deletedAt: null,
+        status: 'COMPLETED',
+        completedAt: { not: null },
+      },
+      orderBy: { completedAt: 'desc' },
+      take: 10,
+      select: { id: true, title: true, completedAt: true },
+    }),
+    prisma.followUpTask.findMany({
+      where: {
+        ...followUpScope,
+        tenantId: ctx.tenantId,
+        leadId: lead.id,
+        deletedAt: null,
+        status: 'COMPLETED',
+        completedAt: { not: null },
+      },
+      orderBy: { completedAt: 'desc' },
+      take: 10,
+      select: { id: true, title: true, completedAt: true },
+    }),
+    // Complete is offered where PATCH /follow-ups/{id} takes it.
+    ownerReach(ctx, 'leads', 'EDIT'),
+    // Log call is offered where POST /leads/{id}/call-log takes it.
+    leadReach(ctx, 'EDIT'),
+    // Matching stock (M4-48): the listings its open requirement matches, for a viewer who sees listings.
+    requirement && seesListings ? matchesForRequirement(ctx.tenantId, requirement.id, STOCK_CAP) : null,
+  ]);
+  const done = [
+    ...doneTasks.map((t) => ({ ...t, key: `task:${t.id}` })),
+    ...doneFollowUps.map((f) => ({ ...f, key: `follow-up:${f.id}` })),
+  ]
+    .sort((a, b) => b.completedAt!.getTime() - a.completedAt!.getTime())
+    .slice(0, 10);
+  // Live stock only: a lapsed mandate is off the market even before the sweep marks it.
+  const now = new Date();
+  const stock = (matched?.matches ?? []).filter((m) => !m.mandateExpires || m.mandateExpires > now);
+
   const personalAccess = await obligationAccess(ctx, 'personal');
   const scopedDue = await scopedNextFollowUp(ctx.tenantId, [lead.id], personalAccess);
 
@@ -228,22 +288,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     assignedWhy: lead.assignments[0]?.note ?? null,
     owner: lead.owner,
     secondaryOwner: lead.secondaryOwner,
-    activities: lead.activities.map((a) => ({
-      id: a.id,
-      outcome: a.outcome,
-      notes: a.notes,
-      occurredAt: a.occurredAt.toISOString(),
-      durationSecs: a.durationSecs,
-      type: a.type,
-    })),
-    // Stored rows with their stored times; a stage deleted since is named as such, not guessed.
-    stageChanges: lead.stageHistory.map((h) => ({
-      id: h.id,
-      at: h.createdAt.toISOString(),
-      from: h.fromStageId ? (stages.find((s) => s.id === h.fromStageId)?.name ?? 'a removed stage') : null,
-      to: stages.find((s) => s.id === h.toStageId)?.name ?? 'a removed stage',
-      reason: h.reason,
-    })),
+    // Its first page; the tab asks GET /leads/{id}/timeline for older ones (M4-12, M4-46).
+    timeline,
     tasks: lead.tasks.map((t) => ({
       id: t.id,
       title: t.title,
@@ -254,6 +300,30 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       completedAt: t.completedAt?.toISOString() ?? null,
       type: { name: t.type.name, key: t.type.key, color: t.type.color },
     })),
+    followUps: openFollowUps.map((f) => ({
+      id: f.id,
+      title: f.title,
+      dueAt: f.dueAt.toISOString(),
+      due: onClock(f.dueAt, timeZone),
+      canComplete: completes(f.ownerId),
+    })),
+    done: done.map((d) => ({ key: d.key, title: d.title, doneAt: onClock(d.completedAt!, timeZone) })),
+    matchingStock: seesListings
+      ? {
+          hasRequirement: !!requirement,
+          total: stock.length,
+          // At the cap there are more than it counts: the card does not give the cap as the number.
+          more: (matched?.matches.length ?? 0) >= STOCK_CAP,
+          listings: stock.slice(0, 5).map((m) => ({
+            id: m.id,
+            reference: m.reference,
+            title: m.title,
+            price: `${m.currency} ${Number(m.price).toLocaleString('en-GB')}`,
+            bedrooms: m.bedrooms,
+            community: m.micromarket?.name ?? null,
+          })),
+        }
+      : null,
     documents: lead.documents.map((d) => ({
       id: d.id,
       name: d.name,
@@ -291,7 +361,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         projectOptions={projectOptions}
         listingOptions={listingOptions}
         matchesHref={opensRequirement ? `/requirements/${requirement!.id}` : null}
+        timeZone={timeZone}
         canEdit={can(ctx, 'leads', 'EDIT')}
+        canLog={logs(lead)}
         canAssign={can(ctx, 'leads', 'ASSIGN')}
         canDelete={can(ctx, 'leads', 'DELETE')}
         // Deleting an attachment is its own authority, not part of editing the
