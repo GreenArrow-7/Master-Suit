@@ -611,6 +611,14 @@ function definitions(slug: string): SectionDef[] {
               module: R,
               keywords: 'funnel source agent performance',
             },
+            {
+              // Self-service, as the Sales entry: your own targets, the team's with leads:ASSIGN.
+              label: 'Targets',
+              href: r('/targets'),
+              aliases: [le('/targets')],
+              module: R,
+              keywords: 'quota goals daily calls cold calls',
+            },
           ],
         },
       ],
@@ -785,6 +793,14 @@ function definitions(slug: string): SectionDef[] {
               module: LE,
               unlessModule: [S, R],
               keywords: 'funnel source agent performance',
+            },
+            {
+              // Self-service, as the Sales entry: your own targets, the team's with leads:ASSIGN.
+              label: 'Targets',
+              href: le('/targets'),
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'quota goals daily calls cold calls',
             },
           ],
         },
@@ -1135,6 +1151,13 @@ function definitions(slug: string): SectionDef[] {
               keywords: 'pipeline status sub-status reasons',
             },
             {
+              label: 'Sources',
+              href: a('/lead-sources'),
+              permission: 'settings',
+              module: [S, R, LE],
+              keywords: 'lead source sub-source campaign portal catalogue attribution',
+            },
+            {
               label: 'Users',
               href: a('/users'),
               permission: 'users',
@@ -1168,8 +1191,13 @@ function definitions(slug: string): SectionDef[] {
             {
               label: 'Integrations',
               href: a('/integrations'),
-              // A lead source's deliveries and field map, opened from its card.
-              aliases: [a('/lead-sources')],
+              // A lead source's deliveries and field map, opened from its card: one
+              // page per LEAD_SOURCES key (lib/integrations/leadSources.ts, which
+              // this client-side module cannot import). `/lead-sources` itself is
+              // the Sources catalogue above.
+              aliases: ['property_finder', 'bayut', 'dubizzle', 'google_ads', 'custom_webhook'].map((key) =>
+                a(`/lead-sources/${key}`),
+              ),
               permission: 'integrations',
               keywords: 'meta whatsapp telephony webhook lead sources deliveries',
             },

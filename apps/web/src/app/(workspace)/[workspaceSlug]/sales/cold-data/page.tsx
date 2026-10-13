@@ -2,13 +2,14 @@ import type { DataStatus } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { can } from '@/lib/security/rbac';
-import { visibilityWhere } from '@/lib/security/visibility';
-import { assignableUsers } from '@/lib/security/record-scope';
+import { loadFieldRules } from '@/lib/security/fieldSecurity';
+import { assignableUsers, leadScope } from '@/lib/security/record-scope';
 import { requirePageAccess } from '@/lib/workspace-page';
 import ListHeader from '@/components/workspace/ListHeader';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
 import { coldDataScope } from '@/services/leads/coldData';
+import { asLeadPhone } from '@/services/leads/createLead';
 import LeadImport from '../leads/LeadImport';
 import { STATUS_LABEL } from '@/lib/leads/coldDataStatus';
 import { ListAssign, RecordActions, RecordAssign } from './ColdDataActions';
@@ -27,11 +28,11 @@ export default async function ColdDataPage({
 }) {
   const params = await searchParams;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['leads', 'VIEW'] });
-  const scope = coldDataScope(ctx);
+  const scope = await coldDataScope(ctx);
   const status = params.status && params.status in STATUS_LABEL ? (params.status as DataStatus) : undefined;
   const canAssign = can(ctx, 'leads', 'ASSIGN');
 
-  const [counts, records, agents] = await Promise.all([
+  const [counts, records, agents, rules] = await Promise.all([
     prisma.dataRecord.groupBy({ by: ['batch', 'status'], where: scope, _count: { _all: true } }),
     prisma.dataRecord.findMany({
       where: {
@@ -44,7 +45,12 @@ export default async function ColdDataPage({
       include: { owner: { select: { fullName: true } } },
     }),
     canAssign ? assignableUsers(ctx, 'leads', 'ASSIGN') : [],
+    loadFieldRules(ctx, 'LEAD'),
   ]);
+  // Your own records read as stored, to dial. Anyone else's, which a team
+  // scope now lists, read as a lead's phone reads to your role (#158).
+  const phoneOf = (record: { ownerId: string | null; phone: string | null }) =>
+    record.ownerId === ctx.actor.id ? record.phone : asLeadPhone(ctx, rules, record.phone);
   // A converted record's lead may be another agent's: link only what the lead page would show.
   const convertedIds = records.flatMap((r) => (r.convertedLeadId ? [r.convertedLeadId] : []));
   const openable = new Set(
@@ -52,7 +58,7 @@ export default async function ColdDataPage({
       ? (
           await prisma.lead.findMany({
             where: {
-              ...(await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true })),
+              ...(await leadScope(ctx, 'VIEW', { includeUnassigned: true })),
               id: { in: convertedIds },
             },
             select: { id: true },
@@ -164,7 +170,13 @@ export default async function ColdDataPage({
                         </details>
                       )}
                     </td>
-                    <td>{record.phone ? <a href={`tel:${record.phone}`}>{record.phone}</a> : '—'}</td>
+                    <td>
+                      {phoneOf(record) === record.phone && record.phone ? (
+                        <a href={`tel:${record.phone}`}>{record.phone}</a>
+                      ) : (
+                        (phoneOf(record) ?? '—')
+                      )}
+                    </td>
                     <td>{record.company ?? '—'}</td>
                     <td>{record.batch}</td>
                     <td>

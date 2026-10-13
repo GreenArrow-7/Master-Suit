@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { NotFound, Conflict } from '@/lib/errors';
 import { assertAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitlements';
 import { takeEnquiry } from '@/services/leads/intake';
+import { leadSourceIdFor } from '@/services/leads/leadSources';
 import { utmFrom } from '@/services/leads/utm';
 
 /**
@@ -106,6 +107,8 @@ export const POST = route(
         })
       : null;
 
+    // Form and landing-page leads both count under the workspace's Website entry (M4-03).
+    const sourceId = await leadSourceIdFor(prisma, tenant.id, 'website');
     const result = await takeEnquiry(
       tenant.id,
       {
@@ -118,8 +121,13 @@ export const POST = route(
         details,
       },
       page
-        ? { label: `Landing page: ${page.name}`, source: 'LANDING_PAGE', sourceDetail: `landing:${page.slug}` }
-        : { label: `Website form: ${form.name}`, source: 'PUBLIC_FORM', sourceDetail: form.key },
+        ? {
+            label: `Landing page: ${page.name}`,
+            source: 'LANDING_PAGE',
+            sourceDetail: `landing:${page.slug}`,
+            sourceId,
+          }
+        : { label: `Website form: ${form.name}`, source: 'PUBLIC_FORM', sourceDetail: form.key, sourceId },
     );
     if ('skipped' in result) throw Conflict('Please tell us your name.');
 

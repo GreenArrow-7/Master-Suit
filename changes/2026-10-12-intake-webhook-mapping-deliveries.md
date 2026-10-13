@@ -172,3 +172,49 @@ transaction in the given time", `lead-triage`), which passes alone 34/34;
   retries; Replay is not offered while a job may still be behind it.
 - The field map's save and a Configure on the same card both rewrite the
   connection's settings; two at the same moment can lose one.
+
+**Merge-up with main (round 1), 13 Oct.** Main brought #169 (the lead source
+catalogue), #171 (cold data) and #170 squashed (bbe0c2fc: the tree this branch
+was stacked on, 31a2d239, plus #170's merge-ups with #169 and #171). Every file
+this branch had not changed since 31a2d239 takes main's version; `LeadForm.tsx`,
+`public/forms/route.ts`, `reports.ts`, `realtyShared.ts`, the #170 entry and
+four of #170's specs conflicted only because #170 was squashed. The real
+conflicts:
+
+- `services/leads/intake.ts`: `applyEnquiry` keeps both sides: this branch's
+  field map, read before parsing, and `reached`, and #169's `sourceId` from the
+  connection's kind. A portal or Google Ads lead lands on its entry whatever
+  the map says. The ten defaults have no entry for a Custom webhook, so its
+  leads carry none until an administrator adds "Custom webhook" under Sources
+  (key `custom_webhook`), and land on it from then on (a new case in
+  `custom-webhook.spec.ts`).
+- `admin/lead-sources/layout.tsx`: both sides added the same `NotInPlan` gate.
+  One layout now covers #169's Sources catalogue (`/admin/lead-sources`) and
+  this branch's `/admin/lead-sources/{source}`.
+- `changes/README.md` keeps every row, newest first. `PROJECT.md` keeps both
+  texts; the screen counts stay 75, 32, 40 and 29, the `page.tsx` counts.
+
+One file merged without a marker but was wrong. In `workspaceNav.ts`, the
+Integrations tab's alias `/admin/lead-sources` now also matched #169's Sources
+tab, and at `/admin/lead-sources/bayut` the Sources tab won (the first of two
+equal matches). The alias is now one page per lead source
+(`/admin/lead-sources/{key}`), so the catalogue reads Sources and each source's
+Deliveries reads Integrations (a new case in `workspace-nav.spec.ts`).
+
+On the merged tree (105 migrations):
+
+- `tsc --noEmit` is clean. eslint and prettier are clean on the files this
+  merge touched.
+- This branch's specs, #170's, `lead-record-fields` and `module-entitlement`:
+  13 files, 810 passed. Two failed under load with "Unable to start a
+  transaction in the given time" and pass alone: `idempotency-key` 10/10 and
+  `lead-record-fields` 16/16.
+- `tests/` permission, sales, tenant and unit: 165 files, 2955 passed, 2
+  skipped. One failed under load (`audit-retention`, a transaction timeout).
+  The three retention specs one at a time: 5/5, 7/7, 1/1.
+- E2E on a fresh `.next`, with the worker: `lead-source-deliveries.spec.ts`
+  2/2 and `embed-form.spec.ts` 4/4. `lead-eagle-workspace.spec.ts` failed
+  twice at #168's soft-navigation step, then passed 1/1 on the warm server.
+  That step calls `router.push` before the page has hydrated; the browser
+  logged "Can't perform a React state update on a component that hasn't
+  mounted yet". Every file on that path is identical to main.

@@ -1,27 +1,37 @@
-import { withTx } from '@/lib/db';
-import { AppError, NotFound } from '@/lib/errors';
+import { prisma, withTx } from '@/lib/db';
+import { AppError, Conflict, NotFound } from '@/lib/errors';
 import { auditDiff } from '@/lib/security/audit';
 import { assertAssignableUser, assertLeadInScope } from '@/lib/security/record-scope';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { enqueue } from '@/lib/queue';
 import { notifyCrm } from '../crm/notify';
 import { recordTargetProgress } from '../targets/progress';
+import { findDuplicates } from './findDuplicates';
+import { assertLeadSource } from './leadSources';
 import { normalizePhone } from './normalizePhone';
 
 export interface UpdateLeadInput {
   fullName?: string;
   email?: string;
   phone?: string;
+  /** The main number is on WhatsApp. */
+  phoneIsWhatsapp?: boolean;
   company?: string;
   jobTitle?: string;
   country?: string;
   city?: string;
+  nationality?: string | null;
+  /** A catalogue entry (LeadSource) of this workspace. */
+  sourceId?: string | null;
+  campaignName?: string | null;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   tags?: string[];
   stageId?: string;
   /** Why it moves: required when the target stage says so. */
   stageReason?: string;
   ownerId?: string | null;
+  /** A second person who works the lead; named under the same scope as the owner. */
+  secondaryOwnerId?: string | null;
   [k: string]: unknown;
 }
 
@@ -31,9 +41,12 @@ export interface UpdateLeadInput {
  * diff for the audit log, then hand off owner/stage side effects to the queues.
  */
 export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
-  if (input.ownerId !== undefined && !can(ctx, 'leads', 'ASSIGN') && !can(ctx, 'leads', 'REASSIGN')) {
+  if (!can(ctx, 'leads', 'ASSIGN') && !can(ctx, 'leads', 'REASSIGN')) {
     delete input.ownerId;
+    delete input.secondaryOwnerId;
   }
+  if (input.sourceId) await assertLeadSource(prisma, ctx.tenantId, input.sourceId);
+  await refuseDuplicate(ctx, id, input);
 
   /**
    * What actually changed, carried out of the transaction so the notifications
@@ -56,9 +69,20 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
   const updated = await withTx(ctx.tenantId, async (tx) => {
     const before = await assertLeadInScope(ctx, id, tx, 'EDIT');
     // The new owner: someone the scope of the action that allows the change reaches.
+    const action = can(ctx, 'leads', 'ASSIGN') ? 'ASSIGN' : 'REASSIGN';
     if (input.ownerId && input.ownerId !== before.ownerId) {
-      const action = can(ctx, 'leads', 'ASSIGN') ? 'ASSIGN' : 'REASSIGN';
       await assertAssignableUser(ctx, tx, 'leads', action, input.ownerId);
+    }
+    // One person is never both: naming the owner is refused, and the second owner made owner ends that role.
+    const owner = input.ownerId !== undefined ? input.ownerId : before.ownerId;
+    if (input.secondaryOwnerId && input.secondaryOwnerId === owner) {
+      refuse('secondaryOwnerId', 'The second owner must be someone other than the owner.');
+    }
+    if (input.secondaryOwnerId === undefined && owner && before.secondaryOwnerId === owner) {
+      input.secondaryOwnerId = null;
+    }
+    if (input.secondaryOwnerId && input.secondaryOwnerId !== before.secondaryOwnerId) {
+      await assertAssignableUser(ctx, tx, 'leads', action, input.secondaryOwnerId);
     }
 
     if (input.stageId && input.stageId !== before.stageId) {
@@ -113,16 +137,21 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
         // Both columns, as updateContact does: duplicate matching reads the
         // normalised one, and leaving it behind matched the old number forever.
         ...(input.phone !== undefined && { phone: input.phone, phoneNormalized: normalizePhone(input.phone) }),
+        ...(input.phoneIsWhatsapp !== undefined && { phoneIsWhatsapp: input.phoneIsWhatsapp }),
         ...(input.company !== undefined && { company: input.company }),
         ...(input.jobTitle !== undefined && { jobTitle: input.jobTitle }),
         ...(input.country !== undefined && { country: input.country }),
         ...(input.city !== undefined && { city: input.city }),
+        ...(input.nationality !== undefined && { nationality: input.nationality }),
+        ...(input.sourceId !== undefined && { sourceId: input.sourceId }),
+        ...(input.campaignName !== undefined && { campaignName: input.campaignName }),
         ...(input.priority !== undefined && { priority: input.priority }),
         ...(input.tags !== undefined && { tags: input.tags }),
         ...(input.notes !== undefined && { notes: input.notes }),
         ...(input.stageId !== undefined && { stageId: input.stageId }),
         ...(enteredReason !== undefined && { stageReason: enteredReason }),
         ...(input.ownerId !== undefined && { ownerId: input.ownerId, assignedAt: input.ownerId ? new Date() : null }),
+        ...(input.secondaryOwnerId !== undefined && { secondaryOwnerId: input.secondaryOwnerId }),
         updatedById: ctx.actor.id,
       },
     });
@@ -197,6 +226,41 @@ export async function deleteLead(ctx: Ctx, id: string) {
     });
     await auditDiff(ctx, 'lead', id, before, { ...before, deletedAt: new Date() }, tx);
   });
+}
+
+/**
+ * The duplicate check create runs (M4-51): a phone or email changed to a value
+ * another lead holds — its main number, one of its other numbers, or its email,
+ * normalised — answers the same 409. Only the fields that change are probed, so
+ * an edit of something else never trips on a duplicate that was there already.
+ * The lead's name goes in too, so a rule pairing it with the phone applies as on
+ * create; a rule on the name alone does not, since the edit did not change it.
+ * Also the check for a number added under "Other numbers" (leads/[id]/phones).
+ * Outside the transaction, as create's is: the duplicate rules read through the
+ * global client. A lead outside the caller's scope answers 404 first, never the
+ * 409 that would confirm it exists.
+ */
+export async function refuseDuplicate(
+  ctx: Ctx,
+  id: string,
+  input: Pick<UpdateLeadInput, 'phone' | 'email' | 'fullName'>,
+) {
+  if (input.phone === undefined && input.email === undefined) return;
+  const current = await assertLeadInScope(ctx, id, prisma, 'EDIT');
+  const phoneNormalized = input.phone !== undefined ? normalizePhone(input.phone) : null;
+  const email = input.email?.toLowerCase();
+  const probe = {
+    phoneNormalized: phoneNormalized && phoneNormalized !== current.phoneNormalized ? phoneNormalized : null,
+    email: email && email !== current.email ? email : null,
+  };
+  if (!probe.phoneNormalized && !probe.email) return;
+  const [match] = await findDuplicates(ctx.tenantId, {
+    ...probe,
+    fullName: input.fullName ?? current.fullName,
+    ignoreNameOnly: true,
+    excludeId: id,
+  });
+  if (match) throw Conflict(`A lead with this ${match.matchedOn} already exists (${match.reference}).`);
 }
 
 /** A 422 whose detail is the sentence the screen shows. */

@@ -4,10 +4,9 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Forbidden, NotFound } from '@/lib/errors';
 import { loadFieldRules, applyFieldSecurity, seesField, stripUneditableFields } from '@/lib/security/fieldSecurity';
-import { visibilityWhere } from '@/lib/security/visibility';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { updateLead, deleteLead } from '@/services/leads/updateLead';
-import { assertLeadInScope } from '@/lib/security/record-scope';
+import { assertLeadInScope, leadScope } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -15,7 +14,7 @@ export const GET = route(
   { module: 'leads', productModule: LEAD_MODULES, action: 'VIEW', params },
   async ({ ctx, params }) => {
     const rules = await loadFieldRules(ctx, 'LEAD');
-    const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
+    const scope = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
 
     // Out-of-tenant and out-of-scope both resolve to null here, which NotFound turns
     // into a 404 — a 403 would confirm the record exists to a caller who can't see it.
@@ -34,16 +33,21 @@ const patchBody = z
     fullName: z.string().min(1).max(160).optional(),
     email: z.string().email().max(254).optional(),
     phone: z.string().max(32).optional(),
+    phoneIsWhatsapp: z.boolean().optional(),
     company: z.string().max(160).optional(),
     jobTitle: z.string().max(120).optional(),
     country: z.string().max(80).optional(),
     city: z.string().max(80).optional(),
+    nationality: z.string().trim().max(80).nullable().optional(),
+    sourceId: z.string().cuid().nullable().optional(),
+    campaignName: z.string().trim().max(120).nullable().optional(),
     priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
     tags: z.array(z.string().max(40)).max(20).optional(),
     notes: z.string().max(5000).nullable().optional(),
     stageId: z.string().cuid().optional(),
     stageReason: z.string().max(200).optional(),
     ownerId: z.string().cuid().nullable().optional(),
+    secondaryOwnerId: z.string().cuid().nullable().optional(),
   })
   .strict();
 

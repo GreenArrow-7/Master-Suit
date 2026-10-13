@@ -3,8 +3,7 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { requireWorkspace } from '@/lib/workspace';
-import { visibilityWhere } from '@/lib/security/visibility';
-import { assertAssignableUser } from '@/lib/security/record-scope';
+import { assertAssignableUser, leadScope } from '@/lib/security/record-scope';
 import { applyFieldSecurity, loadFieldRules } from '@/lib/security/fieldSecurity';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 
@@ -16,7 +15,7 @@ export const GET = route(
     await requireWorkspace(ctx, params.workspaceSlug);
     // Same row filter as /api/v1/leads — this legacy path previously returned
     // every lead in the tenant regardless of the caller's scope.
-    const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
+    const scope = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
     const [leads, rules] = await Promise.all([
       prisma.lead.findMany({
         where: { ...scope, deletedAt: null },

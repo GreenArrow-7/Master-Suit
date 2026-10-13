@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { mergeWhere } from '@/lib/api/where';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { leadScope } from '@/lib/security/record-scope';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { names } from '@/services/leadership/rollups';
 
@@ -103,7 +104,9 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
 
   // `leads` is not optional: the page asserts leads:VIEW before calling, so a
   // viewer without it has no dashboard at all, which is the intended answer.
-  const leadScope = await visibilityWhere(ctx, 'leads', 'VIEW', { ownerField: 'ownerId' });
+  const leadWhere = await leadScope(ctx, 'VIEW');
+  // Follow-ups are lead work with one owner: the lead grant, without the second owner.
+  const followUpWhere = await visibilityWhere(ctx, 'leads', 'VIEW', { ownerField: 'ownerId' });
   const visitScope = can(ctx, 'visits', 'VIEW')
     ? await visibilityWhere(ctx, 'visits', 'VIEW', { ownerField: 'ownerId' })
     : null;
@@ -113,21 +116,24 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
   const maySeeInventory = can(ctx, 'projects', 'VIEW');
 
   const [newLeads, totalLeads, followUps, callbacks, bySource] = await Promise.all([
-    prisma.lead.count({ where: mergeWhere(leadScope, live, { createdAt: today }) }),
-    prisma.lead.count({ where: mergeWhere(leadScope, live) }),
+    prisma.lead.count({ where: mergeWhere(leadWhere, live, { createdAt: today }) }),
+    prisma.lead.count({ where: mergeWhere(leadWhere, live) }),
     // Everything still open and due by the end of today — today's work plus
     // whatever was missed.
     prisma.followUpTask.count({
-      where: mergeWhere(leadScope, live, { status: { notIn: ['COMPLETED', 'CANCELLED'] }, dueAt: { lt: endOfToday } }),
+      where: mergeWhere(followUpWhere, live, {
+        status: { notIn: ['COMPLETED', 'CANCELLED'] },
+        dueAt: { lt: endOfToday },
+      }),
     }),
     // Due today specifically: "ring these people back", a different question
     // from "what am I behind on".
     prisma.followUpTask.count({
-      where: mergeWhere(leadScope, live, { status: { notIn: ['COMPLETED', 'CANCELLED'] }, dueAt: today }),
+      where: mergeWhere(followUpWhere, live, { status: { notIn: ['COMPLETED', 'CANCELLED'] }, dueAt: today }),
     }),
     prisma.lead.groupBy({
       by: ['source'],
-      where: mergeWhere(leadScope, live),
+      where: mergeWhere(leadWhere, live),
       _count: { _all: true },
       orderBy: { _count: { source: 'desc' } },
       take: 5,

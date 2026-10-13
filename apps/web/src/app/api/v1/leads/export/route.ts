@@ -7,7 +7,7 @@ import { z } from 'zod';
 
 import { env } from '@/lib/env';
 import { prismaRead } from '@/lib/db';
-import { visibilityWhere } from '@/lib/security/visibility';
+import { leadScope } from '@/lib/security/record-scope';
 import { obligationAccess, obligationWhere, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { audit } from '@/lib/security/audit';
@@ -49,7 +49,7 @@ function csvCell(value: unknown): string {
 export const GET = route(
   { module: 'leads', action: 'EXPORT', productModule: LEAD_MODULES, sessionOnly: true, query },
   async ({ ctx, query: params }) => {
-    const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
+    const scope = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
     /**
      * An export is an egress path, so it gets the same treatment as the screen.
      *

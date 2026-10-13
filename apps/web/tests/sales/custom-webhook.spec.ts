@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { GET as board } from '@/app/api/v1/integrations/route';
 import { PUT as connect } from '@/app/api/v1/integrations/[provider]/route';
+import { sourceKey } from '@/services/leads/leadSources';
 import { get } from '../helpers/request';
 import { deliver, leadEagleWorkspace, sign, work } from '../helpers/leadSource';
 
@@ -153,5 +154,27 @@ describe('a Custom webhook lead source', () => {
     expect((await deliver(key, text, { 'x-signature': sign('not-the-secret', text) })).status).toBe(401);
     expect((await deliver(key, text)).status).toBe(401);
     expect(await prisma.webhookEvent.count({ where: { tenantId: ws.tenantId } })).toBe(before);
+  });
+
+  it('lands on the catalogue’s Custom webhook entry once the workspace has one, read through the field map', async () => {
+    // The ten defaults have no entry for it, so the leads above carry none.
+    const earlier = await prisma.lead.findFirstOrThrow({ where: { tenantId: ws.tenantId, fullName: 'Rania Haddad' } });
+    expect(earlier.sourceId).toBeNull();
+    // What an administrator gets by adding "Custom webhook" under Admin → Sources.
+    const entry = await prisma.leadSource.create({
+      data: { tenantId: ws.tenantId, key: sourceKey('Custom webhook'), name: 'Custom webhook', position: 10 },
+    });
+    await prisma.integrationConnection.update({
+      where: { webhookKey: key },
+      data: { metadata: { fieldMap: { client: 'fullName', mobile: 'phone' } } },
+    });
+
+    const number = phone();
+    expect((await signed({ client: 'Lama Haddad', mobile: number })).status).toBe(200);
+    await work(ws.tenantId, 'custom_webhook');
+    const lead = await prisma.lead.findFirstOrThrow({
+      where: { tenantId: ws.tenantId, phoneNormalized: `+971${number.slice(1)}` },
+    });
+    expect(lead).toMatchObject({ fullName: 'Lama Haddad', source: 'WEBHOOK', sourceId: entry.id });
   });
 });

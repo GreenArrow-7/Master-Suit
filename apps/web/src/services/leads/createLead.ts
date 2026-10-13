@@ -12,6 +12,7 @@ import {
   type SensitiveFields,
 } from '@/lib/security/fieldSecurity';
 import { findDuplicates } from './findDuplicates';
+import { assertLeadSource } from './leadSources';
 import { normalizePhone } from './normalizePhone';
 import { nextReference } from '../shared/reference';
 import { enqueue } from '@/lib/queue';
@@ -121,6 +122,9 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
   // With it, only to someone their ASSIGN scope reaches (404 otherwise).
   const ownerId = input.ownerId && can(ctx, 'leads', 'ASSIGN') ? input.ownerId : ctx.actor.id;
   if (ownerId !== ctx.actor.id) await assertAssignableUser(ctx, prisma, 'leads', 'ASSIGN', ownerId);
+  // The catalogue entry it is attributed to: this workspace's, or not found.
+  const sourceId = (input.sourceId as string | undefined) ?? null;
+  if (sourceId) await assertLeadSource(prisma, ctx.tenantId, sourceId);
 
   const lead = await withTx(ctx.tenantId, async (tx) => {
     const reference = await nextReference(tx, ctx.tenantId, 'LEAD');
@@ -141,7 +145,12 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
         city: (input.city as string) ?? null,
         source: (input.source as any) ?? 'MANUAL',
         sourceDetail: (input.sourceDetail as string) ?? null,
+        sourceId,
+        campaignName: (input.campaignName as string) ?? null,
         campaignId: (input.campaignId as string) ?? null,
+        nationality: (input.nationality as string) ?? null,
+        // On unless switched off (the column's default), as every other way in leaves it.
+        ...(input.phoneIsWhatsapp !== undefined && { phoneIsWhatsapp: Boolean(input.phoneIsWhatsapp) }),
         stageId: stage.id,
         ownerId,
         assignedAt: ownerId ? new Date() : null,

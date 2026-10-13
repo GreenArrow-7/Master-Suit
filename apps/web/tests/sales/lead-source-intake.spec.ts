@@ -9,9 +9,13 @@ import { handleJob } from '@/workers/jobs';
 import { updateLead } from '@/services/leads/updateLead';
 import { findDuplicates } from '@/services/leads/findDuplicates';
 import { DELETE as removePhone, POST as addPhone } from '@/app/api/v1/leads/[id]/phones/route';
-import { del, post } from '../helpers/request';
+import { POST as createLead } from '@/app/api/v1/leads/route';
+import { PATCH as patchLead } from '@/app/api/v1/leads/[id]/route';
+import { whatsappLink } from '@/components/workspace/CallLink';
+import { del, patch, post } from '../helpers/request';
 import { buildActor, buildCtx } from '../helpers/ctx';
-import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
+import { createWorkspaceUser, grantPermissions, seedTwoTenants, type Fixture } from '../helpers/fixtures';
+import { createSessionToken } from '../helpers/session';
 
 /**
  * Property portal and Google Ads enquiries, through the real receiver, the real
@@ -120,6 +124,13 @@ describe('lead source intake', () => {
       source: 'MARKETPLACE',
       sourceDetail: 'property_finder:PF-MARINA-22',
       consentStatus: 'IMPLIED',
+      // A portal enquirer is on WhatsApp on every number they gave, the main one included (M4-02).
+      phoneIsWhatsapp: true,
+    });
+    // Mapped to the workspace's catalogue entry for the connection's kind (M4-03).
+    expect(await prisma.leadSource.findFirst({ where: { tenantId, id: lead!.sourceId ?? '' } })).toMatchObject({
+      key: 'property_finder',
+      name: 'Property Finder',
     });
     expect(lead!.phones.map((p) => [p.normalized, p.isWhatsapp])).toEqual([['+971524445566', true]]);
 
@@ -186,6 +197,9 @@ describe('lead source intake', () => {
     const leads = await leadByPhone('+971507778899');
     expect(leads).toHaveLength(1);
     expect(leads[0]).toMatchObject({ fullName: 'Omar Saleh', source: 'AD_LEAD_FORM', sourceDetail: 'google_ads:4242' });
+    expect(await prisma.leadSource.findFirst({ where: { tenantId, id: leads[0]!.sourceId ?? '' } })).toMatchObject({
+      key: 'google_ads',
+    });
   });
 
   it('answers 401 for an unknown key and for a disconnected source', async () => {
@@ -231,6 +245,127 @@ describe('phone numbers and duplicate matching', () => {
     expect(lead.phoneNormalized).toBe('+971551230000');
     const [match] = await findDuplicates(tenantId, { phoneNormalized: '+971551230000' });
     expect(match?.id).toBe(leadId);
+  });
+});
+
+describe('the main number’s WhatsApp flag (M4-02)', () => {
+  it('starts on, and the WhatsApp link follows it when switched off and on', async () => {
+    const cookie = fixture.a.cookie;
+    const created = await post(createLead, '/api/v1/leads', { fullName: 'Flag lead', phone: '050 930 0001' }, cookie);
+    expect(created.status, JSON.stringify(created.body)).toBe(200);
+    expect(created.body.phoneIsWhatsapp).toBe(true);
+    // The lead page's WhatsApp action is this link.
+    expect(whatsappLink(created.body.phoneNormalized, created.body.phoneIsWhatsapp)).toBe('https://wa.me/971509300001');
+    const url = `/api/v1/leads/${created.body.id}`;
+    const off = await patch(patchLead, url, { phoneIsWhatsapp: false }, cookie);
+    expect(off.body.phoneIsWhatsapp).toBe(false);
+    expect(whatsappLink(off.body.phoneNormalized, off.body.phoneIsWhatsapp)).toBeNull();
+    expect(await prisma.lead.findFirst({ where: { tenantId, id: created.body.id } })).toMatchObject({
+      phoneIsWhatsapp: false,
+    });
+    const on = await patch(patchLead, url, { phoneIsWhatsapp: true }, cookie);
+    expect(whatsappLink(on.body.phoneNormalized, on.body.phoneIsWhatsapp)).toBe('https://wa.me/971509300001');
+
+    // A landline is created with the flag off.
+    const landline = await post(
+      createLead,
+      '/api/v1/leads',
+      { fullName: 'Office line', phone: '04 930 0002', phoneIsWhatsapp: false },
+      cookie,
+    );
+    expect(landline.body.phoneIsWhatsapp).toBe(false);
+  });
+
+  it('is on for every lead that existed before it: the column’s default', async () => {
+    const [column] = await prisma.$queryRaw<{ column_default: string }[]>`
+      SELECT column_default FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'Lead' AND column_name = 'phoneIsWhatsapp'`;
+    expect(column?.column_default).toBe('true');
+  });
+
+  it('is never a link for a number the viewer sees masked', () => {
+    expect(whatsappLink('+971 50 123 4567', true)).toBe('https://wa.me/971501234567');
+    expect(whatsappLink('+971 •• ••• ••67', true)).toBeNull();
+    expect(whatsappLink(null, true)).toBeNull();
+  });
+});
+
+describe('the duplicate check on edit (M4-51)', () => {
+  it('editing a phone to another lead’s number is refused', async () => {
+    const cookie = fixture.a.cookie;
+    const make = async (fullName: string, phone: string) => {
+      const res = await post(createLead, '/api/v1/leads', { fullName, phone }, cookie);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return res.body as { id: string; reference: string };
+    };
+    const holder = await make('Number holder', '050 940 0001');
+    const other = await post(addPhone, `/api/v1/leads/${holder.id}/phones`, { phone: '050 940 0002' }, cookie);
+    expect(other.status).toBe(200);
+    const taker = await make('Number taker', '050 940 0003');
+    const url = `/api/v1/leads/${taker.id}`;
+
+    // Its main number and one of its other numbers, each typed another way: 409 as create answers.
+    for (const phone of ['+971 50 940 0001', '0509400002']) {
+      const res = await patch(patchLead, url, { phone }, cookie);
+      expect(res.status, phone).toBe(409);
+      expect(res.body.detail).toContain(`already exists (${holder.reference}).`);
+    }
+    expect(await prisma.lead.findFirst({ where: { tenantId, id: taker.id } })).toMatchObject({
+      phoneNormalized: '+971509400003',
+    });
+
+    // Someone the lead is out of scope for learns nothing from the check: 404, as for a missing lead.
+    const role = await prisma.role.create({ data: { tenantId, key: `own-${taker.id}`, name: 'Own editor', rank: 70 } });
+    await grantPermissions(
+      tenantId,
+      role.id,
+      [
+        ['leads', 'VIEW'],
+        ['leads', 'EDIT'],
+        // Sees numbers whole, so the phone is theirs to change and reaches the check.
+        ['leads', 'VIEW_SENSITIVE_FIELDS'],
+      ],
+      'OWN',
+    );
+    const outsider = await createWorkspaceUser({
+      tenantId,
+      roleId: role.id,
+      email: `own-${taker.id}@a.test`,
+      fullName: 'Own editor',
+    });
+    const theirs = await patch(
+      patchLead,
+      url,
+      { phone: '0509400001' },
+      await createSessionToken(tenantId, outsider.id),
+    );
+    expect(theirs.status).toBe(404);
+    expect(theirs.body.detail).toBe('Lead not found.');
+  });
+
+  it('adding another lead’s number as an other number is refused the same way', async () => {
+    const cookie = fixture.a.cookie;
+    const make = async (fullName: string, phone: string) => {
+      const res = await post(createLead, '/api/v1/leads', { fullName, phone }, cookie);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return res.body as { id: string; reference: string };
+    };
+    const holder = await make('Second number holder', '050 941 0001');
+    expect((await post(addPhone, `/api/v1/leads/${holder.id}/phones`, { phone: '050 941 0002' }, cookie)).status).toBe(
+      200,
+    );
+    const taker = await make('Second number taker', '050 941 0003');
+    const url = `/api/v1/leads/${taker.id}/phones`;
+
+    // Its main number and its other number: create's 409 and sentence.
+    for (const phone of ['+971 50 941 0001', '0509410002']) {
+      const res = await post(addPhone, url, { phone }, cookie);
+      expect(res.status, phone).toBe(409);
+      expect(res.body.detail).toBe(`A lead with this phoneNormalized already exists (${holder.reference}).`);
+    }
+    expect(await prisma.leadPhone.count({ where: { tenantId, leadId: taker.id } })).toBe(0);
+    // A number nobody holds is still added.
+    expect((await post(addPhone, url, { phone: '050 941 0004' }, cookie)).status).toBe(200);
   });
 });
 

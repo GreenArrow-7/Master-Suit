@@ -299,8 +299,16 @@ describe('a submission from a site', () => {
     const raw = phone();
     const res = await submit({ full_name: 'Campaign Visitor', phone: raw }, pageSlug);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, phoneNormalized: normalised(raw) } });
-    expect(lead).toMatchObject({ source: 'LANDING_PAGE', sourceDetail: `landing:${pageSlug}` });
+    const lead = await prisma.lead.findFirstOrThrow({
+      where: { tenantId, phoneNormalized: normalised(raw) },
+      include: { leadSource: { select: { key: true } } },
+    });
+    // Under the workspace's Website entry (M4-03), as a website-form lead is.
+    expect(lead).toMatchObject({
+      source: 'LANDING_PAGE',
+      sourceDetail: `landing:${pageSlug}`,
+      leadSource: { key: 'website' },
+    });
     expect(queuedForDistribution(lead.id)).toBe(true);
     const page = await prisma.landingPage.findFirstOrThrow({ where: { tenantId, slug: pageSlug } });
     expect(page.submissionCount).toBe(1);

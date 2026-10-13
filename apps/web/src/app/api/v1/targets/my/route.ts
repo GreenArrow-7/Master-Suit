@@ -1,7 +1,8 @@
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 
-export const GET = route({ module: 'leads', productModule: 'SALES', action: 'VIEW' }, async ({ ctx }) => {
+export const GET = route({ module: 'leads', productModule: LEAD_MODULES, action: 'VIEW' }, async ({ ctx }) => {
   const now = new Date();
   const todayKey = now.toISOString().slice(0, 10);
 

@@ -171,3 +171,34 @@ holds this. On the merged tree: `tsc --noEmit` clean; the branch's specs with
 sales, tenant, unit 159 files, 2828 passed, 2 skipped, and the three retention
 specs (which clear each other's rows when run together) one at a time 4/4,
 7/7, 1/1; E2E `embed-form.spec.ts` and `lead-eagle-workspace.spec.ts` 5/5.
+
+**Merge-up with main (#169), 13 Oct.** #169 made a lead's source an entry of
+the workspace's catalogue (Source, then Sub-source). The new-lead form now has
+one Source control, #169's. Choosing the catalogue's Referral entry (key
+`referral`, or a sub-source under it) shows this change's required _Referred
+by_ and saves the lead as `REFERRAL`, the referrer in `sourceDetail` and the
+entry in `sourceId`; any other entry saves `MANUAL` as before. The API's 422 for
+a referral that names nobody stands. The lead page reads `Referral · <referrer>`:
+the catalogue's label alone would hide who referred it. Website-form and
+landing-page submissions keep `takeEnquiry` and land on the Website entry, where
+#169 put public-form leads. The source reports keep both rules: #169 groups by
+entry, and a referral's detail is still never read as an intake key. Source to
+Booking adds the entry and the enum into one Referral row; Source Analysis lists
+the entry's "Referral" beside the enum's "referral" (a new case in
+`referral-source.spec.ts`). Conflicts: `public/forms/route.ts`, `reports.ts`,
+`changes/README.md` (both rows) and `PROJECT.md` (both texts); `LeadForm.tsx`
+merged without a marker but with two Source controls. On the merged tree:
+`tsc --noEmit` clean; the branch's and #169's specs with `page-access` and
+`module-entitlement` 10 files, 969/969; `tests/` permission, sales, tenant,
+unit 160 files, 2872 passed, 2 skipped; E2E `embed-form.spec.ts` and
+`crm-lifecycle.spec.ts` 10/10.
+
+**Merge-up with main (#171), 13 Oct.** `realtyShared.ts` keeps every shared
+root (`forms`, `landing-pages` and #171's `targets`), and `workspace-nav.spec.ts`
+every case; `changes/README.md` keeps all three rows; `PROJECT.md` counts both
+new screens (Real Estate 40, Lead Eagle 29) and names Targets beside forms,
+landing pages and Sources. On the merged tree (104 migrations): `tsc --noEmit`
+clean; the specs above with `cold-call-activity` and `cold-data` 12 files,
+1026/1026; `tests/` permission, sales, tenant, unit 161 files, 2919 passed, 2
+skipped; E2E `embed-form.spec.ts`, `lead-eagle-workspace.spec.ts` (its new
+referral step included) and `crm-lifecycle.spec.ts` 11/11 on a fresh `.next`.

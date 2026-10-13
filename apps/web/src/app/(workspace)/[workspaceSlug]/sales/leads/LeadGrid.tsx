@@ -19,6 +19,7 @@ export interface LeadRow {
   company?: string | null;
   score: number;
   grade?: string | null;
+  tags?: string[];
   priority: string;
   slaState: string;
   /** The viewer's own next obligation on this lead — never the lead-wide one. */
@@ -474,7 +475,7 @@ export default function LeadGrid({
                     data-priority={columnPriority(column, index, columns)}
                     style={{ textAlign: column.align ?? 'left' }}
                   >
-                    {cell(column.key, row, emptyLabel)}
+                    {leadCell(column.key, row, emptyLabel)}
                   </td>
                 ))}
                 <RowDetails />
@@ -487,7 +488,7 @@ export default function LeadGrid({
   );
 }
 
-function cell(key: string, row: LeadRow, emptyLabel: string) {
+export function leadCell(key: string, row: LeadRow, emptyLabel: string) {
   switch (key) {
     case 'reference':
       return (
@@ -540,6 +541,18 @@ function cell(key: string, row: LeadRow, emptyLabel: string) {
       return <span style={{ color: 'var(--lf-ink-2)', fontFamily: 'var(--lf-font-mono)' }}>{row.phone ?? '—'}</span>;
     case 'grade':
       return row.grade ? <Badge value={row.grade} /> : '—';
+    case 'tags':
+      return row.tags?.length ? (
+        <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {row.tags.map((tag) => (
+            <Badge key={tag} tone="slate">
+              {tag}
+            </Badge>
+          ))}
+        </span>
+      ) : (
+        '—'
+      );
     case 'updatedAt':
       return <span style={{ color: 'var(--lf-ink-3)' }}>{formatDate(row.updatedAt)}</span>;
     default:
