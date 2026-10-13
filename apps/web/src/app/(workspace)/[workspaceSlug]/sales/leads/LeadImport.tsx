@@ -75,6 +75,8 @@ async function readFile(file: File): Promise<string[][]> {
 }
 
 type Refused = { line: number; reason: string };
+/** Rows per request: the most the import route checks in one dry run. */
+const CHUNK = 500;
 /** The import route's answer, added up over the batches; the cold-data route sends only the first and last. */
 type Report = { created: number; updated: number; duplicates: number; failed: Refused[] };
 /** A row matching a lead already here: skip it, import it anyway, or fill that lead in (M4-41). */
@@ -174,8 +176,9 @@ export default function LeadImport({
 
   /**
    * Sends the rows in batches; `dryRun` asks the server to run them and save nothing.
-   * ponytail: a dry run is per batch of 500, so a row repeating one from an earlier
-   * batch reads as new in the check; one request per file if files that size matter.
+   * ponytail: a dry run is per batch of CHUNK (the route checks no more at once), so
+   * under Update a row repeating one from an earlier batch reads as new in the check,
+   * and the panel says so; a server-side job if whole-file checks of that size matter.
    */
   async function run(dryRun: boolean) {
     if (!file || !mapping.includes('fullName')) {
@@ -187,7 +190,6 @@ export default function LeadImport({
     setError('');
     setProgress(0);
     const total: Report = { created: 0, updated: 0, duplicates: 0, failed: [] };
-    const CHUNK = 500;
     const rows = toSend.map(({ line, values }) => ({ line, values }));
     for (let offset = 0; offset < rows.length; offset += CHUNK) {
       const res = await fetch(endpoint, {
@@ -410,6 +412,12 @@ export default function LeadImport({
                 · {preview.failed.length + refusedHere.length} refused
                 {preview.duplicates > 0 && <> ({preview.duplicates} already in the workspace)</>}.
               </p>
+              {onDuplicate === 'UPDATE' && toSend.length > CHUNK && (
+                <p style={{ ...small, margin: '4px 0 0' }}>
+                  Checked in parts of {CHUNK} rows: a row repeating one from an earlier part counts here as created; the
+                  import updates the lead that part creates.
+                </p>
+              )}
               {preview.failed.length > 0 && (
                 <ul style={{ ...small, margin: '4px 0 0', paddingLeft: 16, maxHeight: 90, overflowY: 'auto' }}>
                   {preview.failed.slice(0, 20).map((f) => (

@@ -5,11 +5,12 @@ import { prisma, withTx, type TxClient } from '@/lib/db';
 import { AppError, Conflict } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
+import { assertLeadInScope } from '@/lib/security/record-scope';
 import { loadFieldRules, seesField, stripUneditableFields, type FieldRule } from '@/lib/security/fieldSecurity';
 import { createLead, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { findDuplicates } from '@/services/leads/findDuplicates';
 import { normalizePhone } from '@/services/leads/normalizePhone';
-import { updateLead } from '@/services/leads/updateLead';
+import { refuseDuplicate, updateLead } from '@/services/leads/updateLead';
 import { importRow } from '@/lib/leads/importRow';
 
 const body = z
@@ -29,7 +30,9 @@ const body = z
     /** Run every row, then roll it all back: the commit's report, with nothing saved (M4-42). */
     dryRun: z.boolean().default(false),
   })
-  .strict();
+  .strict()
+  // One transaction holds a pooled connection for the whole check: the screen's batch, no more.
+  .refine((b) => !b.dryRun || b.rows.length <= 500, { message: 'Check at most 500 rows at a time.', path: ['rows'] });
 type Body = z.infer<typeof body>;
 
 /** What became of the rows: `failed` is every refused row, `duplicates` how many of them a lead already had. */
@@ -51,19 +54,29 @@ interface Report {
  * batch, because a 900-row file with three typos should still land 897 leads.
  */
 export const POST = route(
-  { module: 'leads', productModule: LEAD_MODULES, action: 'IMPORT', body },
+  {
+    module: 'leads',
+    productModule: LEAD_MODULES,
+    action: 'IMPORT',
+    body,
+    // A 30,000-row file a minute, in the screen's batches of 500, checked or imported.
+    // ponytail: no cap on dry runs running at once in a process; a semaphore if they ever starve the pool.
+    rateLimit: { max: 60, windowSeconds: 60 },
+  },
   async ({ ctx, body }) => {
     const rules = await loadFieldRules(ctx, 'LEAD');
-    if (body.dryRun) return rehearse(ctx, (tx) => importRows(ctx, rules, body, tx));
-
-    const report = await importRows(ctx, rules, body);
-    // Here rather than as the route's `auditEvent`, which a dry run would write too.
+    const report = body.dryRun
+      ? await rehearse(ctx, (tx) => importRows(ctx, rules, body, tx))
+      : await importRows(ctx, rules, body);
+    // After the work, so it carries the counts; a dry run's too, written once the
+    // check is rolled back: it searched the whole workspace for every number in it.
     await audit(ctx, {
       event: 'IMPORT_STARTED',
       objectType: 'leads',
       metadata: {
         method: 'POST',
         path: '/api/v1/leads/import',
+        dryRun: body.dryRun,
         onDuplicate: body.onDuplicate,
         created: report.created,
         updated: report.updated,
@@ -85,8 +98,8 @@ class Rehearsed extends Error {
  * The import inside one transaction that is always rolled back. Later rows see
  * what earlier ones wrote, as on the commit, so a number repeated further down
  * the file reports what the commit will do with it.
- * ponytail: the leads UPDATE matches stay locked until the run ends (seconds for
- * a 500-row batch); run it per row if an edit of one ever waits on it.
+ * ponytail: the leads UPDATE matches stay locked until the run ends (up to tens
+ * of seconds for a 500-row batch); run it per row if an edit of one ever waits on it.
  */
 function rehearse(ctx: Ctx, run: (tx: TxClient) => Promise<Report>): Promise<Report> {
   return withTx(
@@ -118,6 +131,8 @@ async function importRows(ctx: Ctx, rules: Map<string, FieldRule>, body: Body, d
       const outcome = await oneRow(dryRun, async () => {
         const { notes, ...fields } = parsed.data;
         const safe = stripUneditableFields(rules, fields) as typeof fields;
+        // A rule on the name alone does not pick the lead to write over: two people
+        // share a name. Such a row goes on to create, which refuses it as Skip does.
         const [match] =
           body.onDuplicate === 'UPDATE'
             ? await findDuplicates(
@@ -126,12 +141,13 @@ async function importRows(ctx: Ctx, rules: Map<string, FieldRule>, body: Body, d
                   email: safe.email,
                   phoneNormalized: safe.phone ? normalizePhone(safe.phone) : null,
                   fullName: safe.fullName,
+                  ignoreNameOnly: true,
                 },
                 db,
               )
             : [];
         const leadId = match
-          ? await fillIn(ctx, rules, match, safe, dryRun)
+          ? await fillIn(ctx, rules, match, safe, db, dryRun)
           : (
               await createLead(
                 ctx,
@@ -170,7 +186,11 @@ async function importRows(ctx: Ctx, rules: Map<string, FieldRule>, body: Body, d
       report[outcome] += 1;
     } catch (err) {
       if (err instanceof AppError && err.status === 409) report.duplicates += 1;
-      report.failed.push({ line, reason: String((err as Error)?.message ?? 'could not be created').slice(0, 200) });
+      const reason = String((err as Error)?.message ?? 'could not be created')
+        // A dry run's lead has a stand-in reference (createLead), which means nothing to a reader.
+        .replace(/DRY-RUN-[0-9a-f-]+/g, 'a lead an earlier line creates')
+        .slice(0, 200);
+      report.failed.push({ line, reason });
     }
   }
   return report;
@@ -200,27 +220,71 @@ async function oneRow<T>(dryRun: TxClient | undefined, fn: () => Promise<T>): Pr
  * the lead page. Only the values the row has, so nothing is blanked; a phone or
  * email this role sees masked stays as it is (the PATCH route's rule). A match
  * outside the importer's EDIT scope is reported as the duplicate it is.
+ *
+ * The main number is filled only where the lead has none. A number it does not
+ * hold yet becomes another number on it (as the lead page's "Other numbers"
+ * adds one, duplicate-checked), so the number the team calls is never lost.
  */
 async function fillIn(
   ctx: Ctx,
   rules: Map<string, FieldRule>,
   match: { id: string; reference: string; matchedOn: string },
   fields: Record<string, string | undefined>,
+  db: TxClient | typeof prisma,
   dryRun?: TxClient,
 ): Promise<string> {
-  const patch = Object.fromEntries(
+  const patch: Record<string, string | undefined> = Object.fromEntries(
     Object.entries(fields).filter(
       ([field, value]) =>
         value?.trim() &&
         (!['phone', 'email'].includes(field) || seesField(ctx, 'LEAD', rules, field, LEAD_SENSITIVE_FIELDS)),
     ),
   );
+  let added: { raw: string; normalized: string } | null = null;
+  if (patch.phone) {
+    const normalized = normalizePhone(patch.phone);
+    const held = await db.lead.findFirst({
+      where: { tenantId: ctx.tenantId, id: match.id },
+      select: { phoneNormalized: true, phones: { select: { normalized: true } } },
+    });
+    const has =
+      !!normalized && [held?.phoneNormalized, ...(held?.phones ?? []).map((p) => p.normalized)].includes(normalized);
+    if (has || held?.phoneNormalized) {
+      if (!has && normalized) added = { raw: patch.phone, normalized };
+      delete patch.phone;
+    }
+  }
   try {
-    return (await updateLead(ctx, match.id, patch, { dryRun })).id;
+    if (added) await refuseDuplicate(ctx, match.id, { phone: added.raw }, db);
+    const lead = await updateLead(ctx, match.id, patch, { dryRun });
+    if (added) await addNumber(ctx, lead.id, added, dryRun);
+    return lead.id;
   } catch (err) {
     if (err instanceof AppError && err.status === 404) {
       throw Conflict(`A lead with this ${match.matchedOn} already exists (${match.reference}).`);
     }
     throw err;
   }
+}
+
+/** A row's new number on the lead it filled in, as another number; audited on the lead. */
+async function addNumber(ctx: Ctx, leadId: string, number: { raw: string; normalized: string }, dryRun?: TxClient) {
+  const write = async (tx: TxClient) => {
+    await assertLeadInScope(ctx, leadId, tx, 'EDIT');
+    await tx.leadPhone.create({
+      data: { tenantId: ctx.tenantId, leadId, raw: number.raw, normalized: number.normalized, label: 'From an import' },
+    });
+    await audit(
+      ctx,
+      {
+        event: 'RECORD_UPDATED',
+        objectType: 'lead',
+        recordId: leadId,
+        fieldKey: 'phones',
+        newValue: number.normalized,
+      },
+      tx,
+    );
+  };
+  await (dryRun ? write(dryRun) : withTx(ctx.tenantId, write));
 }
