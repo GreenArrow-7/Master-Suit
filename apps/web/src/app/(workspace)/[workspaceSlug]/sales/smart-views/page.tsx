@@ -14,6 +14,7 @@ import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
 import { customCells, customColumns } from '@/services/leads/customFields';
 import { prisma } from '@/lib/db';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
+import { bookableProjects } from '@/services/leads/updateLead';
 import LeadGrid from '../leads/LeadGrid';
 import EmptyState from '@/components/ui/EmptyState';
 import ViewSidebar from './ViewSidebar';
@@ -212,7 +213,7 @@ export default async function SmartViewsPage({
     prisma.leadStage.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null },
       orderBy: { position: 'asc' },
-      select: { id: true, key: true, name: true, requiresReason: true, reasons: true },
+      select: { id: true, key: true, name: true, requiresReason: true, reasons: true, requiredFields: true },
     }),
     prisma.lead.count({ where }),
     // LeadGrid needs the same context here as on the leads list, or its stage,
@@ -226,6 +227,7 @@ export default async function SmartViewsPage({
     }),
     prisma.organizationSetting.findUnique({ where: { tenantId: ctx.tenantId }, select: { gridColumns: true } }),
   ]);
+  const projects = await bookableProjects(ctx, stages);
   const columns = resolveColumns(
     'LEAD',
     storedColumnsFor(setting?.gridColumns, 'LEAD'),
@@ -293,6 +295,7 @@ export default async function SmartViewsPage({
             rows={data as any}
             columns={columns}
             stages={stages}
+            projects={projects}
             users={users}
             taskTypes={taskTypes}
             canAssign={can(ctx, 'leads', 'ASSIGN')}

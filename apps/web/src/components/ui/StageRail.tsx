@@ -27,57 +27,72 @@ export interface StageRailProps {
  * ramp in the token layer.
  *
  * Rendered identically on leads, opportunities and tickets.
+ *
+ * The exits (the TERMINAL categories: lost, junk) sit apart from the ladder
+ * (M4-45): a way out is not a step after the win, and a record that took one
+ * has not passed the steps before it.
  */
 export default function StageRail({ stages, currentKey, slaState = 'ON_TRACK', slaDueAt, compact }: StageRailProps) {
-  const index = Math.max(
-    stages.findIndex((s) => s.key === currentKey),
-    0,
-  );
-  const current = stages[index];
-  const terminal =
-    current?.category === 'CONVERSION' ? 'terminal' : current?.category?.startsWith('TERMINAL') ? 'lost' : null;
+  const current = stages.find((s) => s.key === currentKey) ?? stages[0];
+  const isExit = (stage?: RailStage) => !!stage?.category?.startsWith('TERMINAL');
+  const ladder = stages.filter((stage) => !isExit(stage));
+  const exits = stages.filter(isExit);
 
   const countdown = useCountdown(slaDueAt);
   const showTimer = !!slaDueAt && (slaState === 'ON_TRACK' || slaState === 'AT_RISK' || slaState === 'BREACHED');
 
-  return (
-    <div
-      className={`lf-rail${terminal === 'terminal' ? ' lf-rail--terminal' : terminal === 'lost' ? ' lf-rail--lost' : ''}`}
-      style={compact ? { height: 24 } : undefined}
-      role="group"
-      aria-label={`Stage: ${current?.name ?? currentKey}`}
-    >
-      {stages.map((stage, i) => {
-        const state = i < index ? 'done' : i === index ? 'active' : 'pending';
-        // Progressive saturation across completed segments.
-        const depth = index > 0 ? i / index : 0;
-        const style =
-          state === 'done'
-            ? { background: `color-mix(in oklab, var(--lf-wine-700) ${16 + depth * 44}%, var(--lf-wine-050))` }
-            : undefined;
+  const rail = (group: RailStage[], label: string, exit: boolean) => {
+    const index = current ? group.indexOf(current) : -1;
+    const tone = isExit(current) ? ' lf-rail--lost' : current?.category === 'CONVERSION' ? ' lf-rail--terminal' : '';
+    return (
+      <div
+        className={`lf-rail${exit ? ' lf-rail--exits' : ''}${index >= 0 ? tone : ''}`}
+        style={compact ? { height: 24 } : undefined}
+        role="group"
+        aria-label={label}
+      >
+        {group.map((stage, i) => {
+          // Exits are alternatives, never steps passed on the way to another.
+          const state = i === index ? 'active' : i < index && !exit ? 'done' : 'pending';
+          // Progressive saturation across completed segments.
+          const depth = index > 0 ? i / index : 0;
+          const style =
+            state === 'done'
+              ? { background: `color-mix(in oklab, var(--lf-wine-700) ${16 + depth * 44}%, var(--lf-wine-050))` }
+              : undefined;
 
-        return (
-          <div
-            key={stage.key}
-            className="lf-rail__seg"
-            data-state={state}
-            data-sla={
-              state === 'active' && slaState !== 'ON_TRACK' && slaState !== 'MET' ? slaState.toLowerCase() : undefined
-            }
-            style={style}
-            title={stage.name}
-            aria-current={state === 'active' ? 'step' : undefined}
-          >
-            {state === 'active' ? (
-              <>
+          return (
+            <div
+              key={stage.key}
+              className="lf-rail__seg"
+              data-state={state}
+              data-sla={
+                state === 'active' && slaState !== 'ON_TRACK' && slaState !== 'MET' ? slaState.toLowerCase() : undefined
+              }
+              style={style}
+              title={stage.name}
+              aria-current={state === 'active' ? 'step' : undefined}
+            >
+              {/* An exit is named: it is a choice, not a position. */}
+              {state === 'active' || exit ? (
                 <span>{stage.name}</span>
-                {showTimer && countdown && <span className="lf-rail__timer">{countdown}</span>}
-              </>
-            ) : null}
-            <span className="lf-visually-hidden">{stage.name}</span>
-          </div>
-        );
-      })}
+              ) : (
+                <span className="lf-visually-hidden">{stage.name}</span>
+              )}
+              {state === 'active' && showTimer && countdown && <span className="lf-rail__timer">{countdown}</span>}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const label = `Stage: ${current?.name ?? currentKey}`;
+  if (!exits.length) return rail(stages, label, false);
+  return (
+    <div className="lf-rails" role="group" aria-label={label}>
+      {rail(ladder, 'Pipeline', false)}
+      {rail(exits, 'Exits', true)}
     </div>
   );
 }

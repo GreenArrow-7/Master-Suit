@@ -5,6 +5,7 @@ import { Conflict, NotFound } from '@/lib/errors';
 import { requireWorkspace } from '@/lib/workspace';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { LEAD_FIELDS } from '@/lib/leads/importMapping';
+import { BOOKING_FIELDS } from '@/lib/leads/stageBookings';
 
 /**
  * Pipeline stages.
@@ -34,8 +35,11 @@ const stageBody = z.object({
   slaMinutes: z.coerce.number().int().min(1).max(43_200).nullable().optional(),
   requiresReason: z.boolean().optional(),
   reasons: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
-  /** Lead fields that must be filled before a lead may enter the stage. */
-  requiredFields: z.array(z.enum(LEAD_FIELDS)).max(LEAD_FIELDS.length).optional(),
+  /** Lead fields that must be filled before a lead may enter the stage, and what entering it books. */
+  requiredFields: z
+    .array(z.enum([...LEAD_FIELDS, ...BOOKING_FIELDS]))
+    .max(LEAD_FIELDS.length + BOOKING_FIELDS.length)
+    .optional(),
 });
 
 export const GET = route(
