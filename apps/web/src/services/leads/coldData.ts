@@ -1,12 +1,18 @@
 import type { DataStatus } from '@prisma/client';
+import { ctxForUser } from '@/lib/auth/session';
 import { prisma, withTx } from '@/lib/db';
+import { Conflict } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
+import { loadFieldRules, seesField, type FieldRule } from '@/lib/security/fieldSecurity';
+import { assertLeadInScope } from '@/lib/security/record-scope';
 import { can, type Action, type Ctx } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { dayBounds, todayKey } from '@/services/targets/dailyBoard';
 import { recordTargetProgress } from '@/services/targets/progress';
-import { closeOutLead } from './closeOut';
+import { CLOSE_OUT_STATUSES, closeOutLead } from './closeOut';
+import { LEAD_SENSITIVE_FIELDS } from './createLead';
+import { lockLeads, OPEN_STATUSES, recomputeNextFollowUp } from './nextFollowUp';
 
 /**
  * Whose cold data a person reaches for `action`, as a `where`: the lead rule
@@ -95,32 +101,78 @@ export async function logColdCall(
   return record;
 }
 
+/** Reads a lead's numbers in full (#158): what Cold Data shows its owner, so what Move to Data needs. */
+const readsLeadNumbers = (ctx: Ctx, rules: Map<string, FieldRule>) =>
+  seesField(ctx, 'LEAD', rules, 'phone', LEAD_SENSITIVE_FIELDS);
+
 /**
- * Bulk Move to Data (M4-39), one lead: it leaves the pipeline as a contact on
- * the day's "From pipeline <date>" list (the workspace's date), still its
- * owner's, and the lead is closed out as archived (`closeOutLead`, at the
- * lead's EDIT scope; outside it 404 and nothing is written). One transaction,
- * audited on the lead. Its other numbers go in the record's notes: a record
- * holds one number.
+ * Who may Move to Data (M4-39): a cold record (`leads:CREATE`; cold data is
+ * lead work), the close-out (`leads:EDIT`), and the lead's numbers in full. An
+ * own cold record reads as stored, so a role that reads lead numbers masked
+ * (the Telecaller) would read them by moving its leads.
+ */
+export const mayMoveToData = (ctx: Ctx, rules: Map<string, FieldRule>) =>
+  can(ctx, 'leads', 'CREATE') && can(ctx, 'leads', 'EDIT') && readsLeadNumbers(ctx, rules);
+
+/**
+ * Bulk Move to Data (M4-39), one lead, in one transaction: it leaves the
+ * pipeline as a contact on the day's "From pipeline <date>" list (the
+ * workspace's date), still its owner's; the lead is closed out as archived
+ * (`closeOutLead`) and its open follow-ups and tasks are cancelled, so it
+ * leaves every working list. Outside the caller's EDIT scope 404, and nothing
+ * is written. A lead already closed out (moved before, a replay) or whose
+ * owner reads lead numbers masked answers 409. Audited on the lead. The record
+ * holds one number; the others go in its notes, which Cold Data masks as the
+ * number is masked.
  */
 export async function moveLeadToData(ctx: Ctx, id: string) {
+  const { tenantId } = ctx;
+  // The owner's permissions are read on their own connections, so before the transaction.
+  const { ownerId } = await assertLeadInScope(ctx, id, prisma, 'EDIT');
+  if (ownerId && ownerId !== ctx.actor.id) {
+    const owner = await ctxForUser(ownerId, tenantId, ctx.requestId).catch(() => null);
+    if (!owner || !readsLeadNumbers(owner, await loadFieldRules(owner, 'LEAD'))) {
+      throw Conflict('Its owner reads lead numbers masked, and Cold Data would show them in full: reassign it first.');
+    }
+  }
   const batch = `From pipeline ${todayKey(await workspaceTimezone(ctx))}`;
-  return withTx(ctx.tenantId, async (tx) => {
+  return withTx(tenantId, async (tx) => {
+    // The row lock first: a second move of the same lead waits, then finds it closed out.
+    await lockLeads(tx, tenantId, [id]);
+    const before = await assertLeadInScope(ctx, id, tx, 'EDIT');
+    if (before.ownerId !== ownerId) throw Conflict('The lead changed hands meanwhile: try again.');
+    if ((CLOSE_OUT_STATUSES as readonly (string | null)[]).includes(before.status)) {
+      throw Conflict('This lead is closed out: reopen it to move it to Cold Data.');
+    }
     const lead = await closeOutLead(ctx, id, { status: 'ARCHIVED' }, tx);
-    const others = await tx.leadPhone.findMany({
-      where: { tenantId: ctx.tenantId, leadId: id, normalized: { not: lead.phoneNormalized ?? '' } },
-      orderBy: { createdAt: 'asc' },
-      select: { normalized: true },
+
+    const open = { tenantId, leadId: id, deletedAt: null, status: { in: [...OPEN_STATUSES] } };
+    const followUps = (await tx.followUpTask.findMany({ where: open, select: { id: true } })).map((f) => f.id);
+    const tasks = (await tx.task.findMany({ where: open, select: { id: true } })).map((t) => t.id);
+    await tx.followUpTask.updateMany({ where: { tenantId, id: { in: followUps } }, data: { status: 'CANCELLED' } });
+    await tx.task.updateMany({
+      where: { tenantId, id: { in: tasks } },
+      data: { status: 'CANCELLED', updatedById: ctx.actor.id },
     });
+    await recomputeNextFollowUp(tx, tenantId, id);
+
+    const phones = await tx.leadPhone.findMany({
+      where: { tenantId, leadId: id },
+      orderBy: { createdAt: 'asc' },
+      select: { raw: true, normalized: true },
+    });
+    // With no main number, its first other one: a record with none has nothing to dial.
+    const main = lead.phoneNormalized ? { raw: lead.phone, normalized: lead.phoneNormalized } : phones[0];
+    const others = phones.filter((p) => p.normalized !== main?.normalized);
     const notes = [lead.notes, others.length && `Other numbers: ${others.map((p) => p.normalized).join(', ')}`]
       .filter(Boolean)
       .join('\n');
     const record = await tx.dataRecord.create({
       data: {
-        tenantId: ctx.tenantId,
+        tenantId,
         fullName: lead.fullName,
-        phone: lead.phone,
-        phoneNormalized: lead.phoneNormalized,
+        phone: main?.raw ?? null,
+        phoneNormalized: main?.normalized ?? null,
         email: lead.email,
         company: lead.company,
         jobTitle: lead.jobTitle,
@@ -139,7 +191,13 @@ export async function moveLeadToData(ctx: Ctx, id: string) {
         event: 'RECORD_UPDATED',
         objectType: 'lead',
         recordId: id,
-        metadata: { action: 'lead.moved_to_data', dataRecordId: record.id, batch },
+        metadata: {
+          action: 'lead.moved_to_data',
+          dataRecordId: record.id,
+          batch,
+          followUpsCancelled: followUps,
+          tasksCancelled: tasks,
+        },
       },
       tx,
     );

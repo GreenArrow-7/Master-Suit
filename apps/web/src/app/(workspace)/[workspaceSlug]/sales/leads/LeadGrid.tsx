@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
 import { DateTimeInput } from '@/components/forms/DateInput';
@@ -82,16 +82,24 @@ export default function LeadGrid({
   /** The leads the last bulk delete removed, while their Undo stands; then what the Undo did. */
   const [deleted, setDeleted] = useState<string[]>([]);
   const [undoNote, setUndoNote] = useState('');
+  /** Focus or the pointer is on the toast: its 10 seconds wait. */
+  const [held, setHeld] = useState(false);
+  const undoButton = useRef<HTMLButtonElement>(null);
 
-  // Undo stands for 10 seconds (M4-36); its outcome shows for as long.
+  // Undo stands for 10 seconds (M4-36), counted while it is neither focused nor
+  // under the pointer; its outcome shows for as long.
   useEffect(() => {
-    if (!deleted.length && !undoNote) return;
+    if ((!deleted.length && !undoNote) || held) return;
     const timer = setTimeout(() => {
       setDeleted([]);
       setUndoNote('');
     }, 10_000);
     return () => clearTimeout(timer);
-  }, [deleted, undoNote]);
+  }, [deleted, undoNote, held]);
+  // The delete took the bulk bar, and the focused Delete with it: focus goes to Undo.
+  useEffect(() => {
+    if (deleted.length) undoButton.current?.focus();
+  }, [deleted]);
 
   const sorted = useMemo(() => {
     const copy = [...rows];
@@ -236,6 +244,8 @@ export default function LeadGrid({
   async function undoDelete() {
     const ids = deleted;
     setDeleted([]);
+    // The focused Undo is gone, and a removed element may never blur.
+    setHeld(false);
     setBusy(true);
     const answers = await Promise.all(
       ids.map((id) => fetch(`/api/v1/leads/${id}/restore`, { method: 'POST' }).catch(() => null)),
@@ -539,20 +549,35 @@ export default function LeadGrid({
         />
       )}
 
-      {(deleted.length > 0 || undoNote) && (
-        <div role="status" className="lf-toast lf-outbox">
-          {deleted.length > 0 ? (
-            <div>
-              {deleted.length} lead{deleted.length === 1 ? '' : 's'} deleted.{' '}
-              <button type="button" className="lf-toast__action" disabled={busy} onClick={() => void undoDelete()}>
-                Undo
-              </button>
-            </div>
-          ) : (
-            <div>{undoNote}</div>
-          )}
-        </div>
-      )}
+      {/* Mounted empty, so the text put into it is announced. */}
+      <div role="status">
+        {(deleted.length > 0 || undoNote) && (
+          <div
+            className="lf-toast lf-outbox"
+            onFocus={() => setHeld(true)}
+            onBlur={() => setHeld(false)}
+            onMouseEnter={() => setHeld(true)}
+            onMouseLeave={() => setHeld(false)}
+          >
+            {deleted.length > 0 ? (
+              <div>
+                {deleted.length} lead{deleted.length === 1 ? '' : 's'} deleted.{' '}
+                <button
+                  ref={undoButton}
+                  type="button"
+                  className="lf-toast__action"
+                  disabled={busy}
+                  onClick={() => void undoDelete()}
+                >
+                  Undo
+                </button>
+              </div>
+            ) : (
+              <div>{undoNote}</div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* With no rows the page shows its empty state; the grid stays mounted for the Undo above. */}
       {rows.length > 0 && (

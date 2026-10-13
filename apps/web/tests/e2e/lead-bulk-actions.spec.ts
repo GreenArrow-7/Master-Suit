@@ -2,9 +2,9 @@
  * The lead grid's bulk bar under /lead-eagle/leads, at 1280 px and at 390 px
  * (Lead Eagle audit, M4-35, M4-36, M4-39):
  *
- * - Delete puts up a toast with Undo; Undo brings each lead back to the list,
- *   even when the delete had emptied it; past 10 seconds the toast has gone
- *   and the lead stays deleted;
+ * - Delete puts up a toast with Undo, focused; Undo brings each selected lead
+ *   back to the list, even when the delete had emptied it; 10 seconds after
+ *   focus leaves it the toast has gone and the lead stays deleted;
  * - Add tag adds to each lead's own tags;
  * - Move to Data takes the leads off the list and onto the day's
  *   "From pipeline <date>" list in Cold Data.
@@ -84,7 +84,9 @@ test.describe('Lead grid bulk actions', () => {
     test(`Delete, then Undo, brings the leads back (${width} px)`, async ({ browser }, testInfo) => {
       const { context, page } = await signedIn(browser, width);
       const tag = `undo${width}`;
-      const names = await leads(page, tag, 2);
+      // At 1280 px a third lead is listed and not selected: only the selected rows go.
+      const all = await leads(page, tag, width < 768 ? 2 : 3);
+      const [names, kept] = [all.slice(0, 2), all[2]];
       await page.goto(at(`/lead-eagle/leads?q=${encodeURIComponent(`Bulk ${tag} ${run}`)}`));
       await select(page, names);
       page.once('dialog', (dialog) => void dialog.accept());
@@ -93,15 +95,19 @@ test.describe('Lead grid bulk actions', () => {
       // The bulk bar is a status too; the toast is the one that says what was deleted.
       const toast = page.getByRole('status').filter({ hasText: 'deleted' });
       await expect(toast).toContainText('2 leads deleted.', { timeout: 30_000 });
-      // The delete emptied the list: the page's empty state, and the Undo still there.
-      await expect(page.getByText('Nothing matches this view')).toBeVisible({ timeout: 30_000 });
+      if (kept) {
+        await expect(page.getByRole('checkbox', { name: `Select ${kept}` })).toBeVisible({ timeout: 30_000 });
+      } else {
+        // The delete emptied the list: the page's empty state, and the Undo still there.
+        await expect(page.getByText('Nothing matches this view')).toBeVisible({ timeout: 30_000 });
+      }
       for (const name of names) await expect(page.getByText(name)).toHaveCount(0);
       const undo = toast.getByRole('button', { name: 'Undo' });
       await expect(undo).toBeVisible();
       await noSidewaysScroll(page, width);
       await shots(page, testInfo.outputPath(`undo-toast-${width}`));
-      // Reachable by keyboard: focused and pressed with Enter.
-      await undo.focus();
+      // Reachable by keyboard: the delete puts focus on Undo, and Enter presses it.
+      await expect(undo).toBeFocused();
       await page.keyboard.press('Enter');
 
       await expect(page.getByRole('status').filter({ hasText: 'Restored' })).toContainText('Restored 2 leads.');
@@ -111,6 +117,8 @@ test.describe('Lead grid bulk actions', () => {
         select: { id: true, deletedAt: true },
       });
       expect(rows.map((row) => row.deletedAt)).toEqual([null, null]);
+      // The unselected one was never deleted (reads leave deleted rows out).
+      if (kept) expect(await prisma.lead.count({ where: { tenantId, fullName: kept } })).toBe(1);
       const events = await prisma.auditLog.findMany({
         where: {
           tenantId,
@@ -179,7 +187,9 @@ test.describe('Lead grid bulk actions', () => {
     });
   }
 
-  test('past 10 seconds the Undo has gone and the lead stays deleted', async ({ browser }) => {
+  test('the Undo waits while it has focus, then goes 10 seconds after, and the lead stays deleted', async ({
+    browser,
+  }) => {
     const { context, page } = await signedIn(browser, 1280);
     const tag = 'expire';
     const names = await leads(page, tag, 1);
@@ -189,8 +199,37 @@ test.describe('Lead grid bulk actions', () => {
     await page.getByRole('button', { name: 'Delete', exact: true }).click();
     const toast = page.getByRole('status').filter({ hasText: 'deleted' });
     await expect(toast).toContainText('1 lead deleted.', { timeout: 30_000 });
+    const undo = toast.getByRole('button', { name: 'Undo' });
+    await expect(undo).toBeFocused();
+    await page.waitForTimeout(11_000);
+    await expect(undo).toBeVisible();
+    await undo.blur();
     await expect(toast).toHaveCount(0, { timeout: 12_000 });
     expect(await prisma.lead.count({ where: { tenantId, fullName: names[0], deletedAt: { not: null } } })).toBe(1);
+    await context.close();
+  });
+
+  test('a restore the server refuses is counted in the toast, and that lead stays deleted', async ({ browser }) => {
+    const { context, page } = await signedIn(browser, 1280);
+    const names = await leads(page, 'refused', 2);
+    await page.goto(at(`/lead-eagle/leads?q=${encodeURIComponent(`Bulk refused ${run}`)}`));
+    await select(page, names);
+    page.once('dialog', (dialog) => void dialog.accept());
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
+    const toast = page.getByRole('status').filter({ hasText: 'deleted' });
+    await expect(toast).toContainText('2 leads deleted.', { timeout: 30_000 });
+    // The first restore answers 404, as one outside the caller's delete scope does.
+    let refused = false;
+    await page.route('**/api/v1/leads/*/restore', (route) => {
+      if (refused) return route.continue();
+      refused = true;
+      return route.fulfill({ status: 404, contentType: 'application/json', body: '{"detail":"Lead not found."}' });
+    });
+    await toast.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'could not' })).toContainText(
+      '1 of 2 could not be restored.',
+    );
+    expect(await prisma.lead.count({ where: { tenantId, fullName: { in: names }, deletedAt: { not: null } } })).toBe(1);
     await context.close();
   });
 

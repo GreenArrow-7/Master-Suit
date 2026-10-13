@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { mergeWhere } from '@/lib/api/where';
+import { prisma } from '@/lib/db';
 import { simpleNamedLeadFilterWhere, wantsClosedOut } from '@/lib/leads/namedFilters';
 import type { FieldRule } from '@/lib/security/fieldSecurity';
 import type { Ctx } from '@/lib/security/rbac';
@@ -106,39 +107,31 @@ type Sort = keyof typeof ORDER;
 const SORT_KEY = { updated: 'updatedAt', created: 'createdAt', score: 'score', name: 'fullName' } as const;
 
 /**
- * The grid's pages are keyset pages (M4-20): Next starts after the last row's
- * sort value and id, Previous ends before the first row's, both in the URL as
- * this token. OFFSET read every earlier row: an agent's page 200 of a
+ * The grid's pages are keyset pages (M4-20): Next starts after the last row,
+ * Previous ends before the first, each named in the URL by its id alone (its
+ * sort value there put a lead's name, or a score a role may not read, in
+ * every link). OFFSET read every earlier row: an agent's page 200 of a
  * 100,000-lead workspace took 150 to 400 ms in Postgres alone, page 1 a few.
+ *
+ * The rows after (or, `back`, before) that lead in the list's order, and the
+ * order to read them in. Its sort value is read in the list itself, so a lead
+ * gone from it (deleted, out of scope, filtered off) or an id that is no lead
+ * reads as no cursor: null. The bound on the sort column is what lets an index
+ * seek to the page.
  */
-export function leadPageCursor(sort: Sort, row: Record<string, unknown> & { id: string }) {
-  return Buffer.from(JSON.stringify([row[SORT_KEY[sort]], row.id])).toString('base64url');
-}
-
-/**
- * The rows after (or, `back`, before) a `leadPageCursor` token in the list's
- * order, and the order to read them in; null for no token or one it cannot
- * read. The bound on the sort column is what lets an index seek to the page.
- */
-export function leadPage(sort: Sort, token: string | undefined, back: boolean) {
-  let parsed: unknown;
-  try {
-    parsed = token ? JSON.parse(Buffer.from(token, 'base64url').toString()) : null;
-  } catch {
-    return null;
-  }
-  if (!Array.isArray(parsed) || parsed.length !== 2 || typeof parsed[1] !== 'string') return null;
+export async function leadPage(sort: Sort, id: string | undefined, back: boolean, where: Record<string, unknown>) {
   const key = SORT_KEY[sort];
-  const raw: unknown = parsed[0];
-  const value = key === 'score' ? Number(raw) : key === 'fullName' ? String(raw) : new Date(String(raw));
-  if (typeof value === 'number' ? !Number.isFinite(value) : value instanceof Date && Number.isNaN(value.getTime()))
-    return null;
+  const row = id
+    ? await prisma.lead.findFirst({ where: mergeWhere(where, { id }), select: { id: true, [key]: true } })
+    : null;
+  if (!row) return null;
+  const value = (row as Record<string, unknown>)[key];
   // Past the cursor in the list's direction: lower for a descending sort, higher for `name`.
   const op = (sort === 'name') === back ? 'lt' : 'gt';
   return {
     where: {
       [key]: { [`${op}e`]: value },
-      OR: [{ [key]: { [op]: value } }, { [key]: value, id: { [op]: parsed[1] } }],
+      OR: [{ [key]: { [op]: value } }, { [key]: value, id: { [op]: row.id } }],
     },
     // Going back reads the page nearest the cursor first, so in reverse.
     orderBy: back

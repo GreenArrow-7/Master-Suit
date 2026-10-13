@@ -9,7 +9,7 @@ import { notifyCrm } from '../crm/notify';
 import { recordTargetProgress } from '../targets/progress';
 import { dayBounds } from '../targets/dailyBoard';
 import { BOOKING_FIELDS } from '@/lib/leads/stageBookings';
-import { withRecompute } from './nextFollowUp';
+import { lockLeads, withRecompute } from './nextFollowUp';
 import { findDuplicates } from './findDuplicates';
 import { assertLeadSource } from './leadSources';
 import { withCustomValues } from './customFields';
@@ -80,6 +80,8 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
   let ownerChanged = false;
 
   const updated = await withTx(ctx.tenantId, async (tx) => {
+    // Tags are added to the row as it stands: locked first, so two adds at once both land.
+    if (input.addTags) await lockLeads(tx, ctx.tenantId, [id]);
     const before = await assertLeadInScope(ctx, id, tx, 'EDIT');
     // The new owner: someone the scope of the action that allows the change reaches.
     const action = can(ctx, 'leads', 'ASSIGN') ? 'ASSIGN' : 'REASSIGN';
@@ -267,9 +269,20 @@ export async function deleteLead(ctx: Ctx, id: string) {
 /**
  * The grid's Undo of a delete (M4-36): the lead returns to every list it left.
  * Reached under the delete's own scope; a lead that is not deleted, or not
- * the caller's to delete, answers 404.
+ * the caller's to delete, answers 404. One whose number or email another lead
+ * took meanwhile answers 409, as creating it again would (`createLead`).
  */
 export async function restoreLead(ctx: Ctx, id: string) {
+  // Before the transaction, as `refuseDuplicate`: findDuplicates reads on its own connection.
+  const deleted = await assertLeadInScope(ctx, id, prisma, 'DELETE', { deleted: true });
+  const [match] = await findDuplicates(ctx.tenantId, {
+    phoneNormalized: deleted.phoneNormalized,
+    email: deleted.email,
+    fullName: deleted.fullName,
+    ignoreNameOnly: true,
+    excludeId: id,
+  });
+  if (match) throw Conflict(`A lead with this ${match.matchedOn} was added since (${match.reference}).`);
   await withTx(ctx.tenantId, async (tx) => {
     const before = await assertLeadInScope(ctx, id, tx, 'DELETE', { deleted: true });
     await tx.lead.update({

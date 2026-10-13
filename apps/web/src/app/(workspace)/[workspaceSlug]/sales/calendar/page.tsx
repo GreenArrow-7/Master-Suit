@@ -75,7 +75,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
 
   const [tasks, activities, followUps, calls, events, visits] = await Promise.all([
     prisma.task.findMany({
-      where: { ...taskScope, deletedAt: null, dueAt: inMonth },
+      // A cancelled one is not on anyone's day, as a cancelled visit is not (below).
+      where: { ...taskScope, deletedAt: null, status: { not: 'CANCELLED' }, dueAt: inMonth },
       orderBy: [{ dueAt: 'asc' }, { id: 'asc' }],
       take: CAP,
       select: { id: true, title: true, dueAt: true, status: true },
@@ -89,7 +90,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         })
       : [],
     prisma.followUpTask.findMany({
-      where: mergeWhere(followUpScope, { deletedAt: null, dueAt: inMonth }),
+      where: mergeWhere(followUpScope, { deletedAt: null, status: { not: 'CANCELLED' }, dueAt: inMonth }),
       orderBy: [{ dueAt: 'asc' }, { id: 'asc' }],
       take: CAP,
       select: { id: true, title: true, dueAt: true, status: true, ownerId: true },

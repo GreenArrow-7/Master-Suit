@@ -77,13 +77,13 @@ export const PATCH = route(
     const masked = (['phone', 'email'] as const).filter(
       (field) => body[field] !== undefined && !seesField(ctx, 'LEAD', rules, field, LEAD_SENSITIVE_FIELDS),
     );
-    if (masked.length) {
+    // Adding tags is editing the tags field: refused, not dropped, so the bulk bar counts it as not done.
+    const tagsLocked = body.addTags !== undefined && rules.get('tags')?.canEdit === false;
+    if (masked.length || tagsLocked) {
       await assertLeadInScope(ctx, params.id, prisma, 'EDIT');
-      throw Forbidden(`Your role cannot change this lead’s ${masked.join(' or ')}.`);
+      throw Forbidden(`Your role cannot change this lead’s ${masked.length ? masked.join(' or ') : 'tags'}.`);
     }
     const safe = stripUneditableFields(rules, body);
-    // Adding tags is editing the tags field.
-    if (rules.get('tags')?.canEdit === false) delete safe.addTags;
     const lead = await updateLead(ctx, params.id, safe);
     return applyFieldSecurity(ctx, 'LEAD', rules, lead, LEAD_SENSITIVE_FIELDS);
   },

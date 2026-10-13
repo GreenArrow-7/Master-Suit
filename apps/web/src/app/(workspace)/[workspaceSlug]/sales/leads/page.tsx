@@ -7,6 +7,7 @@ import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { bookableProjects } from '@/services/leads/updateLead';
+import { mayMoveToData } from '@/services/leads/coldData';
 import { listLeadSources } from '@/services/leads/leadSources';
 import {
   cleanLeadListParams,
@@ -14,7 +15,6 @@ import {
   leadListHref,
   leadListQuery,
   leadPage,
-  leadPageCursor,
   savedViewHref,
   type LeadListParams,
 } from '@/services/leads/leadList';
@@ -64,14 +64,18 @@ export default async function LeadsPage({
   const page = Math.max(1, Number([raw.page].flat()[0]) || 1);
   const board = params.layout === 'board';
   const sort = params.sort ?? 'updated';
-  // Keyset pages (M4-20): Next carries `after`, Previous `before`; a bare
-  // `?page=N`, as older links have it, still skips.
-  const after = [raw.after].flat()[0];
-  const keyset = after ? leadPage(sort, after, false) : leadPage(sort, [raw.before].flat()[0], true);
-  const back = !!keyset && !after;
 
   const rules = await loadFieldRules(ctx, 'LEAD');
   const { where, access, view, orderBy } = await leadListQuery(ctx, params, rules);
+  // Keyset pages (M4-20): Next carries `after`, Previous `before`, a lead's id; a bare
+  // `?page=N`, as older links have it, or a lead no longer in the list, still skips.
+  const after = [raw.after].flat()[0];
+  const keyset = board
+    ? null
+    : after
+      ? await leadPage(sort, after, false, where)
+      : await leadPage(sort, [raw.before].flat()[0], true, where);
+  const back = !!keyset && !after;
 
   /**
    * Does this viewer's reach extend past their own obligations?
@@ -99,7 +103,6 @@ export default async function LeadsPage({
     priority: true,
     slaState: true,
     nextFollowUpAt: true,
-    createdAt: true,
     updatedAt: true,
     ownerId: true,
     stageId: true,
@@ -201,9 +204,7 @@ export default async function LeadsPage({
   // Read backwards from a `before` cursor, the page comes in reverse, and the one it came from follows it.
   const hasMore = back || rows.length > PAGE_SIZE;
   const pageRows = back ? rows.slice(0, PAGE_SIZE).reverse() : rows.slice(0, PAGE_SIZE);
-  const cursors = pageRows.length
-    ? { before: leadPageCursor(sort, pageRows[0]!), after: leadPageCursor(sort, pageRows.at(-1)!) }
-    : undefined;
+  const cursors = pageRows.length ? { before: pageRows[0]!.id, after: pageRows.at(-1)!.id } : undefined;
 
   // Masking happens here, in the serialiser, so it covers the grid, exports and
   // every other egress path identically.
@@ -399,7 +400,7 @@ export default async function LeadsPage({
             canAssign={can(ctx, 'leads', 'ASSIGN')}
             canEdit={can(ctx, 'leads', 'EDIT')}
             canDelete={can(ctx, 'leads', 'DELETE')}
-            canMoveToData={can(ctx, 'leads', 'CREATE') && can(ctx, 'leads', 'EDIT')}
+            canMoveToData={mayMoveToData(ctx, rules)}
             emptyLabel={emptyFollowUpLabel(access, view, ctx.actor.id)}
             sort={GRID_SORT[params.sort ?? 'updated']}
           />
