@@ -182,6 +182,10 @@ Runs on the rig (its own database, 107 migrations):
   re-checked._ with the connection still _Connected_; the WhatsApp Business
   switch on by default; Deliveries with _Lead created_ and _Not read: unknown
   email_ at 390 px dark, with no sideways scroll.
+- After the base took in #174 (46c38509, merged here cleanly, no migration):
+  `tsc --noEmit` clean; the same focused set plus #174's `stage-mini-form`
+  and `provision-lead-work`, 31 files, 885/885; the two E2E specs again on a
+  fresh `.next`, 4/4.
 
 **Left open**
 
