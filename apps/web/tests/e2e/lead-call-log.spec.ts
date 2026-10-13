@@ -15,9 +15,10 @@ import {
  * Lead-Eagle-only workspace: from the lead list, a logged call with a due
  * follow-up takes at most three clicks — Log call on the row, the outcome,
  * Log call in the dialog — at desktop width and on a 390 px phone card. Back
- * from a `tel:` call, the dialog opens for that lead by itself. The lead page
- * then shows the follow-up, the call on its timeline, and the follow-up once
- * done (M4-47).
+ * from a `tel:` call, the dialog opens for that lead by itself. Pressing Log call
+ * again after an error logs the call once. The lead page opens the dialog from
+ * its own button and back from dialling another of its numbers, pages its
+ * timeline, and shows the follow-up and the follow-up once done (M4-47).
  */
 test.describe.configure({ mode: 'serial' });
 
@@ -35,6 +36,7 @@ test.describe('Logging a call from the lead list', () => {
   const DESK = `Desk Caller ${run}`;
   const PHONE = `Phone Caller ${run}`;
   const BACK = `Back Caller ${run}`;
+  const RETRY = `Retry Caller ${run}`;
 
   /** Tomorrow at 10:00 in Dubai, as an instant: the dialog's default follow-up. */
   function tomorrowAtTen() {
@@ -87,14 +89,14 @@ test.describe('Logging a call from the lead list', () => {
   test('three clicks from the list to a logged call with a due follow-up, at desktop and phone width', async ({
     page,
   }) => {
-    await test.step('a Lead-Eagle-only workspace with three leads', async () => {
+    await test.step('a Lead-Eagle-only workspace with four leads', async () => {
       await loginPlatformOwner(page);
       await createWorkspaceViaWizard(page, eagle);
       await logout(page);
       await login(page, eagle.adminEmail, eagle.adminPassword);
       tenantId = (await prisma.tenant.findUniqueOrThrow({ where: { slug: eagle.slug }, select: { id: true } })).id;
       const stamp = String(Date.now()).slice(-6);
-      for (const [index, fullName] of [DESK, PHONE, BACK].entries()) {
+      for (const [index, fullName] of [DESK, PHONE, BACK, RETRY].entries()) {
         const res = await page.request.post('/api/v1/leads', {
           data: { fullName, phone: `+9715${index}${stamp}0` },
         });
@@ -137,13 +139,87 @@ test.describe('Logging a call from the lead list', () => {
       await expect.poll(async () => (await logged(BACK)).activities).toEqual([{ outcome: 'Connected' }]);
     });
 
+    await test.step('Log call again after an error that came after the save: one call, one follow-up', async () => {
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await page.goto(at('/lead-eagle/leads'));
+      // The server logs the first send; its answer is lost on the way back.
+      let first = true;
+      await page.route('**/api/v1/leads/*/call-log', async (route) => {
+        if (!first) return route.continue();
+        first = false;
+        await route.fetch();
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/problem+json',
+          body: JSON.stringify({ status: 500, detail: 'The answer was lost' }),
+        });
+      });
+      await page.getByRole('button', { name: `Log call for ${RETRY}` }).click();
+      const dialog = page.getByRole('dialog', { name: `Log call · ${RETRY}` });
+      await dialog.getByLabel('Busy', { exact: true }).click();
+      const send = dialog.getByRole('button', { name: 'Log call', exact: true });
+      await send.click();
+      await expect(dialog.getByText('The answer was lost')).toBeVisible();
+      await send.click();
+      await expect(dialog).toBeHidden();
+      await page.unroute('**/api/v1/leads/*/call-log');
+      const { activities, followUps } = await logged(RETRY);
+      expect(activities).toEqual([{ outcome: 'Busy' }]);
+      expect(followUps).toHaveLength(1);
+    });
+
     await test.step('the lead page shows the follow-up, the call on its timeline, and the follow-up once done', async () => {
       await page.setViewportSize({ width: 390, height: 844 });
       const { leadId } = await logged(DESK);
+      // Another number, and more history than a page holds: 35 older edits.
+      const other = await page.request.post(`/api/v1/leads/${leadId}/phones`, {
+        data: { phone: `+97155${String(Date.now()).slice(-7)}`, label: 'Office' },
+      });
+      expect(other.status(), await other.text()).toBeLessThan(300);
+      await prisma.auditLog.createMany({
+        data: Array.from({ length: 35 }, (_, i) => ({
+          tenantId,
+          event: 'RECORD_UPDATED' as const,
+          objectType: 'lead',
+          recordId: leadId,
+          fieldKey: 'city',
+          previousValue: `Old city ${i}`,
+          newValue: `New city ${i}`,
+          occurredAt: new Date(Date.UTC(2026, 0, 1, 9, i)),
+        })),
+      });
       await page.goto(at(`/lead-eagle/leads/${leadId}`));
+
+      // Its own Log call, and back from dialling its other number.
+      const dialog = page.getByRole('dialog', { name: `Log call · ${DESK}` });
+      await page.getByRole('button', { name: 'Log call', exact: true }).click();
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole('button', { name: 'Cancel' }).click();
+      await expect(dialog).toBeHidden();
+      const dial = page.locator('a[href^="tel:+97155"]');
+      await dial.evaluate((link) => link.addEventListener('click', (event) => event.preventDefault()));
+      await dial.click();
+      await page.evaluate(() => {
+        const set = (state: string) => {
+          Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+          document.dispatchEvent(new Event('visibilitychange'));
+        };
+        set('hidden');
+        set('visible');
+      });
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole('button', { name: 'Cancel' }).click();
+      await expect(dialog).toBeHidden();
+
       await page.getByRole('tab', { name: /Timeline/ }).click();
       await expect(page.getByText('Outbound call').first()).toBeVisible();
       await expect(page.getByText('No answer', { exact: true }).first()).toBeVisible();
+      // The oldest edit is on the second page, once.
+      await expect(page.getByText('Old city 34 → New city 34', { exact: true })).toBeVisible();
+      await expect(page.getByText('Old city 0 → New city 0', { exact: true })).toHaveCount(0);
+      await page.getByRole('button', { name: 'Show older' }).click();
+      await expect(page.getByText('Old city 0 → New city 0', { exact: true })).toHaveCount(1);
+      await expect(page.getByText('Old city 34 → New city 34', { exact: true })).toHaveCount(1);
 
       await page.getByRole('tab', { name: /Tasks/ }).click();
       const followUp = page.getByRole('listitem').filter({ hasText: 'Follow-up call' });

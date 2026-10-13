@@ -1,5 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
-import { assignableUsers, leadScope } from '@/lib/security/record-scope';
+import { assignableUsers, leadReach, leadScope } from '@/lib/security/record-scope';
 import {
   emptyFollowUpLabel,
   obligationAccess,
@@ -204,6 +204,7 @@ export default async function SmartViewsPage({
         nextFollowUpAt: true,
         updatedAt: true,
         ownerId: true,
+        secondaryOwnerId: true,
         stage: { select: { key: true, name: true, color: true } },
         owner: { select: { fullName: true } },
       },
@@ -242,11 +243,14 @@ export default async function SmartViewsPage({
     rows.map((r) => r.id),
     access,
   );
+  // Log call where its route takes the lead.
+  const logs = await leadReach(ctx, 'EDIT');
   const data = rows
-    .map(({ customData, ...r }) => ({
+    .map(({ customData, secondaryOwnerId, ...r }) => ({
       ...r,
       custom: customCells(columns, customData),
       nextFollowUpAt: due.get(r.id) ?? null,
+      canLog: logs({ ownerId: r.ownerId, secondaryOwnerId }),
     }))
     .map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
 

@@ -1,7 +1,7 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { mergeWhere } from '@/lib/api/where';
-import { assignableUsers, leadScope } from '@/lib/security/record-scope';
+import { assignableUsers, leadReach, leadScope } from '@/lib/security/record-scope';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
@@ -139,6 +139,7 @@ export default async function LeadsPage({
         nextFollowUpAt: true,
         updatedAt: true,
         ownerId: true,
+        secondaryOwnerId: true,
         stage: { select: { key: true, name: true, color: true } },
         owner: { select: { fullName: true } },
       },
@@ -186,11 +187,14 @@ export default async function LeadsPage({
     pageRows.map((r) => r.id),
     access,
   );
+  // Log call where its route takes the lead.
+  const logs = await leadReach(ctx, 'EDIT');
   // Only the custom columns' values leave the server, never the rest of customData.
-  const withFollowUp = pageRows.map(({ customData, ...r }) => ({
+  const withFollowUp = pageRows.map(({ customData, secondaryOwnerId, ...r }) => ({
     ...r,
     custom: customCells(columns, customData),
     nextFollowUpAt: due.get(r.id) ?? null,
+    canLog: logs({ ownerId: r.ownerId, secondaryOwnerId }),
   }));
 
   const data = withFollowUp.map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));

@@ -58,6 +58,8 @@ export default function CallLogDialog({
   const [followUpAt, setFollowUpAt] = useState(() => tomorrowAtTen(timeZone));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // One per dialog: pressing Log call again after an error replays the call, not doubles it.
+  const [requestKey] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
     if (!ref.current?.open) ref.current?.showModal();
@@ -76,7 +78,7 @@ export default function CallLogDialog({
         ...(notes.trim() && { notes: notes.trim() }),
         ...(minutes && { durationMins: Number(minutes) }),
         ...(book && followUpAt && { followUpAt }),
-        requestKey: crypto.randomUUID(),
+        requestKey,
         occurredAt: new Date().toISOString(),
       },
       `${lead.fullName}: call`,

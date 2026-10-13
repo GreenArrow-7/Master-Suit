@@ -35,6 +35,7 @@ let leadId: string;
 let secondAgentId: string;
 /** Every lead, no sensitive fields and no calls: numbers masked, calls not theirs. */
 let masked: string;
+let maskedRoleId: string;
 /** `leads:VIEW` at OWN: none of the admin's leads. */
 let agent: string;
 
@@ -67,7 +68,7 @@ async function roleUser(key: string, grants: Parameters<typeof grantPermissions>
     email: `${key}-${suffix}@a.test`,
     fullName: key,
   });
-  return { id: user.id, cookie: await createSessionToken(tenantId, user.id) };
+  return { id: user.id, roleId: role.id, cookie: await createSessionToken(tenantId, user.id) };
 }
 
 beforeAll(async () => {
@@ -89,8 +90,12 @@ beforeAll(async () => {
       fullName: 'Second Agent',
     })
   ).id;
-  masked = (await roleUser('masked', [['leads', 'VIEW']], 'ORGANIZATION')).cookie;
+  const maskedUser = await roleUser('masked', [['leads', 'VIEW']], 'ORGANIZATION');
+  masked = maskedUser.cookie;
+  maskedRoleId = maskedUser.roleId;
   agent = (await roleUser('agent', [['leads', 'VIEW']], 'OWN')).cookie;
+  // The administrator reads the inbox, as a workspace's administrator does.
+  await grantPermissions(tenantId, adminRoleId, [['communications', 'VIEW']]);
 
   const qualified = await prisma.leadStage.create({
     data: { tenantId, key: `qualified-${randomBytes(3).toString('hex')}`, name: 'Qualified', position: 1 },
@@ -173,10 +178,11 @@ describe('the lead timeline merges every kind of entry (M4-12, M4-46)', () => {
     expect(JSON.stringify(entries)).not.toContain(secondAgentId);
 
     expect(by('stage')).toEqual([expect.objectContaining({ title: 'Stage: New → Qualified' })]);
+    // Who from, and the history row's reason where it has no note.
     expect(by('assignment')).toEqual([
       expect.objectContaining({
         title: 'Assigned to Second Agent',
-        detail: expect.stringContaining('from manath Administrator'),
+        detail: 'from manath Administrator · Reassigned',
       }),
     ]);
     expect(by('activity')).toEqual([
@@ -244,22 +250,186 @@ describe('the lead timeline merges every kind of entry (M4-12, M4-46)', () => {
     expect((await get(readTimeline, `/api/v1/leads/${other}/timeline`, admin, { id: other })).status).toBe(404);
   });
 
-  it('shows only what the viewer may see: masked numbers, no calls outside their reach, no message text without the inbox', async () => {
+  it('shows only what the viewer may see: masked numbers, hidden fields, no calls or messages outside their reach', async () => {
+    // A field the role may not see at all: that it changed, not from what to what.
+    await prisma.fieldPermission.create({
+      data: { tenantId, roleId: maskedRoleId, objectType: 'LEAD', fieldKey: 'nationality', canView: false },
+    });
+    await prisma.auditLog.create({
+      data: {
+        tenantId,
+        actorUserId: fixture.a.userId,
+        event: 'RECORD_UPDATED',
+        objectType: 'lead',
+        recordId: leadId,
+        fieldKey: 'nationality',
+        previousValue: 'Hiddenland',
+        newValue: 'Secretia',
+        occurredAt: new Date('2026-10-06T09:00:00.000Z'),
+      },
+    });
+
     const seen = (await timeline(masked)).entries;
     const phone = seen.find((e) => e.title === 'Phone changed');
     expect(phone?.detail).toContain('•');
     expect(JSON.stringify(seen)).not.toContain('501234567');
     expect(JSON.stringify(seen)).not.toContain('509876543');
+    expect(seen.find((e) => e.title === 'Nationality changed')).toMatchObject({ detail: null });
+    expect(JSON.stringify(seen)).not.toMatch(/Hiddenland|Secretia/);
     // No `calls` grant: their own calls only, and this one is the administrator's.
     expect(seen.filter((e) => e.kind === 'call')).toEqual([]);
-    // The message is on the timeline; its text is the inbox's to show.
-    expect(seen.find((e) => e.kind === 'message')).toMatchObject({ title: 'WhatsApp sent', notes: null });
+    // No inbox: no message at all, as for a call out of reach.
+    expect(seen.filter((e) => e.kind === 'message')).toEqual([]);
     expect(JSON.stringify(seen)).not.toContain('Hello from the Marina launch');
 
-    // With the inbox's own permission, the text is there.
-    await grantPermissions(tenantId, adminRoleId, [['communications', 'VIEW']]);
+    // The administrator reads the inbox: the text is there, and the nationality.
     const withInbox = (await timeline(admin)).entries;
     expect(withInbox.find((e) => e.kind === 'message')).toMatchObject({ notes: 'Hello from the Marina launch' });
+    expect(withInbox.find((e) => e.title === 'Nationality changed')).toMatchObject({
+      detail: 'Hiddenland → Secretia',
+    });
+  });
+
+  it("messages: the thread's own, also those written before it was the lead's, only where the inbox reaches them", async () => {
+    const suffix = randomBytes(3).toString('hex');
+    // Reads every lead, and the inbox at OWN: the threads it owns.
+    const role = await prisma.role.create({ data: { tenantId, key: `inbox-${suffix}`, name: 'inbox', rank: 80 } });
+    await grantPermissions(tenantId, role.id, [['leads', 'VIEW']], 'ORGANIZATION');
+    await grantPermissions(tenantId, role.id, [['communications', 'VIEW']], 'OWN');
+    const inboxUser = await createWorkspaceUser({
+      tenantId,
+      roleId: role.id,
+      email: `inbox-${suffix}@a.test`,
+      fullName: 'Inbox Agent',
+    });
+    const inbox = await createSessionToken(tenantId, inboxUser.id);
+
+    // A thread from a number no lead had yet: its first message has no lead of
+    // its own, and the thread was linked to the lead later. The agent owns it.
+    const mine = await prisma.conversation.create({
+      data: { tenantId, channel: 'WHATSAPP', externalId: `t-${suffix}-1`, leadId, ownerId: inboxUser.id },
+    });
+    await prisma.communication.create({
+      data: {
+        tenantId,
+        conversationId: mine.id,
+        channel: 'WHATSAPP',
+        direction: 'INBOUND',
+        status: 'DELIVERED',
+        toAddress: 'business',
+        body: 'First enquiry from the portal',
+        createdAt: new Date('2026-10-03T08:00:00.000Z'),
+      },
+    });
+    // A thread now someone else's: what the agent sent there before the
+    // handover is the inbox's to show by the thread, not by who sent it.
+    const theirs = await prisma.conversation.create({
+      data: { tenantId, channel: 'WHATSAPP', externalId: `t-${suffix}-2`, leadId, ownerId: secondAgentId },
+    });
+    await prisma.communication.create({
+      data: {
+        tenantId,
+        conversationId: theirs.id,
+        leadId,
+        channel: 'WHATSAPP',
+        direction: 'OUTBOUND',
+        status: 'SENT',
+        toAddress: PHONE,
+        body: 'Sent before the handover',
+        ownerId: inboxUser.id,
+        createdById: inboxUser.id,
+        createdAt: new Date('2026-10-03T09:00:00.000Z'),
+      },
+    });
+
+    // The administrator, whose inbox reaches every thread, sees both, the first one included.
+    const all = (await timeline(admin, '?limit=50')).entries.filter((e) => e.kind === 'message');
+    expect(all.map((e) => e.notes)).toEqual(
+      expect.arrayContaining(['First enquiry from the portal', 'Sent before the handover']),
+    );
+    expect(all.find((e) => e.notes === 'First enquiry from the portal')).toMatchObject({
+      title: 'WhatsApp received',
+      when: '03 Oct 2026, 12:00',
+    });
+
+    // The agent: its own thread, text included; nothing of the threads it does not reach.
+    const seen = (await timeline(inbox, '?limit=50')).entries.filter((e) => e.kind === 'message');
+    expect(seen).toEqual([
+      expect.objectContaining({ title: 'WhatsApp received', notes: 'First enquiry from the portal' }),
+    ]);
+  });
+
+  it('a custom-field edit names the active fields that changed, and nothing of an archived one', async () => {
+    const suffix = randomBytes(3).toString('hex');
+    await prisma.leadCustomFieldDefinition.createMany({
+      data: [
+        { tenantId, key: `visa_${suffix}`, label: 'Visa status', type: 'TEXT' },
+        { tenantId, key: `old_${suffix}`, label: 'Old reference', type: 'TEXT', isHidden: true },
+      ],
+    });
+    const edit = (minute: number, previousValue: object, newValue: object) => ({
+      tenantId,
+      actorUserId: fixture.a.userId,
+      event: 'RECORD_UPDATED' as const,
+      objectType: 'lead',
+      recordId: leadId,
+      fieldKey: 'customData',
+      previousValue,
+      newValue,
+      occurredAt: new Date(Date.UTC(2026, 9, 7, 9, minute)),
+    });
+    await prisma.auditLog.createMany({
+      data: [
+        edit(
+          1,
+          { [`visa_${suffix}`]: 'Resident', [`old_${suffix}`]: 'A1' },
+          { [`visa_${suffix}`]: 'Golden', [`old_${suffix}`]: 'B2' },
+        ),
+        // Only the archived field: not shown at all.
+        edit(2, { [`old_${suffix}`]: 'B2' }, { [`old_${suffix}`]: 'C3' }),
+        // Only the system's own bookkeeping: not an edit.
+        edit(3, { _scoredAt: 1 }, { _scoredAt: 2 }),
+      ],
+    });
+    // Bookkeeping columns never read as edits.
+    await prisma.auditLog.createMany({
+      data: ['phoneNormalized', 'updatedAt', 'score', 'ownerId', 'stageId'].map((fieldKey) => ({
+        tenantId,
+        actorUserId: fixture.a.userId,
+        event: 'RECORD_UPDATED' as const,
+        objectType: 'lead',
+        recordId: leadId,
+        fieldKey,
+        previousValue: 'x',
+        newValue: 'y',
+        occurredAt: new Date(Date.UTC(2026, 9, 7, 9, 4)),
+      })),
+    });
+
+    const fields = (await timeline(admin, '?limit=50')).entries.filter(
+      (e) => e.kind === 'field' && e.at.startsWith('2026-10-07T09:0'),
+    );
+    expect(fields).toEqual([
+      expect.objectContaining({ title: 'Custom fields changed', detail: 'Visa status: Resident → Golden' }),
+    ]);
+  });
+
+  it('an unassignment says why', async () => {
+    await prisma.leadAssignmentHistory.create({
+      data: {
+        tenantId,
+        leadId,
+        fromOwnerId: secondAgentId,
+        toOwnerId: null,
+        reason: 'Recycled to the pool after 30 days without activity',
+        createdAt: new Date('2026-10-08T09:00:00.000Z'),
+      },
+    });
+    const { entries } = await timeline(admin, '?limit=50');
+    expect(entries.find((e) => e.kind === 'assignment' && e.title === 'Unassigned')).toMatchObject({
+      detail: 'from Second Agent · Recycled to the pool after 30 days without activity',
+      by: null,
+    });
   });
 
   it('the lead page opens on the first page of it', async () => {

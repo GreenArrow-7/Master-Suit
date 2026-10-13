@@ -15,10 +15,9 @@ import { leadSourceLabel } from './leadSources';
  * stage moves, its field edits from the audit log, its assignments, its calls
  * and its messages, in one feed, newest first, paged by a cursor. Each entry
  * is typed and dated on the workspace's clock, and carries only what the
- * viewer may see: a masked field reads masked, a call outside the viewer's
- * `calls` reach is left out, and a message's text is shown only where the
- * inbox (`communications`) would show it. A user id is shown as the person's
- * name, never as the id.
+ * viewer may see: a masked field reads masked, and a call or a message outside
+ * the viewer's `calls` or inbox (`communications`) reach is left out. A user
+ * id is shown as the person's name, never as the id.
  */
 export type TimelineKind = 'activity' | 'assignment' | 'call' | 'field' | 'message' | 'stage';
 
@@ -108,6 +107,25 @@ export const onClock = (at: Date, timeZone: string) =>
 
 const sentence = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replace(/_/g, ' ');
 const CHANNEL: Readonly<Record<string, string>> = { WHATSAPP: 'WhatsApp', EMAIL: 'Email', SMS: 'SMS', VOICE: 'Voice' };
+/** An assignment's reason: a code ("REASSIGNED") as words, a sentence (the recycle sweep's) as written. */
+const reason = (value: string | null) => (value && /^[A-Z_]+$/.test(value) ? sentence(value) : value);
+
+/**
+ * The messages the inbox shows this viewer, as a `where` on Communication; null
+ * without the inbox. A threaded message goes by its conversation's owner, as
+ * the inbox lists and opens threads (api/v1/conversations); one outside any
+ * thread by its own.
+ */
+async function inboxReach(ctx: Ctx): Promise<Prisma.CommunicationWhereInput | null> {
+  if (!can(ctx, 'communications', 'VIEW')) return null;
+  const visible = await visibilityWhere(ctx, 'communications', 'VIEW', { includeUnassigned: true });
+  return {
+    OR: [
+      { conversation: { is: visible as Prisma.ConversationWhereInput } },
+      { conversationId: null, ...(visible as Prisma.CommunicationWhereInput) },
+    ],
+  };
+}
 
 export async function leadTimeline(
   ctx: Ctx,
@@ -189,45 +207,34 @@ export async function leadTimeline(
         },
       }),
     ),
-    prisma.communication.findMany({
-      where: { tenantId, leadId, AND: [after<Prisma.CommunicationWhereInput>(cursor, 'message', 'createdAt')] },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take,
-      // Never the addresses, as for calls.
-      select: {
-        id: true,
-        createdAt: true,
-        channel: true,
-        direction: true,
-        status: true,
-        subject: true,
-        body: true,
-        createdById: true,
-      },
-    }),
+    inboxReach(ctx).then((inbox) =>
+      inbox
+        ? prisma.communication.findMany({
+            where: {
+              tenantId,
+              // A thread's earlier messages carry no lead: it was linked after them.
+              OR: [{ leadId }, { conversation: { is: { leadId } } }],
+              AND: [inbox, after<Prisma.CommunicationWhereInput>(cursor, 'message', 'createdAt')],
+            },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take,
+            // Never the addresses, as for calls.
+            select: {
+              id: true,
+              createdAt: true,
+              channel: true,
+              direction: true,
+              status: true,
+              subject: true,
+              body: true,
+              createdById: true,
+            },
+          })
+        : [],
+    ),
     workspaceTimezone(ctx),
     loadFieldRules(ctx, 'LEAD'),
   ]);
-
-  // A message's text is the inbox's to show: only where its rule reaches the message.
-  const readable = new Set(
-    messages.length && can(ctx, 'communications', 'VIEW')
-      ? (
-          await prisma.communication.findMany({
-            where: {
-              tenantId,
-              id: { in: messages.map((m) => m.id) },
-              AND: [
-                (await visibilityWhere(ctx, 'communications', 'VIEW', {
-                  includeUnassigned: true,
-                })) as Prisma.CommunicationWhereInput,
-              ],
-            },
-            select: { id: true },
-          })
-        ).map((m) => m.id)
-      : [],
-  );
 
   const userIds = [
     ...activities.map((a) => a.ownerId),
@@ -258,7 +265,8 @@ export async function leadTimeline(
     stageIds.length
       ? prisma.leadStage.findMany({ where: { tenantId, id: { in: stageIds } }, select: { id: true, name: true } })
       : [],
-    edits.some((e) => e.fieldKey === 'customData') ? leadFields(prisma, tenantId) : [],
+    // The active fields only, as the lead page shows them: an archived one's values stay out.
+    edits.some((e) => e.fieldKey === 'customData') ? leadFields(prisma, tenantId, { activeOnly: true }) : [],
   ]);
   const person = (id: string | null | undefined) => (id ? (people.get(id) ?? 'Removed user') : null);
   const stageName = (id: string) => stageNames.find((s) => s.id === id)?.name ?? 'a removed stage';
@@ -340,7 +348,9 @@ export async function leadTimeline(
     ...assignments.map((a) =>
       entry('assignment', a.id, a.createdAt, {
         title: a.toOwnerId ? `Assigned to ${person(a.toOwnerId)}` : 'Unassigned',
-        detail: [a.fromOwnerId && `from ${person(a.fromOwnerId)}`, a.note].filter(Boolean).join(' · ') || null,
+        detail:
+          [a.fromOwnerId && `from ${person(a.fromOwnerId)}`, a.note ?? reason(a.reason)].filter(Boolean).join(' · ') ||
+          null,
         notes: null,
         by: person(a.assignedById),
       }),
@@ -360,7 +370,7 @@ export async function leadTimeline(
       entry('message', m.id, m.createdAt, {
         title: `${CHANNEL[m.channel] ?? sentence(m.channel)} ${m.direction === 'INBOUND' ? 'received' : 'sent'}`,
         detail: sentence(m.status),
-        notes: readable.has(m.id) ? [m.subject, m.body && shown(m.body)].filter(Boolean).join(' — ') || null : null,
+        notes: [m.subject, m.body && shown(m.body)].filter(Boolean).join(' — ') || null,
         by: person(m.createdById),
       }),
     ),

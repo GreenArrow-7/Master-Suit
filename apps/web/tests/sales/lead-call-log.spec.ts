@@ -53,7 +53,7 @@ async function roleUser(key: string, grants: Parameters<typeof grantPermissions>
     email: `${key}-${suffix}@a.test`,
     fullName: `The ${key}`,
   });
-  return { id: user.id, cookie: await createSessionToken(tenantId, user.id) };
+  return { id: user.id, roleId: role.id, cookie: await createSessionToken(tenantId, user.id) };
 }
 
 beforeAll(async () => {
@@ -180,6 +180,9 @@ describe('one POST logs the call and books the next follow-up (PROP-02.2, M4-27)
       { outcome: 'Connected', followUpAt: 'tomorrow' },
       { outcome: 'Connected', followUpAt: '2027-02-30T10:00' },
       { outcome: 'Connected', durationMins: -1 },
+      // When it happened: not ahead, and within the last week.
+      { outcome: 'Connected', occurredAt: new Date(Date.now() + 3_600_000).toISOString() },
+      { outcome: 'Connected', occurredAt: new Date(Date.now() - 8 * 86_400_000).toISOString() },
     ]) {
       expect((await post(logCall, url(leadId), body, admin)).status, JSON.stringify(body)).toBe(422);
     }
@@ -235,7 +238,62 @@ describe('one POST logs the call and books the next follow-up (PROP-02.2, M4-27)
       cookieJar.value = admin;
     }
   });
+
+  it('offers Log call only on the leads its route takes: a role that reads further than it edits', async () => {
+    const reacher = await roleUser('reacher', [['leads', 'VIEW']], 'ORGANIZATION');
+    await grantPermissions(tenantId, reacher.roleId, [['leads', 'EDIT']], 'OWN');
+    const lead = (fullName: string, data: { ownerId?: string | null; secondaryOwnerId?: string }) =>
+      prisma.lead.create({
+        data: {
+          tenantId,
+          reference: `CL-${randomBytes(3).toString('hex')}`,
+          fullName,
+          stageId: fixture.a.stageId,
+          ...data,
+        },
+      });
+    const [own, second, pool, other] = await Promise.all([
+      lead('Reach own', { ownerId: reacher.id }),
+      lead('Reach second', { ownerId: fixture.a.userId, secondaryOwnerId: reacher.id }),
+      lead('Reach pool', { ownerId: null }),
+      lead('Reach other', { ownerId: fixture.a.userId }),
+    ]);
+
+    cookieJar.value = reacher.cookie;
+    try {
+      const grid = propsWith(await LeadsPage({ searchParams: Promise.resolve({}) }), 'emptyLabel')!;
+      const canLog = (id: string) => grid.rows.find((r: { id: string }) => r.id === id)?.canLog;
+      expect([own, second, pool, other].map((l) => canLog(l.id))).toEqual([true, true, true, false]);
+      // No second owner's id leaves the server with the row.
+      expect(JSON.stringify(grid.rows)).not.toContain('secondaryOwnerId');
+
+      const page = async (id: string) =>
+        propsWith(await LeadDetailPage({ params: Promise.resolve({ id }) }), 'canLog')?.canLog;
+      expect(await page(other.id)).toBe(false);
+      expect(await page(second.id)).toBe(true);
+    } finally {
+      cookieJar.value = admin;
+    }
+    // And the route agrees.
+    expect((await post(logCall, url(other.id), { outcome: 'Connected' }, reacher.cookie)).status).toBe(404);
+    expect((await post(logCall, url(second.id), { outcome: 'Connected' }, reacher.cookie)).status).toBe(200);
+  });
 });
+
+/** The props of the first element in a rendered tree that has `key`. */
+function propsWith(node: unknown, key: string): Record<string, any> | undefined {
+  if (!node || typeof node !== 'object') return undefined;
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = propsWith(child, key);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  const props = (node as { props?: Record<string, any> }).props;
+  if (!props) return undefined;
+  return key in props ? props : propsWith(props.children, key);
+}
 
 describe('done follow-ups stay on the lead (M4-47)', () => {
   it('lists the open follow-ups beside the open tasks, and the last 10 done with when, on the workspace clock', async () => {
@@ -298,5 +356,52 @@ describe('done follow-ups stay on the lead (M4-47)', () => {
         hourCycle: 'h23',
       }),
     );
+  });
+});
+
+describe("done follow-ups follow the viewer's reach (M4-47)", () => {
+  it("an OWN agent sees its own follow-ups on its lead, never a colleague's open or done work there", async () => {
+    const done = new Date('2026-10-02T06:00:00.000Z');
+    const followUp = (ownerId: string, title: string, completed: boolean) =>
+      prisma.followUpTask.create({
+        data: {
+          tenantId,
+          leadId: agentLeadId,
+          ownerId,
+          title,
+          dueAt: new Date('2027-04-01T06:00:00.000Z'),
+          ...(completed && { status: 'COMPLETED' as const, completedAt: done }),
+        },
+      });
+    await followUp(agentId, 'Agent done follow-up', true);
+    await followUp(fixture.a.userId, 'Admin done follow-up', true);
+    await followUp(fixture.a.userId, 'Admin open follow-up', false);
+    const taskType = await prisma.taskType.create({
+      data: { tenantId, key: `own-${randomBytes(3).toString('hex')}`, name: 'Visit' },
+    });
+    await prisma.task.create({
+      data: {
+        tenantId,
+        leadId: agentLeadId,
+        typeId: taskType.id,
+        ownerId: fixture.a.userId,
+        title: 'Admin done task',
+        dueAt: done,
+        status: 'COMPLETED',
+        completedAt: done,
+      },
+    });
+
+    cookieJar.value = agent;
+    try {
+      const text = await pageText(LeadDetailPage({ params: Promise.resolve({ id: agentLeadId }) }));
+      expect(text).toContain('Agent done follow-up');
+      expect(text).toContain('02 Oct 2026, 10:00');
+      for (const theirs of ['Admin done follow-up', 'Admin open follow-up', 'Admin done task']) {
+        expect(text).not.toContain(theirs);
+      }
+    } finally {
+      cookieJar.value = admin;
+    }
   });
 });

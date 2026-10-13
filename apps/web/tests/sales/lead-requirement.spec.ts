@@ -471,7 +471,12 @@ describe('matching stock on the lead Overview (M4-48)', () => {
     };
 
     // No requirement yet: the card asks for one.
-    expect((await shown(stock)).lead.matchingStock).toEqual({ hasRequirement: false, total: 0, listings: [] });
+    expect((await shown(stock)).lead.matchingStock).toEqual({
+      hasRequirement: false,
+      total: 0,
+      more: false,
+      listings: [],
+    });
 
     expect(
       (
@@ -505,5 +510,31 @@ describe('matching stock on the lead Overview (M4-48)', () => {
     expect(await pageText(LeadDetailPage({ params: Promise.resolve({ id: lead.id }) }))).not.toContain(
       `Palm villa ${suffix}`,
     );
+
+    // More than the card reads: it says so, rather than giving the cap as the count.
+    expect(seen.lead.matchingStock).toMatchObject({ more: false });
+    await prisma.listing.createMany({
+      data: Array.from({ length: 26 }, (_, i) => ({
+        tenantId,
+        reference: `MT-${suffix}-${i}`,
+        title: `Townhouse ${i} ${suffix}`,
+        listingType: 'SALE' as const,
+        status: 'ACTIVE' as const,
+        propertyType: 'TOWNHOUSE' as const,
+        bedrooms: 7,
+        price: 3_000_000 + i,
+      })),
+    });
+    expect(
+      (
+        await put(
+          saveRequirement,
+          url(lead.id),
+          { purpose: 'BUY', propertyTypes: ['TOWNHOUSE'], bedroomsMin: 7 },
+          admin,
+        )
+      ).status,
+    ).toBe(200);
+    expect((await shown(stock)).lead.matchingStock).toMatchObject({ total: 25, more: true });
   });
 });

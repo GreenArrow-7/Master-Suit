@@ -134,6 +134,8 @@ interface LeadData {
   matchingStock: {
     hasRequirement: boolean;
     total: number;
+    /** More match than `total` counts. */
+    more: boolean;
     listings: {
       id: string;
       reference: string;
@@ -164,6 +166,8 @@ interface Props {
   /** The workspace's, for the call log's follow-up clock. */
   timeZone: string;
   canEdit: boolean;
+  /** Its call can be logged: `leads:EDIT` reaches this lead. */
+  canLog: boolean;
   canDeleteDocuments: boolean;
   canAssign: boolean;
   canDelete: boolean;
@@ -213,6 +217,7 @@ export default function LeadDetail({
   matchesHref,
   timeZone,
   canEdit,
+  canLog,
   canDeleteDocuments,
   canAssign,
   canDelete,
@@ -380,6 +385,7 @@ export default function LeadDetail({
                 canEdit={canEdit}
                 sources={sources}
                 customFields={customFields}
+                onDial={canLog ? () => dialled(lead) : undefined}
               />
               <RequirementCard
                 leadId={lead.id}
@@ -451,13 +457,13 @@ export default function LeadDetail({
                 onClick={() => {
                   if (!tel) return;
                   // Back from the call, the call log opens (M4-27).
-                  if (canEdit) dialled(lead);
+                  if (canLog) dialled(lead);
                   window.open(`tel:${tel}`);
                 }}
               >
                 Phone
               </button>
-              {canEdit && (
+              {canLog && (
                 <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={openLog}>
                   Log call
                 </button>
@@ -759,6 +765,7 @@ function OverviewTab({
   canEdit,
   sources,
   customFields,
+  onDial,
 }: {
   lead: Props['lead'];
   editing: boolean;
@@ -767,6 +774,8 @@ function OverviewTab({
   canEdit: boolean;
   sources: SourceOption[];
   customFields: LeadField[];
+  /** Dialling one of its other numbers. */
+  onDial?: () => void;
 }) {
   // The lead's entry, split back into the source and the sub-source under it.
   const entry = sources.find((s) => s.id === lead.sourceId);
@@ -942,7 +951,12 @@ function OverviewTab({
           ))}
         </dl>
         {lead.phones && (lead.phones.length > 0 || canEdit) && (
-          <OtherNumbers phones={lead.phones} leadId={lead.id} canEdit={canEdit && !lead.contactMasked.phone} />
+          <OtherNumbers
+            phones={lead.phones}
+            leadId={lead.id}
+            canEdit={canEdit && !lead.contactMasked.phone}
+            onDial={onDial}
+          />
         )}
         {editing && (
           <div style={{ display: 'flex', gap: 'var(--lf-space-2)', marginTop: 'var(--lf-space-4)' }}>
@@ -997,10 +1011,13 @@ function OtherNumbers({
   phones,
   leadId,
   canEdit,
+  onDial,
 }: {
   phones: NonNullable<LeadData['phones']>;
   leadId: string;
   canEdit: boolean;
+  /** Back from dialling one, the call log opens (M4-27). */
+  onDial?: () => void;
 }) {
   const router = useRouter();
   const blank = { phone: '', label: '', isWhatsapp: true };
@@ -1033,7 +1050,13 @@ function OtherNumbers({
             key={p.id}
             style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--lf-text-sm)' }}
           >
-            {dialable(p.raw) ? <a href={`tel:${dialable(p.raw)}`}>{p.raw}</a> : <span>{p.raw}</span>}
+            {dialable(p.raw) ? (
+              <a href={`tel:${dialable(p.raw)}`} onClick={onDial}>
+                {p.raw}
+              </a>
+            ) : (
+              <span>{p.raw}</span>
+            )}
             {p.label && <span style={{ color: 'var(--lf-ink-3)' }}>{p.label}</span>}
             {whatsappLink(p.normalized, p.isWhatsapp) && (
               <a href={whatsappLink(p.normalized, p.isWhatsapp)!} target="_blank" rel="noreferrer">
@@ -1487,7 +1510,11 @@ function MatchingStock({
         </h2>
         {matchesHref && stock.total > 0 && (
           <SalesLink href={matchesHref} style={{ fontSize: 'var(--lf-text-sm)' }}>
-            {stock.total > stock.listings.length ? `All ${stock.total} matches` : 'Open the match list'}
+            {stock.more
+              ? 'All matches'
+              : stock.total > stock.listings.length
+                ? `All ${stock.total} matches`
+                : 'Open the match list'}
           </SalesLink>
         )}
       </div>

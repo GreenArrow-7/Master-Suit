@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { assertRecordVisible, visibilityWhere } from '@/lib/security/visibility';
-import { assignableUsers, leadScope, ownerReach, workListScope } from '@/lib/security/record-scope';
+import { assignableUsers, leadReach, leadScope, ownerReach, workListScope } from '@/lib/security/record-scope';
 import { emptyFollowUpLabel, obligationAccess, OPEN_STATUSES, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import { loadFieldRules, applyFieldSecurity, seesField } from '@/lib/security/fieldSecurity';
 import { can, scopeFor } from '@/lib/security/rbac';
@@ -17,6 +17,9 @@ import { matchesForRequirement } from '@/services/inventory/demand';
 import StageRail from '@/components/ui/StageRail';
 import LeadDetail from './LeadDetail';
 import SalesLink from '@/components/workspace/SalesLink';
+
+/** The matches the Matching stock card reads; the requirement's page lists them all. */
+const STOCK_CAP = 25;
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -154,7 +157,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
   // What it is owed and what was done (M4-47): its open follow-ups beside the
   // open tasks, and the last 10 done of either, newest first.
-  const [timeline, openFollowUps, doneTasks, doneFollowUps, completes, matched] = await Promise.all([
+  const [timeline, openFollowUps, doneTasks, doneFollowUps, completes, logs, matched] = await Promise.all([
     leadTimeline(ctx, lead.id),
     prisma.followUpTask.findMany({
       where: {
@@ -196,8 +199,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     }),
     // Complete is offered where PATCH /follow-ups/{id} takes it.
     ownerReach(ctx, 'leads', 'EDIT'),
+    // Log call is offered where POST /leads/{id}/call-log takes it.
+    leadReach(ctx, 'EDIT'),
     // Matching stock (M4-48): the listings its open requirement matches, for a viewer who sees listings.
-    requirement && seesListings ? matchesForRequirement(ctx.tenantId, requirement.id, 25) : null,
+    requirement && seesListings ? matchesForRequirement(ctx.tenantId, requirement.id, STOCK_CAP) : null,
   ]);
   const done = [
     ...doneTasks.map((t) => ({ ...t, key: `task:${t.id}` })),
@@ -299,6 +304,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       ? {
           hasRequirement: !!requirement,
           total: stock.length,
+          // At the cap there are more than it counts: the card does not give the cap as the number.
+          more: (matched?.matches.length ?? 0) >= STOCK_CAP,
           listings: stock.slice(0, 5).map((m) => ({
             id: m.id,
             reference: m.reference,
@@ -347,6 +354,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         matchesHref={opensRequirement ? `/requirements/${requirement!.id}` : null}
         timeZone={timeZone}
         canEdit={can(ctx, 'leads', 'EDIT')}
+        canLog={logs(lead)}
         canAssign={can(ctx, 'leads', 'ASSIGN')}
         canDelete={can(ctx, 'leads', 'DELETE')}
         // Deleting an attachment is its own authority, not part of editing the

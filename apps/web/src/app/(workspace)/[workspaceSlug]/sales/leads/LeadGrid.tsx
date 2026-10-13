@@ -30,6 +30,8 @@ export interface LeadRow {
   nextFollowUpAt?: string | Date | null;
   updatedAt: string | Date;
   ownerId?: string | null;
+  /** Its call can be logged: `leads:EDIT` reaches this lead (`leadReach`). */
+  canLog?: boolean;
   stage: { key: string; name: string; color: string };
   owner?: { fullName: string } | null;
 }
@@ -501,12 +503,12 @@ export default function LeadGrid({
                         href={`tel:${dialable(row.phone)}`}
                         aria-label={`Call ${row.fullName}`}
                         style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}
-                        onClick={() => canEdit && dialled(row)}
+                        onClick={() => row.canLog && dialled(row)}
                       >
                         Call
                       </a>
                     )}
-                    {canEdit && (
+                    {row.canLog && (
                       <button
                         type="button"
                         className="lf-btn lf-btn--secondary lf-btn--sm"
