@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
-import { audit } from '@/lib/security/audit';
+import { audit, auditDiff } from '@/lib/security/audit';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { leadScope } from '@/lib/security/record-scope';
 import { coldDataScope } from '@/services/leads/coldData';
@@ -57,6 +57,18 @@ export const POST = route(
         where: { tenantId: ctx.tenantId, id: record.id },
         data: { status: 'CONVERTED', convertedLeadId: leadId, convertedAt: new Date() },
       });
+      // Made a lead: one archived (Move to Data's close-out) or marked invalid is
+      // reopened, or the contact would be on no working list. A duplicate stays one.
+      const closed = await tx.lead.findFirst({
+        where: { tenantId: ctx.tenantId, id: leadId, status: { in: ['ARCHIVED', 'INVALID'] } },
+      });
+      if (closed) {
+        const reopened = await tx.lead.update({
+          where: { tenantId: ctx.tenantId, id: leadId },
+          data: { status: null, updatedById: ctx.actor.id },
+        });
+        await auditDiff(ctx, 'lead', closed.id, closed, reopened, tx);
+      }
       // Its calls (M5-06) become the lead's history, re-pointed, not copied; they
       // were the work, so the lead is not "handed over and untouched" at check-out.
       const { count } = await tx.activity.updateMany({

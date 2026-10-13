@@ -7,6 +7,7 @@ import {
   FIELD_LABELS,
   LEAD_FIELDS,
   prepareRows,
+  rejectedRowsCsv,
   type ColumnTarget,
   type PreparedRow,
 } from '@/lib/leads/importMapping';
@@ -73,13 +74,21 @@ async function readFile(file: File): Promise<string[][]> {
   return parseCsv(await file.text());
 }
 
-type Report = { created: number; failed: { line: number; reason: string }[] };
+type Refused = { line: number; reason: string };
+/** Rows per request: the most the import route checks in one dry run. */
+const CHUNK = 500;
+/** The import route's answer, added up over the batches; the cold-data route sends only the first and last. */
+type Report = { created: number; updated: number; duplicates: number; failed: Refused[] };
+/** A row matching a lead already here: skip it, import it anyway, or fill that lead in (M4-41). */
+type Strategy = 'BLOCK' | 'WARN' | 'UPDATE';
 
 /**
  * Spreadsheet lead import: pick a file, confirm which column is which field, see what
  * will and will not be imported, then import. Rows are posted in batches to the bulk
  * endpoint, which creates each one through the same `createLead` service the form uses,
  * so scoring, deduplication, distribution and audit behave exactly as for a typed lead.
+ * "Check first" sends the same rows and options as a dry run (M4-42), and the rows
+ * refused download as a CSV of the file's own lines (M4-43).
  */
 export default function LeadImport({
   endpoint = '/api/v1/leads/import',
@@ -98,7 +107,10 @@ export default function LeadImport({
   const [report, setReport] = useState<Report | null>(null);
   const [file, setFile] = useState<{ name: string; headers: string[]; rows: string[][] } | null>(null);
   const [mapping, setMapping] = useState<ColumnTarget[]>([]);
-  const [onDuplicate, setOnDuplicate] = useState<'BLOCK' | 'WARN'>('BLOCK');
+  const [onDuplicate, setOnDuplicate] = useState<Strategy>('BLOCK');
+  /** The dry run's report, for the mapping and options it was run with; any change clears it. */
+  const [preview, setPreview] = useState<Report | null>(null);
+  const [checking, setChecking] = useState(false);
 
   const prepared = useMemo<PreparedRow[]>(
     () => (file ? prepareRows(file.rows, file.headers, mapping) : []),
@@ -107,14 +119,35 @@ export default function LeadImport({
   const ready = prepared.filter((r) => !r.problem);
   const problems = prepared.filter((r) => r.problem);
   const inFileDuplicates = ready.filter((r) => r.duplicateOf !== undefined);
-  const toSend = ready.filter((r) => onDuplicate === 'WARN' || r.duplicateOf === undefined);
+  // Skipped, a row repeating an earlier one stays here; otherwise the server imports or fills it in.
+  const toSend = ready.filter((r) => onDuplicate !== 'BLOCK' || r.duplicateOf === undefined);
+  /** Refused before sending: the rows with problems, and the repeats a skip leaves out. */
+  const refusedHere: Refused[] = [
+    ...problems.map((r) => ({ line: r.line, reason: r.problem! })),
+    ...(onDuplicate === 'BLOCK'
+      ? inFileDuplicates.map((r) => ({ line: r.line, reason: `Same phone or email as line ${r.duplicateOf}` }))
+      : []),
+  ];
 
   function reset() {
     setFile(null);
     setMapping([]);
     setReport(null);
+    setPreview(null);
     setError('');
     setProgress(0);
+  }
+
+  /** The refused rows as a CSV of the file's own lines, saved by the browser. */
+  function downloadRejected(rejected: Refused[]) {
+    if (!file) return;
+    const blob = new Blob([rejectedRowsCsv(file.headers, file.rows, rejected)], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${file.name.replace(/\.[^.]+$/, '')}-rejected-rows.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   async function handleFile(picked: File) {
@@ -141,23 +174,33 @@ export default function LeadImport({
     }
   }
 
-  async function importRows() {
+  /**
+   * Sends the rows in batches; `dryRun` asks the server to run them and save nothing.
+   * ponytail: a dry run is per batch of CHUNK (the route checks no more at once), so
+   * under Update a row repeating one from an earlier batch reads as new in the check,
+   * and the panel says so; a server-side job if whole-file checks of that size matter.
+   */
+  async function run(dryRun: boolean) {
     if (!file || !mapping.includes('fullName')) {
       setError('Choose which column holds the full name.');
       return;
     }
     setBusy(true);
+    setChecking(dryRun);
     setError('');
     setProgress(0);
-    const failed: Report['failed'] = [];
-    let created = 0;
-    const CHUNK = 500;
+    const total: Report = { created: 0, updated: 0, duplicates: 0, failed: [] };
     const rows = toSend.map(({ line, values }) => ({ line, values }));
     for (let offset = 0; offset < rows.length; offset += CHUNK) {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ rows: rows.slice(offset, offset + CHUNK), fileName: file.name, onDuplicate }),
+        body: JSON.stringify({
+          rows: rows.slice(offset, offset + CHUNK),
+          fileName: file.name,
+          onDuplicate,
+          ...(dryRun && { dryRun: true }),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -165,13 +208,16 @@ export default function LeadImport({
         setError(data.detail ?? data.title ?? `Import failed (HTTP ${res.status})`);
         return;
       }
-      created += data.created ?? 0;
-      failed.push(...(data.failed ?? []));
+      total.created += data.created ?? 0;
+      total.updated += data.updated ?? 0;
+      total.duplicates += data.duplicates ?? 0;
+      total.failed.push(...(data.failed ?? []));
       setProgress(Math.min(rows.length, offset + CHUNK));
     }
     setBusy(false);
-    setReport({ created, failed });
-    if (created > 0) router.refresh();
+    if (dryRun) return setPreview(total);
+    setReport(total);
+    if (total.created + total.updated > 0) router.refresh();
   }
 
   if (!open) {
@@ -197,7 +243,8 @@ export default function LeadImport({
       >
         <strong style={{ fontSize: 'var(--lf-text-sm)' }}>Import {noun}s from Excel or CSV</strong>
         <button
-          className="lf-toast__action"
+          type="button"
+          className="lf-btn lf-btn--ghost lf-btn--sm"
           onClick={() => {
             setOpen(false);
             reset();
@@ -256,6 +303,7 @@ export default function LeadImport({
                         disabled={busy}
                         onChange={(event) => {
                           const target = event.target.value as ColumnTarget;
+                          setPreview(null);
                           setMapping((current) =>
                             current.map((t, i) =>
                               i === column ? target : LEAD_FIELDS.includes(t as never) && t === target ? 'notes+' : t,
@@ -301,13 +349,26 @@ export default function LeadImport({
           )}
           {noun === 'lead' && (
             <label style={{ ...small, display: 'block', margin: '0 0 var(--lf-space-3)' }}>
-              <input
-                type="checkbox"
-                checked={onDuplicate === 'WARN'}
+              Rows that match a lead already in the workspace
+              <select
+                className="lf-select"
+                style={{ display: 'block', maxWidth: '100%', marginTop: 4 }}
+                value={onDuplicate}
                 disabled={busy}
-                onChange={(event) => setOnDuplicate(event.target.checked ? 'WARN' : 'BLOCK')}
-              />{' '}
-              Also import rows that match a lead already in the workspace (otherwise they are skipped and listed)
+                onChange={(event) => {
+                  setOnDuplicate(event.target.value as Strategy);
+                  setPreview(null);
+                }}
+              >
+                <option value="BLOCK">Skip them (listed in the report)</option>
+                <option value="UPDATE">Update that lead</option>
+                <option value="WARN">Import them as new leads</option>
+              </select>
+              {onDuplicate === 'UPDATE' && (
+                <span style={{ display: 'block', marginTop: 4 }}>
+                  A row’s filled-in columns replace the lead’s; its empty ones change nothing.
+                </span>
+              )}
             </label>
           )}
 
@@ -345,14 +406,59 @@ export default function LeadImport({
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {preview && (
+            <div role="status" style={{ margin: '0 0 var(--lf-space-3)', fontSize: 'var(--lf-text-sm)' }}>
+              <p style={{ margin: 0 }}>
+                <strong>Checked, nothing saved:</strong> {preview.created} would be created · {preview.updated} updated
+                · {preview.failed.length + refusedHere.length} refused
+                {preview.duplicates > 0 && <> ({preview.duplicates} already in the workspace)</>}.
+              </p>
+              {onDuplicate === 'UPDATE' && toSend.length > CHUNK && (
+                <p style={{ ...small, margin: '4px 0 0' }}>
+                  Checked in parts of {CHUNK} rows: a row repeating one from an earlier part counts here as created; the
+                  import updates the lead that part creates.
+                </p>
+              )}
+              {preview.failed.length > 0 && (
+                <ul style={{ ...small, margin: '4px 0 0', paddingLeft: 16, maxHeight: 90, overflowY: 'auto' }}>
+                  {preview.failed.slice(0, 20).map((f) => (
+                    <li key={f.line}>
+                      Line {f.line}: {f.reason}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {noun === 'lead' && (
+              <button
+                className="lf-btn lf-btn--secondary lf-btn--sm"
+                disabled={busy || toSend.length === 0}
+                onClick={() => void run(true)}
+              >
+                {checking && busy ? `Checking… ${progress}/${toSend.length}` : 'Check first'}
+              </button>
+            )}
             <button
               className="lf-btn lf-btn--sm"
               disabled={busy || toSend.length === 0}
-              onClick={() => void importRows()}
+              onClick={() => void run(false)}
             >
-              {busy ? `Importing… ${progress}/${toSend.length}` : `Import ${toSend.length} ${many(toSend.length)}`}
+              {busy && !checking
+                ? `Importing… ${progress}/${toSend.length}`
+                : `Import ${toSend.length} ${many(toSend.length)}`}
             </button>
+            {preview && [...refusedHere, ...preview.failed].length > 0 && (
+              <button
+                className="lf-btn lf-btn--secondary lf-btn--sm"
+                disabled={busy}
+                onClick={() => downloadRejected([...refusedHere, ...preview.failed])}
+              >
+                Download rejected rows
+              </button>
+            )}
             <button className="lf-btn lf-btn--secondary lf-btn--sm" disabled={busy} onClick={reset}>
               Choose another file
             </button>
@@ -367,6 +473,11 @@ export default function LeadImport({
           <p style={{ margin: 0, color: 'var(--lf-viridian)' }}>
             {report.created} {many(report.created)} created.
           </p>
+          {report.updated > 0 && (
+            <p style={{ margin: '2px 0 0', color: 'var(--lf-viridian)' }}>
+              {report.updated} {many(report.updated)} updated.
+            </p>
+          )}
           {report.failed.length > 0 && (
             <>
               <p style={{ margin: '6px 0 2px', color: 'var(--lf-vermillion)' }}>
@@ -381,9 +492,19 @@ export default function LeadImport({
               </ul>
             </>
           )}
-          <button className="lf-btn lf-btn--secondary lf-btn--sm" style={{ marginTop: 8 }} onClick={reset}>
-            Import another file
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+            {[...refusedHere, ...report.failed].length > 0 && (
+              <button
+                className="lf-btn lf-btn--secondary lf-btn--sm"
+                onClick={() => downloadRejected([...refusedHere, ...report.failed])}
+              >
+                Download rejected rows
+              </button>
+            )}
+            <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={reset}>
+              Import another file
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -11,10 +11,10 @@ Paths below are under `apps/web/`.
 
 | Module | Folder under `src/app/(workspace)/[workspaceSlug]/` | Screens | Covers |
 |---|---|---|---|
-| Sales | `sales/` | 75 | leads (spreadsheet import, close-out), contacts, accounts, opportunities, tasks, follow-ups; calls with AI coaching, analysis and audits; campaigns, inbox, forms, landing pages, social leads; dashboards, leadership (productivity, value, daily target); projects, listings, bookings, collections, commissions, proposals, portals |
+| Sales | `sales/` | 76 | leads (spreadsheet import with a dry run, close-out, merge), contacts, accounts, opportunities, tasks, follow-ups; calls with AI coaching, analysis and audits; campaigns, inbox, forms, landing pages, social leads; dashboards, leadership (productivity, value, daily target); projects, listings, bookings, collections, commissions, proposals, portals |
 | HRMS | `people/` | 32 | employees, users, roles, departments; face check-in, attendance, shifts, roster, leave, overtime; payroll, payslips, WPS; recruitment, performance, documents, compliance |
-| Real Estate | `realty/` | 41 | the Sales property screens as a brokerage works them, plus Properties, allocation (data pool), events with QR passes, lead recycling, website forms and landing pages |
-| Lead Eagle | `lead-eagle/` | 30 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads (a grid or a board by stage, filter chips, each person's saved views), follow-ups, tasks, calendar, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle, Google Ads lead forms, any other sender through a signed Custom webhook, and the portals’ lead emails through Portal emails, posted by a mail service the workspace runs (Admin → Integrations → Lead sources; any lead module), each with a Deliveries tab (outcome, Replay) and a field mapping (`/admin/lead-sources/{source}`), and a lead can be recorded as a Referral with its referrer. A WhatsApp message from a number no lead, contact or user holds, and a call from such a number, become leads for distribution (switches on the WhatsApp Business and telephony cards: on by default in Lead Eagle, and for callers in every lead module). Every lead module also has the Calendar, QR Capture, Cold Data, Targets, website forms and landing pages (public `/f/{ws}/{key}` and `/l/{ws}/{slug}`; `/embed.js` frames a form on the brokerage's own site), and Lead Stages, Sources (the source and sub-source catalogue, each entry's starting score, and the score decay) and Custom Fields under Administration → Settings; and on the lead page a requirement, interest links to projects and listings, and the workspace's custom fields. Every lead-list row and the lead page log a call in one step (outcome, note, the next follow-up); the lead page has a paged timeline of activity, stage moves, field edits, assignments, calls and messages, its done follow-ups, and the stock its requirement matches. The board (Real Estate's, re-exported) counts, under the viewer's scope and on the workspace's clock, new, unassigned and untouched leads, overdue and due follow-ups and today's callbacks, leads in the meeting stages, conversion, leads by source and by stage, received against worked over 14 days, the week's follow-ups, the last 7 days' calls and an agent leaderboard; each tile, bar and day opens the list of what it counted (the Calls panel and the leaderboard's figures not yet: M3-18) |
+| Real Estate | `realty/` | 42 | the Sales property screens as a brokerage works them, plus Properties, allocation (data pool), events with QR passes, lead recycling, website forms and landing pages |
+| Lead Eagle | `lead-eagle/` | 31 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads (a grid or a board by stage, filter chips, each person's saved views), follow-ups, tasks, calendar, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle, Google Ads lead forms, any other sender through a signed Custom webhook, and the portals’ lead emails through Portal emails, posted by a mail service the workspace runs (Admin → Integrations → Lead sources; any lead module), each with a Deliveries tab (outcome, Replay) and a field mapping (`/admin/lead-sources/{source}`), and a lead can be recorded as a Referral with its referrer. A WhatsApp message from a number no lead, contact or user holds, and a call from such a number, become leads for distribution (switches on the WhatsApp Business and telephony cards: on by default in Lead Eagle, and for callers in every lead module). Every lead module also has the Calendar, QR Capture, Cold Data, Targets, website forms and landing pages (public `/f/{ws}/{key}` and `/l/{ws}/{slug}`; `/embed.js` frames a form on the brokerage's own site), and Lead Stages, Sources (the source and sub-source catalogue, each entry's starting score, and the score decay) and Custom Fields under Administration → Settings; and on the lead page a requirement, interest links to projects and listings, and the workspace's custom fields. Every lead-list row and the lead page log a call in one step (outcome, note, the next follow-up); the lead page has a paged timeline of activity, stage moves, field edits, assignments, calls and messages, its done follow-ups, and the stock its requirement matches. Two leads merge into one from a compare screen (`/leads/{id}/merge?with={other}`, from the lead page's duplicate notice or Merge with two selected); the merged-away lead's page names the lead it went into. The spreadsheet import can update the leads it matches, be checked first without saving (a dry run) and hand back its refused rows as a CSV. The board (Real Estate's, re-exported) counts, under the viewer's scope and on the workspace's clock, new, unassigned and untouched leads, overdue and due follow-ups and today's callbacks, leads in the meeting stages, conversion, leads by source and by stage, received against worked over 14 days, the week's follow-ups, the last 7 days' calls and an agent leaderboard; each tile, bar and day opens the list of what it counted (the Calls panel and the leaderboard's figures not yet: M3-18) |
 
 Outside the modules: `check-in` and `attendance` (every workspace), `admin/`
 (users, roles, work locations, settings, audit), `profile/`, and the platform
@@ -38,7 +38,11 @@ Node 22 or newer (CI uses 24).
   with no tenant set, where row-level security returns nothing — a permission
   or field rule read that way silently reads as "no rule". The same guard
   hides soft-deleted rows only of the model queried: an `include` of a model
-  with `deletedAt` filters it itself.
+  with `deletedAt` filters it itself. Outside `withTx` each query is its own
+  transaction on its own pooled connection, and the pool holds 10, so a page
+  reading many independent lists reads them in one
+  `withTx(tenantId, (tx) => Promise.all([...]))`.
+  `tests/sales/lead-page-connections.spec.ts` measures a page's peak.
 - **One record, several screens.** Real Estate reuses Sales' rows (`Lead`,
   `Call`, `SiteVisit`, `Booking`, `Project`, `Listing`, `UnitInventory`);
   `realty/` and `lead-eagle/` pages are one-line re-exports of `sales/` pages,
@@ -149,7 +153,16 @@ Node 22 or newer (CI uses 24).
   (`src/services/leads/createLead.ts`): a typed number is normalised and matched
   against the main number and every LeadPhone, whole numbers only for a role
   that sees them masked. A saved lead view is a personal `SmartView`
-  (`objectType` `LEAD_LIST`).
+  (`objectType` `LEAD_LIST`). The grid pages by keyset (`leadPage`:
+  Next carries `after`, Previous `before`, the boundary lead's id), as the list API
+  does (`cursorWhere`, `src/lib/api/pagination.ts`); a keyset bounds its sort
+  column so the index seeks to the page. Its bulk bar sends one request per
+  selected lead, each re-checked in scope: assign, stage, task, Add tag
+  (`addTags` on PATCH, added to the lead's own), close out, Move to Data
+  (`moveLeadToData`, `src/services/leads/coldData.ts`: a cold record on the
+  day's "From pipeline" list, the lead archived and its open follow-ups and
+  tasks cancelled; `mayMoveToData` also asks for the lead's numbers in full) and Delete with a
+  10-second Undo (`POST /api/v1/leads/{id}/restore`).
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
   P2002 answers 409 and P2025 404, a zod failure 422 — let the database say
   "already exists" or "not found" instead of reading first. `route()` honours
@@ -160,7 +173,8 @@ Node 22 or newer (CI uses 24).
   through the route's `auditEvent`, or `audit(ctx, …)`
   (`src/lib/security/audit.ts`) where the route cannot say enough. A write no
   person makes (a webhook, a worker) calls `audit({ tenantId, source }, …)` and
-  shows as System. Not all existing writes do yet; the known gaps are listed in
+  shows as System. A date or a list in a value is stored as one. Not all
+  existing writes do yet; the known gaps are listed in
   `changes/2026-10-11-report-export-audit.md`. A file out of the building needs
   EXPORT, not VIEW, and writes `EXPORT_REQUESTED`.
 - **Attendance is not HR.** Check-in, the attendance record and attendance
@@ -183,6 +197,7 @@ From `apps/web`:
 |---|---|
 | Unit and integration (needs Postgres and Redis) | `npx vitest run [files]` |
 | Specs that drive a running server | `npm run test:server` |
+| Measurements, never CI: `tests/perf`, against a scratch database | `PERF_100K=yes npx vitest run --config vitest.perf.mts -t seed` (then `-t timing`, `-t sql`, `-t cleanup`) |
 | Browser | `npx playwright test`; the demo-workspace specs need `E2E_DEMO_SLUG`, `E2E_DEMO_EMAIL`, `E2E_DEMO_PASSWORD` |
 | Types, lint, format | `npx tsc --noEmit`, `npm run lint`, `npm run format:check` |
 | Production build | `npx next build`, with `NODE_ENV` unset — `development` breaks prerendering |

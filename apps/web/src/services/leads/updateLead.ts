@@ -9,7 +9,7 @@ import { notifyCrm } from '../crm/notify';
 import { recordTargetProgress } from '../targets/progress';
 import { dayBounds } from '../targets/dailyBoard';
 import { BOOKING_FIELDS } from '@/lib/leads/stageBookings';
-import { withRecompute } from './nextFollowUp';
+import { lockLeads, withRecompute } from './nextFollowUp';
 import { findDuplicates } from './findDuplicates';
 import { assertLeadSource } from './leadSources';
 import { withCustomValues } from './customFields';
@@ -31,6 +31,8 @@ export interface UpdateLeadInput {
   campaignName?: string | null;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   tags?: string[];
+  /** Tags to add to the ones the lead has (the grid's bulk Add tag, M4-35). */
+  addTags?: string[];
   stageId?: string;
   /** Why it moves: required when the target stage says so. */
   stageReason?: string;
@@ -50,14 +52,18 @@ export interface UpdateLeadInput {
  * Same visibility-then-mutate shape as every write in the platform: load the row
  * inside the transaction, re-check visibility there (a list-only check is an IDOR),
  * diff for the audit log, then hand off owner/stage side effects to the queues.
+ *
+ * `dryRun`: run inside that transaction, which the caller rolls back (the
+ * import's dry run, M4-42), with nothing after commit, since nothing commits.
  */
-export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
+export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput, opts: { dryRun?: TxClient } = {}) {
+  const db = opts.dryRun ?? prisma;
   if (!can(ctx, 'leads', 'ASSIGN') && !can(ctx, 'leads', 'REASSIGN')) {
     delete input.ownerId;
     delete input.secondaryOwnerId;
   }
-  if (input.sourceId) await assertLeadSource(prisma, ctx.tenantId, input.sourceId);
-  await refuseDuplicate(ctx, id, input);
+  if (input.sourceId) await assertLeadSource(db, ctx.tenantId, input.sourceId);
+  await refuseDuplicate(ctx, id, input, db);
 
   /**
    * What actually changed, carried out of the transaction so the notifications
@@ -77,7 +83,10 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
   let previousOwnerId: string | null = null;
   let ownerChanged = false;
 
-  const updated = await withTx(ctx.tenantId, async (tx) => {
+  const inTx = <T>(fn: (tx: TxClient) => Promise<T>) => (opts.dryRun ? fn(opts.dryRun) : withTx(ctx.tenantId, fn));
+  const updated = await inTx(async (tx) => {
+    // Tags are added to the row as it stands: locked first, so two adds at once both land.
+    if (input.addTags) await lockLeads(tx, ctx.tenantId, [id]);
     const before = await assertLeadInScope(ctx, id, tx, 'EDIT');
     // The new owner: someone the scope of the action that allows the change reaches.
     const action = can(ctx, 'leads', 'ASSIGN') ? 'ASSIGN' : 'REASSIGN';
@@ -95,6 +104,10 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
     if (input.secondaryOwnerId && input.secondaryOwnerId !== before.secondaryOwnerId) {
       await assertAssignableUser(ctx, tx, 'leads', action, input.secondaryOwnerId);
     }
+
+    // Added to the row as it stands, so a stale list on the screen removes nothing.
+    const tags = input.addTags ? [...new Set([...(input.tags ?? before.tags), ...input.addTags])] : input.tags;
+    if (tags && tags.length > 20) refuse('tags', 'A lead holds at most 20 tags.');
 
     // Each one a field of this workspace, checked by its type, after the scope
     // check above and before the stage's requirements below.
@@ -176,7 +189,7 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
         ...(input.sourceId !== undefined && { sourceId: input.sourceId }),
         ...(input.campaignName !== undefined && { campaignName: input.campaignName }),
         ...(input.priority !== undefined && { priority: input.priority }),
-        ...(input.tags !== undefined && { tags: input.tags }),
+        ...(tags !== undefined && { tags }),
         ...(input.notes !== undefined && { notes: input.notes }),
         ...(input.stageId !== undefined && { stageId: input.stageId }),
         ...(enteredReason !== undefined && { stageReason: enteredReason }),
@@ -189,6 +202,7 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
     await auditDiff(ctx, 'lead', id, before, after, tx);
     return after;
   });
+  if (opts.dryRun) return updated;
 
   await enqueue('automation', 'trigger', {
     tenantId: ctx.tenantId,
@@ -256,6 +270,47 @@ export async function deleteLead(ctx: Ctx, id: string) {
     });
     await auditDiff(ctx, 'lead', id, before, { ...before, deletedAt: new Date() }, tx);
   });
+}
+
+/**
+ * The grid's Undo of a delete (M4-36): the lead returns to every list it left.
+ * Reached under the delete's own scope; a lead that is not deleted, or not
+ * the caller's to delete, answers 404. One whose number or email another lead
+ * took meanwhile answers 409, as creating it again would (`createLead`). A
+ * merged lead is not a deleted one (its work went to the kept lead): 404.
+ */
+export async function restoreLead(ctx: Ctx, id: string) {
+  // Before the transaction, as `refuseDuplicate`: findDuplicates reads on its own connection.
+  const deleted = await assertLeadInScope(ctx, id, prisma, 'DELETE', { deleted: true });
+  if (deleted.isMerged) throw NotFound('Lead');
+  const [match] = await findDuplicates(ctx.tenantId, {
+    phoneNormalized: deleted.phoneNormalized,
+    email: deleted.email,
+    fullName: deleted.fullName,
+    ignoreNameOnly: true,
+    excludeId: id,
+  });
+  if (match) throw Conflict(`A lead with this ${match.matchedOn} was added since (${match.reference}).`);
+  await withTx(ctx.tenantId, async (tx) => {
+    const before = await assertLeadInScope(ctx, id, tx, 'DELETE', { deleted: true });
+    await tx.lead.update({
+      where: { tenantId: ctx.tenantId, id },
+      data: { deletedAt: null, updatedById: ctx.actor.id },
+    });
+    await audit(
+      ctx,
+      {
+        event: 'RECORD_RESTORED',
+        objectType: 'lead',
+        recordId: id,
+        fieldKey: 'deletedAt',
+        previousValue: before.deletedAt,
+        newValue: null,
+      },
+      tx,
+    );
+  });
+  return { id, restored: true };
 }
 
 /**
@@ -390,16 +445,17 @@ function instant(field: string, value: unknown, timeZone: string): Date {
  * create; a rule on the name alone does not, since the edit did not change it.
  * Also the check for a number added under "Other numbers" (leads/[id]/phones).
  * Outside the transaction, as create's is: the duplicate rules read through the
- * global client. A lead outside the caller's scope answers 404 first, never the
- * 409 that would confirm it exists.
+ * global client (the import's dry run passes its `tx`). A lead outside the
+ * caller's scope answers 404 first, never the 409 that would confirm it exists.
  */
 export async function refuseDuplicate(
   ctx: Ctx,
   id: string,
   input: Pick<UpdateLeadInput, 'phone' | 'email' | 'fullName'>,
+  db: TxClient | typeof prisma = prisma,
 ) {
   if (input.phone === undefined && input.email === undefined) return;
-  const current = await assertLeadInScope(ctx, id, prisma, 'EDIT');
+  const current = await assertLeadInScope(ctx, id, db, 'EDIT');
   const phoneNormalized = input.phone !== undefined ? normalizePhone(input.phone) : null;
   const email = input.email?.toLowerCase();
   const probe = {
@@ -407,12 +463,11 @@ export async function refuseDuplicate(
     email: email && email !== current.email ? email : null,
   };
   if (!probe.phoneNormalized && !probe.email) return;
-  const [match] = await findDuplicates(ctx.tenantId, {
-    ...probe,
-    fullName: input.fullName ?? current.fullName,
-    ignoreNameOnly: true,
-    excludeId: id,
-  });
+  const [match] = await findDuplicates(
+    ctx.tenantId,
+    { ...probe, fullName: input.fullName ?? current.fullName, ignoreNameOnly: true, excludeId: id },
+    db,
+  );
   if (match) throw Conflict(`A lead with this ${match.matchedOn} already exists (${match.reference}).`);
 }
 

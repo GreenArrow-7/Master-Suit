@@ -16,6 +16,8 @@ import { prisma } from '@/lib/db';
 import { leadSearch, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { bookableProjects } from '@/services/leads/updateLead';
+import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
+import { mayMoveToData } from '@/services/leads/coldData';
 import LeadGrid from '../leads/LeadGrid';
 import EmptyState from '@/components/ui/EmptyState';
 import ViewSidebar from './ViewSidebar';
@@ -181,7 +183,9 @@ export default async function SmartViewsPage({
   // "cold" view's filter *is* an `OR`, and so is `scope`'s ownership
   // restriction. See lib/api/where.ts — this was the one place the leak needed
   // no crafted request at all, only the button.
-  const where = mergeWhere(scope, filterWhere, search);
+  // Closed-out leads (archived, moved to Cold Data, invalid, duplicate) leave every
+  // working list, as on the leads list; no view filter can ask for them.
+  const where = mergeWhere(scope, OPEN_LEADS_WHERE, filterWhere, search);
 
   const [rows, stages, counts, users, taskTypes, setting, timeZone] = await Promise.all([
     prisma.lead.findMany({
@@ -287,7 +291,8 @@ export default async function SmartViewsPage({
           </div>
         )}
 
-        {data.length === 0 ? (
+        {/* The grid stays mounted with no rows: a delete that empties the view keeps its Undo. */}
+        {data.length === 0 && (
           <div className="lf-card">
             <EmptyState
               title="No leads in this view"
@@ -295,21 +300,21 @@ export default async function SmartViewsPage({
               icon="◇"
             />
           </div>
-        ) : (
-          <LeadGrid
-            rows={data as any}
-            columns={columns}
-            stages={stages}
-            projects={projects}
-            users={users}
-            taskTypes={taskTypes}
-            canAssign={can(ctx, 'leads', 'ASSIGN')}
-            canEdit={can(ctx, 'leads', 'EDIT')}
-            canDelete={can(ctx, 'leads', 'DELETE')}
-            emptyLabel={emptyFollowUpLabel(access, 'scope', ctx.actor.id)}
-            timeZone={timeZone}
-          />
         )}
+        <LeadGrid
+          rows={data as any}
+          columns={columns}
+          stages={stages}
+          projects={projects}
+          users={users}
+          taskTypes={taskTypes}
+          canAssign={can(ctx, 'leads', 'ASSIGN')}
+          canEdit={can(ctx, 'leads', 'EDIT')}
+          canDelete={can(ctx, 'leads', 'DELETE')}
+          canMoveToData={mayMoveToData(ctx, rules)}
+          emptyLabel={emptyFollowUpLabel(access, 'scope', ctx.actor.id)}
+          timeZone={timeZone}
+        />
       </div>
     </div>
   );

@@ -1697,6 +1697,11 @@ a:hover {
   cursor: pointer;
   font: 600 var(--lf-text-sm)/1 var(--lf-font-ui);
 }
+/* The toast is midnight in every theme; --lf-wine-300 turns dark in the dark
+   one (2.4:1 there). The accent made for dark chrome reads in both. */
+.lf-toast .lf-toast__action {
+  color: var(--yh-cyan);
+}
 /* The offline outbox's notice (components/workspace/OfflineBanner): where the
    person is, not at the top of a long screen; above the phone's tab bar. */
 .lf-outbox {

@@ -95,7 +95,7 @@ export const PATCH = route(
 
       // Publishing is the one transition with a precondition outside this table.
       if ((body.status === 'ACTIVE' || body.status === 'UNDER_OFFER') && existing.status !== body.status) {
-        await assertMarketable(ctx.tenantId, params.id);
+        await assertMarketable(tx, ctx.tenantId, params.id);
       }
 
       return tx.listing.update({

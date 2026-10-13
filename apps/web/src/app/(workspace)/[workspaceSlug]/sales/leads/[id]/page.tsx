@@ -1,14 +1,16 @@
 import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
+import type { Ctx } from '@/lib/security/rbac';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { assertRecordVisible, visibilityWhere } from '@/lib/security/visibility';
 import { assignableUsers, leadReach, leadScope, ownerReach, workListScope } from '@/lib/security/record-scope';
 import { emptyFollowUpLabel, obligationAccess, OPEN_STATUSES, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import { loadFieldRules, applyFieldSecurity, seesField } from '@/lib/security/fieldSecurity';
 import { can, scopeFor } from '@/lib/security/rbac';
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import { asLeadPhone, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { bookableProjects } from '@/services/leads/updateLead';
+import { findDuplicates } from '@/services/leads/findDuplicates';
 import { leadSourceText, listLeadSources } from '@/services/leads/leadSources';
 import { openRequirement, requirementForPage } from '@/services/leads/requirement';
 import { fieldForScreen, leadFields } from '@/services/leads/customFields';
@@ -92,70 +94,73 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
   const [
     lead,
-    stages,
-    activityTypes,
-    taskTypes,
+    [stages, activityTypes, taskTypes, sources, fields, projectOptions, listingOptions],
     tenantUsers,
     rules,
-    sources,
     requirement,
     timeZone,
-    fields,
-    projectOptions,
-    listingOptions,
   ] = await Promise.all([
     leadPromise,
-    prisma.leadStage.findMany({
-      where: { tenantId: ctx.tenantId, deletedAt: null },
-      orderBy: { position: 'asc' },
-      select: {
-        id: true,
-        key: true,
-        name: true,
-        category: true,
-        requiresReason: true,
-        reasons: true,
-        requiredFields: true,
-      },
-    }),
-    prisma.activityType.findMany({
-      where: { tenantId: ctx.tenantId, isActive: true },
-      orderBy: { position: 'asc' },
-      select: { id: true, name: true, key: true },
-    }),
-    prisma.taskType.findMany({
-      where: { tenantId: ctx.tenantId, isActive: true },
-      select: { id: true, name: true, key: true },
-    }),
+    // The workspace's lists through one tenant transaction, so one connection:
+    // each read on its own is a pinned transaction on its own connection
+    // (lib/db.ts runPinned), and the page asked the pool for more than it holds
+    // (P2028). Only `tx` inside: the global client there runs without the tenant.
+    withTx(ctx.tenantId, (tx) =>
+      Promise.all([
+        tx.leadStage.findMany({
+          where: { tenantId: ctx.tenantId, deletedAt: null },
+          orderBy: { position: 'asc' },
+          select: {
+            id: true,
+            key: true,
+            name: true,
+            category: true,
+            requiresReason: true,
+            reasons: true,
+            requiredFields: true,
+          },
+        }),
+        tx.activityType.findMany({
+          where: { tenantId: ctx.tenantId, isActive: true },
+          orderBy: { position: 'asc' },
+          select: { id: true, name: true, key: true },
+        }),
+        tx.taskType.findMany({
+          where: { tenantId: ctx.tenantId, isActive: true },
+          select: { id: true, name: true, key: true },
+        }),
+        listLeadSources(tx, ctx.tenantId),
+        leadFields(tx, ctx.tenantId, { activeOnly: true }),
+        // The interest pickers offer what the viewer can see (M4-06).
+        // ponytail: the first 300 by name or newest; a search box when books outgrow a select.
+        seesProjects
+          ? tx.project.findMany({
+              where: { tenantId: ctx.tenantId, deletedAt: null },
+              orderBy: { name: 'asc' },
+              take: 300,
+              select: { id: true, name: true },
+            })
+          : null,
+        seesListings
+          ? tx.listing.findMany({
+              where: { tenantId: ctx.tenantId, deletedAt: null },
+              orderBy: { updatedAt: 'desc' },
+              take: 300,
+              select: { id: true, reference: true, title: true },
+            })
+          : null,
+      ]),
+    ),
     // The owner menu offers whom updateLead accepts.
     assignableUsers(ctx, 'leads', can(ctx, 'leads', 'ASSIGN') ? 'ASSIGN' : 'REASSIGN'),
     loadFieldRules(ctx, 'LEAD'),
-    listLeadSources(prisma, ctx.tenantId),
     // Read only once the lead is in reach: it is the lead's, scoped like it (M4-05).
     leadPromise.then((found) => (found ? openRequirement(prisma, ctx.tenantId, found.id) : null)),
     workspaceTimezone(ctx),
-    leadFields(prisma, ctx.tenantId, { activeOnly: true }),
-    // The interest pickers offer what the viewer can see (M4-06).
-    // ponytail: the first 300 by name or newest; a search box when books outgrow a select.
-    seesProjects
-      ? prisma.project.findMany({
-          where: { tenantId: ctx.tenantId, deletedAt: null },
-          orderBy: { name: 'asc' },
-          take: 300,
-          select: { id: true, name: true },
-        })
-      : null,
-    seesListings
-      ? prisma.listing.findMany({
-          where: { tenantId: ctx.tenantId, deletedAt: null },
-          orderBy: { updatedAt: 'desc' },
-          take: 300,
-          select: { id: true, reference: true, title: true },
-        })
-      : null,
   ]);
-  if (!lead) notFound();
+  if (!lead) return mergedInto(scope, id);
   const projects = await bookableProjects(ctx, stages);
+  const duplicates = can(ctx, 'leads', 'EDIT') ? await mergeable(ctx, lead) : [];
   const customData = (lead.customData ?? {}) as Record<string, unknown>;
   // The register's page lists the listings that match; offered only where the viewer may open it.
   const opensRequirement =
@@ -167,46 +172,51 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
   // What it is owed and what was done (M4-47): its open follow-ups beside the
   // open tasks, and the last 10 done of either, newest first.
-  const [timeline, openFollowUps, doneTasks, doneFollowUps, completes, logs, matched] = await Promise.all([
+  const [timeline, [openFollowUps, doneTasks, doneFollowUps], completes, logs, matched] = await Promise.all([
     leadTimeline(ctx, lead.id),
-    prisma.followUpTask.findMany({
-      where: {
-        ...followUpScope,
-        tenantId: ctx.tenantId,
-        leadId: lead.id,
-        deletedAt: null,
-        status: { in: [...OPEN_STATUSES] },
-      },
-      orderBy: { dueAt: 'asc' },
-      take: 20,
-      select: { id: true, title: true, dueAt: true, ownerId: true },
-    }),
-    prisma.task.findMany({
-      where: {
-        ...taskScope,
-        tenantId: ctx.tenantId,
-        leadId: lead.id,
-        deletedAt: null,
-        status: 'COMPLETED',
-        completedAt: { not: null },
-      },
-      orderBy: { completedAt: 'desc' },
-      take: 10,
-      select: { id: true, title: true, completedAt: true },
-    }),
-    prisma.followUpTask.findMany({
-      where: {
-        ...followUpScope,
-        tenantId: ctx.tenantId,
-        leadId: lead.id,
-        deletedAt: null,
-        status: 'COMPLETED',
-        completedAt: { not: null },
-      },
-      orderBy: { completedAt: 'desc' },
-      take: 10,
-      select: { id: true, title: true, completedAt: true },
-    }),
+    // One transaction, as the lists above.
+    withTx(ctx.tenantId, (tx) =>
+      Promise.all([
+        tx.followUpTask.findMany({
+          where: {
+            ...followUpScope,
+            tenantId: ctx.tenantId,
+            leadId: lead.id,
+            deletedAt: null,
+            status: { in: [...OPEN_STATUSES] },
+          },
+          orderBy: { dueAt: 'asc' },
+          take: 20,
+          select: { id: true, title: true, dueAt: true, ownerId: true },
+        }),
+        tx.task.findMany({
+          where: {
+            ...taskScope,
+            tenantId: ctx.tenantId,
+            leadId: lead.id,
+            deletedAt: null,
+            status: 'COMPLETED',
+            completedAt: { not: null },
+          },
+          orderBy: { completedAt: 'desc' },
+          take: 10,
+          select: { id: true, title: true, completedAt: true },
+        }),
+        tx.followUpTask.findMany({
+          where: {
+            ...followUpScope,
+            tenantId: ctx.tenantId,
+            leadId: lead.id,
+            deletedAt: null,
+            status: 'COMPLETED',
+            completedAt: { not: null },
+          },
+          orderBy: { completedAt: 'desc' },
+          take: 10,
+          select: { id: true, title: true, completedAt: true },
+        }),
+      ]),
+    ),
     // Complete is offered where PATCH /follow-ups/{id} takes it.
     ownerReach(ctx, 'leads', 'EDIT'),
     // Log call is offered where POST /leads/{id}/call-log takes it.
@@ -348,6 +358,24 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         slaDueAt={lead.slaDueAt}
       />
 
+      {duplicates.map((other) => (
+        <div
+          key={other.id}
+          className="lf-alert"
+          data-tone="brass"
+          role="status"
+          style={{ flexWrap: 'wrap', alignItems: 'center', marginBottom: 'var(--lf-space-3)' }}
+        >
+          <span>
+            May be the same person as {other.reference} · {other.fullName} (same{' '}
+            {other.matchedOn.replace('phoneNormalized', 'number').replace('fullName', 'name')}).
+          </span>
+          <SalesLink href={`/leads/${lead.id}/merge?with=${other.id}`} style={{ fontWeight: 600 }}>
+            Compare and merge
+          </SalesLink>
+        </div>
+      ))}
+
       <LeadDetail
         lead={serializedLead}
         stages={stages}
@@ -372,6 +400,83 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         // administrator is granted `documents:DELETE`.
         canDeleteDocuments={can(ctx, 'documents', 'DELETE')}
       />
+    </>
+  );
+}
+
+/**
+ * The leads the duplicate rules match this one with (`findDuplicates`, as on
+ * create), each offered for a merge (M4-31): only where the viewer could merge
+ * them, as the merge itself requires (`assertMayMerge`): this lead and the match
+ * in their EDIT scope, an unassigned one only to a claimer, and another owner's
+ * only to a role that may reassign. (Whether the kept lead's owner is in that
+ * role's reach is left to the merge: it says so if not.)
+ */
+async function mergeable(
+  ctx: Ctx,
+  lead: {
+    id: string;
+    email: string | null;
+    phoneNormalized: string | null;
+    fullName: string;
+    phones: { normalized: string }[];
+  },
+) {
+  const matches = await findDuplicates(ctx.tenantId, {
+    email: lead.email,
+    phoneNormalized: lead.phoneNormalized,
+    otherPhones: lead.phones.map((phone) => phone.normalized),
+    fullName: lead.fullName,
+    excludeId: lead.id,
+  });
+  if (!matches.length) return [];
+  const reach = await prisma.lead.findMany({
+    where: {
+      ...(await leadScope(ctx, 'EDIT', { includeUnassigned: true })),
+      id: { in: [lead.id, ...matches.map((match) => match.id)] },
+    },
+    select: { id: true, ownerId: true },
+  });
+  const self = reach.find((row) => row.id === lead.id);
+  if (!self) return [];
+  const reassigns = can(ctx, 'leads', 'ASSIGN') || can(ctx, 'leads', 'REASSIGN');
+  return matches.filter((match) =>
+    reach.some((row) => row.id === match.id && (reassigns || row.ownerId === self.ownerId)),
+  );
+}
+
+/**
+ * A lead merged into another (M4-31) keeps its page: it names the lead it went
+ * into, for whoever could open it before. Anything else is not found.
+ */
+async function mergedInto(scope: Record<string, unknown>, id: string) {
+  const merged = await prisma.lead.findFirst({
+    where: { ...scope, id, isMerged: true, deletedAt: { not: null } },
+    select: { reference: true, duplicateOfId: true },
+  });
+  if (!merged) notFound();
+  const into = merged.duplicateOfId
+    ? await prisma.lead.findFirst({
+        where: { ...scope, id: merged.duplicateOfId },
+        select: { id: true, reference: true, fullName: true },
+      })
+    : null;
+  return (
+    <>
+      <SalesLink href="/leads" style={{ fontSize: 'var(--lf-text-sm)' }}>
+        &larr; Leads
+      </SalesLink>
+      <div className="lf-card" role="status" style={{ marginTop: 'var(--lf-space-3)' }}>
+        {merged.reference} was merged into{' '}
+        {into ? (
+          <SalesLink href={`/leads/${into.id}`}>
+            {into.reference} · {into.fullName}
+          </SalesLink>
+        ) : (
+          'a lead you cannot open'
+        )}
+        .
+      </div>
     </>
   );
 }
