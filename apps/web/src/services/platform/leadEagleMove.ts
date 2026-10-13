@@ -34,6 +34,7 @@ import type {
 import { prisma, withPlatformTx } from '@/lib/db';
 import { platformAudit } from '@/lib/security/audit';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
+import { isFollowUpKind } from '@/lib/leads/followUpDue';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { nextReference } from '@/services/shared/reference';
 import { dayBounds } from '@/services/targets/dailyBoard';
@@ -614,6 +615,8 @@ export async function moveCompany(
               leadId,
               ownerId: ownerId ?? fallback.id,
               title: f.type.charAt(0) + f.type.slice(1).toLowerCase().replace(/_/g, ' '),
+              // A call, meeting or site visit keeps its kind (the board's Callbacks are the calls).
+              kind: isFollowUpKind(f.type) ? f.type : 'OTHER',
               description: f.note,
               dueAt: date(f.dueAt)!,
               status,
