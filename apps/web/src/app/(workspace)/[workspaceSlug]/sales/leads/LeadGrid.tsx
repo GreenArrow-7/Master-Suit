@@ -1,12 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
 import { DateTimeInput } from '@/components/forms/DateInput';
 import SalesLink from '@/components/workspace/SalesLink';
 import { columnPriority, type ColumnDef } from '@/lib/grid/columns';
 import { summarizeBulk, type BulkFailure, type BulkOutcome } from '@/lib/grid/bulkOutcomes';
+import { parseTags } from '@/lib/leads/tags';
 import RowDetails from '@/components/workspace/RowDetails';
 import StageReason, { asksBeforeMove, type ReasonedStage, type StageMove } from '@/components/workspace/StageReason';
 import { dialable } from '@/components/workspace/CallLink';
@@ -41,7 +42,7 @@ export type SortKey = 'fullName' | 'score' | 'updatedAt' | 'nextFollowUpAt';
 export type GridSort = { key: SortKey; dir: 'asc' | 'desc' } | null;
 const SORTABLE = new Set<string>(['fullName', 'score', 'updatedAt', 'nextFollowUpAt']);
 
-type BulkAction = 'assign' | 'stage' | 'task' | 'closeout';
+type BulkAction = 'assign' | 'stage' | 'task' | 'tag' | 'closeout';
 
 export default function LeadGrid({
   rows,
@@ -53,6 +54,7 @@ export default function LeadGrid({
   canAssign,
   canEdit,
   canDelete,
+  canMoveToData,
   canMessage = false,
   emptyLabel,
   sort: initialSort = { key: 'updatedAt', dir: 'desc' },
@@ -69,6 +71,8 @@ export default function LeadGrid({
   canEdit: boolean;
   /** `leads:DELETE`; the endpoint asserts it again whatever this renders. */
   canDelete: boolean;
+  /** `leads:CREATE` (the cold record) and `leads:EDIT` (the close-out); asserted again by the endpoint. */
+  canMoveToData: boolean;
   /** Send template (M4-38): `communications:CREATE`; the endpoint skips the leads it may not message. */
   canMessage?: boolean;
   /** What an empty follow-up cell says for this viewer. */
@@ -86,6 +90,27 @@ export default function LeadGrid({
   const [reasonFor, setReasonFor] = useState<ReasonedStage | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<BulkOutcome | null>(null);
+  /** The leads the last bulk delete removed, while their Undo stands; then what the Undo did. */
+  const [deleted, setDeleted] = useState<string[]>([]);
+  const [undoNote, setUndoNote] = useState('');
+  /** Focus or the pointer is on the toast: its 10 seconds wait. */
+  const [held, setHeld] = useState(false);
+  const undoButton = useRef<HTMLButtonElement>(null);
+
+  // Undo stands for 10 seconds (M4-36), counted while it is neither focused nor
+  // under the pointer; its outcome shows for as long.
+  useEffect(() => {
+    if ((!deleted.length && !undoNote) || held) return;
+    const timer = setTimeout(() => {
+      setDeleted([]);
+      setUndoNote('');
+    }, 10_000);
+    return () => clearTimeout(timer);
+  }, [deleted, undoNote, held]);
+  // The delete took the bulk bar, and the focused Delete with it: focus goes to Undo.
+  useEffect(() => {
+    if (deleted.length) undoButton.current?.focus();
+  }, [deleted]);
   /** The lead whose call is being logged (PROP-02.2): from its row, or on return from dialling it. */
   const [logFor, setLogFor] = useState<CallLogLead | null>(null);
   /** The leads a Send template is for, while its dialog is open. */
@@ -133,9 +158,9 @@ export default function LeadGrid({
 
   /**
    * Runs `send` for every selected lead, one independent request each, and
-   * reports each refusal with the server's own sentence.
+   * reports each refusal with the server's own sentence. Answers the ids that went through.
    */
-  async function run(send: (leadId: string) => Promise<Response>) {
+  async function run(send: (leadId: string) => Promise<Response>): Promise<string[]> {
     setBusy(true);
     setFailure(null);
     const ids = [...selected];
@@ -157,6 +182,7 @@ export default function LeadGrid({
       }),
     );
     setBusy(false);
+    const done = ids.filter((id) => !failures.some((f) => f.id === id));
     if (failures.length) {
       // The mini-form closes so the refusals show; choosing the stage again reopens it.
       setReasonFor(null);
@@ -165,12 +191,13 @@ export default function LeadGrid({
       setSelected(new Set(failures.map((f) => f.id)));
       setFailure(summarizeBulk(ids.length, failures, rows));
       router.refresh();
-      return;
+      return done;
     }
     setAction(null);
     setReasonFor(null);
     setSelected(new Set());
     router.refresh();
+    return done;
   }
 
   const post = (url: string, body: unknown, method = 'POST') =>
@@ -223,9 +250,44 @@ export default function LeadGrid({
    * lead had was one at a time behind "More" on the detail page. Soft delete: the row
    * keeps its history and leaves every list.
    */
-  const deleteSelected = () => {
+  const deleteSelected = async () => {
     if (!window.confirm(`Delete ${selected.size} lead(s)? They will no longer appear in any list.`)) return;
-    void run((leadId) => fetch(`/api/v1/leads/${leadId}`, { method: 'DELETE' }));
+    setUndoNote('');
+    setDeleted(await run((leadId) => fetch(`/api/v1/leads/${leadId}`, { method: 'DELETE' })));
+  };
+
+  /** Undo: each deleted lead back (POST …/restore, under the delete's own permission and scope). */
+  async function undoDelete() {
+    const ids = deleted;
+    setDeleted([]);
+    // The focused Undo is gone, and a removed element may never blur.
+    setHeld(false);
+    setBusy(true);
+    const answers = await Promise.all(
+      ids.map((id) => fetch(`/api/v1/leads/${id}/restore`, { method: 'POST' }).catch(() => null)),
+    );
+    setBusy(false);
+    const back = answers.filter((res) => res?.ok).length;
+    setUndoNote(
+      back === ids.length
+        ? `Restored ${back} lead${back === 1 ? '' : 's'}.`
+        : `${ids.length - back} of ${ids.length} could not be restored.`,
+    );
+    router.refresh();
+  }
+
+  /**
+   * Move to Data (M4-39): each lead becomes a contact on the day's "From
+   * pipeline" list in Cold Data, still its owner's, and is closed out of the lead lists.
+   */
+  const moveToData = () => {
+    if (
+      !window.confirm(
+        `Move ${selected.size} lead(s) to Cold Data? Each becomes a contact on today's "From pipeline" list and leaves the lead lists.`,
+      )
+    )
+      return;
+    void run((leadId) => post(`/api/v1/leads/${leadId}/move-to-data`, {}));
   };
 
   function header(column: ColumnDef) {
@@ -291,9 +353,22 @@ export default function LeadGrid({
             {canEdit && (
               <button
                 className="lf-btn lf-btn--sm lf-btn--secondary"
+                onClick={() => setAction(action === 'tag' ? null : 'tag')}
+              >
+                Add tag
+              </button>
+            )}
+            {canEdit && (
+              <button
+                className="lf-btn lf-btn--sm lf-btn--secondary"
                 onClick={() => setAction(action === 'closeout' ? null : 'closeout')}
               >
                 Close out
+              </button>
+            )}
+            {canMoveToData && (
+              <button className="lf-btn lf-btn--sm lf-btn--secondary" disabled={busy} onClick={moveToData}>
+                Move to Data
               </button>
             )}
             {canMessage && (
@@ -306,7 +381,7 @@ export default function LeadGrid({
                 className="lf-btn lf-btn--sm lf-btn--secondary"
                 style={{ color: 'var(--lf-vermillion)' }}
                 disabled={busy}
-                onClick={deleteSelected}
+                onClick={() => void deleteSelected()}
               >
                 Delete
               </button>
@@ -400,6 +475,26 @@ export default function LeadGrid({
                 </label>
               )}
 
+              {action === 'tag' && (
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const tags = parseTags(String(new FormData(event.currentTarget).get('tags')));
+                    // Added to each lead's own on the server: none is removed.
+                    if (tags.length) void run((leadId) => post(`/api/v1/leads/${leadId}`, { addTags: tags }, 'PATCH'));
+                  }}
+                  style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}
+                >
+                  <label style={{ fontSize: 'var(--lf-text-2xs)' }}>
+                    Tags to add
+                    <input className="lf-input" name="tags" required maxLength={800} placeholder="investor, vip" />
+                  </label>
+                  <button className="lf-btn lf-btn--sm" type="submit" disabled={busy}>
+                    {busy ? 'Adding…' : `Add to ${selected.size}`}
+                  </button>
+                </form>
+              )}
+
               {action === 'task' && (
                 <form
                   onSubmit={(event) => {
@@ -484,81 +579,114 @@ export default function LeadGrid({
         />
       )}
 
-      <div className="lf-grid-wrap" style={{ overflowX: 'auto' }}>
-        <table className="lf-grid">
-          <thead>
-            <tr>
-              <th style={{ width: 36 }}>
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  aria-label="Select all rows"
-                  onChange={() => setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)))}
-                />
-              </th>
-              {columns.map(header)}
-              <th>
-                <span className="lf-visually-hidden">Call</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((row) => (
-              <tr key={row.id} aria-selected={selected.has(row.id)}>
-                <td className="lf-grid__select" data-label="">
+      {/* Mounted empty, so the text put into it is announced. */}
+      <div role="status">
+        {(deleted.length > 0 || undoNote) && (
+          <div
+            className="lf-toast lf-outbox"
+            onFocus={() => setHeld(true)}
+            onBlur={() => setHeld(false)}
+            onMouseEnter={() => setHeld(true)}
+            onMouseLeave={() => setHeld(false)}
+          >
+            {deleted.length > 0 ? (
+              <div>
+                {deleted.length} lead{deleted.length === 1 ? '' : 's'} deleted.{' '}
+                <button
+                  ref={undoButton}
+                  type="button"
+                  className="lf-toast__action"
+                  disabled={busy}
+                  onClick={() => void undoDelete()}
+                >
+                  Undo
+                </button>
+              </div>
+            ) : (
+              <div>{undoNote}</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* With no rows the page shows its empty state; the grid stays mounted for the Undo above. */}
+      {rows.length > 0 && (
+        <div className="lf-grid-wrap" style={{ overflowX: 'auto' }}>
+          <table className="lf-grid">
+            <thead>
+              <tr>
+                <th style={{ width: 36 }}>
                   <input
                     type="checkbox"
-                    checked={selected.has(row.id)}
-                    onChange={() => toggle(row.id)}
-                    aria-label={`Select ${row.fullName}`}
+                    checked={allSelected}
+                    aria-label="Select all rows"
+                    onChange={() => setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)))}
                   />
-                </td>
-                {columns.map((column, index) => (
-                  <td
-                    key={column.key}
-                    className={column.key === 'reference' ? 'lf-sticky' : undefined}
-                    data-hide-mobile={column.hideMobile ? '' : undefined}
-                    data-label={column.label}
-                    data-priority={columnPriority(column, index, columns)}
-                    style={{ textAlign: column.align ?? 'left' }}
-                  >
-                    {leadCell(column.key, row, emptyLabel)}
-                  </td>
-                ))}
-                {/* Unlabelled, so it is a full-width line at the foot of the phone card. A
-                    masked number is not dialable, so it gets no tel: link. */}
-                <td className="lf-grid__actions" data-label="">
-                  <span style={{ display: 'flex', gap: 'var(--lf-space-2)', justifyContent: 'flex-end' }}>
-                    {dialable(row.phone) && (
-                      <a
-                        className="lf-btn lf-btn--secondary lf-btn--sm"
-                        href={`tel:${dialable(row.phone)}`}
-                        aria-label={`Call ${row.fullName}`}
-                        style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}
-                        onClick={() => row.canLog && dialled(row)}
-                      >
-                        Call
-                      </a>
-                    )}
-                    {row.canLog && (
-                      <button
-                        type="button"
-                        className="lf-btn lf-btn--secondary lf-btn--sm"
-                        aria-label={`Log call for ${row.fullName}`}
-                        style={{ whiteSpace: 'nowrap' }}
-                        onClick={() => setLogFor(row)}
-                      >
-                        Log call
-                      </button>
-                    )}
-                  </span>
-                </td>
-                <RowDetails />
+                </th>
+                {columns.map(header)}
+                <th>
+                  <span className="lf-visually-hidden">Call</span>
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {sorted.map((row) => (
+                <tr key={row.id} aria-selected={selected.has(row.id)}>
+                  <td className="lf-grid__select" data-label="">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(row.id)}
+                      onChange={() => toggle(row.id)}
+                      aria-label={`Select ${row.fullName}`}
+                    />
+                  </td>
+                  {columns.map((column, index) => (
+                    <td
+                      key={column.key}
+                      className={column.key === 'reference' ? 'lf-sticky' : undefined}
+                      data-hide-mobile={column.hideMobile ? '' : undefined}
+                      data-label={column.label}
+                      data-priority={columnPriority(column, index, columns)}
+                      style={{ textAlign: column.align ?? 'left' }}
+                    >
+                      {leadCell(column.key, row, emptyLabel)}
+                    </td>
+                  ))}
+                  {/* Unlabelled, so it is a full-width line at the foot of the phone card. A
+                      masked number is not dialable, so it gets no tel: link. */}
+                  <td className="lf-grid__actions" data-label="">
+                    <span style={{ display: 'flex', gap: 'var(--lf-space-2)', justifyContent: 'flex-end' }}>
+                      {dialable(row.phone) && (
+                        <a
+                          className="lf-btn lf-btn--secondary lf-btn--sm"
+                          href={`tel:${dialable(row.phone)}`}
+                          aria-label={`Call ${row.fullName}`}
+                          style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}
+                          onClick={() => row.canLog && dialled(row)}
+                        >
+                          Call
+                        </a>
+                      )}
+                      {row.canLog && (
+                        <button
+                          type="button"
+                          className="lf-btn lf-btn--secondary lf-btn--sm"
+                          aria-label={`Log call for ${row.fullName}`}
+                          style={{ whiteSpace: 'nowrap' }}
+                          onClick={() => setLogFor(row)}
+                        >
+                          Log call
+                        </button>
+                      )}
+                    </span>
+                  </td>
+                  <RowDetails />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       {logFor && (
         <CallLogDialog
           lead={logFor}

@@ -26,12 +26,17 @@ function decodeCursor(raw?: string): Cursor | null {
   }
 }
 
-/** Keyset predicate for a stable (updatedAt DESC, id DESC) ordering, from the query's cursor. */
+/**
+ * Keyset predicate for a stable (updatedAt DESC, id DESC) ordering, from the
+ * query's cursor. The `lte` bound selects nothing the OR does not; it is what
+ * lets an (…, updatedAt, id) index seek to the page, where the OR alone made
+ * Postgres filter from the first row (M4-20).
+ */
 export function cursorWhere(raw?: string) {
   const cursor = decodeCursor(raw);
   if (!cursor) return {};
   const at = new Date(cursor.updatedAt);
-  return { OR: [{ updatedAt: { lt: at } }, { updatedAt: at, id: { lt: cursor.id } }] };
+  return { updatedAt: { lte: at }, OR: [{ updatedAt: { lt: at } }, { updatedAt: at, id: { lt: cursor.id } }] };
 }
 
 export interface Page<T> {
