@@ -1,7 +1,8 @@
 # The lead grid tags, deletes with Undo and moves leads to Cold Data in bulk; it pages by keyset, measured at 100,000 leads
 
-**What.** Part 4E (bulk) of the Lead Eagle M4/M5/M6 build, stacked on
-`feat/lead-views-kanban-calendar-search` (round 3, PR open). In every lead
+**What.** Part 4E (bulk) of the Lead Eagle M4/M5/M6 build, built on
+`feat/lead-views-kanban-calendar-search` (since merged as #179) and merged
+with main after it and #178's Call / Log call cell. In every lead
 module's grid (Sales, Real Estate, Lead Eagle; Smart Views too), the bulk bar
 gains:
 
