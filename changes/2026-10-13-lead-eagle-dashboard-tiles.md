@@ -12,8 +12,8 @@ the list it opens, on the workspace's clock:
 - Calls (made, connected, talk time) and a Leaderboard for the last 7 days.
 
 Branch `feat/lead-eagle-dashboard-tiles`, from `origin/main` fa01771f, with
-main fe5ecc75 (#179) merged in. One additive migration,
-`20261015100000_lead_dashboard` (108 in all).
+main fe5ecc75 (#179) and then 6e2c0cc9 (#180, #183, #184, #181) merged in.
+One additive migration, `20261015100000_lead_dashboard` (108 in all).
 
 **Why.** Audit rows M3-01–M3-05 and M3-09–M3-15 of 11 Oct; the owner added
 M3 as round 5 on 12 Oct. Before this change:
@@ -74,6 +74,11 @@ M3 as round 5 on 12 Oct. Before this change:
   - The call log and a provider's completed call are contact, as before.
   - `api/v1/cold-data/[id]/convert` stamps it from the first cold call it
     moves onto the lead.
+  - Merging two leads (#181, `services/leads/merge.ts`) keeps the earlier
+    of the two first contacts on the kept lead. For a merge made before this
+    change, the backfill reads the kept lead's calls and activities, the
+    moved ones among them, and leaves the merged-away lead, which holds none,
+    empty. Merged and deleted leads are on no board figure (`deletedAt`).
 - `src/lib/leads/namedFilters.ts`: two named lead filters.
   - `untouched`: has an owner, never contacted, in an OPEN stage.
   - `won`: in a CONVERSION stage.
@@ -323,6 +328,33 @@ E2E on a fresh `.next` (dev server on 3400, stopped afterwards):
 - Before review (`r5-3a-e2e3`–`e2e5`): `workspace-summary-sample`, three
   runs, each with one failure outside this change (its own P2028 twice, the
   sign-in page under load once); run 3, 13 of 14.
+
+After merging main 6e2c0cc9 (#180, #183, #184, #181; logs
+`C:/ymw/logs/mu3a-*.log`):
+
+- No code conflicts. `changes/README.md` and `PROJECT.md` keep both sides;
+  the screen counts are the real `page.tsx` counts (76, 32, 42, 31).
+- 108 migrations, none pending. `tsc --noEmit` clean. eslint: no errors,
+  seven `no-explicit-any` warnings, none on a line this change wrote.
+  prettier clean.
+- The board, realty-dashboard, cold-call, next-follow-up,
+  lead-page-connections, lead-merge, lead-bulk-actions, lead-saved-views and
+  lead-calendar specs (`focused`): 9 files, 157 of 157.
+- `tests/sales`, `permission` and `tenant` (`broad`): 122 files, 2,008
+  passed, 12 skipped; 3 files failed under load: this board's drill-down
+  setup (P2028 creating its source catalogue), `fee-amendments` and
+  `provision-lead-work` (30 s timeouts). Alone, all three pass, 70 of 70
+  (`broad-rerun`).
+- A merge of two contacted leads, checked once on the rig with a throwaway
+  spec: the board then counts one lead (total, funnel, sources, received,
+  worked), the kept lead keeps the earlier first contact and a later touch
+  leaves it, and the backfill, run on that workspace, gives the kept lead
+  the earliest contact and leaves the merged-away lead empty.
+- E2E, each alone on a fresh `.next`: `lead-eagle-dashboard` 1 of 1,
+  `redesign-mobile` 3 of 3 (demo workspace), `lead-views-board` 5 of 5.
+  `workspace-summary-sample` 5 of 7: one case's console carried the page's
+  P2028 (`Unable to start a transaction`, among its parallel counts) and one
+  ended on the sign-in page, the known load failures above.
 
 Screens at 1280 px, and at 390 px in light and dark, were checked by eye,
 with each Received vs Worked bar its own link.
