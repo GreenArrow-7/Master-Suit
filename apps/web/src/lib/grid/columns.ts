@@ -40,6 +40,8 @@ export interface ColumnDef {
   byDefault?: boolean;
   /** Dropped from the mobile card layout, matching `data-hide-mobile`. */
   hideMobile?: boolean;
+  /** A custom DATE field (`cf:<key>`): its YYYY-MM-DD value is shown DD/MM/YYYY. */
+  date?: boolean;
   /**
    * The record's identity. On a phone a row becomes a card, and this column is
    * its title — rendered without a label, at heading weight — so a card reads
@@ -272,8 +274,9 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
  * that has never configured anything, and one whose configuration has gone stale,
  * both end up with a usable grid instead of an empty one.
  */
-export function resolveColumns(object: GridObject, stored: unknown): ColumnDef[] {
-  const catalogue = GRID_COLUMNS[object];
+/** `extra`: the workspace's own columns beside the catalogue (a lead's custom fields, `cf:<key>`). */
+export function resolveColumns(object: GridObject, stored: unknown, extra: ColumnDef[] = []): ColumnDef[] {
+  const catalogue = [...GRID_COLUMNS[object], ...extra];
   const byKey = new Map(catalogue.map((column) => [column.key, column]));
   const fixed = catalogue.filter((column) => column.fixed);
 

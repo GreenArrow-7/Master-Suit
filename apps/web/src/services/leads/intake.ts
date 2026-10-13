@@ -31,6 +31,8 @@ import {
 } from '@/lib/integrations/leadSources';
 import { findDuplicates } from './findDuplicates';
 import { leadSourceIdFor } from './leadSources';
+import { takeRequirement } from './requirement';
+import { withSourceScore } from './scoring';
 import { normalizePhone } from './normalizePhone';
 import { nextReference } from '../shared/reference';
 
@@ -120,10 +122,11 @@ export interface EnquiryOrigin {
 
 export async function takeEnquiry(
   tenantId: string,
-  enquiry: Pick<Enquiry, 'fullName' | 'email' | 'phones' | 'message' | 'reference' | 'details'> & {
-    /** A website form may ask for one; the portals never do. */
-    company?: string | null;
-  },
+  enquiry: Pick<Enquiry, 'fullName' | 'email' | 'phones' | 'message' | 'reference' | 'details'> &
+    Partial<Pick<Enquiry, 'requirement'>> & {
+      /** A website form may ask for one; the portals never do. */
+      company?: string | null;
+    },
   origin: EnquiryOrigin,
 ) {
   // [normalised, as typed], one per distinct number.
@@ -187,6 +190,8 @@ export async function takeEnquiry(
       });
       await addPhones(tx, tenantId, lead.id, numbers, lead.phoneNormalized ?? main?.[0], label);
       await timeline(tx, lead.id);
+      // What it wants, unless the lead already has an open search (M6-29).
+      await takeRequirement(tx, by, lead.id, enquiry.requirement, lead.ownerId);
       await audit(
         by,
         { event: 'RECORD_UPDATED', objectType: 'lead', recordId: lead.id, metadata: { action: 'lead.enquired_again' } },
@@ -234,7 +239,8 @@ export async function takeEnquiry(
         stageId: stage.id,
         source: recordSource,
         sourceDetail: origin.sourceDetail,
-        sourceId: origin.sourceId ?? null,
+        // The entry, and the points a lead from it starts with (M4-11).
+        ...(await withSourceScore(tx, tenantId, origin.sourceId)),
         // They asked to be contacted.
         consentStatus: 'IMPLIED',
         slaDueAt,
@@ -250,6 +256,8 @@ export async function takeEnquiry(
     await addPhones(tx, tenantId, lead.id, numbers, main?.[0], label);
     await tx.leadStageHistory.create({ data: { tenantId, leadId: lead.id, toStageId: stage.id } });
     await timeline(tx, lead.id);
+    // What it wants, as a requirement on the lead, not only as note text (M6-29).
+    await takeRequirement(tx, by, lead.id, enquiry.requirement, ownerId ?? null);
     await audit(by, { event: 'RECORD_CREATED', objectType: 'lead', recordId: lead.id }, tx);
     return lead;
   });

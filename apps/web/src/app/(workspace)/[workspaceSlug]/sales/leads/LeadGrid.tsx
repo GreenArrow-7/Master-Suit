@@ -20,6 +20,8 @@ export interface LeadRow {
   score: number;
   grade?: string | null;
   tags?: string[];
+  /** The custom-field columns' values, by column key (`cf:<key>`). */
+  custom?: Record<string, string | null>;
   priority: string;
   slaState: string;
   /** The viewer's own next obligation on this lead — never the lead-wide one. */
@@ -489,6 +491,7 @@ export default function LeadGrid({
 }
 
 export function leadCell(key: string, row: LeadRow, emptyLabel: string) {
+  if (key.startsWith('cf:')) return row.custom?.[key] ?? '—';
   switch (key) {
     case 'reference':
       return (
