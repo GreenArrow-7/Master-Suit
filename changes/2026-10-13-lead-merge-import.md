@@ -4,7 +4,7 @@
 Lead Eagle M4 Leads, M5 Cold data, M6 Lead intake", rows M4-31, M4-41, M4-42
 and M4-43, for every lead module. Branch `feat/lead-merge-import`, from `main`
 at f3d78ad9, merged up with `main` at fa01771f (#177, #178) after review, and
-again at fe5ecc75 (#179).
+again at fe5ecc75 (#179) and 4bb6078b (#180).
 
 - **Merge two leads (M4-31).** A lead's page names any lead the duplicate rules
   match it with ("May be the same person as LD-000124 · Sara (same number).
@@ -273,6 +273,15 @@ below are this change's design choices:
   5/5, `redesign-mobile` 3/3 (demo workspace). The compare screen's
   dark-theme check failed twice and passed on the third run: it read a card's
   colour inside the 180 ms theme fade, before a frame had run. It now polls.
+- **Merged up with `main` at 4bb6078b (#180).** Only `changes/README.md`
+  conflicted. The lead page takes #180's two transactions; its duplicate
+  notice and merged-lead lookup run after them, one query at a time, so they
+  add no fan-out. `tsc` clean; eslint 0 errors; prettier clean. Vitest:
+  `lead-page-connections` with the merge, import, timeline, call-log, search,
+  saved-view, Kanban and entitlement specs, 9 files, 120 passed (the
+  call-log and timeline files' `beforeAll` timed out together and passed
+  alone). E2E on a fresh `.next`: `lead-merge-import` 2/2, `redesign-mobile`
+  3/3.
 
 **Left open.**
 
