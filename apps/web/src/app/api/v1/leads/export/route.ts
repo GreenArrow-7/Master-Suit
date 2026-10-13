@@ -1,14 +1,10 @@
 import { LEAD_MODULES } from '@/lib/security/entitlements';
-import { mergeWhere } from '@/lib/api/where';
-import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
-import { SIMPLE_NAMED_LEAD_FILTERS } from '@/lib/leads/namedFilters';
 import { NextResponse } from 'next/server';
-import { z } from 'zod';
 
 import { env } from '@/lib/env';
 import { prismaRead } from '@/lib/db';
-import { leadScope } from '@/lib/security/record-scope';
-import { obligationAccess, obligationWhere, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
+import { scopedNextFollowUp } from '@/services/leads/nextFollowUp';
+import { leadListParams, leadListQuery } from '@/services/leads/leadList';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { audit } from '@/lib/security/audit';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
@@ -30,11 +26,11 @@ import { route } from '@/lib/api/handler';
  * only where a replica exists. See lib/db.ts.
  */
 
-const query = z.object({ filter: z.string().max(40).optional(), q: z.string().max(200).optional() }).strict();
-
-// Shared with the screen and the v1 list API. This copy had already drifted —
-// it was missing `mine` — which is what two copies of a map always do.
-const FILTERS = SIMPLE_NAMED_LEAD_FILTERS;
+// The grid's own URL (filter, search, chips, sort, a saved view's columns),
+// answered by the grid's own query, so the file is the list that was on screen.
+// Two copies of that query had already drifted: this one was missing `mine`,
+// then the follow-up filters and the phone search.
+const query = leadListParams.omit({ layout: true }).strict();
 
 /** RFC 4180: quote every field, double any embedded quote. Also blunts the
  *  spreadsheet formula-injection trick where a value starting =, +, - or @ is
@@ -49,7 +45,10 @@ function csvCell(value: unknown): string {
 export const GET = route(
   { module: 'leads', action: 'EXPORT', productModule: LEAD_MODULES, sessionOnly: true, query },
   async ({ ctx, query: params }) => {
-    const scope = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
+    const [setting, rules] = await Promise.all([
+      prismaRead.organizationSetting.findUnique({ where: { tenantId: ctx.tenantId }, select: { gridColumns: true } }),
+      loadFieldRules(ctx, 'LEAD'),
+    ]);
     /**
      * An export is an egress path, so it gets the same treatment as the screen.
      *
@@ -58,22 +57,9 @@ export const GET = route(
      * download the easiest way to read a colleague's schedule. Both the row filter
      * and the emitted date are the viewer's own derivation.
      */
-    const access = await obligationAccess(ctx, 'scope');
-    const extra =
-      params.filter === 'overdue'
-        ? (obligationWhere(access, 'overdue', new Date()) as Record<string, unknown>)
-        : params.filter && FILTERS[params.filter]
-          ? FILTERS[params.filter]!(new Date(), ctx.actor.id)
-          : {};
-    const search = params.q ? { fullName: { contains: params.q, mode: 'insensitive' as const } } : {};
+    const { where, access } = await leadListQuery(ctx, params, rules);
 
-    const where = mergeWhere(scope, extra, search, params.filter === 'closed_out' ? null : OPEN_LEADS_WHERE);
-    const [setting, rules] = await Promise.all([
-      prismaRead.organizationSetting.findUnique({ where: { tenantId: ctx.tenantId }, select: { gridColumns: true } }),
-      loadFieldRules(ctx, 'LEAD'),
-    ]);
-
-    const columns = resolveColumns('LEAD', storedColumnsFor(setting?.gridColumns, 'LEAD'));
+    const columns = resolveColumns('LEAD', params.cols?.split(',') ?? storedColumnsFor(setting?.gridColumns, 'LEAD'));
     const value = (row: Record<string, any>, key: string) => {
       switch (key) {
         case 'stage':
@@ -107,6 +93,9 @@ export const GET = route(
       async pull(controller) {
         const page = await prismaRead.lead.findMany({
           where,
+          // By id whatever the grid's sort: the cursor walks a key no edit
+          // changes, where an updatedAt walk would skip or repeat a lead edited
+          // while the file streams.
           orderBy: { id: 'asc' },
           // The last page is trimmed to land exactly on the cap rather than
           // overshooting it by up to PAGE-1 rows.
@@ -136,12 +125,17 @@ export const GET = route(
           // system — including `truncated`, because a caller who received a capped
           // file and a reviewer reading this row must both be able to tell that
           // the export is not the whole answer.
+          // What was asked for, so a narrowed file reads as one; whether it was
+          // searched, not what was typed (a phone number stays out of the trail).
+          const { q, ...asked } = params;
           await audit(ctx, {
             event: 'EXPORT_REQUESTED',
             objectType: 'leads',
             metadata: {
               rows: exported,
+              ...asked,
               filter: params.filter ?? null,
+              searched: Boolean(q),
               truncated: exported >= MAX_ROWS,
               ...(exported >= MAX_ROWS ? { limit: MAX_ROWS } : {}),
             },

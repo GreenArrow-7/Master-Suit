@@ -46,6 +46,20 @@ describe('Lead Eagle is a module', () => {
     expect(read(path.join(APP, 'lead-eagle', 'layout.tsx'))).toContain("workspaceOwns(workspaceSlug, 'LEAD_EAGLE')");
   });
 
+  it('shares the calendar: tasks, follow-ups and site visits are lead work (M4-22)', () => {
+    expect(LEAD_EAGLE_SHARED_ROOTS).toContain('calendar');
+    expect(read(path.join(APP, 'lead-eagle', 'calendar', 'page.tsx'))).toContain(
+      "export { default, metadata } from '../../sales/calendar/page';",
+    );
+    const tabs = buildNavigation({ slug: 'eagle', modules: ['LEAD_EAGLE'], permitted: ['leads', 'tasks'] })
+      .flatMap((section) => section.areas)
+      .flatMap((area) => area.tabs);
+    expect(tabs.find((tab) => tab.href === '/eagle/lead-eagle/calendar')?.label).toBe('Calendar');
+    expect(new Map(sameScreenElsewhere('/acme/sales/calendar?month=2026-12')).get('LEAD_EAGLE')).toBe(
+      '/acme/lead-eagle/calendar?month=2026-12',
+    );
+  });
+
   it('shares the website forms and landing pages, its own lead sources (M6-06, M6-09)', () => {
     expect(LEAD_EAGLE_SHARED_ROOTS).toEqual(expect.arrayContaining(['forms', 'landing-pages']));
   });
