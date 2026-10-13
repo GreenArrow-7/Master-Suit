@@ -48,20 +48,39 @@ export const asLeadPhone = (ctx: Ctx, rules: Map<string, FieldRule>, value: stri
   (applyFieldSecurity(ctx, 'LEAD', rules, { phone: value }, LEAD_SENSITIVE_FIELDS).phone as string | null) ?? null;
 
 /**
- * The email and phone clauses of a lead search. A role that sees them masked
- * finds a lead by the whole value only: a few fragment searches would read a
- * masked number back digit by digit, while the whole value tells the searcher
- * nothing they did not type.
+ * The email and phone clauses of a lead search. A typed number, in any format,
+ * is normalised as the lead's numbers were (`normalizePhone`) and matched
+ * against the main number and every other number (LeadPhone). A role that sees
+ * them masked finds a lead by the whole value only: a few fragment searches
+ * would read a masked number back digit by digit, while the whole value tells
+ * the searcher nothing they did not type.
  */
-export function contactSearch(ctx: Ctx, rules: Map<string, FieldRule>, q: string) {
+function contactSearch(ctx: Ctx, rules: Map<string, FieldRule>, q: string) {
   const sees = (field: 'phone' | 'email') => seesField(ctx, 'LEAD', rules, field, LEAD_SENSITIVE_FIELDS);
   const number = normalizePhone(q);
   return [
     sees('email')
       ? { email: { contains: q, mode: 'insensitive' as const } }
       : { email: { equals: q.trim(), mode: 'insensitive' as const } },
-    ...(sees('phone') ? [{ phone: { contains: q } }] : number ? [{ phoneNormalized: number }] : []),
+    ...(sees('phone') ? [{ phone: { contains: q } }] : []),
+    ...(number ? [{ phoneNormalized: number }, { phones: { some: { normalized: number } } }] : []),
   ];
+}
+
+/**
+ * The lead search every list answers `q` with — the grid, the board, the v1
+ * list API, the CSV export, the assistant: name, company, reference, and
+ * `contactSearch`'s email and numbers.
+ */
+export function leadSearch(ctx: Ctx, rules: Map<string, FieldRule>, q: string) {
+  return {
+    OR: [
+      { fullName: { contains: q, mode: 'insensitive' as const } },
+      { company: { contains: q, mode: 'insensitive' as const } },
+      { reference: { contains: q, mode: 'insensitive' as const } },
+      ...contactSearch(ctx, rules, q),
+    ],
+  };
 }
 
 /**
