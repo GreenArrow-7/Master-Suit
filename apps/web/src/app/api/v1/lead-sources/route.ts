@@ -70,7 +70,14 @@ export const PATCH = route(
     productModule: LEAD_MODULES,
     action: 'MANAGE_CONFIGURATION',
     query: idQuery,
-    body: z.object({ name: name.optional(), isActive: z.boolean().optional() }).strict(),
+    body: z
+      .object({
+        name: name.optional(),
+        isActive: z.boolean().optional(),
+        /** The points a new lead from this entry starts with (M4-11). */
+        weight: z.number().int().min(0).max(100).optional(),
+      })
+      .strict(),
     auditEvent: 'RECORD_UPDATED',
   },
   async ({ ctx, query, body }) => {

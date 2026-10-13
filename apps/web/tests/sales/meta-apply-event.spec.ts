@@ -14,6 +14,8 @@ const prisma = {
   lead: { update: vi.fn(), create: vi.fn(), findFirst: vi.fn() },
   metaLeadFormRouting: { findUnique: vi.fn(), update: vi.fn() },
   leadStage: { findFirst: vi.fn() },
+  // The Meta entry's starting points (M4-11).
+  leadSource: { findFirst: vi.fn() },
   conversation: { upsert: vi.fn() },
   communication: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   // The lead's audit row; tests/sales/lead-audit-trail.spec.ts checks it on a real database.
@@ -70,6 +72,7 @@ beforeEach(() => {
   prisma.lead.findFirst.mockResolvedValue({ customData: {} });
   prisma.metaLeadFormRouting.findUnique.mockResolvedValue(null);
   prisma.metaLeadFormRouting.update.mockResolvedValue({});
+  prisma.leadSource.findFirst.mockResolvedValue({ weight: 10, parent: null });
 });
 
 describe('Meta Lead Ads → CRM', () => {
@@ -97,6 +100,8 @@ describe('Meta Lead Ads → CRM', () => {
       sourceDetail: 'facebook:form-9',
       // The seeded Meta entry, so Source Analysis counts it with the Meta leads picked by hand.
       sourceId: 'source-meta',
+      // And it starts at that entry's points (M4-11).
+      score: 10,
     });
     expect(data.customData.metaLeadgen).toMatchObject({ metaLeadgenId: '55', metaAdId: 'ad-1' });
     // Assignment is what eventually notifies the rep (§47, §80).
