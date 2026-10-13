@@ -4,6 +4,8 @@ import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { callScope, leadScope } from '@/lib/security/record-scope';
+import { mergeWhere } from '@/lib/api/where';
+import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
 import { myEmployee } from '@/services/hr/leave';
 import AiInsight from '@/components/ui/AiInsight';
 import { names } from '@/services/leadership/rollups';
@@ -117,14 +119,16 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
         // grant because they are lead work.
         visibilityWhere(ctx, 'leads', 'VIEW'),
         showTasks ? visibilityWhere(ctx, 'tasks', 'VIEW') : Promise.resolve(null),
-      ]).then(([leadWhere, oppWhere, followUpWhere, taskWhere]) =>
+        leadScope(ctx, 'VIEW', { includeUnassigned: true }),
+      ]).then(([leadWhere, oppWhere, followUpWhere, taskWhere, listedWhere]) =>
         Promise.all([
           prisma.lead.count({ where: { ...leadWhere, deletedAt: null } }),
-          // Unassigned is a triage queue: tenant-wide by definition, shown only
-          // to viewers whose scope reaches beyond their own records.
+          // Unassigned is a triage queue, shown only to viewers whose scope
+          // reaches beyond their own records: what /leads?filter=unassigned
+          // lists them, so the chip and the list agree.
           salesScope === 'OWN'
             ? Promise.resolve(0)
-            : prisma.lead.count({ where: { tenantId: ctx.tenantId, deletedAt: null, ownerId: null } }),
+            : prisma.lead.count({ where: mergeWhere(listedWhere, { ownerId: null }, OPEN_LEADS_WHERE) }),
           oppWhere ? prisma.opportunity.count({ where: { ...oppWhere, deletedAt: null, status: 'OPEN' } }) : 0,
           prisma.followUpTask.count({
             where: { ...followUpWhere, status: { in: ['OPEN', 'IN_PROGRESS'] }, dueAt: { lt: new Date() } },
@@ -399,7 +403,7 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
         hint: 'Nobody owns these yet · workspace-wide',
         count: sales[1],
         tone: 'brass',
-        href: `/${workspace.slug}/sales/leads`,
+        href: `/${workspace.slug}/sales/leads?filter=unassigned`,
       });
   }
   for (const [label, value, href] of approvalItems) {

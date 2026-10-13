@@ -328,6 +328,9 @@ export default async function LeadsPage({
             ['SLA breached', 'breached'],
             ['High score', 'high_score'],
             ['Closed out', 'closed_out'],
+            // The Lead Eagle board's Untouched and Conversion tiles open these.
+            ['Untouched', 'untouched'],
+            ['Won', 'won'],
           ].map(([label, key]) => (
             <SalesLink
               key={label}

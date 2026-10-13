@@ -6450,3 +6450,191 @@ input.lf-date__native::-webkit-calendar-picker-indicator {
   width: 100%;
   box-sizing: border-box;
 }
+
+/* ── The Lead Eagle board's charts (realty/dashboard/page.tsx) ──────────────
+   Plain bars, tokens only: one hue for a single series, primary and brass for
+   received against worked. Every bar is the link to the list it counts. */
+.lf-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: var(--lf-space-4);
+  align-items: start;
+}
+.lf-panels > .lf-panel {
+  min-width: 0;
+  padding-bottom: var(--lf-space-4);
+}
+.lf-panel__head .lf-hint {
+  white-space: nowrap;
+}
+.lf-bars {
+  margin: var(--lf-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+.lf-bars__row {
+  display: grid;
+  grid-template-columns: minmax(0, 9rem) minmax(0, 1fr) 2.5rem;
+  align-items: center;
+  gap: var(--lf-space-2);
+  min-height: 32px;
+  color: var(--lf-ink);
+  font-size: var(--lf-text-sm);
+  text-decoration: none;
+}
+.lf-bars__row .lf-num {
+  text-align: right;
+  font-weight: 600;
+}
+a.lf-bars__row:hover .lf-bars__label,
+a.lf-bars__row:focus-visible .lf-bars__label {
+  text-decoration: underline;
+}
+.lf-bars__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lf-bars__track {
+  height: 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--lf-line) 60%, transparent);
+  overflow: hidden;
+}
+.lf-bars__fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--lf-wine-700);
+}
+.lf-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lf-space-4);
+  margin: 0 0 var(--lf-space-3);
+  font-size: var(--lf-text-xs);
+  color: var(--lf-ink-2);
+}
+.lf-legend__key {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  border-radius: 2px;
+  vertical-align: -1px;
+}
+[data-series='received'] {
+  background: var(--lf-wine-700);
+}
+[data-series='worked'] {
+  background: var(--lf-brass);
+}
+.lf-pairs {
+  display: grid;
+  grid-template-columns: repeat(14, minmax(0, 1fr));
+  gap: 2px;
+}
+.lf-pairs__day {
+  display: grid;
+  grid-template-rows: 112px auto;
+  justify-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--lf-ink-3);
+  font-size: var(--lf-text-2xs);
+}
+.lf-pairs__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 100%;
+}
+/* Each bar opens its own list; the whole column above it is the link, so a short bar is still a target. */
+.lf-pairs__bar {
+  display: flex;
+  align-items: flex-end;
+  width: 8px;
+  height: 100%;
+  border-radius: var(--lf-radius-sm);
+}
+.lf-pairs__bar:hover,
+.lf-pairs__bar:focus-visible {
+  background: color-mix(in srgb, var(--lf-line) 45%, transparent);
+}
+.lf-pairs__bar > span {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+}
+.lf-strip {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  /* By the panel's width, not the screen's: four a row on a phone, all eight on a wide panel. */
+  grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+  gap: var(--lf-space-2);
+}
+.lf-strip__day {
+  display: grid;
+  gap: 2px;
+  padding: var(--lf-space-2);
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius);
+  color: var(--lf-ink-2);
+  font-size: var(--lf-text-xs);
+  text-align: center;
+  text-decoration: none;
+}
+.lf-strip__day strong {
+  color: var(--lf-ink);
+  font-size: var(--lf-text-lg);
+}
+.lf-strip__day[aria-current='date'] {
+  border-color: var(--lf-wine-700);
+}
+.lf-strip__day[data-tone='overdue'] strong {
+  color: var(--lf-vermillion);
+}
+.lf-strip__day:hover,
+.lf-strip__day:focus-visible {
+  background: color-mix(in srgb, var(--lf-line) 45%, transparent);
+}
+.lf-callfigures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lf-space-5);
+  color: var(--lf-ink-2);
+  font-size: var(--lf-text-sm);
+  text-decoration: none;
+}
+.lf-callfigures strong {
+  display: block;
+  color: var(--lf-ink);
+  font-size: var(--lf-text-xl);
+}
+.lf-leaderboard {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--lf-text-sm);
+}
+.lf-leaderboard th,
+.lf-leaderboard td {
+  padding: 8px 6px;
+  border-top: 1px solid color-mix(in srgb, var(--lf-line) 65%, transparent);
+  text-align: right;
+  white-space: nowrap;
+}
+.lf-leaderboard thead th {
+  border-top: 0;
+  color: var(--lf-ink-3);
+  font-size: var(--lf-text-xs);
+  font-weight: 500;
+}
+.lf-leaderboard th:first-child {
+  width: 100%;
+  text-align: left;
+  white-space: normal;
+  font-weight: 500;
+}

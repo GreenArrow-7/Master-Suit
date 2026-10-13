@@ -56,13 +56,17 @@ export async function visibilityWhere(
     [field]: { in: ownerIds },
   }));
 
-  const mayClaim = ['ASSIGN', 'REASSIGN'].some((a) => {
+  if (opts.includeUnassigned && mayClaim(ctx, module)) clauses.push({ [ownerField]: null });
+
+  return { ...base, OR: clauses };
+}
+
+/** Whether the actor may take an ownerless record: ASSIGN or REASSIGN wider than their own. */
+export function mayClaim(ctx: Ctx, module: string): boolean {
+  return ['ASSIGN', 'REASSIGN'].some((a) => {
     const s = scopeFor(ctx, module, a as Action);
     return s !== 'NONE' && s !== 'OWN';
   });
-  if (opts.includeUnassigned && mayClaim) clauses.push({ [ownerField]: null });
-
-  return { ...base, OR: clauses };
 }
 
 /**

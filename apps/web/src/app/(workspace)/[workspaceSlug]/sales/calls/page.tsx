@@ -15,12 +15,12 @@ import { columnsFor } from '@/lib/grid/resolve';
 import { can } from '@/lib/security/rbac';
 import { loadFieldRules } from '@/lib/security/fieldSecurity';
 import { asLeadPhone } from '@/services/leads/createLead';
+// Shared with the Lead Eagle board's Calls figures.
+import { CONNECTED_CALL_OUTCOMES as CONNECTED_OUTCOMES } from '@/lib/leads/callLog';
 
 export const metadata = { title: 'Calls' };
 
 const PAGE_SIZE = 50;
-
-const CONNECTED_OUTCOMES = ['CONNECTED', 'CALLBACK_REQUESTED', 'INTERESTED', 'QUALIFIED', 'CONVERTED'];
 
 const TABS: [string, string, Record<string, unknown>][] = [
   ['All', '', {}],
