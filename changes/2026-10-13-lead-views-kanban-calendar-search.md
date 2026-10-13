@@ -84,7 +84,8 @@ Estate, Lead Eagle):
   "501234567" find a lead holding +971501234567 as its main or any other number.
   A role that sees numbers masked finds a lead by a whole number only and reads
   it masked. Cmd+K's "Search leads" opens Sales' list, else Real Estate's, else
-  Lead Eagle's.
+  Lead Eagle's. The list's box (on a phone too) says what it matches, "Search
+  name, phone, email, reference"; its accessible name stays "Search leads".
 - CSV export: answers the URL it was clicked from (the named filter, the
   search, the chips, a saved view's grid columns; not its custom-field ones,
   see Left open), in id order whatever the sort; `overdue_mine` and
@@ -193,6 +194,7 @@ Estate, Lead Eagle):
   leads cannot be picked by owner, and an old link reads "Owner: Someone else".
 - A month with more than 300 entries of a kind shows the first 300.
 - PROP-02.2 (log a call from the list in three clicks) is another lane's.
+- At 320 px the list's search placeholder is cut short; it fits at 390 px.
 
 **Merge-up with the base, 13 Oct.** The base branch took #172 (requirement and
 interest links, custom fields, lead scoring; two migrations) while this was
@@ -256,3 +258,24 @@ and `every-route` 8 of 8. The board's Move list checked by eye at 390 px
 leads; their closed ones are under Left open); the calendar case's
 "Unable to start a transaction" under load (passed alone, and in every run
 since).
+
+**CI fix, 13 Oct.** CI's E2E failed `redesign-mobile.spec.ts` "leads: search
+leads, no duplicate view chips…" (1 of 173): it found the list's search box by
+its placeholder, "Search leads", which this change rewrote so the box says it
+finds numbers (OWN-01.2). The box is still there at 390 px with the accessible
+name "Search leads", and the "Saved views" chips (Overdue, no Mine) are
+unchanged; the spec now finds the box by role and name, and keeps every
+check. On the rig's dev server: the spec failed as in CI before ("element(s)
+not found"), 3 of 3 after. Each alone: `lead-views-board` 5, `admin-deletes` 5,
+`assisted-call` 1, `auth-return-and-password-change` 4, `business-journey` 1,
+`crm-lifecycle` 6, `entity-navigation` 1, `follow-up-mobile` 4,
+`lead-bulk-stage` 2, `lead-close-out` 1, `lead-eagle-workspace` 1,
+`lead-import` 1, `mobile-shell` 5, `mobile` 8, `request-budget` 1,
+`workspace-navigation` 8, `workspace-summary-sample` 14, `acceptance` 1 and
+`cold-data-assign` 1 passed (`mobile-app-journey` skips without its staging
+accounts). `acceptance` and `cold-data-assign` passed on a second run: the
+first reached for a Mailpit the rig does not run, and the cold-data row's
+"Handed to" status did not show once (a screen #179 does not touch).
+`lead-saved-views`, `lead-search` and `lead-kanban` 44 of 44; `tsc --noEmit`
+clean. At 320 px the placeholder is cut short: its 287 px of text has 236 px
+of box (Left open).
