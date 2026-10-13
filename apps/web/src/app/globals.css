@@ -5253,6 +5253,169 @@ a.lf-kpi:hover {
   }
 }
 
+/* ── Lead grid: filter chips and saved views (M4-19) ────────────────────── */
+.lf-chip[aria-current='true'] {
+  background: var(--lf-wine-050);
+  border-color: var(--lf-wine-300);
+  color: var(--yh-primary);
+}
+/* Its own row, not .lf-toolbar: the toolbar hides field labels on a desktop,
+   and a date range with no label is two blank boxes. */
+.lf-lead-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--lf-space-2);
+  margin-bottom: var(--lf-space-3);
+}
+.lf-lead-filters > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.lf-lead-filters > summary::-webkit-details-marker {
+  display: none;
+}
+.lf-lead-filters__form {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr));
+  align-items: end;
+  gap: var(--lf-space-2) var(--lf-space-3);
+  margin-top: var(--lf-space-2);
+  padding: var(--lf-space-3);
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius);
+  background: var(--lf-surface);
+}
+.lf-lead-filters[open] {
+  flex-basis: 100%;
+}
+.lf-lead-filters__form .lf-field {
+  margin: 0;
+  min-width: 0;
+}
+.lf-lead-filters__form .lf-input {
+  width: 100%;
+  min-width: 0;
+}
+.lf-layout-switch {
+  margin-left: auto;
+}
+.lf-views {
+  margin-bottom: var(--lf-space-3);
+}
+.lf-views__form {
+  display: grid;
+  gap: var(--lf-space-3);
+  margin-top: var(--lf-space-2);
+  padding: var(--lf-space-4);
+  max-width: 560px;
+}
+.lf-views__columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lf-space-2) var(--lf-space-4);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: var(--lf-text-sm);
+}
+.lf-views__columns legend {
+  margin-bottom: var(--lf-space-1);
+}
+.lf-views__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--lf-space-2);
+}
+
+/* ── Lead board (M4-21): a column per stage; on a phone they scroll sideways ── */
+.lf-board {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--lf-space-3);
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: var(--lf-space-2);
+}
+.lf-board__exits {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--lf-space-3);
+  padding-left: var(--lf-space-3);
+  border-left: 2px dashed var(--lf-line-2);
+}
+.lf-board__col {
+  flex: 0 0 264px;
+  min-width: 0;
+  padding: var(--lf-space-2);
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius);
+  background: var(--lf-surface-2);
+}
+.lf-board__col[data-over] {
+  border-color: var(--lf-wine-300);
+  background: var(--lf-wine-050);
+}
+.lf-board__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--lf-space-2);
+  margin-bottom: var(--lf-space-2);
+}
+.lf-board__head h2 {
+  margin: 0;
+  font-size: var(--lf-text-sm);
+  font-weight: 600;
+  color: var(--lf-ink);
+}
+.lf-board__cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lf-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lf-board__card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--lf-space-2);
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius-sm);
+  background: var(--lf-surface);
+  cursor: grab;
+}
+.lf-board__name {
+  font-weight: 500;
+  color: var(--lf-ink);
+  overflow-wrap: anywhere;
+}
+.lf-board__meta,
+.lf-board__empty {
+  margin: 0;
+  font-size: var(--lf-text-xs);
+  color: var(--lf-ink-3);
+}
+.lf-board__move.lf-input {
+  height: 32px;
+  font-size: var(--lf-text-xs);
+}
+.lf-board__more {
+  display: inline-block;
+  margin-top: var(--lf-space-2);
+  font-size: var(--lf-text-xs);
+}
+@media (max-width: 760px) {
+  .lf-board__col {
+    flex-basis: min(78vw, 264px);
+  }
+  .lf-board__move.lf-input {
+    height: 40px;
+  }
+}
+
 /* ── Rail: groups, the long tail behind a disclosure ────────────────────── */
 .lf-workspace-sidebar:not([data-collapsed='true']) {
   width: 240px;

@@ -12,7 +12,7 @@ import { mergeWhere } from '@/lib/api/where';
 import { can } from '@/lib/security/rbac';
 import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
 import { prisma } from '@/lib/db';
-import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
+import { leadSearch, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { bookableProjects } from '@/services/leads/updateLead';
 import LeadGrid from '../leads/LeadGrid';
 import EmptyState from '@/components/ui/EmptyState';
@@ -173,14 +173,13 @@ export default async function SmartViewsPage({
   }
 
   const scope = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
-  const search = params.q ? { fullName: { contains: params.q, mode: 'insensitive' as const } } : {};
+  const rules = await loadFieldRules(ctx, 'LEAD');
+  const search = params.q ? leadSearch(ctx, rules, params.q) : {};
   // Spreading these would have discarded the visibility clause outright: the
   // "cold" view's filter *is* an `OR`, and so is `scope`'s ownership
   // restriction. See lib/api/where.ts — this was the one place the leak needed
   // no crafted request at all, only the button.
   const where = mergeWhere(scope, filterWhere, search);
-
-  const rules = await loadFieldRules(ctx, 'LEAD');
 
   const [rows, stages, counts, users, taskTypes, setting] = await Promise.all([
     prisma.lead.findMany({

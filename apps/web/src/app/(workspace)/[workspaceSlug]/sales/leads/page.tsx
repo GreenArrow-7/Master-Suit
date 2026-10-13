@@ -1,87 +1,68 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { mergeWhere } from '@/lib/api/where';
-import { assignableUsers, leadScope } from '@/lib/security/record-scope';
+import { assignableUsers } from '@/lib/security/record-scope';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
-import { SIMPLE_NAMED_LEAD_FILTERS } from '@/lib/leads/namedFilters';
-import { contactSearch, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
-import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
+import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { bookableProjects } from '@/services/leads/updateLead';
-import LeadGrid from './LeadGrid';
+import { listLeadSources } from '@/services/leads/leadSources';
+import {
+  cleanLeadListParams,
+  LEAD_LIST_VIEW,
+  leadListHref,
+  leadListQuery,
+  savedViewHref,
+  type LeadListParams,
+} from '@/services/leads/leadList';
+import LeadGrid, { type GridSort } from './LeadGrid';
+import LeadBoard, { type BoardColumn } from './LeadBoard';
+import LeadFilters from './LeadFilters';
+import LeadViews from './LeadViews';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
 import ColumnEditor from '@/components/workspace/ColumnEditor';
 import LeadImport from './LeadImport';
 import Pager from '@/components/workspace/Pager';
-import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
-import {
-  emptyFollowUpLabel,
-  obligationAccess,
-  obligationWhere,
-  scopedNextFollowUp,
-  type ObligationAccess,
-} from '@/services/leads/nextFollowUp';
+import { GRID_COLUMNS, resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
+import { emptyFollowUpLabel, obligationAccess, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 
 export const metadata = { title: 'Leads' };
 
 const PAGE_SIZE = 50;
+/** Cards a board column shows; the rest are a link to the list of that stage. */
+const BOARD_PAGE = 20;
+
+/** The grid's starting column sort for the server's order; `created` is a sort no column shows. */
+const GRID_SORT: Record<NonNullable<LeadListParams['sort']>, GridSort> = {
+  updated: { key: 'updatedAt', dir: 'desc' },
+  created: null,
+  score: { key: 'score', dir: 'desc' },
+  name: { key: 'fullName', dir: 'asc' },
+};
 
 /**
- * Filters that depend only on the lead row.
- *
- * The follow-up filters are not here: they are questions about obligations, and
- * the answer depends on which obligations the viewer may see. They are built
- * below from the same predicate that produces the dates in the grid, so the
- * chip, the rows and the dates cannot disagree.
+ * The lead list, as a grid or as a board by stage (M4-21), in every lead
+ * module. The URL carries the whole question — named filter, search, the
+ * filter chips (M4-19), sort, a saved view's columns, the layout — and
+ * `leadListQuery` answers it for the grid, the board and the CSV export alike.
  */
-// The named views, shared with the CSV export and the v1 list API so the three
-// cannot answer the same question differently. See lib/leads/namedFilters.ts.
-const FILTERS = SIMPLE_NAMED_LEAD_FILTERS;
-
-/**
- * The follow-up chips, and the view each one asks about.
- *
- * `overdue` asks about everything the viewer's role reaches; `overdue_mine`
- * asks only about their own obligations. For a rep the two are the same set —
- * their reach *is* themselves — so the second chip is offered only to someone
- * whose reach is wider, which is the whole reason it exists.
- */
-const FOLLOW_UP_FILTERS = {
-  overdue: { state: 'overdue', view: 'scope' },
-  overdue_mine: { state: 'overdue', view: 'personal' },
-  no_next_action: { state: 'unscheduled', view: 'scope' },
-} as const;
-
-type FollowUpFilterKey = keyof typeof FOLLOW_UP_FILTERS;
-
-function isFollowUpFilter(key: string | undefined): key is FollowUpFilterKey {
-  return !!key && key in FOLLOW_UP_FILTERS;
-}
-
 export default async function LeadsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string; q?: string; page?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const params = await searchParams;
+  const raw = await searchParams;
+  const params = cleanLeadListParams(raw);
+  const savedId = [raw.saved].flat()[0];
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['leads', 'VIEW'] });
-  const page = Math.max(1, Number(params.page) || 1);
+  const page = Math.max(1, Number([raw.page].flat()[0]) || 1);
+  const board = params.layout === 'board';
 
-  const scope = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
-  const now = new Date();
-
-  /**
-   * Which obligations this viewer may see, for the view the chosen chip asks
-   * about. The same `access` drives the row filter and the dates rendered into
-   * the grid, so a row can never appear under "Overdue" showing a date that is
-   * not.
-   */
-  const followUp = isFollowUpFilter(params.filter) ? FOLLOW_UP_FILTERS[params.filter] : null;
-  const view = followUp?.view ?? 'scope';
-  const access: ObligationAccess = await obligationAccess(ctx, view);
+  const rules = await loadFieldRules(ctx, 'LEAD');
+  const { where, access, view, orderBy } = await leadListQuery(ctx, params, rules);
 
   /**
    * Does this viewer's reach extend past their own obligations?
@@ -95,59 +76,48 @@ export default async function LeadsPage({
     set.kind === 'none' || (set.kind === 'ids' && set.ids.length === 1 && set.ids[0] === ctx.actor.id);
   const personalIsEveryone = onlySelf(reach.task) && onlySelf(reach.followUp);
 
-  const extra: Record<string, unknown> = followUp
-    ? (obligationWhere(access, followUp.state, now) as Record<string, unknown>)
-    : params.filter && FILTERS[params.filter]
-      ? FILTERS[params.filter]!(now, ctx.actor.id)
-      : {};
-  const rules = await loadFieldRules(ctx, 'LEAD');
-  const search = params.q
-    ? {
-        OR: [
-          { fullName: { contains: params.q, mode: 'insensitive' as const } },
-          { company: { contains: params.q, mode: 'insensitive' as const } },
-          // Whole values only where the role sees them masked; see contactSearch.
-          ...contactSearch(ctx, rules, params.q),
-          { reference: { contains: params.q, mode: 'insensitive' as const } },
-        ],
-      }
-    : {};
-  // Closed-out leads (invalid, duplicate, archived) leave every working list and
-  // are reached only through their own chip.
-  const where = mergeWhere(scope, extra, search, params.filter === 'closed_out' ? null : OPEN_LEADS_WHERE);
+  const select = {
+    id: true,
+    reference: true,
+    fullName: true,
+    email: true,
+    phone: true,
+    company: true,
+    score: true,
+    grade: true,
+    tags: true,
+    priority: true,
+    slaState: true,
+    nextFollowUpAt: true,
+    updatedAt: true,
+    ownerId: true,
+    stageId: true,
+    stage: { select: { key: true, name: true, color: true } },
+    owner: { select: { fullName: true } },
+  } as const;
 
-  const [rows, stages, users, taskTypes, setting] = await Promise.all([
-    prisma.lead.findMany({
-      where,
-      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE + 1,
-      select: {
-        id: true,
-        reference: true,
-        fullName: true,
-        email: true,
-        phone: true,
-        company: true,
-        score: true,
-        grade: true,
-        tags: true,
-        priority: true,
-        slaState: true,
-        nextFollowUpAt: true,
-        updatedAt: true,
-        ownerId: true,
-        stage: { select: { key: true, name: true, color: true } },
-        owner: { select: { fullName: true } },
-      },
-    }),
+  const [rows, stages, users, owners, sources, taskTypes, setting, views] = await Promise.all([
+    board
+      ? Promise.resolve([])
+      : prisma.lead.findMany({ where, orderBy, skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE + 1, select }),
     prisma.leadStage.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null },
       orderBy: { position: 'asc' },
-      select: { id: true, key: true, name: true, requiresReason: true, reasons: true, requiredFields: true },
+      select: {
+        id: true,
+        key: true,
+        name: true,
+        category: true,
+        requiresReason: true,
+        reasons: true,
+        requiredFields: true,
+      },
     }),
     // Bulk assign offers whom the API accepts.
     assignableUsers(ctx, 'leads', 'ASSIGN'),
+    // The owner chip offers the people whose leads the viewer reads.
+    assignableUsers(ctx, 'leads', 'VIEW'),
+    listLeadSources(prisma, ctx.tenantId),
     prisma.taskType.findMany({
       where: { tenantId: ctx.tenantId, isActive: true },
       orderBy: { name: 'asc' },
@@ -157,10 +127,56 @@ export default async function LeadsPage({
       where: { tenantId: ctx.tenantId },
       select: { gridColumns: true },
     }),
+    // The viewer's own saved views, and nobody else's.
+    prisma.smartView.findMany({
+      where: { tenantId: ctx.tenantId, objectType: LEAD_LIST_VIEW, ownerId: ctx.actor.id },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, name: true, filterTree: true, sortSpec: true, columns: true },
+    }),
   ]);
   const projects = await bookableProjects(ctx, stages);
 
-  const columns = resolveColumns('LEAD', storedColumnsFor(setting?.gridColumns, 'LEAD'));
+  const columns = resolveColumns('LEAD', params.cols?.split(',') ?? storedColumnsFor(setting?.gridColumns, 'LEAD'));
+  const activeView = views.find((v) => v.id === savedId) ?? null;
+
+  /**
+   * The board: a column per stage in the pipeline's order, the exits (lost,
+   * junk) after the ladder, each a page of the same query and its whole count.
+   */
+  const columnsOfBoard: BoardColumn[] = [];
+  if (board) {
+    const [counts, cards] = await Promise.all([
+      prisma.lead.groupBy({ by: ['stageId'], where, _count: { _all: true } }),
+      Promise.all(
+        stages.map((stage) =>
+          prisma.lead.findMany({
+            where: mergeWhere(where, { stageId: stage.id }),
+            orderBy,
+            take: BOARD_PAGE,
+            select: { id: true, reference: true, fullName: true, owner: { select: { fullName: true } } },
+          }),
+        ),
+      ),
+    ]);
+    const count = new Map(counts.map((row) => [row.stageId, row._count._all]));
+    const exit = (category: string) => category.startsWith('TERMINAL');
+    for (const [index, stage] of stages.entries()) {
+      const total = count.get(stage.id) ?? 0;
+      columnsOfBoard.push({
+        stage,
+        exit: exit(stage.category),
+        count: total,
+        rows: cards[index]!.map((card) => ({
+          id: card.id,
+          reference: card.reference,
+          fullName: card.fullName,
+          owner: card.owner?.fullName ?? null,
+        })),
+        moreHref: total > BOARD_PAGE ? leadListHref({ ...params, layout: undefined, stage: stage.id }) : null,
+      });
+    }
+    columnsOfBoard.sort((a, b) => Number(a.exit) - Number(b.exit));
+  }
 
   const hasMore = rows.length > PAGE_SIZE;
   const pageRows = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
@@ -185,14 +201,17 @@ export default async function LeadsPage({
   const withFollowUp = pageRows.map((r) => ({ ...r, nextFollowUpAt: due.get(r.id) ?? null }));
 
   const data = withFollowUp.map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
+  const shown = new Set(columns.map((column) => column.key));
+  const { layout: _layout, ...listParams } = params;
+  const total = columnsOfBoard.reduce((sum, column) => sum + column.count, 0);
 
   return (
     <>
       <ListHeader
         title="Leads"
-        count={pageRows.length}
+        count={board ? total : pageRows.length}
         noun="lead"
-        capped={hasMore}
+        capped={!board && hasMore}
         // Adding a lead is what someone came here to do; export and column
         // choice are housekeeping and fold behind the disclosure. Import sits
         // beside "Add lead": it is how most leads arrive, and its panel cannot
@@ -203,13 +222,18 @@ export default async function LeadsPage({
             {can(ctx, 'leads', 'EXPORT') && (
               <a
                 className="lf-btn lf-btn--secondary lf-btn--sm"
-                href={`/api/v1/leads/export?${new URLSearchParams({ ...(params.filter ? { filter: params.filter } : {}), ...(params.q ? { q: params.q } : {}) })}`}
+                href={leadListHref(listParams, '/api/v1/leads/export')}
               >
                 Export
               </a>
             )}
             {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
-              <ColumnEditor object="LEAD" current={columns.map((column) => column.key)} />
+              <ColumnEditor
+                object="LEAD"
+                current={resolveColumns('LEAD', storedColumnsFor(setting?.gridColumns, 'LEAD')).map(
+                  (column) => column.key,
+                )}
+              />
             )}
           </>
         }
@@ -229,12 +253,14 @@ export default async function LeadsPage({
         }
       />
 
-      {/* One toolbar: search, the saved views as chips, and a way back to
-          the unfiltered list. Search and view compose — the chips carry the
-          current query and the form carries the current view. */}
+      {/* One toolbar: search, the named filters as chips, and a way back to
+          the unfiltered list. Search, filters and chips compose — each link
+          carries the rest of the query and the form carries the rest too. */}
       <div className="lf-toolbar">
         <form className="lf-toolbar__search" method="get" role="search">
-          {params.filter && <input type="hidden" name="filter" value={params.filter} />}
+          {Object.entries(params).map(
+            ([key, value]) => key !== 'q' && <input key={key} type="hidden" name={key} value={value} />,
+          )}
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
@@ -250,7 +276,7 @@ export default async function LeadsPage({
             type="search"
             className="lf-input"
             defaultValue={params.q ?? ''}
-            placeholder="Search leads"
+            placeholder="Search name, phone, email, reference"
             aria-label="Search leads"
           />
         </form>
@@ -267,32 +293,59 @@ export default async function LeadsPage({
             ['SLA breached', 'breached'],
             ['High score', 'high_score'],
             ['Closed out', 'closed_out'],
-          ].map(([label, key]) => {
-            const query = new URLSearchParams({
-              ...(key ? { filter: key } : {}),
-              ...(params.q ? { q: params.q } : {}),
-            });
-            const suffix = query.toString();
-            return (
-              <SalesLink
-                key={label}
-                className="lf-chip"
-                href={suffix ? `/leads?${suffix}` : '/leads'}
-                aria-current={(params.filter ?? '') === key ? 'page' : undefined}
-              >
-                {label}
-              </SalesLink>
-            );
-          })}
+          ].map(([label, key]) => (
+            <SalesLink
+              key={label}
+              className="lf-chip"
+              href={leadListHref({ ...params, filter: key })}
+              aria-current={(params.filter ?? '') === key ? 'page' : undefined}
+            >
+              {label}
+            </SalesLink>
+          ))}
         </nav>
-        {(params.q || params.filter) && (
-          <SalesLink className="lf-btn lf-btn--ghost lf-btn--sm" href="/leads">
+        {Object.keys(listParams).length > 0 && (
+          <SalesLink className="lf-btn lf-btn--ghost lf-btn--sm" href={leadListHref({ layout: params.layout })}>
             Clear all
           </SalesLink>
         )}
       </div>
 
-      {data.length === 0 ? (
+      <div className="lf-lead-bar">
+        <LeadFilters params={params} stages={stages} owners={owners} sources={sources} />
+        <nav className="lf-chips lf-layout-switch" aria-label="Layout">
+          <SalesLink
+            className="lf-chip"
+            href={leadListHref({ ...params, layout: undefined })}
+            aria-current={board ? undefined : 'page'}
+          >
+            List
+          </SalesLink>
+          <SalesLink
+            className="lf-chip"
+            href={leadListHref({ ...params, layout: 'board' })}
+            aria-current={board ? 'page' : undefined}
+          >
+            Board
+          </SalesLink>
+        </nav>
+      </div>
+
+      <LeadViews
+        views={views.map((v) => ({ id: v.id, name: v.name, href: savedViewHref(v) }))}
+        activeId={activeView?.id ?? null}
+        params={params}
+        columns={GRID_COLUMNS.LEAD.filter((column) => !column.fixed).map((column) => ({
+          key: column.key,
+          label: column.label,
+          shown: shown.has(column.key),
+        }))}
+        listHref={leadListHref(params)}
+      />
+
+      {board ? (
+        <LeadBoard columns={columnsOfBoard} projects={projects} canEdit={can(ctx, 'leads', 'EDIT')} />
+      ) : data.length === 0 ? (
         <div className="lf-card">
           <EmptyState
             title="Nothing matches this view"
@@ -303,6 +356,7 @@ export default async function LeadsPage({
         </div>
       ) : (
         <LeadGrid
+          key={params.sort ?? 'updated'}
           rows={data as any}
           columns={columns}
           stages={stages}
@@ -313,10 +367,13 @@ export default async function LeadsPage({
           canEdit={can(ctx, 'leads', 'EDIT')}
           canDelete={can(ctx, 'leads', 'DELETE')}
           emptyLabel={emptyFollowUpLabel(access, view, ctx.actor.id)}
+          sort={GRID_SORT[params.sort ?? 'updated']}
         />
       )}
 
-      <Pager page={page} hasMore={hasMore} basePath="/leads" params={{ filter: params.filter, q: params.q }} />
+      {!board && (
+        <Pager page={page} hasMore={hasMore} basePath="/leads" params={{ ...params, saved: activeView?.id }} />
+      )}
     </>
   );
 }

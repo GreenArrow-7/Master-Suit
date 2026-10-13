@@ -1384,7 +1384,15 @@ export function tabTarget(tab: NavTab, area: WorkArea, pathname: string, search:
 export function searchTargets({ slug, modules, permitted }: NavInput): { label: string; href: string }[] {
   const out: { label: string; href: string }[] = [];
   const sales = modules.includes('SALES');
-  if (sales && permitted.includes('leads')) out.push({ label: 'leads', href: `/${slug}/sales/leads` });
+  // Every lead product has the lead list; Sales' is the fullest, then Real Estate's.
+  const leads = sales
+    ? 'sales'
+    : modules.includes('REAL_ESTATE')
+      ? 'realty'
+      : modules.includes('LEAD_EAGLE')
+        ? 'lead-eagle'
+        : null;
+  if (leads && permitted.includes('leads')) out.push({ label: 'leads', href: `/${slug}/${leads}/leads` });
   if (sales && permitted.includes('opportunities'))
     out.push({ label: 'opportunities', href: `/${slug}/sales/opportunities` });
   if (sales && permitted.includes('accounts')) out.push({ label: 'accounts', href: `/${slug}/sales/accounts` });
