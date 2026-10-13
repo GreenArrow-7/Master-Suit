@@ -38,7 +38,11 @@ Node 22 or newer (CI uses 24).
   with no tenant set, where row-level security returns nothing — a permission
   or field rule read that way silently reads as "no rule". The same guard
   hides soft-deleted rows only of the model queried: an `include` of a model
-  with `deletedAt` filters it itself.
+  with `deletedAt` filters it itself. Outside `withTx` each query is its own
+  transaction on its own pooled connection, and the pool holds 10, so a page
+  reading many independent lists reads them in one
+  `withTx(tenantId, (tx) => Promise.all([...]))`.
+  `tests/sales/lead-page-connections.spec.ts` measures a page's peak.
 - **One record, several screens.** Real Estate reuses Sales' rows (`Lead`,
   `Call`, `SiteVisit`, `Booking`, `Project`, `Listing`, `UnitInventory`);
   `realty/` and `lead-eagle/` pages are one-line re-exports of `sales/` pages,
