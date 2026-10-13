@@ -254,7 +254,7 @@ const READ_OPS = new Set([
   'groupBy',
 ]);
 const CREATE_OPS = new Set(['create', 'createMany', 'createManyAndReturn']);
-const FILTERED_WRITE_OPS = new Set(['update', 'updateMany', 'delete', 'deleteMany', 'upsert']);
+const FILTERED_WRITE_OPS = new Set(['update', 'updateMany', 'updateManyAndReturn', 'delete', 'deleteMany', 'upsert']);
 
 export class TenantGuardError extends Error {}
 
@@ -669,7 +669,12 @@ export type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
  * `set_config(..., true)` is transaction-local, so the value cannot leak to the
  * next borrower of this pooled connection.
  */
-export function withTx<T>(tenantId: string, fn: (tx: TxClient) => Promise<T>): Promise<T> {
+export function withTx<T>(
+  tenantId: string,
+  fn: (tx: TxClient) => Promise<T>,
+  /** Prisma's own: `timeout` past its 5 s for a long run, such as the lead import's dry run. */
+  options?: { timeout?: number },
+): Promise<T> {
   if (!tenantId) throw new TenantGuardError('withTx requires a tenantId. Use withPlatformTx for cross-tenant work.');
   return inTenantTx.run(
     true,
@@ -677,7 +682,7 @@ export function withTx<T>(tenantId: string, fn: (tx: TxClient) => Promise<T>): P
       prisma.$transaction(async (tx: TxClient) => {
         await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_id', $1, true)`, tenantId);
         return fn(tx);
-      }) as Promise<T>,
+      }, options) as Promise<T>,
   );
 }
 

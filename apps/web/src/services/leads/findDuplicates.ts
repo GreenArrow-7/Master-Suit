@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db';
+import { prisma, type TxClient } from '@/lib/db';
 
 export interface DuplicateMatch {
   id: string;
@@ -33,10 +33,15 @@ export interface DuplicateProbe {
  * Takes a tenantId rather than a Ctx because the public form endpoint is
  * anonymous and has no actor, and a website enquiry needs this check most of
  * all — it was the one path creating a fresh lead for every repeat visitor.
- * Nothing here ever read anything else off the context.
+ * Nothing here ever read anything else off the context. Inside a transaction
+ * (the import's dry run), pass its `tx`.
  */
-export async function findDuplicates(tenantId: string, probe: DuplicateProbe): Promise<DuplicateMatch[]> {
-  const rules = await prisma.duplicateRule.findMany({
+export async function findDuplicates(
+  tenantId: string,
+  probe: DuplicateProbe,
+  db: TxClient | typeof prisma = prisma,
+): Promise<DuplicateMatch[]> {
+  const rules = await db.duplicateRule.findMany({
     where: { tenantId, objectType: 'LEAD', isActive: true },
     orderBy: { position: 'asc' },
   });
@@ -49,7 +54,7 @@ export async function findDuplicates(tenantId: string, probe: DuplicateProbe): P
     const where = buildWhere(rule.matchFields, probe);
     if (!where) continue;
 
-    const rows = await prisma.lead.findMany({
+    const rows = await db.lead.findMany({
       where: {
         tenantId,
         isMerged: false,
