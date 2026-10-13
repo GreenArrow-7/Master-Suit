@@ -135,7 +135,8 @@ and SLA fields. **[S]**
   no single identity row; `Lead` is both person and enquiry. Deciding the customer
   of record is a **DECISION** (see `DECISIONS-REQUIRED.md`).
 - **VERIFY** — ambiguous-duplicate review UI: `findDuplicates.ts` exists and
-  `onDuplicate: BLOCK|WARN|MERGE` is accepted by `api/v1/leads` (`:114`), but
+  `onDuplicate: BLOCK|WARN` is accepted by `api/v1/leads` (MERGE, which did
+  nothing, was removed on 13 Oct; two leads merge through `leads/{id}/merge`), but
   whether a human review queue surfaces WARN cases was not established. **[U]**
 
 ### B. Assignment and reassignment

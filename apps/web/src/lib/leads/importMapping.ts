@@ -1,4 +1,5 @@
 import { normalizePhone } from '@/services/leads/normalizePhone';
+import { csvCell } from '@/lib/csvCell';
 
 /**
  * Pure logic behind the lead import screen: which spreadsheet column is which lead
@@ -132,4 +133,23 @@ export function prepareRows(rows: string[][], headers: string[], mapping: Column
     out.push(row);
   });
   return out;
+}
+
+/**
+ * The rows an import refused, as a CSV to fix and import again (M4-43): the
+ * line, why, then the file's own columns as they were in it. With the BOM, so
+ * Excel reads it as UTF-8, one row per refused line in line order, and every
+ * cell through `csvCell`, so a formula in a customer's file stays text.
+ */
+export function rejectedRowsCsv(
+  headers: string[],
+  rows: string[][],
+  rejected: readonly { line: number; reason: string }[],
+): string {
+  const lines = [...rejected]
+    .sort((a, b) => a.line - b.line)
+    .map(({ line, reason }) => [line, reason, ...(rows[line - 2] ?? [])]);
+  return (
+    '\uFEFF' + [['Line', 'Reason', ...headers], ...lines].map((cells) => cells.map(csvCell).join(',') + '\r\n').join('')
+  );
 }

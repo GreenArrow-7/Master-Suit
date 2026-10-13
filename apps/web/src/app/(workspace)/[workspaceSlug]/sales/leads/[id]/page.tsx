@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
+import type { Ctx } from '@/lib/security/rbac';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { assertRecordVisible, visibilityWhere } from '@/lib/security/visibility';
 import { assignableUsers, leadReach, leadScope, ownerReach, workListScope } from '@/lib/security/record-scope';
@@ -9,6 +10,7 @@ import { can, scopeFor } from '@/lib/security/rbac';
 import { prisma, withTx } from '@/lib/db';
 import { asLeadPhone, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { bookableProjects } from '@/services/leads/updateLead';
+import { findDuplicates } from '@/services/leads/findDuplicates';
 import { leadSourceText, listLeadSources } from '@/services/leads/leadSources';
 import { openRequirement, requirementForPage } from '@/services/leads/requirement';
 import { fieldForScreen, leadFields } from '@/services/leads/customFields';
@@ -158,8 +160,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     leadPromise.then((found) => (found ? openRequirement(prisma, ctx.tenantId, found.id) : null)),
     workspaceTimezone(ctx),
   ]);
-  if (!lead) notFound();
+  if (!lead) return mergedInto(scope, id);
   const projects = await bookableProjects(ctx, stages);
+  const duplicates = can(ctx, 'leads', 'EDIT') ? await mergeable(ctx, lead) : [];
   const customData = (lead.customData ?? {}) as Record<string, unknown>;
   // The register's page lists the listings that match; offered only where the viewer may open it.
   const opensRequirement =
@@ -397,6 +400,24 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         slaDueAt={lead.slaDueAt}
       />
 
+      {duplicates.map((other) => (
+        <div
+          key={other.id}
+          className="lf-alert"
+          data-tone="brass"
+          role="status"
+          style={{ flexWrap: 'wrap', alignItems: 'center', marginBottom: 'var(--lf-space-3)' }}
+        >
+          <span>
+            May be the same person as {other.reference} · {other.fullName} (same{' '}
+            {other.matchedOn.replace('phoneNormalized', 'number').replace('fullName', 'name')}).
+          </span>
+          <SalesLink href={`/leads/${lead.id}/merge?with=${other.id}`} style={{ fontWeight: 600 }}>
+            Compare and merge
+          </SalesLink>
+        </div>
+      ))}
+
       <LeadDetail
         lead={serializedLead}
         stages={stages}
@@ -444,6 +465,83 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         // administrator is granted `documents:DELETE`.
         canDeleteDocuments={can(ctx, 'documents', 'DELETE')}
       />
+    </>
+  );
+}
+
+/**
+ * The leads the duplicate rules match this one with (`findDuplicates`, as on
+ * create), each offered for a merge (M4-31): only where the viewer could merge
+ * them, as the merge itself requires (`assertMayMerge`): this lead and the match
+ * in their EDIT scope, an unassigned one only to a claimer, and another owner's
+ * only to a role that may reassign. (Whether the kept lead's owner is in that
+ * role's reach is left to the merge: it says so if not.)
+ */
+async function mergeable(
+  ctx: Ctx,
+  lead: {
+    id: string;
+    email: string | null;
+    phoneNormalized: string | null;
+    fullName: string;
+    phones: { normalized: string }[];
+  },
+) {
+  const matches = await findDuplicates(ctx.tenantId, {
+    email: lead.email,
+    phoneNormalized: lead.phoneNormalized,
+    otherPhones: lead.phones.map((phone) => phone.normalized),
+    fullName: lead.fullName,
+    excludeId: lead.id,
+  });
+  if (!matches.length) return [];
+  const reach = await prisma.lead.findMany({
+    where: {
+      ...(await leadScope(ctx, 'EDIT', { includeUnassigned: true })),
+      id: { in: [lead.id, ...matches.map((match) => match.id)] },
+    },
+    select: { id: true, ownerId: true },
+  });
+  const self = reach.find((row) => row.id === lead.id);
+  if (!self) return [];
+  const reassigns = can(ctx, 'leads', 'ASSIGN') || can(ctx, 'leads', 'REASSIGN');
+  return matches.filter((match) =>
+    reach.some((row) => row.id === match.id && (reassigns || row.ownerId === self.ownerId)),
+  );
+}
+
+/**
+ * A lead merged into another (M4-31) keeps its page: it names the lead it went
+ * into, for whoever could open it before. Anything else is not found.
+ */
+async function mergedInto(scope: Record<string, unknown>, id: string) {
+  const merged = await prisma.lead.findFirst({
+    where: { ...scope, id, isMerged: true, deletedAt: { not: null } },
+    select: { reference: true, duplicateOfId: true },
+  });
+  if (!merged) notFound();
+  const into = merged.duplicateOfId
+    ? await prisma.lead.findFirst({
+        where: { ...scope, id: merged.duplicateOfId },
+        select: { id: true, reference: true, fullName: true },
+      })
+    : null;
+  return (
+    <>
+      <SalesLink href="/leads" style={{ fontSize: 'var(--lf-text-sm)' }}>
+        &larr; Leads
+      </SalesLink>
+      <div className="lf-card" role="status" style={{ marginTop: 'var(--lf-space-3)' }}>
+        {merged.reference} was merged into{' '}
+        {into ? (
+          <SalesLink href={`/leads/${into.id}`}>
+            {into.reference} · {into.fullName}
+          </SalesLink>
+        ) : (
+          'a lead you cannot open'
+        )}
+        .
+      </div>
     </>
   );
 }
