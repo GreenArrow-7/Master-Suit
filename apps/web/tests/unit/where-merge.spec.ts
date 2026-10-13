@@ -12,6 +12,7 @@ import path from 'node:path';
 import ts from 'typescript';
 import { describe, it, expect } from 'vitest';
 import { mergeWhere } from '@/lib/api/where';
+import { cursorWhere, encodeCursor } from '@/lib/api/pagination';
 
 const scope = { tenantId: 't1', OR: [{ ownerId: { in: ['u1'] } }, { ownerId: null }] };
 
@@ -87,6 +88,31 @@ describe('mergeWhere', () => {
     const b = { OR: [{ y: 2 }] };
     const c = { OR: [{ z: 3 }] };
     expect(mergeWhere(a, b, c)).toEqual({ tenantId: 't1', AND: [{ OR: a.OR }, { OR: b.OR }, { OR: c.OR }] });
+  });
+});
+
+/**
+ * The keyset predicate (M4-20). `(updatedAt, id) < cursor` as an OR alone is a
+ * filter, so Postgres walked the list index from the first row to reach page
+ * 200 (an agent's in a 100,000-lead workspace: 52,000 rows, 130 ms). The bound
+ * on the sort key selects the same rows and lets the index seek to the page.
+ */
+describe('cursorWhere', () => {
+  const at = '2026-08-01T15:37:59.450Z';
+  const cursor = encodeCursor({ updatedAt: at, id: 'c9' });
+
+  it('bounds updatedAt, so the index seeks to the page instead of filtering from the first row', () => {
+    expect(cursorWhere(cursor)).toEqual({
+      updatedAt: { lte: new Date(at) },
+      OR: [{ updatedAt: { lt: new Date(at) } }, { updatedAt: new Date(at), id: { lt: 'c9' } }],
+    });
+  });
+
+  it('narrows a date chip on the same column rather than replacing it', () => {
+    const chip = { updatedAt: { gte: new Date('2026-01-01T00:00:00Z') } };
+    const where = mergeWhere(scope, chip, cursorWhere(cursor)) as { updatedAt: unknown; AND: unknown[] };
+    expect(where.updatedAt).toEqual(chip.updatedAt);
+    expect(where.AND).toContainEqual({ updatedAt: { lte: new Date(at) } });
   });
 });
 

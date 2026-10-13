@@ -43,7 +43,16 @@ export default defineConfig(({ mode }) => {
       // test suites — pino's Jest specs among them — and once anyone had run a
       // production build, `npm test` reported fifty-odd failing files that
       // belong to third-party packages.
-      exclude: ['node_modules/**', 'dist/**', '.next/**', '.next-prod/**', 'tests/e2e/**', 'tests/server/**'],
+      // tests/perf is measurement, run by hand through vitest.perf.mts.
+      exclude: [
+        'node_modules/**',
+        'dist/**',
+        '.next/**',
+        '.next-prod/**',
+        'tests/e2e/**',
+        'tests/server/**',
+        'tests/perf/**',
+      ],
     },
   };
 });

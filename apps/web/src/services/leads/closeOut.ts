@@ -1,4 +1,4 @@
-import { withTx } from '@/lib/db';
+import { withTx, type TxClient } from '@/lib/db';
 import { Invalid } from '@/lib/errors';
 import { auditDiff } from '@/lib/security/audit';
 import { assertLeadInScope } from '@/lib/security/record-scope';
@@ -24,8 +24,10 @@ export async function closeOutLead(
   ctx: Ctx,
   id: string,
   input: { status: CloseOutStatus | 'OPEN'; duplicateOfId?: string | null },
+  /** A transaction the caller already holds (Move to Data's). */
+  db?: TxClient,
 ) {
-  return withTx(ctx.tenantId, async (tx) => {
+  const work = async (tx: TxClient) => {
     const before = await assertLeadInScope(ctx, id, tx, 'EDIT');
 
     let duplicateOfId: string | null = null;
@@ -43,5 +45,6 @@ export async function closeOutLead(
     });
     await auditDiff(ctx, 'lead', id, before, after, tx);
     return after;
-  });
+  };
+  return db ? work(db) : withTx(ctx.tenantId, work);
 }

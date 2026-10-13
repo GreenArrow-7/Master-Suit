@@ -43,6 +43,8 @@ const patchBody = z
     campaignName: z.string().trim().max(120).nullable().optional(),
     priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
     tags: z.array(z.string().max(40)).max(20).optional(),
+    /** Added to the lead's own (the grid's bulk Add tag, M4-35); none removed. */
+    addTags: z.array(z.string().trim().min(1).max(40)).min(1).max(20).optional(),
     notes: z.string().max(5000).nullable().optional(),
     stageId: z.string().cuid().optional(),
     stageReason: z.string().max(200).optional(),
@@ -75,9 +77,11 @@ export const PATCH = route(
     const masked = (['phone', 'email'] as const).filter(
       (field) => body[field] !== undefined && !seesField(ctx, 'LEAD', rules, field, LEAD_SENSITIVE_FIELDS),
     );
-    if (masked.length) {
+    // Adding tags is editing the tags field: refused, not dropped, so the bulk bar counts it as not done.
+    const tagsLocked = body.addTags !== undefined && rules.get('tags')?.canEdit === false;
+    if (masked.length || tagsLocked) {
       await assertLeadInScope(ctx, params.id, prisma, 'EDIT');
-      throw Forbidden(`Your role cannot change this lead’s ${masked.join(' or ')}.`);
+      throw Forbidden(`Your role cannot change this lead’s ${masked.length ? masked.join(' or ') : 'tags'}.`);
     }
     const safe = stripUneditableFields(rules, body);
     const lead = await updateLead(ctx, params.id, safe);
@@ -89,6 +93,7 @@ export const DELETE = route(
   { module: 'leads', productModule: LEAD_MODULES, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) => {
     await deleteLead(ctx, params.id);
-    return { ok: true };
+    // The id names the lead on the route's RECORD_DELETED row, beside its restore's.
+    return { ok: true, id: params.id };
   },
 );
