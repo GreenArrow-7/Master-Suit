@@ -3,7 +3,8 @@
 **What.** Part 4E (merge and import) of the owner's brief "Build to completion:
 Lead Eagle M4 Leads, M5 Cold data, M6 Lead intake", rows M4-31, M4-41, M4-42
 and M4-43, for every lead module. Branch `feat/lead-merge-import`, from `main`
-at f3d78ad9, merged up with `main` at fa01771f (#177, #178) after review.
+at f3d78ad9, merged up with `main` at fa01771f (#177, #178) after review, and
+again at fe5ecc75 (#179).
 
 - **Merge two leads (M4-31).** A lead's page names any lead the duplicate rules
   match it with ("May be the same person as LD-000124 · Sara (same number).
@@ -259,13 +260,27 @@ below are this change's design choices:
   - `tests/security` with `tests/platform`: 55 files, 686 passed.
 - **Static checks.** `tsc --noEmit` clean; eslint 0 errors (2 warnings, on
   untouched lines of the lead page); prettier clean.
+- **Merged up with `main` at fe5ecc75 (#179).** Only `changes/README.md` and
+  `PROJECT.md` conflicted; the grid keeps #179's sort and #178's call cells
+  with Merge in its bulk bar. Screens now: Sales 76, Real Estate 42, Lead
+  Eagle 31 (#179's calendars and this branch's compare screens). 107
+  migrations, none from this branch. `tsc` clean; eslint 0 errors; prettier
+  clean. Vitest: the merge, import, saved-view, search, Kanban, call-log,
+  timeline, calendar, entitlement, route and nav specs, 13 files, 869 passed;
+  `tests/sales` with `tests/permission`, 95 files, 1678 passed, and the six
+  files whose `beforeAll` timed out under that load passed alone (59). E2E,
+  each alone on a fresh `.next`: `lead-merge-import` 2/2, `lead-views-board`
+  5/5, `redesign-mobile` 3/3 (demo workspace). The compare screen's
+  dark-theme check failed twice and passed on the third run: it read a card's
+  colour inside the 180 ms theme fade, before a frame had run. It now polls.
 
 **Left open.**
 
 - Searching the lead grid for a merged lead's reference finds nothing; its
   address resolves, which is what the brief asked of the old reference. The
-  lead search is round 3's (`2026-10-13-lead-views-kanban-calendar-search.md`,
-  open on its own branch); a "was merged into" answer there belongs with it.
+  lead search is round 3's (`leadSearch`, #179,
+  `2026-10-13-lead-views-kanban-calendar-search.md`); a "was merged into"
+  answer there belongs with it.
 - Marketing-list memberships, automation enrolments and webhook deliveries
   name a lead by id without a foreign key; they stay with the merged lead.
   Notifications open its page, which names the kept lead.

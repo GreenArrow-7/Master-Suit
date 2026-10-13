@@ -45,8 +45,9 @@ test.describe('Merging two leads, and an import checked before it runs', () => {
       document.documentElement.dataset.theme = 'dark';
     });
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark');
-    // The cards follow the theme's tokens: no colour of their own.
-    expect(await surface()).not.toBe(light);
+    // The cards follow the theme's tokens: no colour of their own. Polled: a card
+    // fades between themes (180 ms) and reads light until the next frame runs.
+    await expect.poll(surface).not.toBe(light);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     await page.evaluate(() => {
       delete document.documentElement.dataset.theme;
