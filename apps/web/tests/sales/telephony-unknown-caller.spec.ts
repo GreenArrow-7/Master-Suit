@@ -1,10 +1,16 @@
 import { createHmac } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+// The vendor check a save runs; a switch must not need it.
+const verify = vi.hoisted(() => vi.fn(async () => ({ ok: false as const, detail: 'Twilio did not answer.' })));
+vi.mock('@/lib/integrations/verify', () => ({ verifyConnection: verify }));
+
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { wrapCredentials } from '@/lib/integrations/connection';
 import { POST as telephonyWebhook } from '@/app/api/v1/webhooks/telephony/[key]/route';
 import { PUT as configure } from '@/app/api/v1/integrations/[provider]/route';
+import { handleJob } from '@/workers/jobs';
 import { leadEagleWorkspace } from '../helpers/leadSource';
 
 /**
@@ -41,7 +47,7 @@ function twilio(key: string, params: Record<string, string>) {
 }
 
 /** One inbound call from `from`: its first callback, and optionally the one that ends it. */
-async function ring(tenantId: string, from: string, end?: 'no-answer' | 'completed') {
+async function ring(tenantId: string, from: string, end?: 'no-answer' | 'completed', to = LINE) {
   const sid = `CAunknown${Date.now()}${++sequence}`;
   const key = keys.get(tenantId)!;
   const first = await twilio(key, {
@@ -49,7 +55,7 @@ async function ring(tenantId: string, from: string, end?: 'no-answer' | 'complet
     CallStatus: 'ringing',
     Direction: 'inbound',
     From: from,
-    To: LINE,
+    To: to,
     SequenceNumber: '0',
   });
   expect(first.status).toBe(200);
@@ -91,7 +97,8 @@ afterAll(async () => {
 
 describe('a call from a number nobody holds', () => {
   it('makes a Telephony lead, queued for distribution, and the missed call is on it', async () => {
-    const call = await ring(ws.tenantId, '+971500003301', 'no-answer');
+    // Dialled on another of the account's numbers: the detail is the line this connection advertises.
+    const call = await ring(ws.tenantId, '+971500003301', 'no-answer', '+97144000099');
 
     const [lead, ...more] = await leadsWith(ws.tenantId, '+971500003301');
     expect(more).toHaveLength(0);
@@ -100,7 +107,8 @@ describe('a call from a number nobody holds', () => {
       source: 'TELEPHONY',
       sourceDetail: `twilio:${LINE}`,
       ownerId: null,
-      consentStatus: 'IMPLIED',
+      // A call is not a request for marketing: campaigns pass it by until somebody records consent.
+      consentStatus: 'UNKNOWN',
     });
     expect(call).toMatchObject({ leadId: lead!.id, direction: 'INBOUND', status: 'MISSED', callerId: ws.userId });
     const note = await prisma.activity.findFirstOrThrow({ where: { tenantId: ws.tenantId, leadId: lead!.id } });
@@ -120,13 +128,29 @@ describe('a call from a number nobody holds', () => {
     expect(await prisma.activity.count({ where: { tenantId: ws.tenantId, leadId: lead!.id } })).toBe(1);
   });
 
-  it('joins the lead that holds the number as a second one, whose owner takes the call and is told', async () => {
+  it('names the number dialled when the connection has no line of its own', async () => {
+    await prisma.integrationConnection.update({
+      where: { tenantId_provider: { tenantId: ws.tenantId, provider: 'twilio' } },
+      data: { metadata: {} },
+    });
+    await ring(ws.tenantId, '+971500003304', 'no-answer', '+97144000099');
+    const [lead] = await leadsWith(ws.tenantId, '+971500003304');
+    expect(lead?.sourceDetail).toBe('twilio:+97144000099');
+    await setting(ws.tenantId, true);
+  });
+
+  it('puts a call from a lead’s second number on that lead, like its main one, and writes nothing', async () => {
     const owner = await prisma.user.create({
       data: {
         tenantId: ws.tenantId,
         email: `owner@${ws.slug}.test`,
         fullName: 'Lead Owner',
-        roleId: (await prisma.user.findFirstOrThrow({ where: { tenantId: ws.tenantId, id: ws.userId } })).roleId,
+        // Junior to the admin, who stays the most senior user the unmatched calls go to.
+        roleId: (
+          await prisma.role.create({
+            data: { tenantId: ws.tenantId, key: `owner-${Date.now()}`, name: 'Owner', rank: 40 },
+          })
+        ).id,
         status: 'ACTIVE',
       },
     });
@@ -145,14 +169,53 @@ describe('a call from a number nobody holds', () => {
     });
     const before = await prisma.lead.count({ where: { tenantId: ws.tenantId } });
 
-    const call = await ring(ws.tenantId, '+971500003391');
-    expect(call).toMatchObject({ leadId: lead.id, callerId: owner.id });
+    for (let i = 0; i < 2; i++) {
+      const call = await ring(ws.tenantId, '+971500003391', 'completed');
+      expect(call).toMatchObject({ leadId: lead.id, callerId: owner.id });
+    }
     expect(await prisma.lead.count({ where: { tenantId: ws.tenantId } })).toBe(before);
+    expect(await prisma.activity.count({ where: { tenantId: ws.tenantId, leadId: lead.id } })).toBe(0);
+    expect(await prisma.notification.count({ where: { tenantId: ws.tenantId, recordId: lead.id } })).toBe(0);
+    expect(await prisma.auditLog.count({ where: { tenantId: ws.tenantId, recordId: lead.id } })).toBe(0);
+  });
+
+  it('puts a contact’s call on the contact and makes no lead of it', async () => {
+    const contact = await prisma.contact.create({
+      data: {
+        tenantId: ws.tenantId,
+        reference: `C-TEL-${Date.now()}`,
+        fullName: 'Known Customer',
+        phone: '+971500003392',
+        phoneNormalized: '+971500003392',
+        ownerId: ws.userId,
+      },
+    });
+    const call = await ring(ws.tenantId, '+971500003392', 'no-answer');
+    expect(call).toMatchObject({ contactId: contact.id, leadId: null });
+    expect(await leadsWith(ws.tenantId, '+971500003392')).toHaveLength(0);
+  });
+
+  it('makes no lead of a colleague calling from their own phone', async () => {
+    await prisma.user.update({ where: { id: ws.userId, tenantId: ws.tenantId }, data: { phone: '050 000 3393' } });
+    const call = await ring(ws.tenantId, '+971500003393', 'no-answer');
+    expect(call.leadId).toBeNull();
+    expect(await leadsWith(ws.tenantId, '+971500003393')).toHaveLength(0);
+  });
+
+  it('makes no lead of a withheld number, and keeps withheld callers apart', async () => {
+    // Twilio's stand-ins for a caller with no caller ID, and the word some vendors send instead.
+    for (const from of ['+266696687', '+266696687', '+86282452253', '+7378742833', '+2562533', 'anonymous']) {
+      const call = await ring(ws.tenantId, from, 'no-answer');
+      expect(call).toMatchObject({ leadId: null, contactId: null });
+    }
     expect(
-      await prisma.notification.count({
-        where: { tenantId: ws.tenantId, userId: owner.id, recordId: lead.id, kind: 'lead.enquiry' },
+      await prisma.lead.count({
+        where: {
+          tenantId: ws.tenantId,
+          phoneNormalized: { in: ['+266696687', '+86282452253', '+7378742833', '+2562533'] },
+        },
       }),
-    ).toBe(1);
+    ).toBe(0);
   });
 
   it('records the call as before, against the most senior user and no lead, when switched off', async () => {
@@ -170,13 +233,53 @@ describe('a call from a number nobody holds', () => {
   });
 });
 
+describe('the agent distribution gives a caller’s lead to', () => {
+  it('is told, in the bell and on the phone', async () => {
+    const role = await prisma.role.create({
+      data: { tenantId: ws.tenantId, key: `agent-${Date.now()}`, name: 'Agent', rank: 50 },
+    });
+    const agent = await prisma.user.create({
+      data: {
+        tenantId: ws.tenantId,
+        email: `agent@${ws.slug}.test`,
+        fullName: 'Distributed Agent',
+        roleId: role.id,
+        status: 'ACTIVE',
+      },
+    });
+    await prisma.distributionRule.create({
+      data: {
+        tenantId: ws.tenantId,
+        name: 'Callers',
+        objectType: 'LEAD',
+        method: 'ROUND_ROBIN',
+        isActive: true,
+        candidatePool: { userIds: [agent.id] },
+      },
+    });
+
+    await ring(ws.tenantId, '+971500003305', 'no-answer');
+    const [lead] = await leadsWith(ws.tenantId, '+971500003305');
+    await handleJob('distribution', { name: 'assign-lead', data: { tenantId: ws.tenantId, leadId: lead!.id } });
+
+    expect((await prisma.lead.findFirstOrThrow({ where: { tenantId: ws.tenantId, id: lead!.id } })).ownerId).toBe(
+      agent.id,
+    );
+    const told = await prisma.notification.findFirstOrThrow({
+      where: { tenantId: ws.tenantId, userId: agent.id, recordId: lead!.id, kind: 'lead.assigned' },
+    });
+    expect(told).toMatchObject({ title: 'Lead assigned: Unknown caller', objectType: 'lead', priority: 'HIGH' });
+    expect(told.channels).toContain('push');
+  });
+});
+
 describe('the "Create leads from unknown callers" setting', () => {
-  const put = (settings: Record<string, unknown>) =>
+  const put = (settings: Record<string, unknown>, skipVerification = true) =>
     configure(
       new Request('http://localhost/api/v1/integrations/twilio', {
         method: 'PUT',
         headers: { 'content-type': 'application/json', cookie: ws.cookie },
-        body: JSON.stringify({ settings, skipVerification: true }),
+        body: JSON.stringify({ settings, skipVerification }),
       }),
       { params: Promise.resolve({ provider: 'twilio' }) },
     );
@@ -192,5 +295,17 @@ describe('the "Create leads from unknown callers" setting', () => {
 
   it('takes on or off, nothing else', async () => {
     expect((await put({ createLeadsFromUnknownCallers: 'yes' })).status).toBe(422);
+  });
+
+  it('is a switch: flipping it checks nothing with the vendor and leaves the connection as it was', async () => {
+    verify.mockClear();
+    const res = await put({ createLeadsFromUnknownCallers: true }, false);
+    expect(res.status).toBe(200);
+    expect(verify).not.toHaveBeenCalled();
+    const row = await prisma.integrationConnection.findUniqueOrThrow({
+      where: { tenantId_provider: { tenantId: ws.tenantId, provider: 'twilio' } },
+    });
+    expect(row).toMatchObject({ status: 'CONNECTED', errorMessage: null });
+    expect(row.metadata).toMatchObject({ callerNumber: LINE, createLeadsFromUnknownCallers: true });
   });
 });

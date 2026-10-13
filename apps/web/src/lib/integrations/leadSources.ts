@@ -248,6 +248,22 @@ export function requirementFrom(wants: Wants): RequirementDraft | null {
   return wanted ? { purpose, propertyTypes, subType, locations, bedroomsMin, bedroomsMax, budgetMin, budgetMax } : null;
 }
 
+/** The client's number, by the keys a sender may give it under, the likeliest first. */
+const PHONE_KEYS = [
+  'clientphone',
+  'clientmobile',
+  'contactphone',
+  'contactmobile',
+  'customerphone',
+  'customermobile',
+  'phone',
+  'mobile',
+  'phonenumber',
+  'contactnumber',
+  'whatsapp',
+  'workphone',
+];
+
 export function parseEnquiry(payload: Record<string, unknown>, fieldMap: FieldMap = {}): Enquiry {
   const flat = flatten(payload);
   // Applied before anything is read. `parent.field` is the flattened `parentfield`.
@@ -266,22 +282,7 @@ export function parseEnquiry(payload: Record<string, unknown>, fieldMap: FieldMa
   const last = get('lastname');
   // A mapped first or last name is the client's, over a guessed `name` (the form's, the campaign's).
   const byParts = !mapped.has('fullName') && (mapped.has('firstName') || mapped.has('lastName'));
-  const guessedPhones = [
-    'clientphone',
-    'clientmobile',
-    'contactphone',
-    'contactmobile',
-    'customerphone',
-    'customermobile',
-    'phone',
-    'mobile',
-    'phonenumber',
-    'contactnumber',
-    'whatsapp',
-    'workphone',
-  ]
-    .map((k) => flat.get(k))
-    .filter((p): p is string => !!p);
+  const guessedPhones = PHONE_KEYS.map((k) => flat.get(k)).filter((p): p is string => !!p);
   // A mapped number is the client's; any other the body carries is not (an office, an agent).
   const phones = mapped.has('phone') ? [flat.get(MAPPABLE_FIELDS.phone.key)!] : guessedPhones;
 
@@ -307,7 +308,7 @@ export function parseEnquiry(payload: Record<string, unknown>, fieldMap: FieldMa
 
 /**
  * The portals whose lead emails a Portal emails source reads (M6-12), each as it
- * names itself in a sender's address, a subject or a body.
+ * names itself in a sender or a subject.
  */
 const PORTAL_MAIL: [LeadSourceKey, RegExp][] = [
   ['property_finder', /property ?finder/i],
@@ -340,19 +341,30 @@ const MAIL_LABELS: Record<string, string> = {
   leadname: 'clientname',
 };
 
-/** `Label: value`, or a table row's `Label` cell then its value; the label starts with a letter. */
-const LINE = /^[\s>*•-]*(\p{L}[\p{L}\d .#/&()'’-]{0,40}?)\s*(?:[:：]|\t)\s*(.*?)\s*$/u;
+/**
+ * `Label: value`, or a table row's `Label` cell then its value; the label starts
+ * with a letter. The value is trimmed after, not by the pattern: a lazy value
+ * before `\s*$` is quadratic on a long run of spaces.
+ */
+const LINE = /^[\s>*•-]*(\p{L}[\p{L}\d .#/&()'’-]{0,40}?)\s*(?:[:：]|\t)(.*)$/u;
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
 
-/** The body as lines: the text part, else the HTML with its cells split by a tab and its rows by a line. */
-function mailText(text: unknown, html: unknown): string {
-  if (typeof text === 'string' && text.trim()) return text;
-  if (typeof html !== 'string') return '';
-  return html
-    .replace(/<(style|script|head)\b[\s\S]*?<\/\1>/gi, '')
-    .replace(/<\/t[dh]>/gi, '\t')
-    .replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d|table)>/gi, '\n')
-    .replace(/<[^>]*>/g, '')
+/** Somebody the email names besides the client: a label or heading about them opens a block of theirs. */
+const PARTY = /^(?:(?:listing|your|the) )?(?:agents?|broker|agency|owner|landlord|advertiser)\b/i;
+/** A label or heading about the client, which closes such a block. */
+const CLIENT = /^(?:client|contact|customer|lead|enquirer|enquiry|buyer|tenant|user|sender)\b/i;
+
+/**
+ * The HTML part as lines: its cells split by a tab, its rows by a line. The
+ * source's own line breaks and indents go first, as a browser drops them: kept,
+ * a pretty-printed `<td>Priya Nair</td>` reads as a label of its own.
+ */
+function htmlText(html: string): string {
+  return withoutBlocks(html)
+    .replace(/\s+/g, ' ')
+    .replace(/<\/t[dh]\s*>/gi, '\t')
+    .replace(/<br\s*\/?>|<\/(?:p|div|tr|li|h\d|table)\s*>/gi, '\n')
+    .replace(/<[^<>]*>/g, '')
     .replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (entity, name: string) => {
       if (name[0] !== '#') return ENTITIES[name.toLowerCase()] ?? entity;
       const code = name[1] === 'x' || name[1] === 'X' ? parseInt(name.slice(2), 16) : Number(name.slice(1));
@@ -360,17 +372,75 @@ function mailText(text: unknown, html: unknown): string {
     });
 }
 
+/** `<style>`, `<script>` and `<head>` with what is in them, in one pass: a lazy regex is quadratic on unclosed ones. */
+function withoutBlocks(html: string): string {
+  const lower = html.toLowerCase();
+  const open = /<(style|script|head)\b/gi;
+  let out = '';
+  let at = 0;
+  for (let m = open.exec(html); m; m = open.exec(html)) {
+    const close = lower.indexOf(`</${m[1]!.toLowerCase()}`, open.lastIndex);
+    // No closing tag after this one means none after any later one either.
+    if (close < 0) break;
+    out += html.slice(at, m.index);
+    at = lower.indexOf('>', close) + 1 || html.length;
+    open.lastIndex = at;
+  }
+  return out + html.slice(at);
+}
+
+const HEADER = /^[>\s*]*(from|sent|date|to|cc|subject|reply-to)\s*:/i;
+
+/**
+ * A forwarded email's original: from its quoted header (a run of `From:` …
+ * `Subject:` lines) on, and the sender that header names. The forwarder's note
+ * and signature above it are theirs, not the client's.
+ */
+function original(lines: string[]): { lines: string[]; sender: string } {
+  let found: { start: number; sender: string } | null = null;
+  let run: { start: number; sender: string | null; subject: boolean } | null = null;
+  for (let i = 0; i <= lines.length; i++) {
+    const header = i < lines.length ? HEADER.exec(lines[i]!) : null;
+    if (header) {
+      run ??= { start: i, sender: null, subject: false };
+      const name = header[1]!.toLowerCase();
+      if (name === 'from') run.sender ??= lines[i]!.slice(header[0].length);
+      if (name === 'subject') run.subject = true;
+      continue;
+    }
+    if (run?.sender != null && run.subject) found = { start: run.start, sender: run.sender };
+    run = null;
+  }
+  return found ? { lines: lines.slice(found.start), sender: found.sender } : { lines, sender: '' };
+}
+
 /**
  * Every `Label: value` line, first of each label kept. A label whose value is
  * on the lines after it (a message) reads them up to a blank line or the next
- * label.
+ * label. Labels in somebody else's block (an agent's) are skipped when they
+ * would be read as the client's name, number or address, and of the numbers
+ * only one is kept: the first under a client label, else the first in the email
+ * (a footer's comes after). An agent's or an office's number read as a second
+ * number of the client's would join every enquiry that carries it to one lead.
+ * `keep` is the field map's labels, kept whatever they are.
  */
-function labelled(body: string): Record<string, string> {
-  const lines = body.split(/\r?\n/);
+function labelled(lines: string[], keep: Set<string>): Record<string, string> {
   const out: Record<string, string> = {};
+  const numbers: [label: string, value: string][] = [];
+  let theirs = false;
   for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!.trim();
+    if (!line) {
+      theirs = false;
+      continue;
+    }
     const match = LINE.exec(lines[i]!);
+    // A label, or a short line on its own: a heading ("Agent details").
+    const label = match ? match[1]!.trim() : line.length <= 40 ? line : '';
+    if (PARTY.test(label)) theirs = true;
+    else if (CLIENT.test(label)) theirs = false;
     if (!match) continue;
+
     let value = match[2]!.replace(/\s+/g, ' ').trim();
     if (!value) {
       const rest: string[] = [];
@@ -378,11 +448,24 @@ function labelled(body: string): Record<string, string> {
       while (i + 1 < lines.length && lines[i + 1]!.trim() && !LINE.test(lines[i + 1]!)) rest.push(lines[++i]!.trim());
       value = rest.join(' ');
     }
-    const label = match[1]!.trim();
     if (!value) continue;
+    const name = key(label);
+    const alias = MAIL_LABELS[name];
+    if (!keep.has(name)) {
+      if (theirs && CONTACT.test(alias ?? name)) continue;
+      if (PHONE_KEYS.includes(alias ?? name)) {
+        numbers.push([label, value]);
+        continue;
+      }
+    }
     if (!Object.hasOwn(out, label)) out[label] = value;
-    const alias = MAIL_LABELS[key(label)];
     if (alias && !Object.hasOwn(out, alias)) out[alias] = value;
+  }
+  const [label, value] = numbers.find(([l]) => /^(client|contact|customer)/.test(key(l))) ?? numbers[0] ?? [];
+  if (label && value) {
+    out[label] = value;
+    const alias = MAIL_LABELS[key(label)];
+    if (alias) out[alias] = value;
   }
   return out;
 }
@@ -398,29 +481,36 @@ export const emailIdOf = (payload: Record<string, unknown>) =>
  * portal's notification carries; here those lines go through `parseEnquiry`,
  * so the source's field map names a label the parser does not know.
  *
- * The portal is the first one named by the sender, else the subject, else the
- * body (the earliest mention: a forwarded email quotes its sender at the top,
- * and Bayut's footer names dubizzle). Null for an email no portal sent, or one
- * that gives no number or address to reach anybody at: the delivery is kept
- * unread rather than guessed into a lead.
+ * The portal is the one the sender names, else the sender a forwarded email
+ * quotes, else the subject; never the body alone (a newsletter names portals
+ * too). The text part is read, else the HTML one. Null for an email no portal
+ * sent, or one that gives no number or address to reach anybody at: the
+ * delivery is kept unread rather than guessed into a lead.
  */
 export function parsePortalEmail(payload: Record<string, unknown>, fieldMap: FieldMap = {}) {
   const text = (value: unknown) => (typeof value === 'string' ? value : '');
-  const body = mailText(payload.text, payload.html);
-  const subject = text(payload.subject);
-  const portal = [text(payload.from), subject, body].map(portalNamedIn).find(Boolean);
-  if (!portal) return null;
-  const enquiry = parseEnquiry(labelled(body), fieldMap);
-  if (!enquiry.phones.length && !enquiry.email) return null;
-  // `Ref: PF-1`, `Reference no. 88`; not the "ref" of "refurbished".
-  const subjectRef = /\bref(?:erence)?\b(?:\s*(?:no|number)\b)?\.?\s*[:#]?\s*([a-z0-9][\w/-]{2,})/i.exec(subject)?.[1];
-  return {
-    portal,
-    enquiry: {
-      ...enquiry,
-      externalId: emailIdOf(payload),
-      reference: enquiry.reference ?? subjectRef ?? null,
-      isTest: false,
-    },
-  };
+  // An email's subject is a line; one longer is not an email's.
+  const subject = text(payload.subject).slice(0, 998);
+  const keep = new Set(Object.keys(fieldMap).map((sender) => key(sender.split('.').slice(-2).join(''))));
+  for (const body of [text(payload.text), htmlText(text(payload.html))]) {
+    const { lines, sender } = original(body.split(/\r?\n/));
+    const portal = [text(payload.from), sender, subject].map(portalNamedIn).find(Boolean);
+    if (!portal) continue;
+    const enquiry = parseEnquiry(labelled(lines, keep), fieldMap);
+    if (!enquiry.phones.length && !enquiry.email) continue;
+    // `Ref: PF-1`, `Reference no. 88`; not the "ref" of "refurbished".
+    const subjectRef = /\bref(?:erence)?\b(?:\s*(?:no|number)\b)?\.?[\s:#]*([a-z0-9][\w/-]{2,})/i.exec(subject)?.[1];
+    return {
+      portal,
+      enquiry: {
+        ...enquiry,
+        // One number: an email names one client.
+        phones: enquiry.phones.slice(0, 1),
+        externalId: emailIdOf(payload),
+        reference: enquiry.reference ?? subjectRef ?? null,
+        isTest: false,
+      },
+    };
+  }
+  return null;
 }

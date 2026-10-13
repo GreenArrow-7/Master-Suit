@@ -20,6 +20,8 @@ import { deliver, leadEagleWorkspace, sign, work } from '../helpers/leadSource';
 import {
   BAYUT,
   DUBIZZLE,
+  forwardedByAgent,
+  MENTIONS_A_PORTAL,
   NOT_A_PORTAL,
   PORTAL_NOTICE,
   PROPERTY_FINDER,
@@ -173,7 +175,28 @@ describe('portal emails as a lead source', () => {
     for (let i = 0; i < 2; i++) expect((await send(mail, { 'idempotency-key': 'mail-retry-1' })).status).toBe(200);
     await work(ws.tenantId, PROVIDER);
     expect(await prisma.lead.count({ where: { tenantId: ws.tenantId, phoneNormalized: '+971550003309' } })).toBe(1);
-    expect(await prisma.webhookEvent.count({ where: { tenantId: ws.tenantId, externalId: 'mail-retry-1' } })).toBe(1);
+    expect(await prisma.webhookEvent.count({ where: { tenantId: ws.tenantId, externalId: mail.messageId } })).toBe(1);
+  });
+
+  it('takes one email once under two keys, though the bodies differ', async () => {
+    const mail = {
+      ...BAYUT,
+      messageId: '<by-two-keys@notifications.bayut.com>',
+      text: BAYUT.text!.replace('3302', '3318').replace('omar.haddad@', 'o.h18@'),
+    };
+    expect((await send(mail, { 'idempotency-key': 'mail-key-a' })).status).toBe(200);
+    expect(
+      (await send({ ...mail, to: 'other@agency-inbox.example.com' }, { 'idempotency-key': 'mail-key-b' })).status,
+    ).toBe(200);
+    await work(ws.tenantId, PROVIDER);
+
+    const lead = await leadBy('+971550003318');
+    expect(await prisma.activity.count({ where: { tenantId: ws.tenantId, leadId: lead.id } })).toBe(1);
+    expect(
+      await prisma.webhookEvent.count({
+        where: { tenantId: ws.tenantId, externalId: { in: [mail.messageId, 'mail-key-a', 'mail-key-b'] } },
+      }),
+    ).toBe(1);
   });
 
   it('keeps an email from no known portal unread, and makes no lead of it', async () => {
@@ -239,5 +262,49 @@ describe('portal emails as a lead source', () => {
     const lead = await leadBy('+971550003315');
     expect(lead).toMatchObject({ fullName: 'Yusuf Karimi', sourceDetail: 'bayut' });
     expect(await eventFor(mail)).toMatchObject({ outcome: 'created', leadId: lead.id });
+  });
+
+  it('makes two leads of two clients an agent forwarded under one signature, neither with the agent’s numbers', async () => {
+    const first = forwardedByAgent({
+      name: 'Hamad Saeed',
+      phone: '+971 50 000 1230',
+      email: 'hamad.saeed@example.com',
+      ref: 'PF-JV-30112',
+    });
+    const second = forwardedByAgent({
+      name: 'Rania Aziz',
+      phone: '+971 50 000 1231',
+      email: 'rania.aziz@example.com',
+      ref: 'PF-JV-30113',
+    });
+    for (const mail of [first, second]) expect((await send(mail)).status).toBe(200);
+    await work(ws.tenantId, PROVIDER);
+
+    expect(await leadBy('+971500001230')).toMatchObject({
+      fullName: 'Hamad Saeed',
+      sourceDetail: 'property_finder:PF-JV-30112',
+    });
+    expect(await leadBy('+971500001231')).toMatchObject({
+      fullName: 'Rania Aziz',
+      sourceDetail: 'property_finder:PF-JV-30113',
+    });
+    const agents = ['+971550009901', '+97140009900'];
+    expect(
+      await prisma.lead.count({
+        where: {
+          tenantId: ws.tenantId,
+          OR: [{ phoneNormalized: { in: agents } }, { phones: { some: { normalized: { in: agents } } } }],
+        },
+      }),
+    ).toBe(0);
+  });
+
+  it('keeps an email that names a portal only in its body unread', async () => {
+    const before = await prisma.lead.count({ where: { tenantId: ws.tenantId } });
+    expect((await send(MENTIONS_A_PORTAL)).status).toBe(200);
+    await work(ws.tenantId, PROVIDER);
+
+    expect(await prisma.lead.count({ where: { tenantId: ws.tenantId } })).toBe(before);
+    expect(await eventFor(MENTIONS_A_PORTAL)).toMatchObject({ processed: true, outcome: 'unparsed' });
   });
 });

@@ -20,7 +20,7 @@ import { applySocialComment } from '@/services/social/applySocialComment';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { leadSourceIdFor } from '@/services/leads/leadSources';
 import { withSourceScore } from '@/services/leads/scoring';
-import { capturesUnknown, takeEnquiry } from '@/services/leads/intake';
+import { capturesUnknown, heldInWorkspace, takeEnquiry } from '@/services/leads/intake';
 import { nextReference } from '@/services/shared/reference';
 import { withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
@@ -274,11 +274,12 @@ async function fetchLeadFields(leadgenId: string, accessToken: string) {
  *
  * The thread is created before anyone knows who is on the other end — that is
  * §29's "New WhatsApp contact" state — and linked to the lead the tenant's own
- * duplicate rules match. A number no lead holds becomes a lead (M6-10) only
- * where the connection's "Create leads from new numbers" says so: on by
- * default in Lead Eagle, off elsewhere (`capturesUnknown`), so an inbound
- * "wrong number" manufactures no customer record in a workspace that has not
- * asked for it. Through the intake every enquiry takes, the message its note.
+ * duplicate rules match. A number no lead, contact or colleague holds becomes
+ * a lead (M6-10) only where the connection's "Create leads from new numbers"
+ * says so: on by default in Lead Eagle, off elsewhere (`capturesUnknown`), so
+ * an inbound "wrong number" manufactures no customer record in a workspace that
+ * has not asked for it. Through the intake every enquiry takes, the message its
+ * note. The message is kept whatever happens to the lead.
  */
 async function applyInboundMessage(tenantId: string, connectionId: string, event: NormalizedMetaEvent) {
   const threadId = event.threadId;
@@ -294,7 +295,10 @@ async function applyInboundMessage(tenantId: string, connectionId: string, event
       where: { tenantId, id: connectionId },
       select: { metadata: true },
     });
-    if (await capturesUnknown(tenantId, 'createLeadsFromNewNumbers', connection?.metadata)) {
+    if (
+      (await capturesUnknown(tenantId, 'createLeadsFromNewNumbers', connection?.metadata)) &&
+      !(await heldInWorkspace(tenantId, phoneNormalized))
+    ) {
       const taken = await takeEnquiry(
         tenantId,
         {
@@ -311,9 +315,14 @@ async function applyInboundMessage(tenantId: string, connectionId: string, event
           source: 'CHAT',
           sourceDetail: 'whatsapp',
           sourceId: await leadSourceIdFor(prisma, tenantId, 'whatsapp'),
+          consent: 'UNKNOWN',
         },
-      );
-      leadId = taken.leadId ?? null;
+      ).catch((err: Error) => {
+        // The message is what the customer sent; a lead that could not be made must not lose it.
+        logger.error({ tenantId, err: err.message }, 'new WhatsApp number not made a lead');
+        return null;
+      });
+      leadId = taken?.leadId ?? null;
     }
   }
 

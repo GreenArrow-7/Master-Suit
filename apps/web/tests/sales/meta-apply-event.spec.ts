@@ -35,7 +35,11 @@ vi.mock('@/lib/queue', () => ({ enqueue }));
 vi.mock('@/lib/integrations/connection', () => ({ connectionCredentials }));
 vi.mock('@/services/shared/reference', () => ({ nextReference: async () => 'LEAD-1' }));
 // A new number makes a lead only where the connection says so (tests/sales/whatsapp-unknown-number.spec.ts).
-vi.mock('@/services/leads/intake', () => ({ capturesUnknown: async () => false, takeEnquiry: vi.fn() }));
+vi.mock('@/services/leads/intake', () => ({
+  capturesUnknown: async () => false,
+  heldInWorkspace: async () => false,
+  takeEnquiry: vi.fn(),
+}));
 // The workspace's catalogue entry for a key (M4-03), as `source-<key>`.
 vi.mock('@/services/leads/leadSources', () => ({
   leadSourceIdFor: async (_db: unknown, _tenantId: string, key: string) => `source-${key}`,

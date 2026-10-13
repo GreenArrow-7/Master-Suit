@@ -65,11 +65,13 @@ export async function POST(req: Request, context: { params: Promise<{ key: strin
 
   const { tenantId } = connection;
   const provider = `${connection.provider}:${connection.id}`;
-  // The sender's idempotency key, else its lead id (an email's Message-ID), else
-  // the body's hash: each is what a retry of the same delivery repeats.
-  const keyed = req.headers.get('idempotency-key')?.slice(0, 200);
-  const named = connection.provider === 'inbound_email' ? emailIdOf(payload) : parseEnquiry(payload).externalId;
-  let externalId = keyed || named || createHash('sha256').update(raw, 'utf8').digest('hex');
+  // An email's Message-ID, else the sender's idempotency key, else its lead id,
+  // else the body's hash: each is what a retry of the same delivery repeats. The
+  // Message-ID comes first: one email posted twice under two keys is one email.
+  const emailId = connection.provider === 'inbound_email' ? emailIdOf(payload) : null;
+  const keyed = emailId ? undefined : req.headers.get('idempotency-key')?.slice(0, 200);
+  let externalId =
+    emailId || keyed || parseEnquiry(payload).externalId || createHash('sha256').update(raw, 'utf8').digest('hex');
   if (keyed) {
     // A key names one body: another body under it is refused, not dropped behind
     // a 200. And one body is one delivery whatever key it comes under — the

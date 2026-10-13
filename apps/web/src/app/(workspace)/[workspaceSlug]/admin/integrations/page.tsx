@@ -10,8 +10,7 @@ import { buildId } from '@/lib/build';
 import IntegrationBoard, { type ProviderCard } from '@/components/workspace/IntegrationBoard';
 import ChannelOverview from '@/components/workspace/ChannelOverview';
 import { channelCards } from '@/services/integrations/channelState';
-import { capturesUnknown, type CaptureSetting } from '@/services/leads/intake';
-import { hasAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitlements';
+import { withSwitches } from '@/services/leads/intake';
 
 export const metadata = { title: 'Integrations' };
 
@@ -43,8 +42,6 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ w
 
   const byProvider = new Map(connections.map((c) => [c.provider, c]));
   const base = env.APP_URL.replace(/\/$/, '');
-  // The lead switches mean nothing to a workspace with no lead product.
-  const leads = await hasAnyModuleEntitlement(ctx.tenantId, LEAD_MODULES);
 
   const providers: ProviderCard[] = await Promise.all(
     PROVIDERS.map(async (spec) => {
@@ -53,12 +50,8 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ w
         conn && UNSIGNED_VENDORS.includes(spec.key as never)
           ? `?token=${callbackSecrets(conn.webhookKey).urlToken}`
           : '';
-      const settingFields = spec.settings.filter((f) => leads || !f.toggle);
-      const settings = { ...((conn?.metadata ?? {}) as Record<string, unknown>) };
       // A switch shows what it does now: as saved, or its default.
-      for (const f of settingFields.filter((f) => f.toggle)) {
-        settings[f.key] = await capturesUnknown(ctx.tenantId, f.key as CaptureSetting, conn?.metadata);
-      }
+      const { settingFields, settings } = await withSwitches(ctx.tenantId, spec.settings, conn?.metadata);
 
       return {
         key: spec.key,

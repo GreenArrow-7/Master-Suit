@@ -1,10 +1,33 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+// Facebook's side of a reconnect: the state this server minted, and the Page it hands back.
+const oauthState = vi.hoisted(() => ({
+  value: null as null | { tenantId: string; actorId: string; returnTo: string },
+}));
+vi.mock('@/services/meta/oauth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/meta/oauth')>()),
+  metaOAuthConfigured: () => true,
+  consumeMetaOAuthState: async () => oauthState.value,
+  completeMetaOAuth: async () => ({
+    accessToken: 'page-token',
+    expiresAt: null,
+    pageId: 'page-1',
+    pageName: 'Agency Page',
+    instagramId: null,
+    instagramHandle: null,
+    scopes: ['pages_show_list'],
+    businessName: null,
+  }),
+}));
+
 import { prisma } from '@/lib/db';
 import { wrapCredentials } from '@/lib/integrations/connection';
 import type { NormalizedMetaEvent } from '@/lib/integrations/meta/events';
 import { GET as board } from '@/app/api/v1/integrations/route';
 import { PUT as configure } from '@/app/api/v1/integrations/[provider]/route';
+import { GET as metaCallback } from '@/app/api/v1/integrations/meta/callback/route';
 import { applyMetaEvent } from '@/services/meta/applyEvent';
+import { invalidateEntitlements } from '@/lib/security/entitlements';
 import { leadEagleWorkspace } from '../helpers/leadSource';
 import { get } from '../helpers/request';
 
@@ -87,7 +110,7 @@ describe('a WhatsApp message from a new number', () => {
       fullName: 'Layla Hassan',
       source: 'CHAT',
       sourceDetail: 'whatsapp',
-      consentStatus: 'IMPLIED',
+      consentStatus: 'UNKNOWN',
     });
     const note = await prisma.activity.findFirstOrThrow({ where: { tenantId: ws.tenantId, leadId: lead!.id } });
     expect(note.notes).toContain('Enquiry via WhatsApp');
@@ -121,13 +144,67 @@ describe('a WhatsApp message from a new number', () => {
   });
 
   it('attaches to the lead that already holds the number, as before', async () => {
-    const known = await prisma.lead.findFirstOrThrow({
-      where: { tenantId: ws.tenantId, phoneNormalized: '+447700900123' },
+    const stage = await prisma.leadStage.findFirstOrThrow({ where: { tenantId: ws.tenantId, isDefault: true } });
+    const known = await prisma.lead.create({
+      data: {
+        tenantId: ws.tenantId,
+        reference: `L-WA-${Date.now()}`,
+        fullName: 'Known Client',
+        phone: '+971500002250',
+        phoneNormalized: '+971500002250',
+        stageId: stage.id,
+      },
     });
     const before = await prisma.lead.count({ where: { tenantId: ws.tenantId } });
-    await receive(ws.tenantId, '447700900123', 'Any news?');
+    await receive(ws.tenantId, '971500002250', 'Any news?');
     expect(await prisma.lead.count({ where: { tenantId: ws.tenantId } })).toBe(before);
-    expect(await prisma.activity.count({ where: { tenantId: ws.tenantId, leadId: known.id } })).toBe(1);
+    expect(await prisma.activity.count({ where: { tenantId: ws.tenantId, leadId: known.id } })).toBe(0);
+    const thread = await prisma.conversation.findFirstOrThrow({
+      where: { tenantId: ws.tenantId, externalId: '971500002250' },
+      include: { communications: true },
+    });
+    expect(thread.leadId).toBe(known.id);
+    expect(thread.communications.map((m) => m.leadId)).toEqual([known.id]);
+  });
+
+  it('makes no lead of a number a contact holds', async () => {
+    await prisma.contact.create({
+      data: {
+        tenantId: ws.tenantId,
+        reference: `C-WA-${Date.now()}`,
+        fullName: 'Known Customer',
+        phone: '+971500002260',
+        phoneNormalized: '+971500002260',
+      },
+    });
+    await receive(ws.tenantId, '971500002260', 'Hello again');
+    expect(await leadsWith(ws.tenantId, '+971500002260')).toHaveLength(0);
+    const thread = await prisma.conversation.findFirstOrThrow({
+      where: { tenantId: ws.tenantId, externalId: '971500002260' },
+    });
+    expect(thread.leadId).toBeNull();
+  });
+
+  it('makes no lead of a colleague writing from their own phone', async () => {
+    await prisma.user.update({ where: { id: ws.userId, tenantId: ws.tenantId }, data: { phone: '+971 50 000 2270' } });
+    await receive(ws.tenantId, '971500002270', 'Running late');
+    expect(await leadsWith(ws.tenantId, '+971500002270')).toHaveLength(0);
+  });
+
+  it('still keeps the message when the lead cannot be made', async () => {
+    await prisma.leadStage.updateMany({ where: { tenantId: ws.tenantId }, data: { isDefault: false } });
+    try {
+      await receive(ws.tenantId, '971500002280', 'Is anyone there?');
+    } finally {
+      await prisma.leadStage.updateMany({ where: { tenantId: ws.tenantId }, data: { isDefault: true } });
+    }
+    expect(await leadsWith(ws.tenantId, '+971500002280')).toHaveLength(0);
+    const thread = await prisma.conversation.findFirstOrThrow({
+      where: { tenantId: ws.tenantId, externalId: '971500002280' },
+      include: { communications: true },
+    });
+    expect(thread.leadId).toBeNull();
+    expect(thread.communications).toHaveLength(1);
   });
 
   it('opens a conversation only when the connection says not to make leads', async () => {
@@ -189,5 +266,42 @@ describe('the "Create leads from new numbers" setting', () => {
 
   it('takes on or off, nothing else', async () => {
     expect((await put({ createLeadsFromNewNumbers: 'no' })).status).toBe(422);
+  });
+
+  it('survives reconnecting Facebook', async () => {
+    // Saved off by the test above.
+    oauthState.value = { tenantId: ws.tenantId, actorId: ws.userId, returnTo: '/' };
+    const res = await metaCallback(
+      new Request('http://localhost/api/v1/integrations/meta/callback?state=s&code=c', {
+        headers: { cookie: ws.cookie },
+      }),
+    );
+    expect(res.headers.get('location')).toContain('page=');
+    const row = await prisma.integrationConnection.findUniqueOrThrow({
+      where: { tenantId_provider: { tenantId: ws.tenantId, provider: 'meta' } },
+    });
+    expect(row.metadata).toMatchObject({ pageId: 'page-1', createLeadsFromNewNumbers: false });
+  });
+
+  it('is listed as it acts: its default where unsaved, and not at all without a lead product', async () => {
+    const card = async (w: Ws) =>
+      (await get(board, '/api/v1/integrations', w.cookie)).body.providers.find(
+        (p: { key: string }) => p.key === 'meta',
+      );
+    const fresh = await leadEagleWorkspace('wa-list', ADMIN);
+    try {
+      await connectWhatsApp(fresh.tenantId);
+      expect((await card(fresh)).settings.createLeadsFromNewNumbers).toBe(true);
+      await prisma.moduleEntitlement.updateMany({ where: { tenantId: fresh.tenantId }, data: { module: 'SALES' } });
+      await invalidateEntitlements(fresh.tenantId);
+      expect((await card(fresh)).settings.createLeadsFromNewNumbers).toBe(false);
+      await prisma.moduleEntitlement.updateMany({ where: { tenantId: fresh.tenantId }, data: { module: 'HRMS' } });
+      await invalidateEntitlements(fresh.tenantId);
+      const hr = await card(fresh);
+      expect(hr.settingFields.map((f: { key: string }) => f.key)).not.toContain('createLeadsFromNewNumbers');
+      expect(hr.settings).not.toHaveProperty('createLeadsFromNewNumbers');
+    } finally {
+      await fresh.cleanup();
+    }
   });
 });

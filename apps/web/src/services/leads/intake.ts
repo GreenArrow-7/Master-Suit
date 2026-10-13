@@ -9,7 +9,8 @@
  * delivery. Reads the stored payload rather than the job's, so fixing a field
  * mapping and replaying the event is enough to recover a badly parsed lead.
  */
-import type { RecordSource } from '@prisma/client';
+import type { ConsentStatus, RecordSource } from '@prisma/client';
+import type { SettingField } from '@/lib/integrations/registry';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { enqueue } from '@/lib/queue';
@@ -100,6 +101,40 @@ export async function capturesUnknown(tenantId: string, setting: CaptureSetting,
   return setting === 'createLeadsFromUnknownCallers' || hasModuleEntitlement(tenantId, 'LEAD_EAGLE');
 }
 
+/**
+ * A connection's switches as Integrations lists them: each as saved or as its
+ * default, the way `capturesUnknown` reads it, and none in a workspace without
+ * a lead product, where they would switch nothing.
+ */
+export async function withSwitches(tenantId: string, fields: readonly SettingField[], metadata: unknown) {
+  const leads = await hasAnyModuleEntitlement(tenantId, LEAD_MODULES);
+  const settings = { ...((metadata ?? {}) as Record<string, unknown>) };
+  for (const f of fields.filter((f) => f.toggle)) {
+    if (leads) settings[f.key] = await capturesUnknown(tenantId, f.key as CaptureSetting, metadata);
+    else delete settings[f.key];
+  }
+  return { settingFields: fields.filter((f) => leads || !f.toggle), settings };
+}
+
+/**
+ * A number a contact or a colleague holds: a customer already on the books, or
+ * somebody on the staff ringing in from their own phone. Neither is somebody new.
+ */
+export async function heldInWorkspace(tenantId: string, phoneNormalized: string) {
+  const contact = await prisma.contact.findFirst({
+    where: { tenantId, phoneNormalized, deletedAt: null },
+    select: { id: true },
+  });
+  if (contact) return true;
+  // ponytail: User.phone is stored as typed, so each colleague's is normalised here; a
+  // normalised column is the upgrade if a workspace's staff runs into the thousands.
+  const staff = await prisma.user.findMany({
+    where: { tenantId, deletedAt: null, phone: { not: null } },
+    select: { phone: true },
+  });
+  return staff.some((u) => normalizePhone(u.phone!) === phoneNormalized);
+}
+
 /** Where an enquiry came from, as the lead records it. */
 export interface EnquiryOrigin {
   /** "Enquiry via …" on the timeline. */
@@ -118,6 +153,11 @@ export interface EnquiryOrigin {
    * written and nobody is told.
    */
   reached?: string | null;
+  /**
+   * Implied, for somebody who asked to be contacted. A caller or a message from
+   * a new number has not asked for marketing: UNKNOWN, which campaigns pass by.
+   */
+  consent?: ConsentStatus;
 }
 
 export async function takeEnquiry(
@@ -242,7 +282,7 @@ export async function takeEnquiry(
         // The entry, and the points a lead from it starts with (M4-11).
         ...(await withSourceScore(tx, tenantId, origin.sourceId)),
         // They asked to be contacted.
-        consentStatus: 'IMPLIED',
+        consentStatus: origin.consent ?? 'IMPLIED',
         slaDueAt,
         ...(ownerId && { ownerId, assignedAt: new Date() }),
       },

@@ -60,7 +60,7 @@ const TELEPHONY_SETTINGS: SettingField[] = [
     secret: false,
     setting: true,
     toggle: true,
-    hint: 'A call, answered or missed, from a number no lead or contact holds becomes a lead for your distribution rule, the call on it. On unless switched off.',
+    hint: 'A call, answered or missed, from a number no lead, contact or colleague holds becomes a lead for your distribution rule, the call on it. On unless switched off.',
   },
 ];
 
@@ -131,7 +131,7 @@ export const PROVIDERS: ProviderSpec[] = [
         secret: false,
         setting: true,
         toggle: true,
-        hint: 'A message from a number no lead holds becomes a lead for your distribution rule, the message its note. On by default in Lead Eagle; off, a new number opens a conversation only.',
+        hint: 'A message from a number no lead, contact or colleague holds becomes a lead for your distribution rule, the message its note. On by default in Lead Eagle; off, a new number opens a conversation only.',
       },
     ],
     capabilities: ['TEMPLATE_MESSAGE', 'DELIVERY_STATUS'],
@@ -219,7 +219,7 @@ export const PROVIDERS: ProviderSpec[] = [
           description:
             key === 'custom_webhook'
               ? 'Leads from any system without a connector of its own: post JSON to the URL below, signed with HMAC-SHA256 of the raw body in X-Signature. Fields read by default: name, phone, email, message, source_detail; map others on Deliveries and field mapping. Send an Idempotency-Key header and a retry makes nothing new.'
-              : 'Lead emails from Property Finder, Bayut and dubizzle, where the portal sends you no feed. Your mail service posts each email it receives to the URL below as JSON (from, to, subject, text, html, messageId), signed with HMAC-SHA256 of the raw body in X-Signature. A portal lead email becomes that portal’s lead; any other email is kept, unread, on Deliveries. The same messageId twice makes one lead.',
+              : 'Lead emails from Property Finder, Bayut and dubizzle, where the portal sends you no feed. Your mail service posts each email it receives to the URL below as JSON (from, to, subject, text, html, messageId), signed with HMAC-SHA256 of the raw body in X-Signature. An email whose sender (or, forwarded, the sender it quotes) or subject names the portal becomes that portal’s lead; any other email is kept, unread, on Deliveries. The same messageId twice makes one lead.',
           credentials: [],
           settings: [],
           capabilities: ['LEADS'],

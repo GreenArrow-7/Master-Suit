@@ -104,6 +104,115 @@ export const NOT_A_PORTAL: InboundMail = {
   ),
 };
 
+/**
+ * A Property Finder lead email an agent forwarded by hand: their own note and
+ * signature (two numbers of theirs) above the quoted original. Each call is a
+ * different client under the same signature.
+ */
+export const forwardedByAgent = (client: { name: string; phone: string; email: string; ref: string }): InboundMail => ({
+  from: 'Sara Khan <sara.khan@agency-inbox.example.com>',
+  to: TO,
+  subject: `Fwd: New email lead on Property Finder (Ref: ${client.ref})`,
+  messageId: `<fwd-${client.ref}@agency-inbox.example.com>`,
+  text: [
+    'Please call this one today.',
+    '',
+    'Sara Khan | Senior Consultant',
+    'Mobile: +971 55 000 9901',
+    'Tel: +971 4 000 9900',
+    '',
+    '---------- Forwarded message ---------',
+    'From: Property Finder <leads@propertyfinder.ae>',
+    'Date: Sun, 12 Oct 2026 at 10:15',
+    `Subject: New email lead on Property Finder (Ref: ${client.ref})`,
+    'To: <sara.khan@agency-inbox.example.com>',
+    '',
+    'Lead details',
+    `Name: ${client.name}`,
+    `Email: ${client.email}`,
+    `Phone: ${client.phone}`,
+    '',
+    `Reference: ${client.ref}`,
+    'Message: Is it still available?',
+  ].join('\n'),
+});
+
+/** The listing's agent named above the client, under the same bare labels, and the portal's own number below. */
+export const BAYUT_AGENT_FIRST: InboundMail = {
+  from: 'Bayut <no-reply@bayut.com>',
+  to: TO,
+  subject: 'Bayut | New enquiry on your listing BY-90410',
+  messageId: '<by-90410.1760344000@notifications.bayut.com>',
+  text: [
+    'Hi Agent,',
+    '',
+    'Listing agent: Sara Khan',
+    'Phone: +971 4 000 9900',
+    'Email: sara.khan@agency-inbox.example.com',
+    '',
+    'Name: Layla Ahmed',
+    'Phone: 055 000 3320',
+    'Email: layla.ahmed@example.com',
+    'Reference: BY-90410',
+    'Message: Can I see it on Friday?',
+    '',
+    'Bayut support',
+    'WhatsApp: 800 000 0000',
+  ].join('\n'),
+};
+
+/** HTML only, as a template engine prints it: indented, one tag per line. */
+export const DUBIZZLE_PRETTY: InboundMail = {
+  from: 'dubizzle <noreply@dubizzle.com>',
+  to: TO,
+  subject: 'Someone is interested in your ad: Studio | Sports City',
+  messageId: '<dz-7764200.1760344200@mailer.dubizzle.com>',
+  html: `<html>
+  <body>
+    <p>
+      You have a new reply to your ad on dubizzle.
+    </p>
+    <table>
+      <tr>
+        <td>Name:</td>
+        <td>Karim Nasser</td>
+      </tr>
+      <tr>
+        <td>Mobile:</td>
+        <td>+971 52 000 4410</td>
+      </tr>
+      <tr>
+        <td>Email:</td>
+        <td>karim.nasser@example.com</td>
+      </tr>
+    </table>
+  </body>
+</html>`,
+};
+
+/** A text part that only points at the HTML one, where the lead is. */
+export const PF_STUB_TEXT: InboundMail = {
+  from: 'Property Finder <leads@propertyfinder.ae>',
+  to: TO,
+  subject: 'New email lead on Property Finder (Ref: PF-DH-40020)',
+  messageId: '<pf-40020.1760344400@mail.propertyfinder.ae>',
+  text: 'Your email client cannot display this message. Please view it in HTML.',
+  html: '<table><tr><td>Name</td><td>Noura Salem</td></tr><tr><td>Phone</td><td>+971 50 000 1240</td></tr></table>',
+};
+
+/** Names Bayut in its body only, with a phone and an address all the same: nobody's lead. */
+export const MENTIONS_A_PORTAL: InboundMail = {
+  from: 'Market Digest <news@realestate-digest.example.com>',
+  to: TO,
+  subject: 'This week in Dubai property',
+  messageId: '<digest-2042@realestate-digest.example.com>',
+  text: [
+    'Listings on Bayut rose 4% this week.',
+    'Phone: 04 000 0001',
+    'Email: news@realestate-digest.example.com',
+  ].join('\n'),
+};
+
 /** A Property Finder email that is not an enquiry: nobody to contact, so kept unread too. */
 export const PORTAL_NOTICE: InboundMail = {
   from: 'Property Finder <no-reply@propertyfinder.ae>',
