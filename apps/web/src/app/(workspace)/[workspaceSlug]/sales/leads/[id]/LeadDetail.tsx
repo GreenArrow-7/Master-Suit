@@ -783,7 +783,13 @@ function OverviewTab({
     ['Industry', lead.industry ?? '—', null],
     [
       'Source',
-      lead.sourceLabel ?? [lead.source.replace(/_/g, ' ').toLowerCase(), lead.sourceDetail].filter(Boolean).join(' · '),
+      // A referral names its referrer under the catalogue entry too (M6-15).
+      [
+        lead.sourceLabel ?? lead.source.replace(/_/g, ' ').toLowerCase(),
+        (!lead.sourceLabel || lead.source === 'REFERRAL') && lead.sourceDetail,
+      ]
+        .filter(Boolean)
+        .join(' · '),
       null,
     ],
     ['Campaign', lead.campaignName ?? '—', 'campaignName'],

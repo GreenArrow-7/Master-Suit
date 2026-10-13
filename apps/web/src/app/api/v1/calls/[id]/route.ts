@@ -89,21 +89,34 @@ export const PATCH = route(
       if (['COMPLETED', 'MISSED', 'FAILED'].includes(body.status)) {
         await recordTargetProgress(ctx, updated.callerId, 'CALLS_ATTEMPTED');
         // The daily cold-calling target counts leads, not dials: the first
-        // finished call to a lead today is the one that counts.
+        // finished call to a lead today is the one that counts — and a cold
+        // record called today and made this lead was that first call (M5-06).
         if (updated.leadId) {
           const dayStart = new Date();
           dayStart.setUTCHours(0, 0, 0, 0);
-          const earlier = await prisma.call.count({
-            where: {
-              tenantId: ctx.tenantId,
-              callerId: updated.callerId,
-              leadId: updated.leadId,
-              id: { not: updated.id },
-              status: { in: ['COMPLETED', 'MISSED', 'FAILED'] },
-              createdAt: { gte: dayStart },
-            },
-          });
-          if (earlier === 0) await recordTargetProgress(ctx, updated.callerId, 'LEADS_CALLED');
+          const [earlier, coldCalls] = await Promise.all([
+            prisma.call.count({
+              where: {
+                tenantId: ctx.tenantId,
+                callerId: updated.callerId,
+                leadId: updated.leadId,
+                id: { not: updated.id },
+                status: { in: ['COMPLETED', 'MISSED', 'FAILED'] },
+                createdAt: { gte: dayStart },
+              },
+            }),
+            prisma.activity.count({
+              where: {
+                tenantId: ctx.tenantId,
+                ownerId: updated.callerId,
+                leadId: updated.leadId,
+                dataRecordId: { not: null },
+                deletedAt: null,
+                createdAt: { gte: dayStart },
+              },
+            }),
+          ]);
+          if (earlier + coldCalls === 0) await recordTargetProgress(ctx, updated.callerId, 'LEADS_CALLED');
         }
       }
       if (body.status === 'COMPLETED') {

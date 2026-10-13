@@ -472,6 +472,31 @@ function definitions(slug: string): SectionDef[] {
           ],
         },
         {
+          // Lead sources every lead module has (M6-06, M6-09); a workspace with
+          // Lead Eagle beside Real Estate browses its addresses here.
+          key: 'realty-sources',
+          label: 'Lead Sources',
+          icon: 'document',
+          tabs: [
+            {
+              label: 'Forms',
+              href: r('/forms'),
+              aliases: [le('/forms')],
+              permission: 'forms',
+              module: R,
+              keywords: 'web forms website embed snippet',
+            },
+            {
+              label: 'Landing Pages',
+              href: r('/landing-pages'),
+              aliases: [le('/landing-pages')],
+              permission: 'landingpages',
+              module: R,
+              keywords: 'campaign page',
+            },
+          ],
+        },
+        {
           key: 'realty-inventory',
           label: 'Inventory',
           icon: 'company',
@@ -586,6 +611,14 @@ function definitions(slug: string): SectionDef[] {
               module: R,
               keywords: 'funnel source agent performance',
             },
+            {
+              // Self-service, as the Sales entry: your own targets, the team's with leads:ASSIGN.
+              label: 'Targets',
+              href: r('/targets'),
+              aliases: [le('/targets')],
+              module: R,
+              keywords: 'quota goals daily calls cold calls',
+            },
           ],
         },
       ],
@@ -693,6 +726,31 @@ function definitions(slug: string): SectionDef[] {
           ],
         },
         {
+          // The website forms and landing pages are lead sources, not marketing
+          // (M6-06, M6-09): the same screens Sales has under Lead Sources.
+          key: 'le-sources',
+          label: 'Lead Sources',
+          icon: 'document',
+          tabs: [
+            {
+              label: 'Forms',
+              href: le('/forms'),
+              permission: 'forms',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'web forms website embed snippet',
+            },
+            {
+              label: 'Landing Pages',
+              href: le('/landing-pages'),
+              permission: 'landingpages',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'campaign page',
+            },
+          ],
+        },
+        {
           key: 'le-inventory',
           label: 'Inventory',
           icon: 'company',
@@ -735,6 +793,14 @@ function definitions(slug: string): SectionDef[] {
               module: LE,
               unlessModule: [S, R],
               keywords: 'funnel source agent performance',
+            },
+            {
+              // Self-service, as the Sales entry: your own targets, the team's with leads:ASSIGN.
+              label: 'Targets',
+              href: le('/targets'),
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'quota goals daily calls cold calls',
             },
           ],
         },
@@ -801,8 +867,22 @@ function definitions(slug: string): SectionDef[] {
           label: 'Lead Sources',
           icon: 'document',
           tabs: [
-            { label: 'Forms', href: s('/forms'), permission: 'forms', module: S, keywords: 'web forms' },
-            { label: 'Landing Pages', href: s('/landing-pages'), permission: 'landingpages', module: S },
+            {
+              label: 'Forms',
+              href: s('/forms'),
+              permission: 'forms',
+              module: S,
+              keywords: 'web forms',
+              // A workspace with Sales and Lead Eagle browses Lead Eagle's address here.
+              aliases: [le('/forms')],
+            },
+            {
+              label: 'Landing Pages',
+              href: s('/landing-pages'),
+              permission: 'landingpages',
+              module: S,
+              aliases: [le('/landing-pages')],
+            },
             {
               label: 'Social Sources',
               href: s('/social-leads'),

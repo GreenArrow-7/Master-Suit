@@ -167,6 +167,7 @@ enum RecordSource {
   CHAT
   MARKETPLACE
   AUTOMATION
+  REFERRAL
 }
 
 enum TaskCategory {
@@ -3583,9 +3584,11 @@ model DataRecord {
   updatedAt       DateTime   @updatedAt
   createdById     String?
 
-  tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  owner         User?  @relation("DataRecordOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  convertedLead Lead?  @relation(fields: [convertedLeadId], references: [id], onDelete: SetNull)
+  tenant        Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner         User?      @relation("DataRecordOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  convertedLead Lead?      @relation(fields: [convertedLeadId], references: [id], onDelete: SetNull)
+  /// The calls made on it (M5-06).
+  activities    Activity[]
 
   @@index([tenantId, status, createdAt])
   @@index([tenantId, ownerId, status])
@@ -4147,6 +4150,8 @@ model Activity {
   accountId     String?
   contactId     String?
   ticketId      String?
+  /// The cold record a call was made on (M5-06): a cold call is a logged call.
+  dataRecordId  String?
   ownerId       String?
   occurredAt    DateTime     @default(now())
   outcome       String?
@@ -4171,6 +4176,7 @@ model Activity {
   opportunity Opportunity? @relation(fields: [opportunityId], references: [id])
   account     Account?     @relation(fields: [accountId], references: [id])
   owner       User?        @relation("ActivityOwner", fields: [ownerId], references: [id])
+  dataRecord  DataRecord?  @relation(fields: [dataRecordId], references: [id], onDelete: SetNull)
   documents   Document[]
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -4178,6 +4184,7 @@ model Activity {
   @@index([tenantId, leadId, occurredAt(sort: Desc)])
   @@index([tenantId, ownerId, occurredAt(sort: Desc)])
   @@index([tenantId, typeId, occurredAt(sort: Desc)])
+  @@index([tenantId, dataRecordId, occurredAt(sort: Desc)])
   @@index([tenantId, opportunityId])
   @@index([accountId])
 }

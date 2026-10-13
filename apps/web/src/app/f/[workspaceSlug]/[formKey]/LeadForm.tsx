@@ -15,11 +15,14 @@ export default function LeadForm({
   workspace,
   formKey,
   fields,
+  page,
   endpoint = '/api/v1/public/forms',
 }: {
   workspace: string;
   formKey: string;
   fields: FieldDef[];
+  /** The landing page the form sits on, so its lead is that page's. */
+  page?: string;
   /** A QR capture link's page posts the same shape to its own route. */
   endpoint?: string;
 }) {
@@ -36,7 +39,7 @@ export default function LeadForm({
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ workspace, form: formKey, answers }),
+        body: JSON.stringify({ workspace, form: formKey, answers, ...(page ? { page } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

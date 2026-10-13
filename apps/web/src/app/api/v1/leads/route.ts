@@ -141,8 +141,9 @@ const createBody = z
     country: z.string().max(80).optional(),
     city: z.string().max(80).optional(),
     source: z
-      .enum(['MANUAL', 'QUICK_CREATE', 'IMPORT', 'PUBLIC_FORM', 'LANDING_PAGE', 'API', 'WEBHOOK'])
+      .enum(['MANUAL', 'QUICK_CREATE', 'IMPORT', 'PUBLIC_FORM', 'LANDING_PAGE', 'API', 'WEBHOOK', 'REFERRAL'])
       .default('MANUAL'),
+    /** For a REFERRAL, who referred the lead (M6-15); otherwise free text. */
     sourceDetail: z.string().max(160).optional(),
     /** A catalogue entry (LeadSource) of this workspace: the sub-source chosen, or the source. */
     sourceId: z.string().cuid().optional(),
@@ -159,7 +160,12 @@ const createBody = z
     /** WARN lets the caller proceed past a duplicate match; BLOCK is the default. */
     onDuplicate: z.enum(['BLOCK', 'WARN', 'MERGE']).default('BLOCK'),
   })
-  .strict();
+  .strict()
+  // A referral attributed to nobody is not one.
+  .refine((b) => b.source !== 'REFERRAL' || !!b.sourceDetail?.trim(), {
+    path: ['sourceDetail'],
+    message: 'Say who referred this lead.',
+  });
 
 export const POST = route(
   { module: 'leads', productModule: LEAD_MODULES, action: 'CREATE', body: createBody, auditEvent: 'RECORD_CREATED' },

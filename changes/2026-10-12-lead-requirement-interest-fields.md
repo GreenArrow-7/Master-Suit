@@ -395,6 +395,42 @@ After the fixes:
   and `lead-contact-masking` (9) passed. `lead-eagle-workspace` failed once,
   at #168's soft-navigation step, and passed on its rerun.
 
+**Merge-up with main (round 1), 13 Oct.** Main has #169 squashed (the same
+tree as the #169 head this branch was built on), #171 and #170. Merged on that
+head, four files conflicted:
+
+- `services/leads/intake.ts`: `takeEnquiry`'s enquiry takes this change's
+  `requirement` and #170's `company`.
+- `api/v1/public/forms/route.ts`: main's version. #170 sends a website-form or
+  landing-page submission through `takeEnquiry`, which already starts a new
+  lead at its entry's points (the Website entry), so the route no longer calls
+  `withSourceScore` itself.
+- `changes/README.md`: every row, newest first.
+- `PROJECT.md`: both texts. Real Estate 40 and Lead Eagle 29 screens (counted
+  on the merged tree); Custom Fields and the source score beside #170's forms,
+  landing pages and Targets.
+
+Merged without a marker and read: `LeadDetail.tsx` (#170's
+`Referral · <referrer>` beside the Requirement, Interested in and custom-field
+cards), `schema.prisma`, `workspaceNav.ts`, `lead-eagle-routes.spec.ts` and
+`module-entitlement.spec.ts`. The new-lead form keeps #170's one Source
+control. A cold call (#171) is logged by `logColdCall`, not the activities
+API, so it moves no score, and moving it onto a lead at conversion adds none.
+On the merged tree (106 migrations): `tsc --noEmit` clean. The branch's specs
+(those it adds or changes against main) with `lead-record-fields`,
+`lead-source-intake`, `referral-source`, `forms-lead-eagle`, `cold-data`,
+`cold-call-activity`, `lead-eagle-routes`, `workspace-nav`,
+`module-entitlement` and `page-access`: 23 files, 1,346 passed and 1 failed, a
+transaction timeout in `lead-record-scope`, which passes alone (341/341).
+`tests/` permission, sales, tenant and unit: 166 files, 161 green;
+`lead-record-scope`, `fee-amendments`, `lead-interest-links` and
+`provision-lead-work` timed out under load and pass alone (51/51 for the last
+three), and `retention` passes alone (4/4). E2E on a fresh `.next`:
+`lead-requirement-interest` and `crm-lifecycle` 7/7; `lead-eagle-workspace`
+failed once at #168's soft-navigation step and passed on its rerun. eslint is
+clean on the two code files; `README.md` and `PROJECT.md` fail prettier on
+main as on the branch.
+
 **Left open.**
 
 - The requirement's owner does not follow the lead's owner when the lead is

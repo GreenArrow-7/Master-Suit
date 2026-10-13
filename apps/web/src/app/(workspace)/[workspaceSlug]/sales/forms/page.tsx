@@ -1,6 +1,7 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -32,7 +33,9 @@ export default async function FormsPage({
 }) {
   const params = await searchParams;
   const { workspaceSlug } = await routeParams;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['forms', 'VIEW'] });
+  // Website forms are a lead source every lead module has (M6-06); the layout
+  // above still gates the URL on its own product.
+  const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['forms', 'VIEW'] });
   const canEdit = can(ctx, 'forms', 'CREATE') || can(ctx, 'forms', 'MANAGE_CONFIGURATION');
 
   const stateFilter =

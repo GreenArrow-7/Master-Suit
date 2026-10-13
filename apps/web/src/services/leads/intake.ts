@@ -72,7 +72,10 @@ export interface EnquiryOrigin {
 export async function takeEnquiry(
   tenantId: string,
   enquiry: Pick<Enquiry, 'fullName' | 'email' | 'phones' | 'message' | 'reference' | 'details'> &
-    Partial<Pick<Enquiry, 'requirement'>>,
+    Partial<Pick<Enquiry, 'requirement'>> & {
+      /** A website form may ask for one; the portals never do. */
+      company?: string | null;
+    },
   origin: EnquiryOrigin,
 ) {
   // [normalised, as typed], one per distinct number.
@@ -179,6 +182,7 @@ export async function takeEnquiry(
         email: enquiry.email,
         phone: main?.[1] ?? null,
         phoneNormalized: main?.[0] ?? null,
+        company: enquiry.company ?? null,
         stageId: stage.id,
         source: recordSource,
         sourceDetail: origin.sourceDetail,
