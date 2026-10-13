@@ -19,6 +19,8 @@ import { POST as wizardCreate } from '@/app/api/v1/platform/workspaces/route';
 import { PATCH as editWorkspace } from '@/app/api/v1/platform/workspaces/[workspaceId]/route';
 import { PATCH as editSubscription } from '@/app/api/v1/platform/subscriptions/[subscriptionId]/route';
 import { GET as rolesApi } from '@/app/api/v1/workspaces/[workspaceSlug]/roles/[action]/route';
+import { GET as stagesApi } from '@/app/api/v1/workspaces/[workspaceSlug]/sales/stages/route';
+import { PATCH as leadPatch } from '@/app/api/v1/leads/[id]/route';
 import RolesPage from '@/app/(workspace)/[workspaceSlug]/admin/roles/page';
 import { GET as leadsList, POST as leadCreate } from '@/app/api/v1/leads/route';
 import { GET as leadsExport } from '@/app/api/v1/leads/export/route';
@@ -55,6 +57,33 @@ async function workspace(label: string) {
   return tenant.id;
 }
 
+/** The pipeline in order: each stage's name and category. */
+const pipeline = async (tenantId: string) =>
+  (await prisma.leadStage.findMany({ where: { tenantId }, orderBy: { position: 'asc' } })).map((stage) => [
+    stage.name,
+    stage.category,
+  ]);
+/** The owner's Lead Eagle pipeline (M4-14, M4-16): the ladder, then the exits. */
+const LEAD_EAGLE_PIPELINE = [
+  ['New', 'OPEN'],
+  ['Pending', 'OPEN'],
+  ['Callback', 'OPEN'],
+  ['Meeting Scheduled', 'OPEN'],
+  ['Meeting Done', 'OPEN'],
+  ['Site Visit Scheduled', 'OPEN'],
+  ['Site Visit Done', 'OPEN'],
+  ['Booked', 'CONVERSION'],
+  ['Not Interested', 'TERMINAL_NEGATIVE'],
+  ['Dropped', 'TERMINAL_NEGATIVE'],
+  ['Not Reachable', 'TERMINAL_NEGATIVE'],
+  ['Junk / Duplicate', 'TERMINAL_JUNK'],
+];
+const GENERAL_PIPELINE = [
+  ['New', 'OPEN'],
+  ['Qualified', 'OPEN'],
+  ['Won', 'CONVERSION'],
+  ['Lost', 'TERMINAL_NEGATIVE'],
+];
 const sourceKeys = async (tenantId: string) =>
   (
     await prisma.leadSource.findMany({
@@ -353,6 +382,77 @@ describe('the Lead Eagle starter roles', () => {
     }
   });
 
+  it('starts a Lead Eagle workspace from the wizard with the Lead Eagle pipeline on Lead Stages', async () => {
+    const { slug } = await prisma.tenant.findUniqueOrThrow({ where: { id: wizardMade } });
+    const admin = await prisma.user.findFirstOrThrow({
+      where: { tenantId: wizardMade, role: { key: 'company_admin' } },
+    });
+    const res = await get(
+      stagesApi,
+      `/api/v1/workspaces/${slug}/sales/stages`,
+      await createSessionToken(wizardMade, admin.id),
+      { workspaceSlug: slug },
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const stages = res.body as {
+      name: string;
+      category: string;
+      isDefault: boolean;
+      requiresReason: boolean;
+      requiredFields: string[];
+    }[];
+    expect(stages.map((stage) => [stage.name, stage.category])).toEqual(LEAD_EAGLE_PIPELINE);
+    const named = (name: string) => stages.find((stage) => stage.name === name)!;
+    expect(stages.filter((stage) => stage.isDefault).map((stage) => stage.name)).toEqual(['New']);
+    expect(stages.filter((stage) => stage.requiresReason).map((stage) => stage.name)).toEqual(['Dropped']);
+    expect(named('Site Visit Scheduled').requiredFields).toEqual(['visitAt']);
+    expect(named('Meeting Scheduled').requiredFields).toEqual(['meetingAt']);
+  });
+
+  it('refuses a move to Dropped without a reason, and takes one with it', async () => {
+    const admin = await prisma.user.findFirstOrThrow({
+      where: { tenantId: wizardMade, role: { key: 'company_admin' } },
+    });
+    const cookie = await createSessionToken(wizardMade, admin.id);
+    const created = await post(
+      leadCreate,
+      '/api/v1/leads',
+      { fullName: 'Dropping Lead', phone: `+9715${String(Date.now()).slice(-8)}` },
+      cookie,
+    );
+    expect(created.status, JSON.stringify(created.body)).toBeLessThan(300);
+    const id = created.body.id as string;
+    const dropped = await prisma.leadStage.findFirstOrThrow({ where: { tenantId: wizardMade, key: 'dropped' } });
+    const move = (body: Record<string, unknown>) => patch(leadPatch, `/api/v1/leads/${id}`, body, cookie, { id });
+
+    const bare = await move({ stageId: dropped.id });
+    expect(bare.status).toBe(422);
+    expect(bare.body.detail).toBe('Moving a lead to Dropped needs a reason.');
+    expect((await move({ stageId: dropped.id, stageReason: 'Plans changed' })).status).toBe(200);
+    expect(await prisma.lead.findFirstOrThrow({ where: { tenantId: wizardMade, id } })).toMatchObject({
+      stageId: dropped.id,
+      stageReason: 'Plans changed',
+    });
+  });
+
+  it('seeds the pipeline once: provisioning again adds no stage and undoes no edit', async () => {
+    const id = await workspace('le-twice');
+    await withPlatformTx((tx) => provisionLeadWork(tx, id, ['LEAD_EAGLE']));
+    await prisma.leadStage.updateMany({ where: { tenantId: id, key: 'callback' }, data: { name: 'Call back later' } });
+    await withPlatformTx((tx) => provisionLeadWork(tx, id, ['LEAD_EAGLE']));
+    await withPlatformTx((tx) => provisionLeadWork(tx, id, ['LEAD_EAGLE', 'SALES'], ['LEAD_EAGLE']));
+    const names = (await pipeline(id)).map(([name]) => name);
+    expect(names).toHaveLength(LEAD_EAGLE_PIPELINE.length);
+    expect(names[2]).toBe('Call back later');
+  });
+
+  it('leaves a workspace’s own stages alone when Lead Eagle arrives', async () => {
+    const id = await workspace('le-own');
+    await prisma.leadStage.create({ data: { tenantId: id, key: 'enquiry', name: 'Enquiry', position: 1 } });
+    await withPlatformTx((tx) => provisionLeadWork(tx, id, ['LEAD_EAGLE', 'SALES'], ['SALES']));
+    expect(await pipeline(id)).toEqual([['Enquiry', 'OPEN']]);
+  });
+
   it('gives each role what its job needs: telecallers no contact details or exports, viewers only VIEW', async () => {
     const agent = await grants(wizardMade, 'Agent');
     expect(agent.get('leads:VIEW')).toBe('OWN');
@@ -422,6 +522,8 @@ describe('the Lead Eagle starter roles', () => {
   it('a Sales-only workspace from the wizard still gets the administrator alone', async () => {
     const id = await wizard('sales', ['SALES']);
     expect(await names(id)).toEqual(['Company Administrator']);
+    // ...and the general pipeline, not Lead Eagle's.
+    expect(await pipeline(id)).toEqual(GENERAL_PIPELINE);
   });
 
   it('switching Lead Eagle on in the console adds them once; later saves neither repeat them nor bring back a deleted one', async () => {
@@ -460,7 +562,8 @@ describe('the Lead Eagle starter roles', () => {
       { subscriptionId: subscription.id },
     );
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(await counts(id)).toEqual({ stages: 4, activityTypes: 6, taskTypes: 4 });
+    expect(await counts(id)).toEqual({ stages: LEAD_EAGLE_PIPELINE.length, activityTypes: 6, taskTypes: 4 });
+    expect(await pipeline(id)).toEqual(LEAD_EAGLE_PIPELINE);
     expect(await names(id)).toEqual(STARTER);
   });
 
