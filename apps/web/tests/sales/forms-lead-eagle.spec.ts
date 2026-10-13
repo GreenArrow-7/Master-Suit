@@ -31,6 +31,7 @@ import RealtyFormsPage from '@/app/(workspace)/[workspaceSlug]/realty/forms/page
 import PublicFormPage from '@/app/f/[workspaceSlug]/[formKey]/page';
 import PublicLandingPage from '@/app/l/[workspaceSlug]/[pageSlug]/page';
 import CapturePage from '@/app/c/[workspaceSlug]/[key]/page';
+import LeadDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
 import { handleJob } from '@/workers/jobs';
 import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import { pageText } from '../helpers/render';
@@ -69,6 +70,7 @@ const submit = async (answers: Record<string, string>, page?: string, formKey = 
 };
 const screen = (page: typeof FormsPage, workspaceSlug = slug) =>
   pageText(page({ params: Promise.resolve({ workspaceSlug }), searchParams: Promise.resolve({}) }));
+const leadPage = (id: string) => pageText(LeadDetailPage({ params: Promise.resolve({ id }) }));
 /** The submission itself queued the lead for the distribution rule. */
 const queuedForDistribution = (leadId: string) =>
   vi
@@ -339,6 +341,43 @@ describe('a submission from a site', () => {
       select: { submissionCount: true },
     });
     expect(counts).toEqual([{ submissionCount: 0 }, { submissionCount: 0 }]);
+  });
+
+  it('names its form or landing page on the lead page, after the catalogue label', async () => {
+    const [onForm, onPage] = [phone(), phone()];
+    expect((await submit({ full_name: 'Form Reader', phone: onForm })).status).toBe(200);
+    expect((await submit({ full_name: 'Page Reader', phone: onPage }, pageSlug)).status).toBe(200);
+    cookieJar.value = cookie;
+    const shown = async (raw: string) => {
+      const { id } = await prisma.lead.findFirstOrThrow({ where: { tenantId, phoneNormalized: normalised(raw) } });
+      return leadPage(id);
+    };
+    expect(await shown(onForm)).toContain(`Website · public form · ${form.key}`);
+    expect(await shown(onPage)).toContain(`Website · landing page · ${pageSlug}`);
+  });
+
+  it('shows a referral’s referrer, and a portal lead its catalogue label without the raw intake key', async () => {
+    const { id: stageId } = await prisma.leadStage.findFirstOrThrow({ where: { tenantId, isDefault: true } });
+    const lead = async (key: string, source: 'REFERRAL' | 'MARKETPLACE', sourceDetail: string) => {
+      const entry = await prisma.leadSource.findFirstOrThrow({ where: { tenantId, key } });
+      const { id } = await prisma.lead.create({
+        data: {
+          tenantId,
+          reference: `SRC-${key}-${suffix}`,
+          fullName: `${key} lead`,
+          stageId,
+          source,
+          sourceDetail,
+          sourceId: entry.id,
+        },
+      });
+      return leadPage(id);
+    };
+    cookieJar.value = cookie;
+    expect(await lead('referral', 'REFERRAL', 'Maya Haddad')).toContain('Referral · Maya Haddad');
+    const portal = await lead('bayut', 'MARKETPLACE', `bayut:REF-${suffix}`);
+    expect(portal).toContain('Bayut');
+    expect(portal).not.toContain(`REF-${suffix}`);
   });
 
   it('is a 404 for a workspace whose lead module has lapsed (the API and the pages) and makes nothing', async () => {

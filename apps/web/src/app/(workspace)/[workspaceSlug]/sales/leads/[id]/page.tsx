@@ -8,7 +8,7 @@ import { loadFieldRules, applyFieldSecurity, seesField } from '@/lib/security/fi
 import { can, scopeFor } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { asLeadPhone, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
-import { leadSourceLabel, listLeadSources } from '@/services/leads/leadSources';
+import { leadSourceText, listLeadSources } from '@/services/leads/leadSources';
 import StageRail from '@/components/ui/StageRail';
 import LeadDetail from './LeadDetail';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -126,10 +126,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     city: lead.city,
     country: lead.country,
     nationality: lead.nationality,
-    source: lead.source,
-    sourceDetail: lead.sourceDetail,
     sourceId: lead.sourceId,
-    sourceLabel: leadSourceLabel(lead.leadSource),
+    sourceLabel: leadSourceText(lead),
     campaignName: lead.campaignName,
     consentStatus: lead.consentStatus,
     priority: lead.priority,

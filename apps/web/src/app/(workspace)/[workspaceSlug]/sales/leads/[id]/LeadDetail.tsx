@@ -89,12 +89,9 @@ interface LeadData {
   city: string | null;
   country: string | null;
   nationality: string | null;
-  source: string;
-  /** Where exactly it came from, when known: a portal, a campaign. */
-  sourceDetail: string | null;
-  /** The catalogue entry it is attributed to, and its label ("Website · Marina launch"). */
+  /** The catalogue entry it is attributed to, and how its source reads (`leadSourceText`). */
   sourceId: string | null;
-  sourceLabel: string | null;
+  sourceLabel: string;
   campaignName: string | null;
   consentStatus: string;
   priority: string;
@@ -733,17 +730,7 @@ function OverviewTab({
     ['Country', lead.country ?? '—', 'country'],
     ['Nationality', lead.nationality ?? '—', 'nationality'],
     ['Industry', lead.industry ?? '—', null],
-    [
-      'Source',
-      // A referral names its referrer under the catalogue entry too (M6-15).
-      [
-        lead.sourceLabel ?? lead.source.replace(/_/g, ' ').toLowerCase(),
-        (!lead.sourceLabel || lead.source === 'REFERRAL') && lead.sourceDetail,
-      ]
-        .filter(Boolean)
-        .join(' · '),
-      null,
-    ],
+    ['Source', lead.sourceLabel, null],
     ['Campaign', lead.campaignName ?? '—', 'campaignName'],
     ['Consent', lead.consentStatus.toLowerCase(), null],
     ['Created', fmtDate(lead.createdAt), null],
