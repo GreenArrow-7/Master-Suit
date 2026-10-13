@@ -352,6 +352,24 @@ timeline was narrowed, `lead-send-share` (`fix-e2e1`), `lead-contact-masking`
 and `lead-eagle-workspace` with `lead-call-log` 5 of 5 (`fix-e2e2`), and
 `crm-lifecycle` 6 of 6 (`fix-e2e3`).
 
+**Merge of #179 (13 Oct).** `main` at `fe5ecc7` (saved views, filter chips,
+the board, the calendar in every lead module, phone search) merged in. Only
+`changes/README.md` and `changes/PROJECT.md` conflicted: the Lead Eagle row
+keeps #179's screens (Real Estate 41, Lead Eagle 30, counted) and this
+entry's sentence. Send template stays in the grid's bulk bar beside #178's
+call cells and #179's filters. `main` brought no migration (still 108).
+`tsc` clean; eslint no errors (the same 10 `no-explicit-any` warnings);
+prettier clean. The ten lead specs (`lead-send`, `share-page`,
+`bulk-template-send`, `lead-saved-views`, `lead-search`, `lead-kanban`,
+`lead-call-log`, `lead-timeline`, `module-entitlement`, `lead-eagle-routes`)
+295 of 295 (`mu182-vt-target`); `tests/sales` and `tests/permission` 97
+files, 1,239 passed, 516 skipped, 11 files stopped under load (P2028, a 60 s
+`beforeAll`) that pass alone, 563 of 563 (`mu182-vt-re-*`). E2E, each on a
+fresh `.next`: `lead-send-share` 1 of 1, `lead-contact-masking` 3 of 3,
+`lead-views-board` 5 of 5, `crm-lifecycle` 6 of 6 on its rerun (the first
+hit P2028 on the lead page, which #180 addresses); `redesign-mobile` skips
+without the demo workspace.
+
 **Left open.**
 
 - Existing Lead Eagle workspaces: their administrator grants Communications
