@@ -32,8 +32,8 @@ export const PATCH = route(
     body: patchBody,
     auditEvent: 'RECORD_UPDATED',
   },
-  async ({ ctx, params, body }) =>
-    withTx(ctx.tenantId, async (tx) => {
+  async ({ ctx, params, body }) => {
+    const { updated, completingNow } = await withTx(ctx.tenantId, async (tx) => {
       const followUp = await tx.followUpTask.findFirst({ where: { tenantId: ctx.tenantId, id: params.id } });
       if (!followUp) throw NotFound('Follow-up');
 
@@ -51,8 +51,6 @@ export const PATCH = route(
       if (body.dueAt && !body.status && ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'].includes(followUp.status)) {
         data.status = 'RESCHEDULED';
       }
-      const completingNow = body.status === 'COMPLETED' && !followUp.completedAt;
-      if (completingNow) data.completedAt = new Date();
       if (body.status && body.status !== 'COMPLETED' && followUp.completedAt) data.completedAt = null;
 
       if (body.leadId) await assertLeadInScope(ctx, body.leadId, tx, 'EDIT');
@@ -71,15 +69,34 @@ export const PATCH = route(
         throw Conflict('That follow-up was moved to another lead while you were editing it. Reload and try again.');
       }
 
+      // Completion is claimed on the row, not decided from the read above: two
+      // concurrent completions both read completedAt null, and only the one
+      // whose conditional update lands is the transition.
+      const completingNow =
+        body.status === 'COMPLETED' &&
+        !followUp.completedAt &&
+        (
+          await tx.followUpTask.updateMany({
+            where: { tenantId: ctx.tenantId, id: params.id, completedAt: null },
+            data: { completedAt: new Date() },
+          })
+        ).count === 1;
+
       const updated = await tx.followUpTask.update({ where: { tenantId: ctx.tenantId, id: params.id }, data });
 
       for (const leadId of locked) await recomputeNextFollowUp(tx, ctx.tenantId, leadId);
 
-      // Counted on the transition only — completingNow is false for a repeat
-      // PATCH of an already-completed task, so it cannot double count. Credited
-      // to the task's owner: theirs is the target this work fulfils.
-      if (completingNow) await recordTargetProgress(ctx, updated.ownerId, 'FOLLOWUPS_COMPLETED');
+      return { updated, completingNow };
+    });
 
-      return updated;
-    }),
+    // Counted on the transition only — completingNow is true for the one
+    // request that claimed completedAt, not a repeat or a concurrent PATCH. Credited
+    // to the task's owner: theirs is the target this work fulfils. After the
+    // commit, like every other caller: it reads through the global client, which
+    // inside withTx has no tenant pinned, so RLS found no target and nothing
+    // was ever counted.
+    if (completingNow) await recordTargetProgress(ctx, updated.ownerId, 'FOLLOWUPS_COMPLETED');
+
+    return updated;
+  },
 );

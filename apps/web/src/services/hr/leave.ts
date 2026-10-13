@@ -49,9 +49,9 @@ export async function myEmployee(ctx: Ctx, db: Db = prisma) {
  * scope was shown every employee's name, work email and number, and everyone's
  * expiring identity documents.
  */
-export async function employeeRecordScope(ctx: Ctx): Promise<{ id?: string }> {
+export async function employeeRecordScope(ctx: Ctx, db: Db = prisma): Promise<{ id?: string }> {
   if (mayReadAllEmployees(ctx)) return {};
-  const self = await myEmployee(ctx);
+  const self = await myEmployee(ctx, db);
   return { id: self?.id ?? '' };
 }
 
