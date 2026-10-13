@@ -281,7 +281,8 @@ export default async function SmartViewsPage({
           </div>
         )}
 
-        {data.length === 0 ? (
+        {/* The grid stays mounted with no rows: a delete that empties the view keeps its Undo. */}
+        {data.length === 0 && (
           <div className="lf-card">
             <EmptyState
               title="No leads in this view"
@@ -289,20 +290,20 @@ export default async function SmartViewsPage({
               icon="◇"
             />
           </div>
-        ) : (
-          <LeadGrid
-            rows={data as any}
-            columns={columns}
-            stages={stages}
-            projects={projects}
-            users={users}
-            taskTypes={taskTypes}
-            canAssign={can(ctx, 'leads', 'ASSIGN')}
-            canEdit={can(ctx, 'leads', 'EDIT')}
-            canDelete={can(ctx, 'leads', 'DELETE')}
-            emptyLabel={emptyFollowUpLabel(access, 'scope', ctx.actor.id)}
-          />
         )}
+        <LeadGrid
+          rows={data as any}
+          columns={columns}
+          stages={stages}
+          projects={projects}
+          users={users}
+          taskTypes={taskTypes}
+          canAssign={can(ctx, 'leads', 'ASSIGN')}
+          canEdit={can(ctx, 'leads', 'EDIT')}
+          canDelete={can(ctx, 'leads', 'DELETE')}
+          canMoveToData={can(ctx, 'leads', 'CREATE') && can(ctx, 'leads', 'EDIT')}
+          emptyLabel={emptyFollowUpLabel(access, 'scope', ctx.actor.id)}
+        />
       </div>
     </div>
   );

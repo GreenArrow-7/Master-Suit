@@ -165,10 +165,19 @@ export async function assertTargetAssignee(ctx: Ctx, userId: string) {
  * Returns the row for callers that go on to edit it: the lead's own by-id
  * writes (PATCH, DELETE, close-out, phones, temperature) load through here
  * too, so an out-of-scope id answers the same 404 as GET instead of a 403
- * that confirmed the lead exists.
+ * that confirmed the lead exists. `deleted` reaches a deleted lead instead
+ * (only), for its restore.
  */
-export async function assertLeadInScope(ctx: Ctx, leadId: string, db: TxClient | typeof prisma, action: Action) {
-  const lead = await db.lead.findFirst({ where: { tenantId: ctx.tenantId, id: leadId, deletedAt: null } });
+export async function assertLeadInScope(
+  ctx: Ctx,
+  leadId: string,
+  db: TxClient | typeof prisma,
+  action: Action,
+  { deleted = false } = {},
+) {
+  const lead = await db.lead.findFirst({
+    where: { tenantId: ctx.tenantId, id: leadId, deletedAt: deleted ? { not: null } : null },
+  });
   if (!lead) throw NotFound('Lead');
   try {
     await assertRecordInScope(ctx, 'leads', lead, db, action, 'Lead');

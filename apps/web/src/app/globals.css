@@ -1656,7 +1656,9 @@ a:hover {
 }
 .lf-toast__action {
   margin-left: auto;
-  color: var(--lf-wine-300);
+  /* The toast is midnight in every theme; --lf-wine-300 turns dark in the dark
+     one (2.4:1 there). The accent made for dark chrome reads in both. */
+  color: var(--yh-cyan);
   background: none;
   border: 0;
   cursor: pointer;

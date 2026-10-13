@@ -13,6 +13,8 @@ import {
   LEAD_LIST_VIEW,
   leadListHref,
   leadListQuery,
+  leadPage,
+  leadPageCursor,
   savedViewHref,
   type LeadListParams,
 } from '@/services/leads/leadList';
@@ -61,6 +63,12 @@ export default async function LeadsPage({
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['leads', 'VIEW'] });
   const page = Math.max(1, Number([raw.page].flat()[0]) || 1);
   const board = params.layout === 'board';
+  const sort = params.sort ?? 'updated';
+  // Keyset pages (M4-20): Next carries `after`, Previous `before`; a bare
+  // `?page=N`, as older links have it, still skips.
+  const after = [raw.after].flat()[0];
+  const keyset = after ? leadPage(sort, after, false) : leadPage(sort, [raw.before].flat()[0], true);
+  const back = !!keyset && !after;
 
   const rules = await loadFieldRules(ctx, 'LEAD');
   const { where, access, view, orderBy } = await leadListQuery(ctx, params, rules);
@@ -91,6 +99,7 @@ export default async function LeadsPage({
     priority: true,
     slaState: true,
     nextFollowUpAt: true,
+    createdAt: true,
     updatedAt: true,
     ownerId: true,
     stageId: true,
@@ -101,7 +110,13 @@ export default async function LeadsPage({
   const [rows, stages, users, owners, sources, taskTypes, setting, views] = await Promise.all([
     board
       ? Promise.resolve([])
-      : prisma.lead.findMany({ where, orderBy, skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE + 1, select }),
+      : prisma.lead.findMany({
+          where: keyset ? mergeWhere(where, keyset.where) : where,
+          orderBy: keyset?.orderBy ?? orderBy,
+          skip: keyset ? 0 : (page - 1) * PAGE_SIZE,
+          take: PAGE_SIZE + 1,
+          select,
+        }),
     prisma.leadStage.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null },
       orderBy: { position: 'asc' },
@@ -183,8 +198,12 @@ export default async function LeadsPage({
     columnsOfBoard.sort((a, b) => Number(a.exit) - Number(b.exit));
   }
 
-  const hasMore = rows.length > PAGE_SIZE;
-  const pageRows = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
+  // Read backwards from a `before` cursor, the page comes in reverse, and the one it came from follows it.
+  const hasMore = back || rows.length > PAGE_SIZE;
+  const pageRows = back ? rows.slice(0, PAGE_SIZE).reverse() : rows.slice(0, PAGE_SIZE);
+  const cursors = pageRows.length
+    ? { before: leadPageCursor(sort, pageRows[0]!), after: leadPageCursor(sort, pageRows.at(-1)!) }
+    : undefined;
 
   // Masking happens here, in the serialiser, so it covers the grid, exports and
   // every other egress path identically.
@@ -356,34 +375,45 @@ export default async function LeadsPage({
 
       {board ? (
         <LeadBoard columns={columnsOfBoard} projects={projects} canEdit={can(ctx, 'leads', 'EDIT')} />
-      ) : data.length === 0 ? (
-        <div className="lf-card">
-          <EmptyState
-            title="Nothing matches this view"
-            description="Adjust the filter, or add a lead to start building this list."
-            actionLabel={can(ctx, 'leads', 'CREATE') ? 'Add lead' : undefined}
-            actionHref="/leads/new"
-          />
-        </div>
       ) : (
-        <LeadGrid
-          key={params.sort ?? 'updated'}
-          rows={data as any}
-          columns={columns}
-          stages={stages}
-          projects={projects}
-          users={users}
-          taskTypes={taskTypes}
-          canAssign={can(ctx, 'leads', 'ASSIGN')}
-          canEdit={can(ctx, 'leads', 'EDIT')}
-          canDelete={can(ctx, 'leads', 'DELETE')}
-          emptyLabel={emptyFollowUpLabel(access, view, ctx.actor.id)}
-          sort={GRID_SORT[params.sort ?? 'updated']}
-        />
+        // Mounted with no rows too: a delete that empties the page keeps its Undo.
+        <>
+          {data.length === 0 && (
+            <div className="lf-card">
+              <EmptyState
+                title="Nothing matches this view"
+                description="Adjust the filter, or add a lead to start building this list."
+                actionLabel={can(ctx, 'leads', 'CREATE') ? 'Add lead' : undefined}
+                actionHref="/leads/new"
+              />
+            </div>
+          )}
+          <LeadGrid
+            key={params.sort ?? 'updated'}
+            rows={data as any}
+            columns={columns}
+            stages={stages}
+            projects={projects}
+            users={users}
+            taskTypes={taskTypes}
+            canAssign={can(ctx, 'leads', 'ASSIGN')}
+            canEdit={can(ctx, 'leads', 'EDIT')}
+            canDelete={can(ctx, 'leads', 'DELETE')}
+            canMoveToData={can(ctx, 'leads', 'CREATE') && can(ctx, 'leads', 'EDIT')}
+            emptyLabel={emptyFollowUpLabel(access, view, ctx.actor.id)}
+            sort={GRID_SORT[params.sort ?? 'updated']}
+          />
+        </>
       )}
 
       {!board && (
-        <Pager page={page} hasMore={hasMore} basePath="/leads" params={{ ...params, saved: activeView?.id }} />
+        <Pager
+          page={page}
+          hasMore={hasMore}
+          basePath="/leads"
+          params={{ ...params, saved: activeView?.id }}
+          cursors={cursors}
+        />
       )}
     </>
   );

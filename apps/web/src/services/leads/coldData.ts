@@ -6,6 +6,7 @@ import { visibilityWhere } from '@/lib/security/visibility';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { dayBounds, todayKey } from '@/services/targets/dailyBoard';
 import { recordTargetProgress } from '@/services/targets/progress';
+import { closeOutLead } from './closeOut';
 
 /**
  * Whose cold data a person reaches for `action`, as a `where`: the lead rule
@@ -92,4 +93,56 @@ export async function logColdCall(
   await recordTargetProgress(ctx, ctx.actor.id, 'CALLS_ATTEMPTED');
   if (first) await recordTargetProgress(ctx, ctx.actor.id, 'LEADS_CALLED');
   return record;
+}
+
+/**
+ * Bulk Move to Data (M4-39), one lead: it leaves the pipeline as a contact on
+ * the day's "From pipeline <date>" list (the workspace's date), still its
+ * owner's, and the lead is closed out as archived (`closeOutLead`, at the
+ * lead's EDIT scope; outside it 404 and nothing is written). One transaction,
+ * audited on the lead. Its other numbers go in the record's notes: a record
+ * holds one number.
+ */
+export async function moveLeadToData(ctx: Ctx, id: string) {
+  const batch = `From pipeline ${todayKey(await workspaceTimezone(ctx))}`;
+  return withTx(ctx.tenantId, async (tx) => {
+    const lead = await closeOutLead(ctx, id, { status: 'ARCHIVED' }, tx);
+    const others = await tx.leadPhone.findMany({
+      where: { tenantId: ctx.tenantId, leadId: id, normalized: { not: lead.phoneNormalized ?? '' } },
+      orderBy: { createdAt: 'asc' },
+      select: { normalized: true },
+    });
+    const notes = [lead.notes, others.length && `Other numbers: ${others.map((p) => p.normalized).join(', ')}`]
+      .filter(Boolean)
+      .join('\n');
+    const record = await tx.dataRecord.create({
+      data: {
+        tenantId: ctx.tenantId,
+        fullName: lead.fullName,
+        phone: lead.phone,
+        phoneNormalized: lead.phoneNormalized,
+        email: lead.email,
+        company: lead.company,
+        jobTitle: lead.jobTitle,
+        city: lead.city,
+        country: lead.country,
+        notes: notes || null,
+        batch,
+        ownerId: lead.ownerId,
+        createdById: ctx.actor.id,
+      },
+      select: { id: true },
+    });
+    await audit(
+      ctx,
+      {
+        event: 'RECORD_UPDATED',
+        objectType: 'lead',
+        recordId: id,
+        metadata: { action: 'lead.moved_to_data', dataRecordId: record.id, batch },
+      },
+      tx,
+    );
+    return { id, dataRecordId: record.id, batch };
+  });
 }

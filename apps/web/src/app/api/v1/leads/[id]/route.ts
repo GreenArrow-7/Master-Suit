@@ -43,6 +43,8 @@ const patchBody = z
     campaignName: z.string().trim().max(120).nullable().optional(),
     priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
     tags: z.array(z.string().max(40)).max(20).optional(),
+    /** Added to the lead's own (the grid's bulk Add tag, M4-35); none removed. */
+    addTags: z.array(z.string().trim().min(1).max(40)).min(1).max(20).optional(),
     notes: z.string().max(5000).nullable().optional(),
     stageId: z.string().cuid().optional(),
     stageReason: z.string().max(200).optional(),
@@ -80,6 +82,8 @@ export const PATCH = route(
       throw Forbidden(`Your role cannot change this lead’s ${masked.join(' or ')}.`);
     }
     const safe = stripUneditableFields(rules, body);
+    // Adding tags is editing the tags field.
+    if (rules.get('tags')?.canEdit === false) delete safe.addTags;
     const lead = await updateLead(ctx, params.id, safe);
     return applyFieldSecurity(ctx, 'LEAD', rules, lead, LEAD_SENSITIVE_FIELDS);
   },
@@ -89,6 +93,7 @@ export const DELETE = route(
   { module: 'leads', productModule: LEAD_MODULES, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) => {
     await deleteLead(ctx, params.id);
-    return { ok: true };
+    // The id names the lead on the route's RECORD_DELETED row, beside its restore's.
+    return { ok: true, id: params.id };
   },
 );
