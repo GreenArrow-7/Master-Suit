@@ -1,8 +1,8 @@
 # Send a WhatsApp or email template from the lead and to many leads; share a listing or project as a page that tells the agent when it is opened
 
 **What.** Lead Eagle part 4D, second half, for every lead module. Audit rows
-M4-28, M4-30 and M4-38. Branch `feat/lead-send-share`, stacked on
-`feat/lead-call-log-timeline` (#178, open).
+M4-28, M4-30 and M4-38. Branch `feat/lead-send-share`, built on the call log and lead
+timeline (#178, on `main`).
 
 - **Send from the lead** (M4-28). The lead's Overview has a Message card:
   Send WhatsApp and Send email. A dialog picks an approved WhatsApp template
