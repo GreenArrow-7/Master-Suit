@@ -355,11 +355,13 @@ describe('Lead Eagle: its own menu only where it is the whole CRM', () => {
       'Tasks',
       'Calls',
       'Site Visits',
+      'Calendar',
       'Requirements',
       'Allocation',
       'QR Capture',
       'Cold Data',
     ]);
+    expect(at(nav, `/${SLUG}/lead-eagle/calendar`)).toBe('le-leads / Calendar');
     expect(tabsOf(nav, 'le-reports')).toEqual(['Reports', 'Targets']);
     expect(areas(nav)).not.toContain('realty-clients');
     expect(at(nav, `/${SLUG}/lead-eagle/leads/42`)).toBe('le-leads / Leads');

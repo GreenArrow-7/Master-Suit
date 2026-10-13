@@ -5328,6 +5328,17 @@ a.lf-kpi:hover {
   gap: var(--lf-space-2);
 }
 
+/* ── The calendar's month: seven days wide at every width ─────────────────── */
+.lf-cal {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius);
+  background: var(--lf-line);
+}
+
 /* ── Lead board (M4-21): a column per stage; on a phone they scroll sideways ── */
 .lf-board {
   display: flex;

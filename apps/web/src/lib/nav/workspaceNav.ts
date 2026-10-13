@@ -418,6 +418,14 @@ function definitions(slug: string): SectionDef[] {
               keywords: 'viewings inspections',
             },
             {
+              label: 'Calendar',
+              href: r('/calendar'),
+              aliases: [le('/calendar')],
+              permission: 'tasks',
+              module: R,
+              keywords: 'schedule month tasks follow-ups site visits',
+            },
+            {
               // The buyer's brief, and what currently answers it. The matching
               // is `services/inventory/demand.ts`, already read from both ends
               // — this tab is the register, not a second matcher.
@@ -690,6 +698,14 @@ function definitions(slug: string): SectionDef[] {
               module: LE,
               unlessModule: [S, R],
               keywords: 'viewings inspections',
+            },
+            {
+              label: 'Calendar',
+              href: le('/calendar'),
+              permission: 'tasks',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'schedule month tasks follow-ups site visits',
             },
             {
               label: 'Requirements',
