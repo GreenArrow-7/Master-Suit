@@ -13,8 +13,8 @@ Paths below are under `apps/web/`.
 |---|---|---|---|
 | Sales | `sales/` | 75 | leads (spreadsheet import, close-out), contacts, accounts, opportunities, tasks, follow-ups; calls with AI coaching, analysis and audits; campaigns, inbox, forms, landing pages, social leads; dashboards, leadership (productivity, value, daily target); projects, listings, bookings, collections, commissions, proposals, portals |
 | HRMS | `people/` | 32 | employees, users, roles, departments; face check-in, attendance, shifts, roster, leave, overtime; payroll, payslips, WPS; recruitment, performance, documents, compliance |
-| Real Estate | `realty/` | 40 | the Sales property screens as a brokerage works them, plus Properties, allocation (data pool), events with QR passes, lead recycling, website forms and landing pages |
-| Lead Eagle | `lead-eagle/` | 29 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads, follow-ups, tasks, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle and Google Ads lead forms (Admin → Integrations → Lead sources; any lead module), and a lead can be recorded as a Referral with its referrer. Every lead module also has QR Capture, Cold Data, Targets, website forms and landing pages (public `/f/{ws}/{key}` and `/l/{ws}/{slug}`; `/embed.js` frames a form on the brokerage's own site), and Lead Stages and Sources (the source and sub-source catalogue) under Administration → Settings |
+| Real Estate | `realty/` | 41 | the Sales property screens as a brokerage works them, plus Properties, allocation (data pool), events with QR passes, lead recycling, website forms and landing pages |
+| Lead Eagle | `lead-eagle/` | 30 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads (a grid or a board by stage, filter chips, each person's saved views), follow-ups, tasks, calendar, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle and Google Ads lead forms (Admin → Integrations → Lead sources; any lead module), and a lead can be recorded as a Referral with its referrer. Every lead module also has the Calendar, QR Capture, Cold Data, Targets, website forms and landing pages (public `/f/{ws}/{key}` and `/l/{ws}/{slug}`; `/embed.js` frames a form on the brokerage's own site), and Lead Stages and Sources (the source and sub-source catalogue) under Administration → Settings |
 
 Outside the modules: `check-in` and `attendance` (every workspace), `admin/`
 (users, roles, work locations, settings, audit), `profile/`, and the platform
@@ -128,7 +128,16 @@ Node 22 or newer (CI uses 24).
   `requiredFields` books a site visit or a meeting task in the same
   transaction (`src/lib/leads/stageBookings.ts`); only a move books, so a
   booking sent with no move is refused 422. A screen that moves a lead opens
-  the `StageReason` mini-form when `asksBeforeMove` says so.
+  the `StageReason` mini-form when `asksBeforeMove` says so: the lead page,
+  the grid's bulk move and the board.
+- **Lead lists.** The lead grid, its board and its CSV export read one URL
+  (`leadListParams`) through one query (`leadListQuery`,
+  `src/services/leads/leadList.ts`): scope, named filter, search, chips, the
+  closed-out exclusion. Every lead search is `leadSearch`
+  (`src/services/leads/createLead.ts`): a typed number is normalised and matched
+  against the main number and every LeadPhone, whole numbers only for a role
+  that sees them masked. A saved lead view is a personal `SmartView`
+  (`objectType` `LEAD_LIST`).
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
   P2002 answers 409 and P2025 404, a zod failure 422 — let the database say
   "already exists" or "not found" instead of reading first.
