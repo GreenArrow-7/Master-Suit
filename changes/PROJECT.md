@@ -194,8 +194,9 @@ Waiting on the owner:
 - **Lead Eagle inside YOUHAN ONE** — every phase of the plan
   (`changes/2026-10-05-lead-eagle-plan.md`) is live: phase 1 since f89ae61,
   phases 2–6 since c46624f (8 Oct, #134 + #139). What waits on the owner:
-  partner credentials for the portals and Google Ads (or, until then, a mail
-  service posting their lead emails to a Portal emails source), opening
+  partner credentials for the portals and Google Ads (or, until then, an
+  inbound-mail service and a small relay posting their lead emails, signed, to
+  a Portal emails source), opening
   sign-up, and a real standalone database for the move tool, if one exists.
 - **Self-serve sign-up** — built and closed: the platform owner decides whether
   to open it (console → Settings → Self-serve sign-up, trial days).
