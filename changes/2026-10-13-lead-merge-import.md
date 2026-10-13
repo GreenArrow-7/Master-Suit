@@ -4,7 +4,7 @@
 Lead Eagle M4 Leads, M5 Cold data, M6 Lead intake", rows M4-31, M4-41, M4-42
 and M4-43, for every lead module. Branch `feat/lead-merge-import`, from `main`
 at f3d78ad9, merged up with `main` at fa01771f (#177, #178) after review, and
-again at fe5ecc75 (#179) and 4bb6078b (#180).
+again at fe5ecc75 (#179), 4bb6078b (#180) and 6ced63d9 (#183).
 
 - **Merge two leads (M4-31).** A lead's page names any lead the duplicate rules
   match it with ("May be the same person as LD-000124 · Sara (same number).
@@ -282,6 +282,18 @@ below are this change's design choices:
   call-log and timeline files' `beforeAll` timed out together and passed
   alone). E2E on a fresh `.next`: `lead-merge-import` 2/2, `redesign-mobile`
   3/3.
+- **Merged up with `main` at 6ced63d9 (#183).** The grid's bulk bar has
+  Merge (two selected) beside #183's Move to Data; `updateLead` keeps the
+  import's dry-run transaction and takes #183's tag lock inside it. #183's
+  Undo route (`POST /leads/{id}/restore`) reached a merged lead too, since a
+  merged lead is a deleted one, and brought it back still marked merged; it
+  now answers 404 for one (a merge case, 200 without the guard,
+  `mu181-restore-failbefore.log`). `tsc` clean; eslint 0 errors; prettier
+  clean. Vitest: the merge, import, bulk-action, grid-page, where-merge,
+  page-connection, saved-view, search, Kanban and entitlement specs, 10
+  files, 139 passed; `tests/sales` with `tests/permission`, 98 files, 1763
+  passed. E2E, each alone on a fresh `.next`: `lead-merge-import` 2/2,
+  `lead-views-board` 5/5, `lead-bulk-actions` 8/8, `redesign-mobile` 3/3.
 
 **Left open.**
 
