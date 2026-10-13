@@ -1,4 +1,4 @@
-import type { PermissionAction, VisibilityScope } from '@prisma/client';
+import type { PermissionAction, StageCategory, VisibilityScope } from '@prisma/client';
 import type { TxClient } from '@/lib/db';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { ensureLeadSources } from '@/services/leads/leadSources';
@@ -167,6 +167,44 @@ async function provisionStarterRoles(tx: TxClient, tenantId: string) {
   });
 }
 
+type StageSeed = {
+  key: string;
+  name: string;
+  category?: StageCategory;
+  isDefault?: boolean;
+  requiresReason?: boolean;
+  requiredFields?: string[];
+};
+
+/** A workspace's first pipeline, in order. */
+const GENERAL_STAGES: StageSeed[] = [
+  { key: 'new', name: 'New', isDefault: true },
+  { key: 'qualified', name: 'Qualified' },
+  { key: 'won', name: 'Won', category: 'CONVERSION' },
+  { key: 'lost', name: 'Lost', category: 'TERMINAL_NEGATIVE' },
+];
+
+/**
+ * Lead Eagle's (owner, M4-14 and M4-16): the ladder to Booked, then the ways
+ * out. Moving a lead to Site Visit Scheduled books the visit, to Meeting
+ * Scheduled the meeting, in the same request (`requiredFields`, updateLead).
+ * Dropped needs a reason in words; the other exits are their own reason.
+ */
+const LEAD_EAGLE_STAGES: StageSeed[] = [
+  { key: 'new', name: 'New', isDefault: true },
+  { key: 'pending', name: 'Pending' },
+  { key: 'callback', name: 'Callback' },
+  { key: 'meeting_scheduled', name: 'Meeting Scheduled', requiredFields: ['meetingAt'] },
+  { key: 'meeting_done', name: 'Meeting Done' },
+  { key: 'site_visit_scheduled', name: 'Site Visit Scheduled', requiredFields: ['visitAt'] },
+  { key: 'site_visit_done', name: 'Site Visit Done' },
+  { key: 'booked', name: 'Booked', category: 'CONVERSION' },
+  { key: 'not_interested', name: 'Not Interested', category: 'TERMINAL_NEGATIVE' },
+  { key: 'dropped', name: 'Dropped', category: 'TERMINAL_NEGATIVE', requiresReason: true },
+  { key: 'not_reachable', name: 'Not Reachable', category: 'TERMINAL_NEGATIVE' },
+  { key: 'junk_duplicate', name: 'Junk / Duplicate', category: 'TERMINAL_JUNK' },
+];
+
 /**
  * What a workspace needs before it can work a lead: lead stages, activity types
  * and task types, and with Lead Eagle its starter roles.
@@ -185,7 +223,8 @@ async function provisionStarterRoles(tx: TxClient, tenantId: string) {
  *
  * Each list is filled only when the workspace has none of it: this is for a
  * workspace that has nothing yet — at creation, or when a module that works
- * leads is switched on later — never a reset of one that has made its own.
+ * leads is switched on later — never a reset of one that has made its own. The
+ * pipeline is Lead Eagle's when the workspace has Lead Eagle, else the general one.
  *
  * The starter roles come only when Lead Eagle arrives (`modules` has it,
  * `before` did not). The console's editor sends the modules with every save, so
@@ -205,14 +244,8 @@ export async function provisionLeadWork(
   // The source catalogue (M4-03); workspaces from before it got it from the migration's backfill.
   await ensureLeadSources(tx, tenantId);
   if ((await tx.leadStage.count({ where: { tenantId } })) === 0) {
-    await tx.leadStage.createMany({
-      data: [
-        { tenantId, key: 'new', name: 'New', position: 1, isDefault: true },
-        { tenantId, key: 'qualified', name: 'Qualified', position: 2 },
-        { tenantId, key: 'won', name: 'Won', position: 3, category: 'CONVERSION' },
-        { tenantId, key: 'lost', name: 'Lost', position: 4, category: 'TERMINAL_NEGATIVE' },
-      ],
-    });
+    const stages = modules.includes('LEAD_EAGLE') ? LEAD_EAGLE_STAGES : GENERAL_STAGES;
+    await tx.leadStage.createMany({ data: stages.map((stage, i) => ({ tenantId, position: i + 1, ...stage })) });
   }
   if ((await tx.activityType.count({ where: { tenantId } })) === 0) {
     await tx.activityType.createMany({
