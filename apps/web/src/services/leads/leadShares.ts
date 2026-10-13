@@ -257,31 +257,43 @@ export async function loadShare(token: string, now = new Date()) {
 
 export type PublicShare = Awaited<ReturnType<typeof loadShare>>;
 
+/** However many visitors a link has in a day, at most this many openings of it go on the lead's timeline. */
+export const LOGGED_PER_DAY = 3;
+
 /**
- * An opening: counted on the link every time, and logged on the lead's
- * timeline once per visitor per day (the workspace's day). A visitor is a hash
- * of their address and browser, kept two days in Redis and nowhere else; the
- * activity names the property, not who opened it. Audited as the system:
- * nobody in the workspace did it.
+ * An opening (api/v1/public/share-view, called by the page's script): counted
+ * on the link every time, and logged on the lead's timeline once per visitor
+ * per day (the workspace's day), at most `LOGGED_PER_DAY` a day per link. A
+ * visitor is a hash of their address and browser, kept two days in Redis and
+ * nowhere else; the activity names the property, not who opened it. Audited
+ * as the system: nobody in the workspace did it. Its activity type is
+ * inactive, so nobody logs one by hand from the lead page.
  */
 export async function recordShareView(share: PublicShare, visitor: string, now = new Date()) {
   const what = share.listing ? `Listing: ${share.listing.title}` : `Project: ${share.project?.name}`;
   const seen = createHash('sha256').update(visitor).digest('hex').slice(0, 32);
-  const key = `share-view:${share.shareId}:${todayKey(share.timeZone, now)}:${seen}`;
+  const day = `share-view:${share.shareId}:${todayKey(share.timeZone, now)}`;
   // Redis away: log it rather than lose it; a second entry is the lesser harm.
-  const first = await redis.set(key, '1', 'EX', 2 * 86_400, 'NX').then(
-    (ok) => ok === 'OK',
-    (err: Error) => {
-      logger.warn({ err: err.message, shareId: share.shareId }, 'share view dedupe unavailable');
-      return true;
-    },
-  );
+  const unavailable = (err: Error) => {
+    logger.warn({ err: err.message, shareId: share.shareId }, 'share view dedupe unavailable');
+    return true;
+  };
+  const first = await redis.set(`${day}:${seen}`, '1', 'EX', 2 * 86_400, 'NX').then((ok) => ok === 'OK', unavailable);
+  // A new browser string is a new visitor: the day's cap keeps that from filling the timeline.
+  const logs =
+    first &&
+    (await redis
+      .multi()
+      .incr(day)
+      .expire(day, 2 * 86_400)
+      .exec()
+      .then((replies) => Number(replies?.[0]?.[1] ?? 0) <= LOGGED_PER_DAY, unavailable));
   await withTx(share.tenantId, async (tx) => {
     await tx.leadShare.updateMany({
       where: { tenantId: share.tenantId, id: share.shareId },
       data: { viewCount: { increment: 1 }, lastViewedAt: now },
     });
-    if (!first) return;
+    if (!logs) return;
     const type = await tx.activityType.upsert({
       where: { tenantId_key: { tenantId: share.tenantId, key: 'link_view' } },
       update: {},
@@ -291,6 +303,7 @@ export async function recordShareView(share: PublicShare, visitor: string, now =
         name: 'Shared link opened',
         direction: 'INBOUND',
         icon: 'link',
+        isActive: false,
       },
       select: { id: true },
     });

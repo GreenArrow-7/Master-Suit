@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { prisma } from '@/lib/db';
 import {
   createWorkspaceViaWizard,
@@ -97,8 +97,25 @@ test.describe('Sending to a lead and sharing a listing', () => {
       const dialog = page.getByRole('dialog', { name: `Send Email · ${SARA}` });
       await expect(dialog).toBeVisible();
       await dialog.getByLabel('Template').selectOption({ label: 'Brochure' });
+      // The provider refuses the first: the dialog says so, and Send again is a new request, not
+      // the stored refusal replayed under the same Idempotency-Key.
+      const keys: string[] = [];
+      await page.route('**/api/v1/leads/*/messages', async (route) => {
+        keys.push(route.request().headers()['idempotency-key'] ?? '');
+        if (keys.length > 1) return route.continue();
+        await route.fulfill({
+          json: {
+            message: { id: 'refused', channel: 'EMAIL', status: 'FAILED', errorMessage: 'Mailbox busy.', sentAt: null },
+          },
+        });
+      });
       await dialog.getByRole('button', { name: 'Send', exact: true }).click();
-      await expect(dialog).toBeHidden();
+      await expect(dialog.getByText('Not sent: Mailbox busy.')).toBeVisible();
+      await dialog.getByRole('button', { name: 'Send', exact: true }).click();
+      await expect(dialog).toBeHidden({ timeout: 30_000 });
+      await page.unroute('**/api/v1/leads/*/messages');
+      expect(keys).toHaveLength(2);
+      expect(keys[1]).not.toBe(keys[0]);
       await expect(card.getByText('Sent. It is on the timeline.')).toBeVisible();
 
       const sent = await prisma.communication.findFirstOrThrow({
@@ -117,9 +134,15 @@ test.describe('Sending to a lead and sharing a listing', () => {
       await page.getByRole('tab', { name: 'Overview' }).click();
       const card = page.getByRole('region', { name: 'Share a property' });
       await card.getByLabel('Project or listing to share').selectOption({ label: `SH-${run} · ${LISTING}` });
-      await card.getByRole('button', { name: 'Create link' }).click();
+      // The share route compiles on first use: wait for its answer, not a fixed time.
+      await Promise.all([
+        page.waitForResponse((r) => r.url().endsWith('/shares') && r.request().method() === 'POST', {
+          timeout: 60_000,
+        }),
+        card.getByRole('button', { name: 'Create link' }).click(),
+      ]);
       const row = card.getByRole('listitem', { name: `Shared ${LISTING}` });
-      await expect(row).toBeVisible();
+      await expect(row).toBeVisible({ timeout: 30_000 });
       await expect(row.getByText('not opened yet')).toBeVisible();
       // WhatsApp opens with the link written, to the lead's own number.
       await expect(row.getByRole('link', { name: 'Share via WhatsApp' })).toHaveAttribute(
@@ -129,13 +152,27 @@ test.describe('Sending to a lead and sharing a listing', () => {
       shared = new URL((await row.getByRole('link', { name: 'Open' }).getAttribute('href'))!).pathname;
       expect(shared).toMatch(/^\/s\/[^/]+$/);
 
-      // A browser with no session: the client's phone.
+      const reported = (on: Page) =>
+        on.waitForResponse((r) => r.url().endsWith('/api/v1/public/share-view'), { timeout: 60_000 });
+      // The agent checking the link (Open, signed in) is not the client opening it.
+      const own = await page.context().newPage();
+      const ownReport = reported(own);
+      await own.goto(shared);
+      await expect(own.getByRole('heading', { name: LISTING })).toBeVisible();
+      expect((await ownReport).status()).toBe(200);
+      await own.close();
+
+      // A browser with no session: first WhatsApp's link preview (fetches, runs no script), then the client's phone.
       const client = await browser.newContext();
+      const preview = await client.request.get(shared, { headers: { 'user-agent': 'WhatsApp/2.24.1 A' } });
+      expect(preview.status()).toBe(200);
       const visitor = await client.newPage();
+      const visitorReport = reported(visitor);
       await visitor.goto(shared);
       await expect(visitor.getByRole('heading', { name: LISTING })).toBeVisible();
       await expect(visitor.getByText('AED 2,400,000')).toBeVisible();
       await expect(visitor.getByText(SARA)).toHaveCount(0);
+      expect((await visitorReport).status()).toBe(200);
       await client.close();
 
       await page.reload();

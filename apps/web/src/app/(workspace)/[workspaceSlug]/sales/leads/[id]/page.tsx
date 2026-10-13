@@ -254,21 +254,24 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     (await prisma.integrationConnection.count({
       where: { tenantId: ctx.tenantId, provider: 'meta', status: 'CONNECTED' },
     })) > 0;
+  // Withdrawn consent stops both channels, as the send refuses it (services/leads/leadMessages.ts).
+  const withdrawn =
+    lead.consentStatus === 'WITHDRAWN' ? `${lead.fullName} has withdrawn consent to be contacted.` : null;
   const messaging = sends
     ? {
         numbers: waNumbers.map((n) => ({ id: n.id, label: [n.label, shown(n.raw)].filter(Boolean).join(' · ') })),
-        whatsappBlocked: lead.whatsappOptOut
-          ? `${lead.fullName} has opted out of WhatsApp.`
-          : !waNumbers.length
-            ? 'No number is marked as on WhatsApp.'
-            : whatsappOn
-              ? null
-              : 'WhatsApp is not connected for this workspace.',
-        emailBlocked: lead.emailOptOut
-          ? `${lead.fullName} has opted out of email.`
-          : lead.email
-            ? null
-            : 'No email address.',
+        whatsappBlocked:
+          withdrawn ??
+          (lead.whatsappOptOut
+            ? `${lead.fullName} has opted out of WhatsApp.`
+            : !waNumbers.length
+              ? 'No number is marked as on WhatsApp.'
+              : whatsappOn
+                ? null
+                : 'WhatsApp is not connected for this workspace.'),
+        emailBlocked:
+          withdrawn ??
+          (lead.emailOptOut ? `${lead.fullName} has opted out of email.` : lead.email ? null : 'No email address.'),
       }
     : null;
 
@@ -410,7 +413,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                 firstName: lead.firstName?.trim() || lead.fullName.split(/\s+/)[0] || lead.fullName,
                 // Never to a lead that opted out of WhatsApp, nor through a number masked to the viewer.
                 whatsapp:
-                  phoneVisible && !lead.whatsappOptOut && waNumbers[0] ? whatsappLink(waNumbers[0].raw, true) : null,
+                  phoneVisible && !lead.whatsappOptOut && !withdrawn && waNumbers[0]
+                    ? whatsappLink(waNumbers[0].raw, true)
+                    : null,
                 shares: shared.map((share) => ({
                   id: share.id,
                   title: share.title,

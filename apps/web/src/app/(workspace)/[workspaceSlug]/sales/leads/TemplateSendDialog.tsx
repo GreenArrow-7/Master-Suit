@@ -62,8 +62,9 @@ export default function TemplateSendDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
-  // One per dialog: pressing Send again after a lost answer replays it, not doubles it.
-  const [requestKey] = useState(() => crypto.randomUUID());
+  // Kept until an answer comes: pressing Send again after a lost answer replays it, not doubles
+  // it. Once answered ("Not sent", a refusal), Send again is a new request.
+  const [requestKey, setRequestKey] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
     if (!ref.current?.open) ref.current?.showModal();
@@ -98,6 +99,7 @@ export default function TemplateSendDialog({
       ),
     }).catch(() => null);
     setBusy(false);
+    if (res) setRequestKey(crypto.randomUUID());
     const data = await res?.json().catch(() => ({}));
     if (!res?.ok) {
       setError(

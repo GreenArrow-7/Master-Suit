@@ -32,6 +32,7 @@ import { GET as allocation } from '@/app/api/v1/allocation/route';
 import { GET as projects } from '@/app/api/v1/projects/route';
 import { GET as listings } from '@/app/api/v1/listings/route';
 import { GET as reports } from '@/app/api/v1/reports/route';
+import { GET as inbox } from '@/app/api/v1/conversations/route';
 import { GET as visitGet, PATCH as visitChange } from '@/app/api/v1/site-visits/[id]/route';
 import { POST as visitPunch } from '@/app/api/v1/site-visits/[id]/punch/route';
 import { ctxForUser } from '@/lib/auth/session';
@@ -468,8 +469,9 @@ describe('the Lead Eagle starter roles', () => {
     const telecaller = await grants(wizardMade, 'Telecaller');
     expect(telecaller.get('leads:CREATE')).toBe('OWN');
     expect([...telecaller.keys()].filter((key) => /:(VIEW_SENSITIVE_FIELDS|EXPORT)$/.test(key))).toEqual([]);
-    // It sends to a number it cannot read: the server addresses it.
+    // It sends to a number it cannot read: the server addresses it. No inbox, which shows numbers unmasked.
     expect(telecaller.get('communications:CREATE')).toBe('OWN');
+    expect(telecaller.has('communications:VIEW')).toBe(false);
 
     const teamLead = await grants(wizardMade, 'Team Lead');
     expect(teamLead.get('leads:VIEW')).toBe('TEAM');
@@ -488,6 +490,8 @@ describe('the Lead Eagle starter roles', () => {
     const viewer = await grants(wizardMade, 'Viewer');
     expect(viewer.get('leads:VIEW')).toBe('ORGANIZATION');
     expect(new Set([...viewer.keys()].map((key) => key.split(':')[1]))).toEqual(new Set(['VIEW']));
+    // Masked numbers, so no inbox either.
+    expect([...viewer.keys()].filter((key) => key.startsWith('communications:'))).toEqual([]);
   });
 
   it('lets each role open every Lead Eagle register; refuses the viewer a new lead and the telecaller an export', async () => {
@@ -522,6 +526,11 @@ describe('the Lead Eagle starter roles', () => {
     const lead = { fullName: 'Viewer Attempt', phone: `+9715${String(Date.now()).slice(-8)}` };
     expect((await post(leadCreate, '/api/v1/leads', lead, cookies.Viewer)).status).toBe(403);
     expect((await get(leadsExport, '/api/v1/leads/export', cookies.Telecaller)).status).toBe(403);
+    // The inbox names threads by their full numbers: not for the roles that read them masked.
+    expect((await get(inbox, '/api/v1/conversations', cookies.Agent)).status).toBe(200);
+    for (const name of ['Telecaller', 'Viewer']) {
+      expect((await get(inbox, '/api/v1/conversations', cookies[name])).status, name).toBe(403);
+    }
   });
 
   it('a Sales-only workspace from the wizard still gets the administrator alone', async () => {

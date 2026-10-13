@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { ctxForUser } from '@/lib/auth/session';
 import { prisma, withTx } from '@/lib/db';
-import { AppError, Invalid } from '@/lib/errors';
+import { AppError, Invalid, NotFound } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { sendMail } from '@/lib/mailer';
 import { enqueue } from '@/lib/queue';
 import { redis } from '@/lib/redis';
 import { audit } from '@/lib/security/audit';
+import { assertAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitlements';
+import { consume, limits } from '@/lib/security/ratelimit';
 import { assertPermission, type Ctx } from '@/lib/security/rbac';
 import { assertLeadInScope, leadScope } from '@/lib/security/record-scope';
 import { fillTemplate, sendableTemplate, sendWhatsAppTemplate, whatsAppSender } from '@/services/conversations/send';
@@ -39,6 +41,8 @@ const CONTACT = {
   email: true,
   whatsappOptOut: true,
   emailOptOut: true,
+  consentStatus: true,
+  ownerId: true,
   phones: { orderBy: { createdAt: 'asc' }, select: { id: true, normalized: true, isWhatsapp: true } },
 } as const;
 
@@ -51,6 +55,7 @@ type LeadContact = {
   email: string | null;
   whatsappOptOut: boolean;
   emailOptOut: boolean;
+  consentStatus: string;
   phones: { id: string; normalized: string; isWhatsapp: boolean }[];
 };
 
@@ -62,9 +67,13 @@ const refuse = (code: string, message: string, field = 'lead') => Invalid([{ fie
  * Where a message to the lead goes, or why it cannot. WhatsApp: the number
  * chosen (`to`, "main" or one of its other numbers' ids) if it is marked as on
  * WhatsApp, else the main number if marked, else the first other number marked;
- * as Meta names a thread, the E.164 digits. Email: its address.
+ * as Meta names a thread, the E.164 digits. Email: its address. A lead whose
+ * consent is withdrawn has opted out of both, as campaigns and the dialer read it.
  */
 export function recipientOf(lead: LeadContact, channel: MessageChannel, to?: string): string {
+  if (lead.consentStatus === 'WITHDRAWN') {
+    throw refuse('opted_out', `${lead.fullName} has withdrawn consent to be contacted.`);
+  }
   if (channel === 'EMAIL') {
     if (lead.emailOptOut) throw refuse('opted_out', `${lead.fullName} has opted out of email.`);
     if (!lead.email) throw refuse('no_email', `${lead.fullName} has no email address.`);
@@ -135,6 +144,11 @@ export async function sendLeadMessage(ctx: Ctx, leadId: string, input: SendInput
     });
     if (done) return done;
   }
+  // The platform's own mail server carries it: a workspace's day of lead email is capped.
+  if (input.channel === 'EMAIL') {
+    const day = limits.leadEmailDay(tenantId);
+    await consume(day, `This workspace has sent today's ${day.max} emails to leads. Try again tomorrow.`);
+  }
   const whatsapp = input.channel === 'WHATSAPP' ? await whatsAppSender(tenantId) : null;
   const subject = template.subject ? fillTemplate(template.subject, values) : null;
   const body = fillTemplate(template.body, values);
@@ -142,8 +156,12 @@ export async function sendLeadMessage(ctx: Ctx, leadId: string, input: SendInput
   // The message and its audit row first, in one transaction: a retry finds it,
   // and nothing reaches a customer unrecorded.
   const { message, threadId } = await withTx(tenantId, async (tx) => {
-    // The lead's thread, as an inbound message from that number names it. The
-    // sender claims it when nobody holds it, as a reply in the inbox does.
+    // The lead's thread, as an inbound message from that number names it, held
+    // by the lead's owner: their inbox is where the reply should land and their
+    // timeline shows the message. A new or unowned one goes to the owner (the
+    // sender, for a lead with none); one still held by a previous owner of a
+    // reassigned lead moves to the new one. One linked to another lead stays.
+    const holder = lead.ownerId ?? ctx.actor.id;
     const thread = whatsapp
       ? await tx.conversation.upsert({
           where: { tenantId_channel_externalId: { tenantId, channel: 'WHATSAPP', externalId: address } },
@@ -154,18 +172,33 @@ export async function sendLeadMessage(ctx: Ctx, leadId: string, input: SendInput
             externalId: address,
             displayName: lead.fullName,
             leadId,
-            ownerId: ctx.actor.id,
+            ownerId: holder,
           },
           update: {},
-          select: { id: true },
+          select: { id: true, leadId: true, ownerId: true },
         })
       : null;
-    if (thread) {
+    if (thread && !thread.leadId) {
       await tx.conversation.updateMany({ where: { tenantId, id: thread.id, leadId: null }, data: { leadId } });
-      await tx.conversation.updateMany({
-        where: { tenantId, id: thread.id, ownerId: null },
-        data: { ownerId: ctx.actor.id },
+    }
+    if (thread && thread.ownerId !== holder && (!thread.ownerId || lead.ownerId)) {
+      // Only if still as read, and only this lead's thread.
+      const moved = await tx.conversation.updateMany({
+        where: { tenantId, id: thread.id, ownerId: thread.ownerId, leadId },
+        data: { ownerId: holder },
       });
+      if (moved.count) {
+        await audit(
+          ctx,
+          {
+            event: 'OWNER_CHANGED',
+            objectType: 'conversation',
+            recordId: thread.id,
+            metadata: { leadId, from: thread.ownerId, ownerId: holder },
+          },
+          tx,
+        );
+      }
     }
     const row = await tx.communication.create({
       data: {
@@ -221,7 +254,7 @@ export async function sendLeadMessage(ctx: Ctx, leadId: string, input: SendInput
             : { status: 'SENT' as const, providerMessageId: result.externalMessageId || null },
         (err: Error) => ({ status: 'FAILED' as const, errorMessage: err.message?.slice(0, 500) ?? null }),
       )
-    : await sendMail(address, subject ?? template.name, body).then(
+    : await sendMail(address, subject ?? template.name, body, { replyTo: ctx.actor.email }).then(
         () => ({ status: 'SENT' as const }),
         (err: Error) => ({ status: 'FAILED' as const, errorMessage: err.message?.slice(0, 500) ?? null }),
       );
@@ -346,6 +379,12 @@ export async function runQueuedLeadMessage(data: {
   variables?: string[];
 }) {
   try {
+    // Suspended, or without a lead module, since the batch was queued: nothing more goes.
+    const live = await withTx(data.tenantId, (tx) =>
+      tx.tenant.count({ where: { id: data.tenantId, status: 'ACTIVE', deletedAt: null } }),
+    );
+    if (!live) throw NotFound('Workspace');
+    await assertAnyModuleEntitlement(data.tenantId, LEAD_MODULES);
     const ctx = await ctxForUser(data.actorId, data.tenantId, randomUUID());
     assertPermission(ctx, 'communications', 'CREATE');
     await sendLeadMessage(ctx, data.leadId, {

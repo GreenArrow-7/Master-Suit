@@ -18,6 +18,8 @@ import { proposalLink } from '@/lib/proposals/proposalLink';
 import { DELETE as revokeShare, POST as shareWithLead } from '@/app/api/v1/leads/[id]/shares/route';
 import { GET as readTimeline } from '@/app/api/v1/leads/[id]/timeline/route';
 import SharePage from '@/app/s/[token]/page';
+import { POST as viewed } from '@/app/api/v1/public/share-view/route';
+import { LOGGED_PER_DAY, loadShare, recordShareView } from '@/services/leads/leadShares';
 import LeadDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
 import { createWorkspaceUser, grantPermissions, seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { createSessionToken } from '../helpers/session';
@@ -54,8 +56,29 @@ const open = (token: string, visitor = 'Phone A') => {
   request.agent = visitor;
   return SharePage({ params: Promise.resolve({ token }) });
 };
-const views = () =>
-  prisma.activity.findMany({ where: { tenantId, leadId, type: { key: 'link_view' } }, orderBy: { createdAt: 'asc' } });
+/** The page's script reporting an opening, from a browser with no session unless one is given. */
+const beacon = async (token: string, visitor = 'Phone A', cookie = '') => {
+  // The session is read from the request, then from next/headers: neither may carry the administrator's.
+  request.cookie = cookie;
+  try {
+    const res = await viewed(
+      new Request('http://localhost/api/v1/public/share-view', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'user-agent': visitor, ...(cookie && { cookie }) },
+        body: JSON.stringify({ token }),
+      }),
+      { params: Promise.resolve({}) },
+    );
+    return res.status;
+  } finally {
+    request.cookie = admin;
+  }
+};
+const views = (id = leadId) =>
+  prisma.activity.findMany({
+    where: { tenantId, leadId: id, type: { key: 'link_view' } },
+    orderBy: { createdAt: 'asc' },
+  });
 
 beforeAll(async () => {
   fixture = await seedTwoTenants();
@@ -256,20 +279,29 @@ describe('a listing or a project shared with a lead (M4-30)', () => {
     expect(text).not.toMatch(/\b(400|37)\b/);
   });
 
-  it('an opening is logged on the lead once per visitor per day, without the visitor, and shows on the timeline', async () => {
+  it('an opening is logged by the page’s script, once per visitor per day, without the visitor, and shows on the timeline', async () => {
     await prisma.activity.deleteMany({ where: { tenantId, leadId, type: { key: 'link_view' } } });
-    await pageText(open(listingToken, 'Phone B'));
-    await pageText(open(listingToken, 'Phone B'));
-    await pageText(open(listingToken, 'Laptop C'));
+    const row = () => prisma.leadShare.findFirstOrThrow({ where: { tenantId, id: shareId } });
+    // The page itself counts nothing: WhatsApp fetches it for the link preview as the agent sends it, and runs no script.
+    await pageText(open(listingToken, 'WhatsApp/2.24.1 A'));
+    expect((await row()).viewCount).toBe(0);
+    expect(await views()).toEqual([]);
+
+    expect(await beacon(listingToken, 'Phone B')).toBe(200);
+    await beacon(listingToken, 'Phone B');
+    await beacon(listingToken, 'Laptop C');
     const logged = await views();
     expect(logged).toHaveLength(2);
     expect(logged[0]).toMatchObject({ ownerId: null, notes: 'Listing: Marina view two-bed' });
     expect(JSON.stringify(logged)).not.toMatch(/Phone B|Laptop C/);
+    // Every opening counts on the share.
+    expect((await row()).viewCount).toBe(3);
+    expect((await row()).lastViewedAt).not.toBeNull();
 
-    const row = await prisma.leadShare.findFirstOrThrow({ where: { tenantId, id: shareId } });
-    // Every opening counts on the share, including the one before this case.
-    expect(row.viewCount).toBe(4);
-    expect(row.lastViewedAt).not.toBeNull();
+    // The workspace looking at its own link (the agent's Open, signed in) is no opening.
+    expect(await beacon(listingToken, 'Agent laptop', admin)).toBe(200);
+    expect((await row()).viewCount).toBe(3);
+    expect(await views()).toHaveLength(2);
 
     const timeline = await get(readTimeline, `/api/v1/leads/${leadId}/timeline`, admin, { id: leadId });
     expect(timeline.body.entries[0]).toMatchObject({
@@ -319,6 +351,10 @@ describe('a listing or a project shared with a lead (M4-30)', () => {
     await expect(open(proposalLink.token(tenant!, id!))).rejects.toThrow(/;404$/);
     await expect(open(`${fixture.b.tenantId}.${id}.${signature}`)).rejects.toThrow(/;404$/);
     await expect(open('not-a-token')).rejects.toThrow(/;404$/);
+    // A broken escape in a made-up one too, not a server error.
+    await expect(open('%E0%A4%A')).rejects.toThrow(/;404$/);
+    // The page's report of an opening answers a bad token as the page does.
+    expect(await beacon(altered)).toBe(404);
   });
 
   it('is 404 once the workspace has no lead module', async () => {
@@ -348,7 +384,7 @@ describe('a listing or a project shared with a lead (M4-30)', () => {
     expect(offered.shares.find((row: { id: string }) => row.id === shareId)).toMatchObject({
       title: 'Marina view two-bed',
       kind: 'listing',
-      views: 4,
+      views: 3,
       live: false,
     });
     expect((await sharing(masked)).whatsapp).toBeNull();
@@ -383,6 +419,47 @@ describe('a listing or a project shared with a lead (M4-30)', () => {
     expect(refused.status).toBe(409);
     expect(refused.body.detail).toBe('That listing is not on the market.');
     expect((await share(admin, leadId, { listingId, projectId })).status).toBe(422);
+  });
+
+  it('a link logs at most three openings a day however many browsers, and again the next day; nobody logs one by hand', async () => {
+    const other = fixture.a.leadIds[1]!;
+    const live = await share(admin, other, { listingId });
+    const loaded = await loadShare(tokenOf(live.body.url));
+    for (const browser of ['A', 'B', 'C', 'D', 'E']) await recordShareView(loaded, `unknown|${browser}`);
+    expect(await views(other)).toHaveLength(LOGGED_PER_DAY);
+    // Tomorrow, a browser seen today is an opening again.
+    await recordShareView(loaded, 'unknown|A', new Date(Date.now() + 86_400_000));
+    expect(await views(other)).toHaveLength(LOGGED_PER_DAY + 1);
+    expect((await prisma.leadShare.findFirstOrThrow({ where: { tenantId, id: live.body.id } })).viewCount).toBe(6);
+
+    // Its activity type is not in the lead page's Log activity menu.
+    expect(
+      (await prisma.activityType.findUniqueOrThrow({ where: { tenantId_key: { tenantId, key: 'link_view' } } }))
+        .isActive,
+    ).toBe(false);
+  });
+
+  it('takes 1 to 90 days, revokes only the lead’s own links, and shares only a project offered to clients', async () => {
+    for (const days of [0, 91]) expect((await share(admin, leadId, { listingId, days })).status).toBe(422);
+    const other = fixture.a.leadIds[1]!;
+    const theirs = await share(admin, other, { listingId });
+    const wrong = await del(revokeShare, `${shareUrl(leadId)}?share=${theirs.body.id}`, admin, { id: leadId });
+    expect(wrong.status).toBe(404);
+    expect((await prisma.leadShare.findFirstOrThrow({ where: { tenantId, id: theirs.body.id } })).revokedAt).toBeNull();
+
+    const projectLink = await share(admin, leadId, { projectId });
+    await prisma.project.update({ where: { tenantId, id: projectId }, data: { isPitchable: false } });
+    try {
+      const refused = await share(admin, leadId, { projectId });
+      expect(refused.status).toBe(409);
+      expect(refused.body.detail).toBe('That project is not offered to clients.');
+      // A link made while it was offered stops with it.
+      await expect(open(tokenOf(projectLink.body.url))).rejects.toThrow(/;404$/);
+    } finally {
+      await prisma.project.update({ where: { tenantId, id: projectId }, data: { isPitchable: true } });
+    }
+    // Without projects:VIEW, a project is as missing.
+    expect((await share(masked, leadId, { projectId })).status).toBe(404);
   });
 
   it('is rate-limited as the public forms are', async () => {

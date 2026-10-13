@@ -28,6 +28,8 @@ import { invalidateEntitlements } from '@/lib/security/entitlements';
 import { POST as sendToLead } from '@/app/api/v1/leads/[id]/messages/route';
 import { GET as readTimeline } from '@/app/api/v1/leads/[id]/timeline/route';
 import { POST as replyInInbox } from '@/app/api/v1/conversations/[id]/messages/route';
+import { GET as listThreads } from '@/app/api/v1/conversations/route';
+import { clear, consume, limits } from '@/lib/security/ratelimit';
 import {
   GET as listEmailTemplates,
   PATCH as editEmailTemplate,
@@ -274,7 +276,7 @@ describe('a WhatsApp template from the lead (M4-28)', () => {
       toAddress: '971501234567',
     });
     expect(message!.templateId).not.toBeNull();
-    // On the lead's thread, which the sender now owns, as a reply in the inbox claims it.
+    // On the lead's thread, held by the lead's owner (the sender here), whose inbox the reply reaches.
     const thread = await prisma.conversation.findFirstOrThrow({ where: { tenantId, id: message!.conversationId! } });
     expect(thread).toMatchObject({ channel: 'WHATSAPP', externalId: '971501234567', leadId, ownerId: agentId });
 
@@ -597,5 +599,235 @@ describe('an email template from the lead (M4-28)', () => {
     const res = await send(agent, noEmail.id, { channel: 'EMAIL', templateKey: key });
     expect(res.status).toBe(422);
     expect(res.body.errors[0]).toMatchObject({ code: 'no_email', message: 'No Mail has no email address.' });
+  });
+});
+
+describe('whose thread, whose timeline, and what else stops a send (M4-28)', () => {
+  /** A number of its own for each case: leads are told apart by their numbers. */
+  let seq = 0;
+  const number = () => `+97156${String(Date.now()).slice(-5)}${String((seq += 1)).padStart(2, '0')}`;
+  const firstMessage = async (as: string, id: string) =>
+    (await get(readTimeline, `/api/v1/leads/${id}/timeline`, as, { id })).body.entries.find(
+      (e: { kind: string }) => e.kind === 'message',
+    );
+  const body = { channel: 'WHATSAPP', templateKey: TEMPLATE, variables: ['', '', 'x'] };
+
+  it('a lead whose consent is withdrawn is refused on both channels, with the reason, and the page says so', async () => {
+    const phone = number();
+    const withdrawn = await newLead({
+      fullName: 'Withdrawn Lead',
+      phone,
+      phoneNormalized: phone,
+      email: 'withdrawn@client.test',
+      consentStatus: 'WITHDRAWN',
+      ownerId: agentId,
+    });
+    const template = await prisma.messageTemplate.create({
+      data: { tenantId, key: 'email:consent-check', name: 'Consent', channel: 'EMAIL', subject: 'Hi', body: 'Hello' },
+    });
+    for (const res of [
+      await send(agent, withdrawn.id, body),
+      await send(agent, withdrawn.id, { channel: 'EMAIL', templateKey: template.key }),
+    ]) {
+      expect(res.status).toBe(422);
+      expect(res.body.errors[0]).toMatchObject({
+        code: 'opted_out',
+        message: 'Withdrawn Lead has withdrawn consent to be contacted.',
+      });
+    }
+    expect(provider.sendTemplate).not.toHaveBeenCalled();
+    expect(mockOutbox.lastTo('withdrawn@client.test')).toBeUndefined();
+
+    cookieJar.value = agent;
+    try {
+      const page = await LeadDetailPage({ params: Promise.resolve({ id: withdrawn.id }) });
+      expect(propsWith(page, 'messaging')?.messaging).toMatchObject({
+        whatsappBlocked: 'Withdrawn Lead has withdrawn consent to be contacted.',
+        emailBlocked: 'Withdrawn Lead has withdrawn consent to be contacted.',
+      });
+    } finally {
+      cookieJar.value = admin;
+    }
+  });
+
+  it('a role with no inbox sends from its lead and sees its message on the timeline, never the thread', async () => {
+    const caller = await roleUser(
+      'telecaller',
+      [
+        ['leads', 'VIEW'],
+        ['leads', 'EDIT'],
+        ['communications', 'CREATE'],
+      ],
+      'OWN',
+    );
+    const phone = number();
+    const own = await newLead({ fullName: 'Caller Lead', phone, phoneNormalized: phone, ownerId: caller.id });
+    const res = await send(caller.cookie, own.id, body);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await firstMessage(caller.cookie, own.id)).toMatchObject({ title: 'WhatsApp sent', by: 'The telecaller' });
+    // The inbox, which names threads by their numbers, stays closed to it.
+    expect((await get(listThreads, '/api/v1/conversations', caller.cookie)).status).toBe(403);
+  });
+
+  it('a send to a reassigned lead brings its thread to the new owner, audited: the message on their timeline, the reply in their inbox', async () => {
+    const other = await roleUser(
+      'closer',
+      [
+        ['leads', 'VIEW'],
+        ['leads', 'EDIT'],
+        ['leads', 'VIEW_SENSITIVE_FIELDS'],
+        ['communications', 'VIEW'],
+        ['communications', 'CREATE'],
+      ],
+      'OWN',
+    );
+    const phone = number();
+    const moved = await newLead({ fullName: 'Moved Lead', phone, phoneNormalized: phone, ownerId: agentId });
+    expect((await send(agent, moved.id, body)).status).toBe(200);
+    const thread = await prisma.conversation.findFirstOrThrow({ where: { tenantId, externalId: phone.slice(1) } });
+    expect(thread.ownerId).toBe(agentId);
+
+    await prisma.lead.update({ where: { tenantId, id: moved.id }, data: { ownerId: other.id } });
+    const res = await send(other.cookie, moved.id, body);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await firstMessage(other.cookie, moved.id)).toMatchObject({
+      title: 'WhatsApp sent',
+      by: 'The closer',
+    });
+    // The thread follows the lead to its new owner, audited; the previous owner's inbox no longer lists it.
+    expect((await prisma.conversation.findFirstOrThrow({ where: { tenantId, id: thread.id } })).ownerId).toBe(other.id);
+    const handover = await prisma.auditLog.findFirstOrThrow({
+      where: { tenantId, event: 'OWNER_CHANGED', objectType: 'conversation', recordId: thread.id },
+    });
+    expect(handover).toMatchObject({ actorUserId: other.id });
+    expect(handover.metadata).toMatchObject({ leadId: moved.id, from: agentId, ownerId: other.id });
+    const ids = async (as: string) =>
+      (await get(listThreads, '/api/v1/conversations', as)).body.conversations.map((c: { id: string }) => c.id);
+    expect(await ids(other.cookie)).toContain(thread.id);
+    expect(await ids(agent)).not.toContain(thread.id);
+    // Both messages are the thread's: the new owner reads the earlier one too, as the inbox shows it.
+    expect(await messagesOf(moved.id)).toHaveLength(2);
+  });
+
+  it('a new thread is the lead owner’s, whoever sends; an unowned one is claimed for them, audited; another lead’s is left alone', async () => {
+    // The administrator sends to the agent's lead: the reply belongs in the agent's inbox.
+    const phone = number();
+    const agents = await newLead({ fullName: 'Owned Lead', phone, phoneNormalized: phone, ownerId: agentId });
+    expect((await send(admin, agents.id, body)).status).toBe(200);
+    expect(
+      await prisma.conversation.findFirstOrThrow({ where: { tenantId, externalId: phone.slice(1) } }),
+    ).toMatchObject({ ownerId: agentId, leadId: agents.id });
+
+    // A thread an inbound message opened, linked to nobody: linked and claimed for the owner, audited.
+    const inbound = number();
+    const fresh = await newLead({
+      fullName: 'Inbound Lead',
+      phone: inbound,
+      phoneNormalized: inbound,
+      ownerId: agentId,
+    });
+    const opened = await prisma.conversation.create({
+      data: { tenantId, channel: 'WHATSAPP', providerKey: 'meta', externalId: inbound.slice(1) },
+    });
+    expect((await send(admin, fresh.id, body)).status).toBe(200);
+    expect(await prisma.conversation.findFirstOrThrow({ where: { tenantId, id: opened.id } })).toMatchObject({
+      ownerId: agentId,
+      leadId: fresh.id,
+    });
+    const claim = await prisma.auditLog.findFirstOrThrow({
+      where: { tenantId, event: 'OWNER_CHANGED', objectType: 'conversation', recordId: opened.id },
+    });
+    expect(claim).toMatchObject({ actorUserId: adminId });
+    expect(claim.metadata).toMatchObject({ leadId: fresh.id, ownerId: agentId });
+
+    // The same number on another lead's unowned thread: the agent's send neither takes it nor relinks it.
+    const shared = number();
+    const elsewhere = await newLead({ fullName: 'Elsewhere Lead', phone: shared, phoneNormalized: shared });
+    const theirs = await prisma.conversation.create({
+      data: { tenantId, channel: 'WHATSAPP', providerKey: 'meta', externalId: shared.slice(1), leadId: elsewhere.id },
+    });
+    const mine = await newLead({ fullName: 'Same Number', phone: shared, phoneNormalized: shared, ownerId: agentId });
+    expect((await send(agent, mine.id, body)).status).toBe(200);
+    expect(await prisma.conversation.findFirstOrThrow({ where: { tenantId, id: theirs.id } })).toMatchObject({
+      ownerId: null,
+      leadId: elsewhere.id,
+    });
+    // The message is still this lead's (it is on its timeline for whoever's inbox reaches that thread).
+    expect(await messagesOf(mine.id)).toEqual([expect.objectContaining({ conversationId: theirs.id, status: 'SENT' })]);
+  });
+
+  it('a send the provider refuses is Failed on the lead, audited and on the timeline; a new request sends again', async () => {
+    const phone = number();
+    const refused = await newLead({ fullName: 'Refused Lead', phone, phoneNormalized: phone, ownerId: agentId });
+    provider.sendTemplate.mockResolvedValueOnce({
+      externalMessageId: '',
+      status: 'failed',
+      errorCode: '131026',
+      errorMessage: 'Message undeliverable.',
+    } as never);
+    const post = (key: string) =>
+      sendToLead(
+        new Request(`http://localhost${url(refused.id)}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie: agent, 'idempotency-key': key },
+          body: JSON.stringify(body),
+        }),
+        { params: Promise.resolve({ id: refused.id }) },
+      ).then(async (res) => ({ status: res.status, body: await res.json() }));
+
+    const first = await post('key-one');
+    expect(first.status).toBe(200);
+    expect(first.body.message).toMatchObject({
+      status: 'FAILED',
+      errorMessage: 'Message undeliverable.',
+      sentAt: null,
+    });
+    expect(await messagesOf(refused.id)).toEqual([
+      expect.objectContaining({ status: 'FAILED', errorCode: '131026', errorMessage: 'Message undeliverable.' }),
+    ]);
+    expect(await prisma.auditLog.count({ where: { tenantId, event: 'MESSAGE_SENT', recordId: refused.id } })).toBe(1);
+    expect(await firstMessage(agent, refused.id)).toMatchObject({ title: 'WhatsApp sent', detail: 'Failed' });
+
+    // The same key is the same request: its answer again, nothing sent.
+    expect((await post('key-one')).body.message.status).toBe('FAILED');
+    expect(provider.sendTemplate).toHaveBeenCalledTimes(1);
+    // A new one (the dialog's Send again) sends again.
+    const again = await post('key-two');
+    expect(again.body.message.status).toBe('SENT');
+    expect(provider.sendTemplate).toHaveBeenCalledTimes(2);
+  });
+
+  it('email answers go to the sender, and a workspace’s day of lead email is capped', async () => {
+    mockOutbox.clear();
+    const mailed = await newLead({
+      fullName: 'Mail Lead',
+      firstName: 'Mia',
+      email: 'mia@client.test',
+      ownerId: agentId,
+    });
+    const template = await prisma.messageTemplate.create({
+      data: { tenantId, key: 'email:reply-check', name: 'Reply', channel: 'EMAIL', subject: 'Hi {{1}}', body: 'Hello' },
+    });
+    expect((await send(agent, mailed.id, { channel: 'EMAIL', templateKey: template.key })).status).toBe(200);
+    const sender = await prisma.user.findFirstOrThrow({ where: { tenantId, id: agentId }, select: { email: true } });
+    expect(mockOutbox.lastTo('mia@client.test')).toMatchObject({ subject: 'Hi Mia', replyTo: sender.email });
+
+    const day = limits.leadEmailDay(tenantId);
+    try {
+      // The rest of today's allowance, spent.
+      for (;;) await consume(day);
+    } catch {
+      // At the cap.
+    }
+    try {
+      const capped = await send(agent, mailed.id, { channel: 'EMAIL', templateKey: template.key });
+      expect(capped.status).toBe(429);
+      expect(capped.body.detail).toBe(
+        `This workspace has sent today's ${day.max} emails to leads. Try again tomorrow.`,
+      );
+      expect(await prisma.communication.count({ where: { tenantId, leadId: mailed.id } })).toBe(1);
+    } finally {
+      await clear(day);
+    }
   });
 });

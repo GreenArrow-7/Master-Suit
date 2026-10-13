@@ -12,7 +12,8 @@ const WORK: PermissionAction[] = ['VIEW', 'CREATE', 'EDIT'];
  * data (all `leads`), calls, tasks, site visits, buyer requirements, asking the
  * pool for leads, the inventory to pitch, and their own figures; and writing
  * to their leads, a WhatsApp or email template from the lead (M4-28, M4-38),
- * whose messages show on its timeline.
+ * whose messages show on its timeline, with the inbox. The roles that read
+ * numbers masked (Telecaller, Viewer) get no inbox, which shows them unmasked.
  */
 const AGENT = {
   leads: [...WORK, 'VIEW_SENSITIVE_FIELDS', 'EXPORT'],
@@ -101,10 +102,11 @@ const STARTER_ROLES = [
     defaultScope: 'OWN',
     description: 'An agent’s work, without the permissions for full contact details or for exporting leads.',
     grants: [
-      ...at(
-        'OWN',
-        only(AGENT, (action) => action !== 'VIEW_SENSITIVE_FIELDS' && action !== 'EXPORT'),
-      ),
+      ...at('OWN', {
+        ...only(AGENT, (action) => action !== 'VIEW_SENSITIVE_FIELDS' && action !== 'EXPORT'),
+        // Sends from the lead, without the inbox: the inbox names a thread by its full number.
+        communications: ['CREATE'],
+      }),
       ...OWN_ATTENDANCE,
     ],
   },
@@ -115,10 +117,8 @@ const STARTER_ROLES = [
     defaultScope: 'ORGANIZATION',
     description: 'Reads the whole lead desk, without the permission for full contact details.',
     grants: [
-      ...at(
-        'ORGANIZATION',
-        only(AGENT, (action) => action === 'VIEW'),
-      ),
+      // No inbox: it would show every thread's number unmasked.
+      ...at('ORGANIZATION', { ...only(AGENT, (action) => action === 'VIEW'), communications: [] }),
       ...OWN_ATTENDANCE,
     ],
   },

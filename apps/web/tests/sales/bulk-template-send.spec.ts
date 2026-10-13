@@ -319,3 +319,111 @@ describe('Send template on the lead grid (M4-38)', () => {
     expect(queued()).toEqual([]);
   });
 });
+
+describe('Send template: what it refuses, and what is checked again at each turn (M4-38)', () => {
+  it('counts a lead whose consent is withdrawn as opted out, and queues it nothing', async () => {
+    const withdrawn = await lead({ consentStatus: 'WITHDRAWN', email: 'withdrawn.bulk@client.test' });
+    for (const channel of ['WHATSAPP', 'EMAIL']) {
+      vi.mocked(enqueue).mockClear();
+      const res = await send(agent, {
+        leadIds: [withdrawn.id],
+        channel,
+        templateKey: channel === 'WHATSAPP' ? TEMPLATE : 'email:news',
+      });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(res.body).toMatchObject({ queued: 0, skipped: { optedOut: 1, noRecipient: 0, notFound: 0 } });
+      expect(queued()).toEqual([]);
+    }
+  });
+
+  it('refuses before queueing a paused template, a missing value, or WhatsApp not connected; one job per lead picked twice', async () => {
+    const one = await lead();
+    await prisma.messageTemplate.createMany({
+      data: [
+        {
+          tenantId,
+          key: 'wa:paused:en',
+          name: 'paused',
+          channel: 'WHATSAPP',
+          language: 'en',
+          body: 'Hi',
+          approvalState: 'PAUSED',
+        },
+        {
+          tenantId,
+          key: 'wa:third:en',
+          name: 'third',
+          channel: 'WHATSAPP',
+          language: 'en',
+          body: 'Hi {{1}}, {{2}} about {{3}}',
+          approvalState: 'APPROVED',
+        },
+      ],
+    });
+    expect((await send(agent, { leadIds: [one.id], channel: 'WHATSAPP', templateKey: 'wa:paused:en' })).status).toBe(
+      409,
+    );
+    const unfilled = await send(agent, { leadIds: [one.id], channel: 'WHATSAPP', templateKey: 'wa:third:en' });
+    expect(unfilled.status).toBe(422);
+    expect(unfilled.body.errors[0]).toMatchObject({ code: 'missing_variable', message: 'Fill in {{3}}.' });
+    await prisma.integrationConnection.updateMany({
+      where: { tenantId, provider: 'meta' },
+      data: { status: 'DISCONNECTED' },
+    });
+    try {
+      expect((await send(agent, { leadIds: [one.id], channel: 'WHATSAPP', templateKey: TEMPLATE })).status).toBe(403);
+    } finally {
+      await prisma.integrationConnection.updateMany({
+        where: { tenantId, provider: 'meta' },
+        data: { status: 'CONNECTED' },
+      });
+    }
+    expect(queued()).toEqual([]);
+
+    // {{3}} typed once goes to every lead; a lead picked twice is sent once.
+    const res = await send(agent, {
+      leadIds: [one.id, one.id],
+      channel: 'WHATSAPP',
+      templateKey: 'wa:third:en',
+      variables: ['', '', 'the open house'],
+    });
+    expect(res.body).toMatchObject({ total: 1, queued: 1 });
+    await runQueued();
+    expect(provider.sendTemplate).toHaveBeenCalledTimes(1);
+    expect(await prisma.communication.findFirstOrThrow({ where: { tenantId, leadId: one.id } })).toMatchObject({
+      body: `Hi ${one.firstName}, The agent about the open house`,
+    });
+  });
+
+  it('a workspace that lost its lead modules after queueing sends nothing more', async () => {
+    const late = await lead();
+    await send(agent, { leadIds: [late.id], channel: 'WHATSAPP', templateKey: TEMPLATE });
+    const where = { tenantId_module: { tenantId, module: 'LEAD_EAGLE' as const } };
+    await prisma.moduleEntitlement.update({ where, data: { state: 'CANCELED' } });
+    await invalidateEntitlements(tenantId);
+    try {
+      await runQueued();
+    } finally {
+      await prisma.moduleEntitlement.update({ where, data: { state: 'ACTIVE' } });
+      await invalidateEntitlements(tenantId);
+    }
+    expect(provider.sendTemplate).not.toHaveBeenCalled();
+    expect(await prisma.communication.count({ where: { tenantId, leadId: late.id } })).toBe(0);
+  });
+
+  it('a manager’s send over an agent’s leads opens each new thread for the lead’s owner, whose inbox the reply reaches', async () => {
+    const [first, second] = [await lead(), await lead()];
+    await send(admin, { leadIds: [first.id, second.id], channel: 'WHATSAPP', templateKey: TEMPLATE });
+    await runQueued();
+    for (const sent of [first, second]) {
+      const message = await prisma.communication.findFirstOrThrow({ where: { tenantId, leadId: sent.id } });
+      expect(message).toMatchObject({ status: 'SENT', createdById: adminId });
+      expect(
+        await prisma.conversation.findFirstOrThrow({ where: { tenantId, id: message.conversationId! } }),
+      ).toMatchObject({
+        ownerId: agentId,
+        leadId: sent.id,
+      });
+    }
+  });
+});

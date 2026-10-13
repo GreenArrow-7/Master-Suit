@@ -3,7 +3,8 @@ import { notFound } from 'next/navigation';
 import { clientIp } from '@/lib/auth/session';
 import { AppError } from '@/lib/errors';
 import { consume, limits } from '@/lib/security/ratelimit';
-import { loadShare, recordShareView } from '@/services/leads/leadShares';
+import { loadShare } from '@/services/leads/leadShares';
+import Opened from './Opened';
 
 export const metadata = { title: 'Shared with you', robots: { index: false, follow: false } };
 
@@ -15,9 +16,10 @@ const sentence = (value: string) => value.charAt(0) + value.slice(1).toLowerCase
  * A project or a listing an agent shared with a lead (M4-30), opened from
  * their WhatsApp message: `/s/{token}`. Outside every route group, as the
  * shortlist page `/p/{token}` is: no session, the agency's name and colours,
- * and only what an advert would carry (services/leads/leadShares.ts). Opening
- * it is logged on the lead. A bad, revoked or lapsed link is a 404; past the
- * public forms' rate the page says so and logs nothing.
+ * and only what an advert would carry (services/leads/leadShares.ts). Its
+ * script logs the opening on the lead (`Opened`), so a link preview, which
+ * renders the page but runs no script, does not. A bad, revoked or lapsed link
+ * is a 404; past the public forms' rate the page says so.
  */
 export default async function SharedPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -40,12 +42,12 @@ export default async function SharedPage({ params }: { params: Promise<{ token: 
 
   let share;
   try {
-    share = await loadShare(decodeURIComponent(token));
+    // As it came: a token is URL-safe, and a bad escape in a made-up one is just a 404.
+    share = await loadShare(token);
   } catch (err) {
     if (err instanceof AppError && err.status === 404) notFound();
     throw err;
   }
-  await recordShareView(share, `${ip}|${head.get('user-agent') ?? ''}`);
 
   const { agency, agent, listing, project } = share;
   const facts = listing
@@ -197,6 +199,7 @@ export default async function SharedPage({ params }: { params: Promise<{ token: 
         <footer style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>
           {`Shared by ${agency.name}. Prices and availability are subject to change.`}
         </footer>
+        <Opened token={token} />
       </article>
     </main>
   );
