@@ -1,10 +1,11 @@
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { scopeFor, SCOPE_RANK, type Ctx } from '@/lib/security/rbac';
 import { resolveOwnerIds } from '@/lib/security/visibility';
+import { unscoreActivity } from '@/services/leads/scoring';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -64,9 +65,13 @@ export const DELETE = route(
   async ({ ctx, params }) => {
     await assertActivityInScope(ctx, params.id, 'DELETE');
 
-    await prisma.activity.update({
-      where: { tenantId: ctx.tenantId, id: params.id },
-      data: { deletedAt: new Date(), updatedById: ctx.actor.id },
+    await withTx(ctx.tenantId, async (tx) => {
+      const { count } = await tx.activity.updateMany({
+        where: { tenantId: ctx.tenantId, id: params.id, deletedAt: null },
+        data: { deletedAt: new Date(), updatedById: ctx.actor.id },
+      });
+      // Its points go with it (M4-11); a repeated delete finds it gone and takes nothing.
+      if (count) await unscoreActivity(tx, ctx, params.id);
     });
     return { deleted: true };
   },

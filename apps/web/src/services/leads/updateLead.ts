@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma, withTx } from '@/lib/db';
 import { AppError, Conflict, NotFound } from '@/lib/errors';
 import { auditDiff } from '@/lib/security/audit';
@@ -8,6 +9,7 @@ import { notifyCrm } from '../crm/notify';
 import { recordTargetProgress } from '../targets/progress';
 import { findDuplicates } from './findDuplicates';
 import { assertLeadSource } from './leadSources';
+import { withCustomValues } from './customFields';
 import { normalizePhone } from './normalizePhone';
 
 export interface UpdateLeadInput {
@@ -32,6 +34,8 @@ export interface UpdateLeadInput {
   ownerId?: string | null;
   /** A second person who works the lead; named under the same scope as the owner. */
   secondaryOwnerId?: string | null;
+  /** Custom field values by key (M4-13); null or '' clears one. */
+  custom?: Record<string, unknown>;
   [k: string]: unknown;
 }
 
@@ -129,9 +133,15 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
       });
     }
 
+    // Each one a field of this workspace, checked by its type, after the scope check above.
+    const customData = input.custom
+      ? await withCustomValues(tx, ctx.tenantId, id, before.customData, input.custom)
+      : undefined;
+
     const after = await tx.lead.update({
       where: { tenantId: ctx.tenantId, id },
       data: {
+        ...(customData && { customData: customData as Prisma.InputJsonValue }),
         ...(input.fullName !== undefined && { fullName: input.fullName }),
         ...(input.email !== undefined && { email: input.email.toLowerCase() }),
         // Both columns, as updateContact does: duplicate matching reads the
