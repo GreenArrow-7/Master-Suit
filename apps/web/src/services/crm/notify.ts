@@ -109,7 +109,11 @@ export interface CrmNotification {
  * updated — the record is the durable thing. Failures are logged with the event
  * so a silent bell is diagnosable rather than invisible.
  */
-export async function notifyCrm(ctx: Ctx, notification: CrmNotification): Promise<{ recipients: number }> {
+export async function notifyCrm(
+  // Only who acted, so a worker with no session (distribution) can raise one too.
+  ctx: Pick<Ctx, 'tenantId'> & { actor: Pick<Ctx['actor'], 'id'> },
+  notification: CrmNotification,
+): Promise<{ recipients: number }> {
   try {
     /**
      * The actor is excluded. Being told about the thing you just did is noise,

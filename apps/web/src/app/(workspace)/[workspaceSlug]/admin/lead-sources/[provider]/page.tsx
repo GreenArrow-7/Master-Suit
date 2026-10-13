@@ -20,6 +20,7 @@ const STATUS: Record<DeliveryStatus, [label: string, tone: Tone]> = {
   attached: ['Added to an existing lead', 'viridian'],
   test: ['Test delivery', 'slate'],
   anonymous: ['Named nobody', 'brass'],
+  unparsed: ['Not read: unknown email', 'brass'],
   processed: ['Processed', 'slate'],
   queued: ['Queued', 'slate'],
   retrying: ['Retrying', 'brass'],

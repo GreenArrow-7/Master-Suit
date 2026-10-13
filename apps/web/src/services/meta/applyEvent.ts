@@ -20,6 +20,7 @@ import { applySocialComment } from '@/services/social/applySocialComment';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { leadSourceIdFor } from '@/services/leads/leadSources';
 import { withSourceScore } from '@/services/leads/scoring';
+import { capturesUnknown, heldInWorkspace, takeEnquiry } from '@/services/leads/intake';
 import { nextReference } from '@/services/shared/reference';
 import { withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
@@ -39,7 +40,7 @@ export async function applyMetaEvent({ tenantId, connectionId, event }: ApplyMet
     case 'SOCIAL_COMMENT_RECEIVED':
       return applySocialComment({ tenantId, connectionId, event });
     case 'MESSAGE_RECEIVED':
-      return applyInboundMessage(tenantId, event);
+      return applyInboundMessage(tenantId, connectionId, event);
     case 'MESSAGE_SENT':
     case 'MESSAGE_DELIVERED':
     case 'MESSAGE_READ':
@@ -272,16 +273,58 @@ async function fetchLeadFields(leadgenId: string, accessToken: string) {
  * A message from a number nobody recognises is still a message.
  *
  * The thread is created before anyone knows who is on the other end — that is
- * §29's "New WhatsApp contact" state — and linked to a lead only when the
- * tenant's own duplicate rules already match one. It never creates a lead: an
- * inbound "wrong number" should not manufacture a customer record.
+ * §29's "New WhatsApp contact" state — and linked to the lead the tenant's own
+ * duplicate rules match. A number no lead, contact or colleague holds becomes
+ * a lead (M6-10) only where the connection's "Create leads from new numbers"
+ * says so: on by default in Lead Eagle, off elsewhere (`capturesUnknown`), so
+ * an inbound "wrong number" manufactures no customer record in a workspace that
+ * has not asked for it. Through the intake every enquiry takes, the message its
+ * note. The message is kept whatever happens to the lead.
  */
-async function applyInboundMessage(tenantId: string, event: NormalizedMetaEvent) {
+async function applyInboundMessage(tenantId: string, connectionId: string, event: NormalizedMetaEvent) {
   const threadId = event.threadId;
   if (!threadId || !event.messageId) return;
 
-  const phoneNormalized = normalizePhone(threadId);
-  const [match] = await findDuplicates(tenantId, { phoneNormalized });
+  // A WhatsApp id is the number in full without its `+`. Read bare, one from
+  // abroad took the UAE default: 447… as +971447….
+  const phone = `+${threadId}`;
+  const phoneNormalized = normalizePhone(phone);
+  let leadId: string | null = (await findDuplicates(tenantId, { phoneNormalized }))[0]?.id ?? null;
+  if (!leadId && phoneNormalized) {
+    const connection = await prisma.integrationConnection.findFirst({
+      where: { tenantId, id: connectionId },
+      select: { metadata: true },
+    });
+    if (
+      (await capturesUnknown(tenantId, 'createLeadsFromNewNumbers', connection?.metadata)) &&
+      !(await heldInWorkspace(tenantId, phoneNormalized))
+    ) {
+      const taken = await takeEnquiry(
+        tenantId,
+        {
+          fullName: event.displayName ?? 'WhatsApp contact',
+          email: null,
+          phones: [phone],
+          message: event.text ?? null,
+          reference: null,
+          details: [],
+        },
+        // No WHATSAPP RecordSource: CHAT is the existing value for a conversation channel.
+        {
+          label: 'WhatsApp',
+          source: 'CHAT',
+          sourceDetail: 'whatsapp',
+          sourceId: await leadSourceIdFor(prisma, tenantId, 'whatsapp'),
+          consent: 'UNKNOWN',
+        },
+      ).catch((err: Error) => {
+        // The message is what the customer sent; a lead that could not be made must not lose it.
+        logger.error({ tenantId, err: err.message }, 'new WhatsApp number not made a lead');
+        return null;
+      });
+      leadId = taken?.leadId ?? null;
+    }
+  }
 
   const conversation = await prisma.conversation.upsert({
     where: { tenantId_channel_externalId: { tenantId, channel: 'WHATSAPP', externalId: threadId } },
@@ -291,7 +334,7 @@ async function applyInboundMessage(tenantId: string, event: NormalizedMetaEvent)
       providerKey: 'meta',
       externalId: threadId,
       displayName: event.displayName ?? threadId,
-      leadId: match?.id ?? null,
+      leadId,
       lastMessageAt: event.occurredAt,
       unreadCount: 1,
     },
@@ -300,7 +343,7 @@ async function applyInboundMessage(tenantId: string, event: NormalizedMetaEvent)
       unreadCount: { increment: 1 },
       // Fill the link in if the customer has since been identified, but never
       // clear one that is already there.
-      ...(match?.id ? { leadId: match.id } : {}),
+      ...(leadId ? { leadId } : {}),
       ...(event.displayName ? { displayName: event.displayName } : {}),
     },
     select: { id: true, leadId: true },
