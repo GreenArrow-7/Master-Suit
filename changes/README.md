@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-13 | [The lead grid tags, deletes with Undo and moves leads to Cold Data in bulk; its pages stay fast at 100,000 leads](2026-10-13-lead-bulk-tag-delete-move.md) | - | Lead Eagle, leads, cold data, performance |
 | 2026-10-13 | [The lead list gets filter chips, saved views and a board; every lead module gets the calendar; a phone in any format finds its lead](2026-10-13-lead-views-kanban-calendar-search.md) | - | Lead Eagle, leads, calendar, search |
 | 2026-10-13 | [Lead sources get a Custom webhook, a field mapping and a Deliveries tab; the API honours Idempotency-Key](2026-10-12-intake-webhook-mapping-deliveries.md) | #173 | Lead Eagle, lead intake |
 | 2026-10-13 | [A form or landing-page lead names its form again](2026-10-13-lead-source-detail-label.md) | #175 | Lead Eagle, fix |

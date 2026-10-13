@@ -140,7 +140,15 @@ Node 22 or newer (CI uses 24).
   (`src/services/leads/createLead.ts`): a typed number is normalised and matched
   against the main number and every LeadPhone, whole numbers only for a role
   that sees them masked. A saved lead view is a personal `SmartView`
-  (`objectType` `LEAD_LIST`).
+  (`objectType` `LEAD_LIST`). The grid pages by keyset (`leadPage`,
+  `leadPageCursor`: Next carries `after`, Previous `before`), as the list API
+  does (`cursorWhere`, `src/lib/api/pagination.ts`); a keyset bounds its sort
+  column so the index seeks to the page. Its bulk bar sends one request per
+  selected lead, each re-checked in scope: assign, stage, task, Add tag
+  (`addTags` on PATCH, added to the lead's own), close out, Move to Data
+  (`moveLeadToData`, `src/services/leads/coldData.ts`: a cold record on the
+  day's "From pipeline" list and the lead archived) and Delete with a
+  10-second Undo (`POST /api/v1/leads/{id}/restore`).
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
   P2002 answers 409 and P2025 404, a zod failure 422 — let the database say
   "already exists" or "not found" instead of reading first. `route()` honours
@@ -151,7 +159,8 @@ Node 22 or newer (CI uses 24).
   through the route's `auditEvent`, or `audit(ctx, …)`
   (`src/lib/security/audit.ts`) where the route cannot say enough. A write no
   person makes (a webhook, a worker) calls `audit({ tenantId, source }, …)` and
-  shows as System. Not all existing writes do yet; the known gaps are listed in
+  shows as System. A date or a list in a value is stored as one. Not all
+  existing writes do yet; the known gaps are listed in
   `changes/2026-10-11-report-export-audit.md`. A file out of the building needs
   EXPORT, not VIEW, and writes `EXPORT_REQUESTED`.
 - **Attendance is not HR.** Check-in, the attendance record and attendance
