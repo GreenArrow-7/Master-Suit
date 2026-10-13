@@ -110,7 +110,7 @@ test.describe('a lead masked for a role without view sensitive fields', () => {
     await expect(phone).toBeDisabled();
     await expect(phone).toHaveAttribute('title', /masked/);
     await expect(page.getByRole('button', { name: 'Email', exact: true })).toBeDisabled();
-    await expect(page.getByRole('button', { name: 'WhatsApp' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'WhatsApp', exact: true })).toHaveCount(0);
     await expect(page.locator('a[href^="tel:"], a[href*="wa.me"], a[href^="mailto:"]')).toHaveCount(0);
 
     const api = await ok(await telecaller.request.get(`/api/v1/leads/${leadId}`), 'lead');
@@ -143,6 +143,6 @@ test.describe('a lead masked for a role without view sensitive fields', () => {
     await page.goto(at(`/leads/${leadId}`));
     await expect(page.getByText(PHONE).first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Phone', exact: true })).toBeEnabled();
-    await expect(page.getByRole('button', { name: 'WhatsApp' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'WhatsApp', exact: true })).toBeVisible();
   });
 });
