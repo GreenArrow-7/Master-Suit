@@ -275,6 +275,15 @@ export default function LeadGrid({
                 Close out
               </button>
             )}
+            {/* Two of them: the compare screen, to merge one into the other (M4-31). */}
+            {canEdit && selected.size === 2 && (
+              <SalesLink
+                className="lf-btn lf-btn--sm lf-btn--secondary"
+                href={`/leads/${[...selected][0]}/merge?with=${[...selected][1]}`}
+              >
+                Merge
+              </SalesLink>
+            )}
             {canDelete && (
               <button
                 className="lf-btn lf-btn--sm lf-btn--secondary"
