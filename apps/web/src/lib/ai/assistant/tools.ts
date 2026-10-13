@@ -7,7 +7,7 @@ import { obligationAccess, obligationWhere, scopedNextFollowUp } from '@/service
 import type { EntityType } from '@/lib/nav/entityRoute';
 import { redact } from '../redact';
 import { applyFieldSecurity, loadFieldRules } from '@/lib/security/fieldSecurity';
-import { contactSearch, LEAD_SENSITIVE_FIELDS, maskCallNumbers } from '@/services/leads/createLead';
+import { leadSearch, LEAD_SENSITIVE_FIELDS, maskCallNumbers } from '@/services/leads/createLead';
 
 /**
  * The CRM tool layer the assistant model calls.
@@ -234,15 +234,7 @@ export const TOOLS: ToolDef[] = [
           where.stage = { category: 'CONVERSION' };
           break;
       }
-      const search = args.q
-        ? {
-            OR: [
-              { fullName: { contains: args.q, mode: 'insensitive' } },
-              { company: { contains: args.q, mode: 'insensitive' } },
-              ...contactSearch(ctx, await loadFieldRules(ctx, 'LEAD'), String(args.q)),
-            ],
-          }
-        : null;
+      const search = args.q ? leadSearch(ctx, await loadFieldRules(ctx, 'LEAD'), String(args.q)) : null;
       if (args.stage) where.stage = { name: { contains: args.stage, mode: 'insensitive' } };
       if (args.ownerName) where.owner = { fullName: { contains: args.ownerName, mode: 'insensitive' } };
 
