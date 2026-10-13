@@ -29,7 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
-| 2026-10-13 | [A new WhatsApp number or an unknown caller becomes a lead; the portals' lead emails come in through Portal emails](2026-10-13-intake-whatsapp-telephony-email.md) | - | Lead Eagle, lead intake |
+| 2026-10-13 | [A new WhatsApp number or an unknown caller becomes a lead; the portals' lead emails come in through Portal emails](2026-10-13-intake-whatsapp-telephony-email.md) | #177 | Lead Eagle, lead intake |
 | 2026-10-13 | [Lead sources get a Custom webhook, a field mapping and a Deliveries tab; the API honours Idempotency-Key](2026-10-12-intake-webhook-mapping-deliveries.md) | #173 | Lead Eagle, lead intake |
 | 2026-10-13 | [A form or landing-page lead names its form again](2026-10-13-lead-source-detail-label.md) | #175 | Lead Eagle, fix |
 | 2026-10-13 | [Site visits show their time on the workspace's clock](2026-10-13-site-visits-workspace-clock.md) | #176 | Lead Eagle, fix |
