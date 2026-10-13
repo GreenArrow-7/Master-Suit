@@ -5,6 +5,7 @@ import { LEAD_SOURCES } from '@/lib/integrations/leadSources';
 import {
   activeModule,
   buildNavigation,
+  searchTargets,
   findActive,
   NAV_PERMISSIONS,
   tabTarget,
@@ -362,11 +363,13 @@ describe('Lead Eagle: its own menu only where it is the whole CRM', () => {
       'Tasks',
       'Calls',
       'Site Visits',
+      'Calendar',
       'Requirements',
       'Allocation',
       'QR Capture',
       'Cold Data',
     ]);
+    expect(at(nav, `/${SLUG}/lead-eagle/calendar`)).toBe('le-leads / Calendar');
     expect(tabsOf(nav, 'le-reports')).toEqual(['Reports', 'Targets']);
     expect(areas(nav)).not.toContain('realty-clients');
     expect(at(nav, `/${SLUG}/lead-eagle/leads/42`)).toBe('le-leads / Leads');
@@ -409,5 +412,22 @@ describe('Lead Eagle: its own menu only where it is the whole CRM', () => {
     expect(activeModule(`/${SLUG}/lead-eagle/leads`, ['LEAD_EAGLE'])).toBe('lead-eagle');
     expect(activeModule(`/${SLUG}/dashboard`, ['LEAD_EAGLE', 'HRMS'])).toBe('lead-eagle');
     expect(activeModule(`/${SLUG}/dashboard`, ['LEAD_EAGLE', 'REAL_ESTATE'])).toBe('realty');
+  });
+});
+
+describe('⌘K searches the leads of whichever lead product the plan has (OWN-01.2)', () => {
+  const leads = (modules: string[], permitted = ['leads']) =>
+    searchTargets({ slug: SLUG, modules, permitted }).find((target) => target.label === 'leads')?.href ?? null;
+
+  it('opens the lead list under the product that carries it, Sales first', () => {
+    expect(leads(['LEAD_EAGLE'])).toBe(`/${SLUG}/lead-eagle/leads`);
+    expect(leads(['REAL_ESTATE'])).toBe(`/${SLUG}/realty/leads`);
+    expect(leads(['REAL_ESTATE', 'LEAD_EAGLE'])).toBe(`/${SLUG}/realty/leads`);
+    expect(leads(['SALES', 'LEAD_EAGLE'])).toBe(`/${SLUG}/sales/leads`);
+  });
+
+  it('offers none without a lead product or without leads:VIEW', () => {
+    expect(leads(['HRMS'])).toBeNull();
+    expect(leads(['LEAD_EAGLE'], [])).toBeNull();
   });
 });

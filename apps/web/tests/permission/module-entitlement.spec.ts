@@ -38,6 +38,7 @@ import SalesLayout from '@/app/(workspace)/[workspaceSlug]/sales/layout';
 import RealtyLayout from '@/app/(workspace)/[workspaceSlug]/realty/layout';
 import PeopleLayout from '@/app/(workspace)/[workspaceSlug]/people/layout';
 import LeadEagleLayout from '@/app/(workspace)/[workspaceSlug]/lead-eagle/layout';
+import CalendarPage from '@/app/(workspace)/[workspaceSlug]/sales/calendar/page';
 import { createSessionToken } from '../helpers/session';
 import { get, post } from '../helpers/request';
 import type { Grants } from '../helpers/fixtures';
@@ -79,6 +80,7 @@ async function makeWorkspace(
     ['employee', 'EDIT'],
     ['attendance', 'APPROVE'],
     ['leads', 'VIEW'],
+    ['tasks', 'VIEW'],
     ['opportunities', 'VIEW'],
     ['collections', 'VIEW'],
     ['requirements', 'CREATE'],
@@ -352,6 +354,29 @@ describe('a screen or route outside the plan says which products carry it', () =
     expect(await shown(await LeadEagleLayout(open(hrOnly, '/lead-eagle/forms')))).toContain(
       'Forms is part of Sales, Real Estate or Lead Eagle.',
     );
+  });
+
+  it('the calendar opens under whichever lead product the plan has (M4-22)', async () => {
+    expect(await sentTo(SalesLayout(open(leadEagleOnly, '/sales/calendar?month=2026-12')))).toBe(
+      at(leadEagleOnly, '/lead-eagle/calendar?month=2026-12'),
+    );
+    expect(await sentTo(SalesLayout(open(realtyOnly, '/sales/calendar')))).toBe(at(realtyOnly, '/realty/calendar'));
+    expect(await sentTo(LeadEagleLayout(open(salesOnly, '/lead-eagle/calendar')))).toBe(
+      at(salesOnly, '/sales/calendar'),
+    );
+    expect(await LeadEagleLayout(open(leadEagleOnly, '/lead-eagle/calendar'))).toBe('the screen');
+    expect(await shown(await LeadEagleLayout(open(hrOnly, '/lead-eagle/calendar')))).toContain(
+      'Calendar is part of Sales, Real Estate or Lead Eagle.',
+    );
+  });
+
+  it('the calendar page admits every lead product, and refuses a workspace without one', async () => {
+    for (const w of [leadEagleOnly, realtyOnly, salesOnly]) {
+      open(w, '/sales/calendar');
+      await expect(CalendarPage({ searchParams: Promise.resolve({}) })).resolves.toBeTruthy();
+    }
+    open(hrOnly, '/sales/calendar');
+    await expect(CalendarPage({ searchParams: Promise.resolve({}) })).rejects.toMatchObject({ status: 403 });
   });
 
   it('Lead Eagle’s folder, in a workspace with no lead product, names every product that has leads', async () => {

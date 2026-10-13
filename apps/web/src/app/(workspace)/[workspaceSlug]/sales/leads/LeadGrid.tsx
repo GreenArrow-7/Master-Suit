@@ -37,7 +37,8 @@ export interface LeadRow {
   owner?: { fullName: string } | null;
 }
 
-type SortKey = 'fullName' | 'score' | 'updatedAt' | 'nextFollowUpAt';
+export type SortKey = 'fullName' | 'score' | 'updatedAt' | 'nextFollowUpAt';
+export type GridSort = { key: SortKey; dir: 'asc' | 'desc' } | null;
 const SORTABLE = new Set<string>(['fullName', 'score', 'updatedAt', 'nextFollowUpAt']);
 
 type BulkAction = 'assign' | 'stage' | 'task' | 'closeout';
@@ -54,6 +55,7 @@ export default function LeadGrid({
   canDelete,
   canMessage = false,
   emptyLabel,
+  sort: initialSort = { key: 'updatedAt', dir: 'desc' },
   timeZone,
 }: {
   rows: LeadRow[];
@@ -71,12 +73,14 @@ export default function LeadGrid({
   canMessage?: boolean;
   /** What an empty follow-up cell says for this viewer. */
   emptyLabel: string;
+  /** The order the server sent, as a column sort; null keeps the rows as sent (a sort no column shows). */
+  sort?: GridSort;
   /** The workspace's, for the call log's follow-up clock. */
   timeZone: string;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'updatedAt', dir: 'desc' });
+  const [sort, setSort] = useState<GridSort>(initialSort);
   const [action, setAction] = useState<BulkAction | null>(null);
   /** The chosen stage, while its mini-form is open. */
   const [reasonFor, setReasonFor] = useState<ReasonedStage | null>(null);
@@ -90,6 +94,7 @@ export default function LeadGrid({
 
   const sorted = useMemo(() => {
     const copy = [...rows];
+    if (!sort) return copy;
     if (sort.key === 'nextFollowUpAt') {
       // "Nothing owed" is not an early date. Floating it to the top of an
       // ascending sort is how a lead nobody scheduled anything for gets
@@ -225,15 +230,15 @@ export default function LeadGrid({
 
   function header(column: ColumnDef) {
     const sortable = SORTABLE.has(column.key);
-    const active = sortable && sort.key === column.key;
+    const active = sortable && sort?.key === column.key;
     return (
       <th
         key={column.key}
         className={column.key === 'reference' ? 'lf-sticky' : undefined}
-        aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : sortable ? 'none' : undefined}
+        aria-sort={active ? (sort?.dir === 'asc' ? 'ascending' : 'descending') : sortable ? 'none' : undefined}
         onClick={
           sortable
-            ? () => setSort({ key: column.key as SortKey, dir: active && sort.dir === 'desc' ? 'asc' : 'desc' })
+            ? () => setSort({ key: column.key as SortKey, dir: active && sort?.dir === 'desc' ? 'asc' : 'desc' })
             : undefined
         }
         style={{ textAlign: column.align ?? 'left' }}
@@ -241,7 +246,7 @@ export default function LeadGrid({
         {column.label}
         {active && (
           <span aria-hidden="true" style={{ marginLeft: 4 }}>
-            {sort.dir === 'desc' ? '↓' : '↑'}
+            {sort?.dir === 'desc' ? '↓' : '↑'}
           </span>
         )}
       </th>
