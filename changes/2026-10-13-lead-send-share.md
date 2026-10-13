@@ -12,21 +12,26 @@ M4-28, M4-30 and M4-38. Branch `feat/lead-send-share`, stacked on
   default; another of its numbers when chosen). It is sent through the inbox's
   own send, so it is a message on the lead's thread and timeline, audited.
   Refused, with the reason on the card and from the API, when the lead opted
-  out of the channel, has no number marked or no email, or WhatsApp is not
-  connected.
+  out of the channel or withdrew its consent, has no number marked or no
+  email, or WhatsApp is not connected. An email's replies go to the sender,
+  and a workspace sends at most 300 lead emails a day.
 - **Email templates.** Administration → Settings → Email Templates: a name, a
   subject and a body, kept as message templates beside the WhatsApp ones.
 - **Send template on the lead grid** (M4-38, the owner's default). Select
   leads, Send template: one queued send per lead, a workspace's sends going one
   a second, each the same send as from the lead page. Opted-out leads, leads
   with nowhere to send and leads outside the sender's reach are skipped and
-  counted. At most 100 leads at a time.
+  counted. At most 100 leads at a time. Each send is checked again when it
+  goes, the workspace's plan and status included.
 - **Share a property** (M4-30). The Overview's Share a property card makes a
   link for a listing or a project: a public page, `/s/{token}`, showing what an
   advert would. Share via WhatsApp opens WhatsApp with the link written to the
   lead's number, where the viewer may read it; Copy link and Open always.
-  Opening the page logs "Shared link opened" on the lead's timeline, once per
-  visitor per day. A link works 30 days and can be revoked.
+  The page's own script reports an opening, so a link preview (WhatsApp
+  fetches the page as the agent sends the link) and the agent's own look
+  (signed in to the workspace) are not openings. Each opening is counted, and
+  "Shared link opened" goes on the lead's timeline once per visitor per day,
+  at most three a day per link. A link works 30 days and can be revoked.
 
 **One migration (108 in all):** `20261014090000_lead_shares`. Additive: the
 `LeadShare` table, row-level security forced. No row is written.
@@ -51,9 +56,12 @@ change:
   - `src/app/api/v1/conversations/[id]/messages/route.ts` now calls them; its behaviour is unchanged.
 - `src/services/leads/leadMessages.ts` (new):
   - `sendLeadMessage(ctx, leadId, input)`: `assertLeadInScope` at `EDIT` (404), `recipientOf`, the template, `templateValues`.
-  - The Communication (QUEUED, on the lead's WhatsApp thread, which the sender claims when unowned) and its `MESSAGE_SENT` audit row are written in one transaction before the provider is called; the provider's answer, a failure included, is written on it.
+  - The Communication (QUEUED, on the lead's WhatsApp thread) and its `MESSAGE_SENT` audit row are written in one transaction before the provider is called; the provider's answer, a failure included, is written on it.
+  - The thread: a new one is the lead owner's (the sender's, for a lead with none); an unowned one linked to this lead (or to none) is linked and claimed for the lead's owner, and one still held by a previous owner of a reassigned lead moves to its owner now, each with an `OWNER_CHANGED` audit row on the conversation (`from`, `ownerId`); one linked to another lead is left as it is.
+  - `recipientOf` refuses `opted_out` for a lead whose `consentStatus` is `WITHDRAWN` (both channels), as campaigns and the dialer read it.
+  - Email: `limits.leadEmailDay` (300 a UTC day per workspace, 429 past it) and `Reply-To` the sender (`src/lib/mailer.ts` takes `replyTo`).
   - `queueLeadMessages` (bulk): refuses a template it cannot send, or WhatsApp not connected, before queueing; reads the leads under `leadScope(ctx, 'EDIT')`; counts the skipped; reserves send slots per workspace in Redis (`reserveSendSlots`, `SEND_SPACING_MS` 1 s) and enqueues `campaign` / `lead-message` per lead with its delay; one `lead-message-batch` audit row.
-  - `runQueuedLeadMessage` (the job, `src/workers/jobs.ts`): runs as the sender (`ctxForUser`), checks `communications:CREATE` again, sends through `sendLeadMessage`; a refusal then (opted out since, out of scope) is logged, not retried; a retried job finds its message by `batchId` and sends nothing.
+  - `runQueuedLeadMessage` (the job, `src/workers/jobs.ts`): checks the workspace is ACTIVE and holds a lead module, runs as the sender (`ctxForUser`), checks `communications:CREATE` again, sends through `sendLeadMessage`; a refusal then (opted out since, out of scope) is logged, not retried; a retried job finds its message by `batchId` and sends nothing.
 - `src/app/api/v1/leads/[id]/messages/route.ts` (new): `POST`, `communications:CREATE`, `LEAD_MODULES`, 30 per 5 minutes. The body names a number by id (`main` or a LeadPhone id), never by value; the answer carries the message's id, channel, status and error, never the address.
 - `src/app/api/v1/leads/messages/route.ts` (new): `POST` the bulk send, `communications:CREATE`, `LEAD_MODULES`, `leadIds` 1 to 100.
 - `src/app/api/v1/email-templates/route.ts` (new): `GET` (`communications:CREATE`) lists the active ones; `POST` and `PATCH ?id=` (`settings:MANAGE_CONFIGURATION`) keep them, audited; another workspace's id answers 404. `LEAD_MODULES`.
@@ -63,15 +71,17 @@ change:
   - `leadTarget` and `assertLeadTarget` moved here from the interests route, which now imports them; `shareRequest` adds `days` (1 to 90).
   - `createShare` (`leads:EDIT` on the lead; stock the sharer sees; 409 for a listing not ACTIVE or UNDER_OFFER, or a project not pitchable), `revokeShare`, `leadShares` (the lead page's list), all audited where they write.
   - `loadShare` answers 404 alike for a bad signature, an unknown, revoked or lapsed link, a deleted lead, stock off the market, and a workspace with no lead module.
-  - `recordShareView` counts every opening on the link and, once per visitor per day (the workspace's day), writes the `link_view` activity on the lead, audited as the system. The visitor is a hash of address and browser, kept two days in Redis only.
+  - `recordShareView` counts every opening on the link and, once per visitor per day (the workspace's day) and at most `LOGGED_PER_DAY` (3) a day per link, writes the `link_view` activity on the lead, audited as the system. The visitor is a hash of address and browser, kept two days in Redis only. The `link_view` type is created inactive, so the lead page's Log activity menu leaves it out.
 - `src/app/api/v1/leads/[id]/shares/route.ts` (new): `POST` makes a link, `DELETE ?share=` revokes one; `leads:EDIT`, `LEAD_MODULES`.
-- `src/app/s/[token]/page.tsx` (new): the public page, outside the route groups like `/p/{token}`, `noindex`, rate-limited per client as the public form's read is (`limits.publicShare`, 60 a minute).
+- `src/app/s/[token]/page.tsx` (new): the public page, outside the route groups like `/p/{token}`, `noindex`, rate-limited per client as the public form's read is (`limits.publicShare`, 60 a minute). It records nothing itself; `Opened.tsx` (new, a client component) reports the opening once it is on screen. The token is used as it comes (no `decodeURIComponent`, which threw on a broken escape).
+- `src/app/api/v1/public/share-view/route.ts` (new): `POST { token }`, anonymous like the other `/public` routes, 60 a minute per client; 404 for a bad token; counts nothing when the request carries a session for the link's workspace.
 - `src/lib/proposals/publicProposal.ts`: `PUBLIC_LISTING`, `publicListing`, `agencyOf` and `SHOWABLE`, factored out of `loadProposal`, so the shortlist and the share page show a listing the same way.
-- `sales/leads/TemplateSendDialog.tsx` (new): the dialog, a native modal, one `Idempotency-Key` per dialog; the single send and the bulk one.
+- `sales/leads/TemplateSendDialog.tsx` (new): the dialog, a native modal; the single send and the bulk one. Its `Idempotency-Key` is kept until an answer comes (a lost answer is replayed, not sent twice) and renewed after one, so Send after "Not sent" is a new request.
 - `sales/leads/[id]/MessageCard.tsx` and `ShareCard.tsx` (new), on the Overview in `LeadDetail.tsx`; `sales/leads/[id]/page.tsx` passes them the numbers marked as on WhatsApp as the viewer reads them (masked where masked), why a channel is closed, the links, and `wa.me` only through a visible number of a lead not opted out of WhatsApp.
 - `sales/leads/LeadGrid.tsx`: Send template in the bulk bar (`canMessage`, from `sales/leads/page.tsx` and `sales/smart-views/page.tsx`); the bar's buttons wrap on a phone.
-- `src/services/platform/provisioning.ts`: Lead Eagle's starter roles get `communications` VIEW and CREATE (the Viewer VIEW only), at each role's scope.
-- `src/lib/security/ratelimit.ts` (`publicShare`); `src/services/platform/signup.ts` reserves `s` as a workspace address.
+- `src/services/platform/provisioning.ts`: Lead Eagle's starter roles Manager, Team Lead and Agent get `communications` VIEW and CREATE at their scope; the Telecaller CREATE only (OWN), the Viewer none. The inbox names each thread by its full number, so the roles that read numbers masked do not get it.
+- `src/services/leads/timeline.ts`: a role with no inbox (no `communications:VIEW`) reads the messages it sent itself, where it read none; a role with the inbox reads by thread, as before.
+- `src/lib/security/ratelimit.ts` (`publicShare`, `leadEmailDay`); `src/services/platform/signup.ts` reserves `s` as a workspace address.
 
 **Behaviour.** What customers on production see:
 
@@ -79,11 +89,18 @@ change:
   `communications:CREATE` whose `leads:EDIT` reaches the lead: a Message card
   with Send WhatsApp and Send email, each closed with its reason where it
   cannot go. A sent message is on the timeline as "WhatsApp sent" or "Email
-  sent", with its text. For a role whose `leads:EDIT` reaches the lead: a
-  Share a property card listing its links (opened how often, last opened,
-  until when) with Share via WhatsApp, Copy link, Open and Revoke.
+  sent", with its text, for those whose inbox reaches the thread, and for a
+  sender with no inbox. A WhatsApp send puts the lead's thread with the lead's
+  owner, moving it from a previous owner of a reassigned lead (audited). A
+  lead whose consent is withdrawn is closed on both channels. An
+  email's replies go to the sender's address; past 300 lead emails in a UTC
+  day a workspace is refused until the next. For a role whose `leads:EDIT`
+  reaches the lead: a Share a property card listing its links (opened how
+  often, last opened, until when) with Share via WhatsApp, Copy link, Open
+  and Revoke.
 - **Timeline.** An opened link shows as "Shared link opened", naming the
-  listing or project, with no person.
+  listing or project, with no person: when a browser shows the page to
+  someone not signed in to the workspace, at most three a day per link.
 - **Lead lists and smart views.** Roles with `communications:CREATE` get Send
   template in the bulk bar. The answer counts what was queued and what was
   skipped and why.
@@ -92,8 +109,10 @@ change:
 - **The client.** A link opens a page with the agency's name, the listing's or
   project's public details and photographs (listings), and who shared it.
 - **New Lead Eagle workspaces** (and Lead Eagle added to a workspace without
-  its starter roles): Agent, Telecaller, Team Lead and Manager may send; the
-  Viewer sees messages on the timeline. Existing roles are not changed.
+  its starter roles): Agent, Team Lead and Manager may send and have the
+  inbox; the Telecaller sends, with no inbox, and sees its own messages on the
+  timeline; the Viewer neither sends nor has the inbox. Existing roles are not
+  changed.
 - The inbox's reply is unchanged.
 
 **Decisions taken.**
@@ -106,7 +125,20 @@ Design choices (mine, not the owner's):
 - Who may send: `communications:CREATE` (the inbox's send) and the lead's
   `leads:EDIT` reach, as Log call. A role that only reads the lead gets 404.
 - Lead Eagle's starter roles get `communications`; without it no Lead Eagle
-  agent could send. Existing roles are left as they are.
+  agent could send. The Telecaller gets CREATE only and the Viewer nothing:
+  the inbox shows a thread's number unmasked (a gap `PROJECT.md` already
+  records), and these two roles read numbers masked. A role with no inbox
+  reads on the timeline the messages it sent. Existing roles are left as they
+  are.
+- A send puts the lead's thread with the lead's owner, so the client's reply
+  reaches the lead's own agent and the message is on their timeline: a new
+  thread, an unowned one, and one a previous owner still holds after the lead
+  was reassigned (audited). A thread linked to another lead is never taken.
+- Withdrawn consent (`consentStatus` WITHDRAWN) is an opt-out of both
+  channels, as the campaigns and the dialer read it.
+- Lead email goes through the platform's mail server, so it is capped at 300
+  a UTC day per workspace (`limits.leadEmailDay`, one figure for all), and
+  its `Reply-To` is the sender.
 - Email templates are message templates with channel EMAIL: the model already
   had them, nothing kept them. `{{1}}` is the lead's first name and `{{2}}` the
   sender's name, for email and WhatsApp alike; any other placeholder is typed
@@ -127,9 +159,11 @@ Design choices (mine, not the owner's):
   seller or mandate), and a project's name, developer, community, from-price,
   possession and handover, unit types, highlights, description and RERA
   number (not its code or stock counts).
-- An opening is counted on the link every time and logged on the lead once
-  per visitor per day. It is not scored and does not count as working the
-  lead.
+- An opening is what the page's own script reports, not a fetch of the page:
+  link previews run no script. A request signed in to the link's workspace is
+  not an opening. Each is counted on the link, and logged on the lead once per
+  visitor per day, at most three a day per link (a new browser string is a
+  new visitor). It is not scored and does not count as working the lead.
 - Share via WhatsApp is `wa.me` with the link written, through the lead's
   WhatsApp number where the viewer may read it; a lead opted out of WhatsApp
   gets none.
@@ -180,7 +214,7 @@ and #177 through the base; `after1`, 16 files, 670 tests):
   "Under construction, handover Dec 2027", unit types, highlights and RERA
   number, not its code or stock counts; two openings from one browser and one
   from another log two "Shared link opened" activities (no visitor in them,
-  audited as the system) and count four openings; a lapsed link, a revoked
+  audited as the system) and count three openings; a lapsed link, a revoked
   one (audited) and a sold listing are 404, and the listing back on the
   market opens again; an altered signature, a proposal token for the same
   ids, another workspace's id and garbage are 404; a lapsed lead module is
@@ -254,6 +288,70 @@ timeline with an opening. None scrolls sideways at 390 px; tokens only, the
 public page using the agency's colour as the shortlist page does. The
 template editor's body field was given the textarea style after the capture.
 
+**Review fixes (13 Oct).** Six reviewers' findings, checked against the
+code; all were real. Fixed, each with a case that fails on the reviewed
+commit `9741ba21` (its `src/` stashed, tests kept, then restored) and passes
+now:
+
+- The new Telecaller and Viewer had `communications:VIEW`, so the inbox
+  (`GET /api/v1/conversations`, which names threads by their full number)
+  read them the numbers the lead page masks. `provision-lead-work`: "expected
+  true to be false" (the Telecaller's VIEW) and "Telecaller: expected 200 to
+  be 403" on the inbox (log `fix-fb-prov`).
+- "Shared link opened" was logged by any fetch of the page: WhatsApp's link
+  preview, the agent's own Open. `share-page`: rendering the page with a
+  WhatsApp user agent counted "expected 2 to be +0"; the E2E timed out waiting
+  for the page's report (`fix-fb-share`, `fix-e2e-fb2`). Also capped at three
+  a day per link ("to have a length of undefined but got 5") and the type
+  made inactive; a broken escape in a token was a 500 ("got 'URI
+  malformed'").
+- A message sent from a reassigned lead went into the previous owner's
+  thread, so the new owner did not see it and the reply went to the previous
+  owner; a role with no inbox did not see its own message: "expected
+  undefined to match object { title: 'WhatsApp sent' }" twice. A new thread
+  went to the sender, not the lead's owner (a manager's bulk send kept every
+  thread), and an unowned thread linked to another lead was claimed: "expected
+  { …(16) } to match object" in `lead-send` and `bulk-template-send`
+  (`fix-fb-send2`, `fix-fb-bulk`). The send now moves the thread to the
+  lead's owner. A first attempt showed every sender their own messages on the
+  timeline instead; it broke the base's case that a thread handed to another
+  agent takes the messages with it (`lead-timeline`, `fix-wide1`), so it
+  was narrowed to roles with no inbox.
+- Withdrawn consent was sent to: "expected 200 to be 422" (`lead-send`), and
+  bulk queued it ("expected { …(4) } to match object { queued: +0 }").
+- Lead email: no `Reply-To` and no ceiling ("expected { to: 'mia@client.test',
+  …(3) } to match object { subject: 'Hi Mia', …(1) }").
+- A queued send went out after the workspace lost its lead modules
+  ("expected vi.fn() to not be called at all, but actually been called 1
+  times").
+- After "Not sent", Send again replayed the stored refusal under the same
+  `Idempotency-Key`: the E2E's "expect(keys[1]).not.toBe(keys[0])" failed
+  (`fix-e2e-fb`).
+- Guards added for paths that already worked: a provider refusal is a FAILED
+  message (error code and text, audited, "Failed" on the timeline), the same
+  key replays it and a new key sends again; a paused template, a missing
+  `{{3}}` and WhatsApp disconnected are refused before anything is queued,
+  `{{3}}` typed once goes to every lead and a lead picked twice is sent once;
+  days 0 and 91 are 422, another lead's link cannot be revoked through this
+  one (404), a project no longer offered is 409 and its links 404, a sharer
+  without `projects:VIEW` gets 404; the E2E waits for the share route's
+  answer rather than a fixed 20 s.
+
+After the fixes: `lead-send` 19 of 19 and `bulk-template-send` 10 of 10
+(`fix-new6`), `share-page` 12 of 12 (`fix-new4`); `lead-timeline`,
+`lead-call-log`, `assignment-working-hours`, `whatsapp-templates`,
+`whatsapp-unknown-number` and `meta-apply-event` 63 of 63 (`fix-regress`);
+`tests/permission` and `tests/sales` 93 files, 1,687 passed and 13
+skipped, two files stopped by a 60 s `beforeAll` under load that pass alone,
+13 of 13 (`fix-wide1b`, `fix-wide1c`); `tests/tenant` and `tests/unit`
+without the retention specs 84 files, 1,457 passed, 2 skipped (`fix-wide2`);
+`tsc` clean (`fix-tsc2`); eslint no errors (two `no-explicit-any` warnings
+on lines this change did not write); prettier clean. E2E: `lead-send-share`
+and `lead-call-log` 2 of 2 on the final code (`fix-e2e4`); before the
+timeline was narrowed, `lead-send-share` (`fix-e2e1`), `lead-contact-masking`
+and `lead-eagle-workspace` with `lead-call-log` 5 of 5 (`fix-e2e2`), and
+`crm-lifecycle` 6 of 6 (`fix-e2e3`).
+
 **Left open.**
 
 - Existing Lead Eagle workspaces: their administrator grants Communications
@@ -268,3 +366,23 @@ template editor's body field was given the textarea style after the capture.
 - WhatsApp templates are filled by number (`{{1}}`…); Meta's named
   parameters are not supported, here or in the inbox.
 - Making and revoking a link are in the audit log, not on the timeline.
+- Reassigning a lead does not itself move its WhatsApp thread (as before
+  this change); the next send from the lead page does. Until then a client's
+  reply reaches the previous owner's inbox.
+- Two leads with one number share one WhatsApp thread (Meta names a thread
+  by its number). A send from the lead the thread is not linked to goes into
+  it and is that lead's message, on its timeline only for those whose inbox
+  reaches the thread.
+- The Telecaller, with no inbox, sees its own sent messages on the timeline
+  but not the client's replies. Giving it the inbox needs the inbox to mask
+  numbers for such roles (`GET /api/v1/conversations`, its thread route and
+  the Sales communications list), which it does not today for any role.
+- A role that reads numbers masked gets Copy link and Open for a shared link,
+  not Share via WhatsApp (the `wa.me` link would carry the number). A send
+  through the Message card with the link as a template value would do it; not
+  built.
+- The 300-a-day email ceiling is one figure for every workspace, trial or
+  paid. Whether bulk email should wait until a workspace has its own sender is
+  the owner's call.
+- A bulk job refused at its turn by the email ceiling is logged, not shown:
+  the batch's counts are taken when it is queued.
