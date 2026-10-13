@@ -4,6 +4,7 @@ import { route } from '@/lib/api/handler';
 import { withTx } from '@/lib/db';
 import { assertLeadInScope } from '@/lib/security/record-scope';
 import { touchLead } from '@/services/leads/touch';
+import { scoreActivity } from '@/services/leads/scoring';
 import { findReplay, recordOutcome } from '@/services/idempotency';
 
 const createBody = z
@@ -48,6 +49,8 @@ export const POST = route(
         data: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, ...fields },
         include: { type: { select: { name: true, key: true } } },
       });
+      // Its type's points, in the same transaction (M4-11).
+      await scoreActivity(tx, ctx, created);
       if (key) await recordOutcome(tx, key, created);
       return created;
     });

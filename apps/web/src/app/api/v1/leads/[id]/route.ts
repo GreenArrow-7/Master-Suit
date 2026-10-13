@@ -53,6 +53,8 @@ const patchBody = z
     meetingAt: z.string().max(40).optional(),
     ownerId: z.string().cuid().nullable().optional(),
     secondaryOwnerId: z.string().cuid().nullable().optional(),
+    /** Custom field values by key (Administration → Custom fields); null clears one. */
+    custom: z.record(z.union([z.string().max(1000), z.number(), z.null()])).optional(),
   })
   .strict();
 

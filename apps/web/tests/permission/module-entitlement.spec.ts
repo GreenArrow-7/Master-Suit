@@ -382,6 +382,11 @@ describe('a screen or route outside the plan says which products carry it', () =
     expect(await shown(await LeadSourcesLayout(open(hrOnly, '/admin/lead-sources')))).toContain(
       'Lead sources is part of Sales, Real Estate or Lead Eagle.',
     );
+    const { default: CustomFieldsLayout } =
+      await import('@/app/(workspace)/[workspaceSlug]/admin/custom-fields/layout');
+    expect(await shown(await CustomFieldsLayout(open(hrOnly, '/admin/custom-fields')))).toContain(
+      'Custom fields is part of Sales, Real Estate or Lead Eagle.',
+    );
   });
 
   it('an entitled workspace gets its screen', async () => {

@@ -148,3 +148,27 @@ permission, sales, tenant, unit 162 files, 2919 passed, 21 skipped, with
 start a transaction in the given time" and passing alone (60/60); E2E
 `lead-stage-mini-form.spec.ts`, `crm-lifecycle.spec.ts` and
 `lead-eagle-workspace.spec.ts` 9/9 on a fresh `.next`.
+
+**Merge-up with main (round 2), 13 Oct.** Main brought #172 (requirement,
+interest links, custom fields, scoring; two migrations, 106 in all).
+Conflicts: `updateLead.ts` keeps both imports and runs the checks in the
+order scope (404), #169's duplicate check (409), #172's custom-field values,
+then this change's stage rules and bookings, all in the one transaction with
+every audit; #172's `withCustomValues` call moved up from after the stage
+block to just before it. `LeadDetail.tsx` imports #172's `RequirementCard`
+and `InterestsCard` beside `asksBeforeMove`; `leads/[id]/page.tsx` loads
+`bookableProjects` (the mini-form's visit picker) and #172's custom data and
+requirement link; `smart-views/page.tsx` takes `bookableProjects` and #172's
+custom columns; `changes/README.md` keeps both rows, this one first.
+`PROJECT.md`, `LeadGrid.tsx`, `leads/page.tsx` and `api/v1/leads/[id]` merged
+without a marker and were read (screen counts unchanged: Sales 75, Real
+Estate 40, Lead Eagle 29, HRMS 32). On the merged tree: `tsc --noEmit`
+clean; `stage-mini-form`, `provision-lead-work`, `lead-requirement`,
+`lead-interest-links`, `custom-fields`, `lead-scoring`, `lead-record-fields`
+and `lead-record-scope` 450/450 (three hit seed-hook timeouts together and
+pass alone); `tests/` permission, sales, tenant, unit 167 files, of which 35
+failed on "Unable to start a transaction in the given time" and hook
+timeouts and pass on a re-run (945/945); E2E `lead-stage-mini-form`,
+`lead-requirement-interest` and `crm-lifecycle` 9/9 on a fresh `.next`.
+eslint has no errors; prettier is clean on the code, and `README.md` and
+`PROJECT.md` fail it on main as here.

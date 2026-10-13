@@ -17,6 +17,7 @@ import ColumnEditor from '@/components/workspace/ColumnEditor';
 import LeadImport from './LeadImport';
 import Pager from '@/components/workspace/Pager';
 import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
+import { customCells, customColumns } from '@/services/leads/customFields';
 import {
   emptyFollowUpLabel,
   obligationAccess,
@@ -132,6 +133,7 @@ export default async function LeadsPage({
         score: true,
         grade: true,
         tags: true,
+        customData: true,
         priority: true,
         slaState: true,
         nextFollowUpAt: true,
@@ -160,7 +162,9 @@ export default async function LeadsPage({
   ]);
   const projects = await bookableProjects(ctx, stages);
 
-  const columns = resolveColumns('LEAD', storedColumnsFor(setting?.gridColumns, 'LEAD'));
+  // The workspace's custom fields can be columns too (M4-13).
+  const customColumnDefs = await customColumns(ctx.tenantId);
+  const columns = resolveColumns('LEAD', storedColumnsFor(setting?.gridColumns, 'LEAD'), customColumnDefs);
 
   const hasMore = rows.length > PAGE_SIZE;
   const pageRows = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
@@ -182,7 +186,12 @@ export default async function LeadsPage({
     pageRows.map((r) => r.id),
     access,
   );
-  const withFollowUp = pageRows.map((r) => ({ ...r, nextFollowUpAt: due.get(r.id) ?? null }));
+  // Only the custom columns' values leave the server, never the rest of customData.
+  const withFollowUp = pageRows.map(({ customData, ...r }) => ({
+    ...r,
+    custom: customCells(columns, customData),
+    nextFollowUpAt: due.get(r.id) ?? null,
+  }));
 
   const data = withFollowUp.map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
 
@@ -209,7 +218,7 @@ export default async function LeadsPage({
               </a>
             )}
             {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
-              <ColumnEditor object="LEAD" current={columns.map((column) => column.key)} />
+              <ColumnEditor object="LEAD" current={columns.map((column) => column.key)} extra={customColumnDefs} />
             )}
           </>
         }

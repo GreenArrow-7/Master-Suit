@@ -19,6 +19,7 @@ import { findDuplicates } from '@/services/leads/findDuplicates';
 import { applySocialComment } from '@/services/social/applySocialComment';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { leadSourceIdFor } from '@/services/leads/leadSources';
+import { withSourceScore } from '@/services/leads/scoring';
 import { nextReference } from '@/services/shared/reference';
 import { withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
@@ -211,7 +212,8 @@ async function applyLeadgen(tenantId: string, connectionId: string, event: Norma
         teamId: routing?.assignedTeamId ?? null,
         sourceDetail: by.source,
         // The workspace's Meta entry (M4-03), so the source reports count it with the Meta leads picked by hand.
-        sourceId: await leadSourceIdFor(tx, tenantId, 'meta'),
+        // With the points a lead from it starts with (M4-11).
+        ...(await withSourceScore(tx, tenantId, await leadSourceIdFor(tx, tenantId, 'meta'))),
         // They completed a lead form asking to be contacted.
         consentStatus: 'IMPLIED',
         // customData, not campaignId: Lead.campaignId is a foreign key to a CRM
