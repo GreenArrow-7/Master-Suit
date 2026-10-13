@@ -9,7 +9,7 @@ import { notifyCrm } from '../crm/notify';
 import { recordTargetProgress } from '../targets/progress';
 import { dayBounds } from '../targets/dailyBoard';
 import { BOOKING_FIELDS } from '@/lib/leads/stageBookings';
-import { withRecompute } from './nextFollowUp';
+import { lockLeads, withRecompute } from './nextFollowUp';
 import { findDuplicates } from './findDuplicates';
 import { assertLeadSource } from './leadSources';
 import { withCustomValues } from './customFields';
@@ -31,6 +31,8 @@ export interface UpdateLeadInput {
   campaignName?: string | null;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   tags?: string[];
+  /** Tags to add to the ones the lead has (the grid's bulk Add tag, M4-35). */
+  addTags?: string[];
   stageId?: string;
   /** Why it moves: required when the target stage says so. */
   stageReason?: string;
@@ -83,6 +85,8 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput, o
 
   const inTx = <T>(fn: (tx: TxClient) => Promise<T>) => (opts.dryRun ? fn(opts.dryRun) : withTx(ctx.tenantId, fn));
   const updated = await inTx(async (tx) => {
+    // Tags are added to the row as it stands: locked first, so two adds at once both land.
+    if (input.addTags) await lockLeads(tx, ctx.tenantId, [id]);
     const before = await assertLeadInScope(ctx, id, tx, 'EDIT');
     // The new owner: someone the scope of the action that allows the change reaches.
     const action = can(ctx, 'leads', 'ASSIGN') ? 'ASSIGN' : 'REASSIGN';
@@ -100,6 +104,10 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput, o
     if (input.secondaryOwnerId && input.secondaryOwnerId !== before.secondaryOwnerId) {
       await assertAssignableUser(ctx, tx, 'leads', action, input.secondaryOwnerId);
     }
+
+    // Added to the row as it stands, so a stale list on the screen removes nothing.
+    const tags = input.addTags ? [...new Set([...(input.tags ?? before.tags), ...input.addTags])] : input.tags;
+    if (tags && tags.length > 20) refuse('tags', 'A lead holds at most 20 tags.');
 
     // Each one a field of this workspace, checked by its type, after the scope
     // check above and before the stage's requirements below.
@@ -181,7 +189,7 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput, o
         ...(input.sourceId !== undefined && { sourceId: input.sourceId }),
         ...(input.campaignName !== undefined && { campaignName: input.campaignName }),
         ...(input.priority !== undefined && { priority: input.priority }),
-        ...(input.tags !== undefined && { tags: input.tags }),
+        ...(tags !== undefined && { tags }),
         ...(input.notes !== undefined && { notes: input.notes }),
         ...(input.stageId !== undefined && { stageId: input.stageId }),
         ...(enteredReason !== undefined && { stageReason: enteredReason }),
@@ -262,6 +270,45 @@ export async function deleteLead(ctx: Ctx, id: string) {
     });
     await auditDiff(ctx, 'lead', id, before, { ...before, deletedAt: new Date() }, tx);
   });
+}
+
+/**
+ * The grid's Undo of a delete (M4-36): the lead returns to every list it left.
+ * Reached under the delete's own scope; a lead that is not deleted, or not
+ * the caller's to delete, answers 404. One whose number or email another lead
+ * took meanwhile answers 409, as creating it again would (`createLead`).
+ */
+export async function restoreLead(ctx: Ctx, id: string) {
+  // Before the transaction, as `refuseDuplicate`: findDuplicates reads on its own connection.
+  const deleted = await assertLeadInScope(ctx, id, prisma, 'DELETE', { deleted: true });
+  const [match] = await findDuplicates(ctx.tenantId, {
+    phoneNormalized: deleted.phoneNormalized,
+    email: deleted.email,
+    fullName: deleted.fullName,
+    ignoreNameOnly: true,
+    excludeId: id,
+  });
+  if (match) throw Conflict(`A lead with this ${match.matchedOn} was added since (${match.reference}).`);
+  await withTx(ctx.tenantId, async (tx) => {
+    const before = await assertLeadInScope(ctx, id, tx, 'DELETE', { deleted: true });
+    await tx.lead.update({
+      where: { tenantId: ctx.tenantId, id },
+      data: { deletedAt: null, updatedById: ctx.actor.id },
+    });
+    await audit(
+      ctx,
+      {
+        event: 'RECORD_RESTORED',
+        objectType: 'lead',
+        recordId: id,
+        fieldKey: 'deletedAt',
+        previousValue: before.deletedAt,
+        newValue: null,
+      },
+      tx,
+    );
+  });
+  return { id, restored: true };
 }
 
 /**

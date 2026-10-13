@@ -243,7 +243,8 @@ export default function LeadImport({
       >
         <strong style={{ fontSize: 'var(--lf-text-sm)' }}>Import {noun}s from Excel or CSV</strong>
         <button
-          className="lf-toast__action"
+          type="button"
+          className="lf-btn lf-btn--ghost lf-btn--sm"
           onClick={() => {
             setOpen(false);
             reset();

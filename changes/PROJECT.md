@@ -147,7 +147,16 @@ Node 22 or newer (CI uses 24).
   (`src/services/leads/createLead.ts`): a typed number is normalised and matched
   against the main number and every LeadPhone, whole numbers only for a role
   that sees them masked. A saved lead view is a personal `SmartView`
-  (`objectType` `LEAD_LIST`).
+  (`objectType` `LEAD_LIST`). The grid pages by keyset (`leadPage`:
+  Next carries `after`, Previous `before`, the boundary lead's id), as the list API
+  does (`cursorWhere`, `src/lib/api/pagination.ts`); a keyset bounds its sort
+  column so the index seeks to the page. Its bulk bar sends one request per
+  selected lead, each re-checked in scope: assign, stage, task, Add tag
+  (`addTags` on PATCH, added to the lead's own), close out, Move to Data
+  (`moveLeadToData`, `src/services/leads/coldData.ts`: a cold record on the
+  day's "From pipeline" list, the lead archived and its open follow-ups and
+  tasks cancelled; `mayMoveToData` also asks for the lead's numbers in full) and Delete with a
+  10-second Undo (`POST /api/v1/leads/{id}/restore`).
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
   P2002 answers 409 and P2025 404, a zod failure 422 — let the database say
   "already exists" or "not found" instead of reading first. `route()` honours
@@ -158,7 +167,8 @@ Node 22 or newer (CI uses 24).
   through the route's `auditEvent`, or `audit(ctx, …)`
   (`src/lib/security/audit.ts`) where the route cannot say enough. A write no
   person makes (a webhook, a worker) calls `audit({ tenantId, source }, …)` and
-  shows as System. Not all existing writes do yet; the known gaps are listed in
+  shows as System. A date or a list in a value is stored as one. Not all
+  existing writes do yet; the known gaps are listed in
   `changes/2026-10-11-report-export-audit.md`. A file out of the building needs
   EXPORT, not VIEW, and writes `EXPORT_REQUESTED`.
 - **Attendance is not HR.** Check-in, the attendance record and attendance
@@ -181,6 +191,7 @@ From `apps/web`:
 |---|---|
 | Unit and integration (needs Postgres and Redis) | `npx vitest run [files]` |
 | Specs that drive a running server | `npm run test:server` |
+| Measurements, never CI: `tests/perf`, against a scratch database | `PERF_100K=yes npx vitest run --config vitest.perf.mts -t seed` (then `-t timing`, `-t sql`, `-t cleanup`) |
 | Browser | `npx playwright test`; the demo-workspace specs need `E2E_DEMO_SLUG`, `E2E_DEMO_EMAIL`, `E2E_DEMO_PASSWORD` |
 | Types, lint, format | `npx tsc --noEmit`, `npm run lint`, `npm run format:check` |
 | Production build | `npx next build`, with `NODE_ENV` unset — `development` breaks prerendering |

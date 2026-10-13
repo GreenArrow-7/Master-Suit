@@ -3,27 +3,31 @@ import SalesLink from '@/components/workspace/SalesLink';
 /**
  * Prev/next pagination over `?page=N`, preserving the rest of the query string.
  * Server-rendered; pages fetch `take + 1` rows and pass `hasMore` so no count
- * query is needed.
+ * query is needed. With `cursors` (the lead grid's keyset pages), Previous also
+ * carries `before` the first row and Next `after` the last.
  */
 export default function Pager({
   page,
   hasMore,
   basePath,
   params,
+  cursors,
 }: {
   page: number;
   hasMore: boolean;
   basePath: string;
   params?: Record<string, string | undefined>;
+  cursors?: { before: string; after: string };
 }) {
   if (page <= 1 && !hasMore) return null;
 
-  const href = (target: number) => {
+  const href = (target: number, cursor?: [string, string]) => {
     const search = new URLSearchParams();
     for (const [key, value] of Object.entries(params ?? {})) {
       if (value) search.set(key, value);
     }
     if (target > 1) search.set('page', String(target));
+    if (target > 1 && cursor) search.set(...cursor);
     const qs = search.toString();
     return qs ? `${basePath}?${qs}` : basePath;
   };
@@ -40,7 +44,10 @@ export default function Pager({
       }}
     >
       {page > 1 ? (
-        <SalesLink className="lf-btn lf-btn--secondary lf-btn--sm" href={href(page - 1)}>
+        <SalesLink
+          className="lf-btn lf-btn--secondary lf-btn--sm"
+          href={href(page - 1, cursors && ['before', cursors.before])}
+        >
           &larr; Previous
         </SalesLink>
       ) : (
@@ -48,7 +55,10 @@ export default function Pager({
       )}
       <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>Page {page}</span>
       {hasMore && (
-        <SalesLink className="lf-btn lf-btn--secondary lf-btn--sm" href={href(page + 1)}>
+        <SalesLink
+          className="lf-btn lf-btn--secondary lf-btn--sm"
+          href={href(page + 1, cursors && ['after', cursors.after])}
+        >
           Next &rarr;
         </SalesLink>
       )}

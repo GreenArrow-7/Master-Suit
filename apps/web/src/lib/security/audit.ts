@@ -178,6 +178,9 @@ export async function auditDiff(
 function redact(value: unknown): unknown {
   if (value == null) return null;
   if (typeof value !== 'object') return value;
+  // A date and an array (a lead's tags) stay what they are: they were stored as {} and {"0": …}.
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(redact);
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
     out[k] = SECRET_KEYS.has(k) ? '[redacted]' : v;
