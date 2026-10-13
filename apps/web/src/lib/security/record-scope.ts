@@ -297,6 +297,18 @@ export async function ownerReach(
 }
 
 /**
+ * Whether `assertLeadInScope(..., action)` takes a lead, for a list or page that
+ * shows a lead's button only where its route takes it: `ownerReach` with the
+ * second owner counted, and an unassigned lead in reach.
+ */
+export async function leadReach(ctx: Ctx, action: Action) {
+  if (!can(ctx, 'leads', action)) return () => false;
+  const reach = await ownerReach(ctx, 'leads', action);
+  return (lead: { ownerId: string | null; secondaryOwnerId: string | null }) =>
+    lead.ownerId === null || reach(lead.ownerId) || reach(lead.secondaryOwnerId);
+}
+
+/**
  * The leads in `ids` the caller may open, by id, under the lead page's own rule.
  * A follow-up or task in scope can hang on a lead that has left it (a
  * reassignment moves only open work), and the lists showed that lead's name.

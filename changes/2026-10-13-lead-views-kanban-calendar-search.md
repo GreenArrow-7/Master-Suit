@@ -84,7 +84,8 @@ Estate, Lead Eagle):
   "501234567" find a lead holding +971501234567 as its main or any other number.
   A role that sees numbers masked finds a lead by a whole number only and reads
   it masked. Cmd+K's "Search leads" opens Sales' list, else Real Estate's, else
-  Lead Eagle's.
+  Lead Eagle's. The list's box keeps the phone redesign's (#79) placeholder,
+  "Search leads", and finds names, phones in any format, emails and references.
 - CSV export: answers the URL it was clicked from (the named filter, the
   search, the chips, a saved view's grid columns; not its custom-field ones,
   see Left open), in id order whatever the sort; `overdue_mine` and
@@ -256,3 +257,8 @@ and `every-route` 8 of 8. The board's Move list checked by eye at 390 px
 leads; their closed ones are under Left open); the calendar case's
 "Unable to start a transaction" under load (passed alone, and in every run
 since).
+
+**Merge-up with main, 13 Oct.** Main took #178 (one-step call log, the lead
+timeline). Every grid row and phone card of the filtered list, and of Smart
+Views, keeps #178's Call and Log call beside this change's chips, saved views
+and phone search; the board's cards carry no call actions.

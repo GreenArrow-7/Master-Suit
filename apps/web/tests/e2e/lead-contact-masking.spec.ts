@@ -115,6 +115,11 @@ test.describe('a lead masked for a role without view sensitive fields', () => {
 
     const api = await ok(await telecaller.request.get(`/api/v1/leads/${leadId}`), 'lead');
     expect(api.phone).toBe(MASKED);
+
+    // The list: the call can be logged, but there is no number to dial (PROP-02.2).
+    await page.goto(at('/leads'));
+    await expect(page.getByRole('button', { name: `Log call for Masked Lead ${run}` }).first()).toBeVisible();
+    await expect(page.locator('a[href^="tel:"]')).toHaveCount(0);
     await page.close();
   });
 

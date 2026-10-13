@@ -1,11 +1,12 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { mergeWhere } from '@/lib/api/where';
-import { assignableUsers } from '@/lib/security/record-scope';
+import { assignableUsers, leadReach } from '@/lib/security/record-scope';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
+import { workspaceTimezone } from '@/services/hr/attendance';
 import { bookableProjects } from '@/services/leads/updateLead';
 import { mayMoveToData } from '@/services/leads/coldData';
 import { listLeadSources } from '@/services/leads/leadSources';
@@ -105,12 +106,13 @@ export default async function LeadsPage({
     nextFollowUpAt: true,
     updatedAt: true,
     ownerId: true,
+    secondaryOwnerId: true,
     stageId: true,
     stage: { select: { key: true, name: true, color: true } },
     owner: { select: { fullName: true } },
   } as const;
 
-  const [rows, stages, users, owners, sources, taskTypes, setting, views] = await Promise.all([
+  const [rows, stages, users, owners, sources, taskTypes, setting, views, timeZone] = await Promise.all([
     board
       ? Promise.resolve([])
       : prisma.lead.findMany({
@@ -153,6 +155,7 @@ export default async function LeadsPage({
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       select: { id: true, name: true, filterTree: true, sortSpec: true, columns: true },
     }),
+    workspaceTimezone(ctx),
   ]);
   const projects = await bookableProjects(ctx, stages);
 
@@ -223,11 +226,14 @@ export default async function LeadsPage({
     pageRows.map((r) => r.id),
     access,
   );
+  // Log call where its route takes the lead.
+  const logs = await leadReach(ctx, 'EDIT');
   // Only the custom columns' values leave the server, never the rest of customData.
-  const withFollowUp = pageRows.map(({ customData, ...r }) => ({
+  const withFollowUp = pageRows.map(({ customData, secondaryOwnerId, ...r }) => ({
     ...r,
     custom: customCells(columns, customData),
     nextFollowUpAt: due.get(r.id) ?? null,
+    canLog: logs({ ownerId: r.ownerId, secondaryOwnerId }),
   }));
 
   const data = withFollowUp.map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
@@ -305,7 +311,7 @@ export default async function LeadsPage({
             type="search"
             className="lf-input"
             defaultValue={params.q ?? ''}
-            placeholder="Search name, phone, email, reference"
+            placeholder="Search leads"
             aria-label="Search leads"
           />
         </form>
@@ -403,6 +409,7 @@ export default async function LeadsPage({
             canMoveToData={mayMoveToData(ctx, rules)}
             emptyLabel={emptyFollowUpLabel(access, view, ctx.actor.id)}
             sort={GRID_SORT[params.sort ?? 'updated']}
+            timeZone={timeZone}
           />
         </>
       )}

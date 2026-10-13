@@ -10,6 +10,8 @@ import { summarizeBulk, type BulkFailure, type BulkOutcome } from '@/lib/grid/bu
 import { parseTags } from '@/lib/leads/tags';
 import RowDetails from '@/components/workspace/RowDetails';
 import StageReason, { asksBeforeMove, type ReasonedStage, type StageMove } from '@/components/workspace/StageReason';
+import { dialable } from '@/components/workspace/CallLink';
+import CallLogDialog, { useAfterDial, type CallLogLead } from './CallLogDialog';
 
 export interface LeadRow {
   id: string;
@@ -29,6 +31,8 @@ export interface LeadRow {
   nextFollowUpAt?: string | Date | null;
   updatedAt: string | Date;
   ownerId?: string | null;
+  /** Its call can be logged: `leads:EDIT` reaches this lead (`leadReach`). */
+  canLog?: boolean;
   stage: { key: string; name: string; color: string };
   owner?: { fullName: string } | null;
 }
@@ -52,6 +56,7 @@ export default function LeadGrid({
   canMoveToData,
   emptyLabel,
   sort: initialSort = { key: 'updatedAt', dir: 'desc' },
+  timeZone,
 }: {
   rows: LeadRow[];
   columns: ColumnDef[];
@@ -70,6 +75,8 @@ export default function LeadGrid({
   emptyLabel: string;
   /** The order the server sent, as a column sort; null keeps the rows as sent (a sort no column shows). */
   sort?: GridSort;
+  /** The workspace's, for the call log's follow-up clock. */
+  timeZone: string;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -100,6 +107,9 @@ export default function LeadGrid({
   useEffect(() => {
     if (deleted.length) undoButton.current?.focus();
   }, [deleted]);
+  /** The lead whose call is being logged (PROP-02.2): from its row, or on return from dialling it. */
+  const [logFor, setLogFor] = useState<CallLogLead | null>(null);
+  const dialled = useAfterDial(setLogFor);
 
   const sorted = useMemo(() => {
     const copy = [...rows];
@@ -594,6 +604,9 @@ export default function LeadGrid({
                   />
                 </th>
                 {columns.map(header)}
+                <th>
+                  <span className="lf-visually-hidden">Call</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -619,12 +632,48 @@ export default function LeadGrid({
                       {leadCell(column.key, row, emptyLabel)}
                     </td>
                   ))}
+                  {/* Unlabelled, so it is a full-width line at the foot of the phone card. A
+                      masked number is not dialable, so it gets no tel: link. */}
+                  <td className="lf-grid__actions" data-label="">
+                    <span style={{ display: 'flex', gap: 'var(--lf-space-2)', justifyContent: 'flex-end' }}>
+                      {dialable(row.phone) && (
+                        <a
+                          className="lf-btn lf-btn--secondary lf-btn--sm"
+                          href={`tel:${dialable(row.phone)}`}
+                          aria-label={`Call ${row.fullName}`}
+                          style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}
+                          onClick={() => row.canLog && dialled(row)}
+                        >
+                          Call
+                        </a>
+                      )}
+                      {row.canLog && (
+                        <button
+                          type="button"
+                          className="lf-btn lf-btn--secondary lf-btn--sm"
+                          aria-label={`Log call for ${row.fullName}`}
+                          style={{ whiteSpace: 'nowrap' }}
+                          onClick={() => setLogFor(row)}
+                        >
+                          Log call
+                        </button>
+                      )}
+                    </span>
+                  </td>
                   <RowDetails />
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+      {logFor && (
+        <CallLogDialog
+          lead={logFor}
+          timeZone={timeZone}
+          onClose={() => setLogFor(null)}
+          onLogged={() => router.refresh()}
+        />
       )}
     </>
   );
