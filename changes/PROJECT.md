@@ -122,8 +122,8 @@ Node 22 or newer (CI uses 24).
   its number. Cold Data shows a record's number as stored to its own agent and
   as a lead's phone reads to the role otherwise. The lead timeline shows a
   field edit as the field reads to the viewer, a call only under
-  `callScope`, and a message's text only under the inbox's
-  `communications` rule (`src/services/leads/timeline.ts`). Still outside it: the
+  `callScope`, and a message only where the inbox (`communications`)
+  reaches its thread (`src/services/leads/timeline.ts`). Still outside it: the
   campaign dialer, event invitees and the inbox
   (`changes/2026-10-11-lead-contact-masking.md`).
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
