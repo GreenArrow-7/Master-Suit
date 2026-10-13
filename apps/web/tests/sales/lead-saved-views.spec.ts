@@ -308,4 +308,23 @@ describe('a saved view is a person’s own', () => {
     const res = await post(saveView, '/api/v1/leads/views', { name: ' ', params: {} }, people.agent.cookie);
     expect(res.status).toBe(422);
   });
+
+  it('a view may show the workspace’s custom fields as columns (M4-13)', async () => {
+    await prisma.leadCustomFieldDefinition.create({
+      data: { tenantId, key: 'budget', label: 'Budget', type: 'TEXT' },
+    });
+    const saved = await post(
+      saveView,
+      '/api/v1/leads/views',
+      { name: 'Budgets', params: {}, columns: ['cf:budget', 'cf:not_a_field'] },
+      people.agent.cookie,
+    );
+    expect(saved.status).toBe(200);
+    const reopened = await page(people.agent.cookie, paramsOf(saved.body.href));
+    expect((reopened.grid!.columns as { key: string }[]).map((column) => column.key)).toEqual([
+      'reference',
+      'fullName',
+      'cf:budget',
+    ]);
+  });
 });

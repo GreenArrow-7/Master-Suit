@@ -66,9 +66,10 @@ Estate, Lead Eagle):
   created or updated, From, To, Sort) applies to the URL; each chip in force
   shows with a link that drops it; the named filters (Overdue, SLA breached…)
   keep the chips and the search. List / Board switch. My views: a chip per
-  saved view, Save view (a name and the columns to show) and Delete view on the
-  open one. A view opens its own filters, sort and columns; nobody else lists,
-  opens as theirs or deletes it (404). Saving and deleting are audited.
+  saved view, Save view (a name and the columns to show, the workspace's custom
+  fields among them) and Delete view on the open one. A view opens its own
+  filters, sort and columns; nobody else lists, opens as theirs or deletes it
+  (404). Saving and deleting are audited.
 - Board: columns in Admin → Lead Stages order, lost and junk stages in an Exits
   group after the ladder; each column shows 20 cards and its whole count, and
   "N more" opens the list of that stage with the same filters. Drag a card, or
@@ -163,3 +164,19 @@ Estate, Lead Eagle):
 - The calendar has no API to widen (it is a server page); the assistant's
   `getCalendar` still has no site visits.
 - PROP-02.2 (log a call from the list in three clicks) is another lane's.
+
+**Merge-up with the base, 13 Oct.** The base branch took #172 (requirement and
+interest links, custom fields, lead scoring; two migrations) while this was
+built. Conflicts: the leads page keeps this change's list query, board and
+views, with #172's custom-field columns applied to the grid, a saved view's
+columns and the Save view picker; `PROJECT.md`'s Lead Eagle row keeps both
+descriptions and the new screen counts. After the merge a saved view dropped a
+custom-field column (`cf:<key>`); `POST /api/v1/leads/views` now offers the
+workspace's own fields too, and a new case in `lead-saved-views.spec.ts` fails
+without that (the grid showed the default columns). On the merged tree (106
+migrations): `tsc --noEmit` clean; the four new specs 42 of 42; the permission,
+sales, tenant, unit and platform directories 174 files, 3082 passed, 2
+skipped, 1 failed on "Unable to start a transaction in the given time"
+(`lead-record-scope`, 341 of 341 alone); security and integration 58 files,
+729 of 729; E2E `lead-views-board`, `lead-stage-mini-form` and
+`lead-bulk-stage` 9 of 9 on a fresh `.next`.

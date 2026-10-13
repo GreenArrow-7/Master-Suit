@@ -4,6 +4,7 @@ import { route } from '@/lib/api/handler';
 import { withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { GRID_COLUMNS } from '@/lib/grid/columns';
+import { customColumns } from '@/services/leads/customFields';
 import { cleanLeadListParams, LEAD_LIST_VIEW, savedViewHref } from '@/services/leads/leadList';
 
 const body = z.object({
@@ -11,10 +12,8 @@ const body = z.object({
   /** The grid's URL as it stood: filter, search, chips, sort, layout. Anything else is dropped. */
   params: z.record(z.string(), z.unknown()).default({}),
   /** The columns the view shows, by key, in order; the record's link columns are always shown. */
-  columns: z.array(z.string().max(40)).max(20).default([]),
+  columns: z.array(z.string().max(60)).max(30).default([]),
 });
-
-const COLUMN_KEYS = new Set(GRID_COLUMNS.LEAD.filter((column) => !column.fixed).map((column) => column.key));
 
 /**
  * Saves the lead grid as it stands as one of the caller's own views (M4-19):
@@ -27,7 +26,11 @@ export const POST = route(
   { module: 'leads', productModule: LEAD_MODULES, action: 'VIEW', body },
   async ({ ctx, body }) => {
     const { sort, cols: _cols, ...filterTree } = cleanLeadListParams(body.params);
-    const columns = body.columns.filter((key, index) => COLUMN_KEYS.has(key) && body.columns.indexOf(key) === index);
+    // The grid's columns and the workspace's custom fields; the link columns always show.
+    const offered = new Set(
+      [...GRID_COLUMNS.LEAD, ...(await customColumns(ctx.tenantId))].filter((c) => !c.fixed).map((c) => c.key),
+    );
+    const columns = body.columns.filter((key, index) => offered.has(key) && body.columns.indexOf(key) === index);
     const view = await withTx(ctx.tenantId, async (tx) => {
       const created = await tx.smartView.create({
         data: {
