@@ -10,7 +10,7 @@
  * Everything here fails closed. A blocking step left open means no activation
  * and no exit; that is the whole point of the checklist.
  */
-import { prisma, withTx } from '@/lib/db';
+import { prisma, withTx, type TxClient } from '@/lib/db';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { revokeAllSessions } from '@/lib/auth/session';
 import { audit } from '@/lib/security/audit';
@@ -304,11 +304,16 @@ export async function activateEmployee(ctx: Ctx, employeeId: string) {
  * documents, or on their own documents. Knowing *whose* visa lapses next month
  * is HR's job; the number itself is not.
  */
-export async function expiringDocuments(ctx: Ctx, withinDays?: number, employeeId?: string) {
+export async function expiringDocuments(
+  ctx: Ctx,
+  withinDays?: number,
+  employeeId?: string,
+  db: TxClient | typeof prisma = prisma,
+) {
   const days = withinDays ?? (await getHrPolicy(ctx)).documentExpiryHorizonDays;
   const horizon = addDays(new Date(), days);
-  const [scope, self] = await Promise.all([employeeRecordScope(ctx), myEmployee(ctx)]);
-  const documents = await prisma.hrEmployeeDocument.findMany({
+  const [scope, self] = await Promise.all([employeeRecordScope(ctx, db), myEmployee(ctx, db)]);
+  const documents = await db.hrEmployeeDocument.findMany({
     where: {
       tenantId: ctx.tenantId,
       expiresAt: { not: null, lte: horizon },
@@ -596,21 +601,21 @@ export async function finaliseExit(
  * Names who is joining and leaving, so it reads only the employee records the
  * actor may read; the counts follow the same scope.
  */
-export async function lifecycleDashboard(ctx: Ctx) {
+export async function lifecycleDashboard(ctx: Ctx, db: TxClient | typeof prisma = prisma) {
   const employeeInclude = { membership: MEMBERSHIP_PUBLIC } as const;
-  const scope = await employeeRecordScope(ctx);
+  const scope = await employeeRecordScope(ctx, db);
   const [joining, leaving, overdueTasks, documents] = await Promise.all([
-    prisma.employeeProfile.findMany({
+    db.employeeProfile.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'ONBOARDING', ...scope },
       include: employeeInclude,
       orderBy: { joinedOn: 'asc' },
     }),
-    prisma.employeeProfile.findMany({
+    db.employeeProfile.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'NOTICE', ...scope },
       include: employeeInclude,
       orderBy: { exitedOn: 'asc' },
     }),
-    prisma.hrChecklistTask.count({
+    db.hrChecklistTask.count({
       where: {
         tenantId: ctx.tenantId,
         completedAt: null,
@@ -618,12 +623,12 @@ export async function lifecycleDashboard(ctx: Ctx) {
         ...(scope.id !== undefined ? { employeeId: scope.id } : {}),
       },
     }),
-    expiringDocuments(ctx, 60),
+    expiringDocuments(ctx, 60, undefined, db),
   ]);
 
   // One grouped count for the whole dashboard rather than a query per employee:
   // the previous shape issued 1 + N queries and got slower as the workspace grew.
-  const blockerCounts = await prisma.hrChecklistTask.groupBy({
+  const blockerCounts = await db.hrChecklistTask.groupBy({
     by: ['employeeId', 'phase'],
     where: {
       tenantId: ctx.tenantId,

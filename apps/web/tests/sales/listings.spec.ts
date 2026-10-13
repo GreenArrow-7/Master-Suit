@@ -4,7 +4,9 @@ import { prisma } from '@/lib/db';
 import { listingWhere, listingFilters, maskOwner } from '@/lib/inventory/listings';
 import { listingsMatching, matchesForRequirement, requirementsWanting } from '@/services/inventory/demand';
 import { canTransition, createMandate, decideMandate, expireLapsedMandates } from '@/services/inventory/mandates';
-import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
+import { PATCH as patchListing } from '@/app/api/v1/listings/[id]/route';
+import { grantPermissions, seedTwoTenants, type Fixture } from '../helpers/fixtures';
+import { patch } from '../helpers/request';
 import type { Ctx } from '@/lib/security/rbac';
 
 /**
@@ -230,6 +232,51 @@ describe('the mandate state machine', () => {
     });
     expect(after.status).toBe('EXPIRED');
     expect(after.mandateExpires).toBeNull();
+  });
+});
+
+// ── Publishing over HTTP ─────────────────────────────────────────────────────
+/**
+ * The mandate check runs inside the PATCH's tenant transaction. It read through
+ * the global client, which stands down inside withTx, so the read went to a
+ * different pooled connection with no `app.tenant_id` and forced RLS hid the
+ * live mandate: every publish answered 422 no_mandate.
+ */
+describe('publishing a listing', () => {
+  beforeAll(async () => {
+    const { roleId } = await prisma.user.findFirstOrThrow({
+      where: { id: fixture.a.userId, tenantId: fixture.a.tenantId },
+      select: { roleId: true },
+    });
+    await grantPermissions(fixture.a.tenantId, roleId, [
+      ['listings', 'VIEW'],
+      ['listings', 'EDIT'],
+    ]);
+  });
+
+  it('publishes a listing whose mandate is live', async () => {
+    const listing = await makeListing();
+    await createMandate({
+      tenantId: fixture.a.tenantId,
+      actorId: fixture.a.userId,
+      listingId: listing.id,
+      ownerId,
+      type: 'EXCLUSIVE',
+      ...mandateWindow(),
+      activate: true,
+    });
+
+    const res = await patch(patchListing, `/api/v1/listings/${listing.id}`, { status: 'ACTIVE' }, fixture.a.cookie);
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ACTIVE');
+  });
+
+  it('still refuses a listing with no live mandate', async () => {
+    const listing = await makeListing();
+
+    const res = await patch(patchListing, `/api/v1/listings/${listing.id}`, { status: 'ACTIVE' }, fixture.a.cookie);
+    expect(res.status).toBe(422);
+    expect(res.body.errors[0].code).toBe('no_mandate');
   });
 });
 
