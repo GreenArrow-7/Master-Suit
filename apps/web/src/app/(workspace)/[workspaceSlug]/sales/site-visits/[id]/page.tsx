@@ -101,7 +101,9 @@ export default async function SiteVisitPage({ params }: { params: Promise<{ id: 
         />
         <Metric
           label="Checked out"
-          value={visit.checkOutAt ? visit.checkOutAt.toLocaleTimeString('en-GB', { timeStyle: 'short', timeZone }) : '—'}
+          value={
+            visit.checkOutAt ? visit.checkOutAt.toLocaleTimeString('en-GB', { timeStyle: 'short', timeZone }) : '—'
+          }
         />
         <Metric
           label="Distance"
