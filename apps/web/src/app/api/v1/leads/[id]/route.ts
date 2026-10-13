@@ -46,6 +46,11 @@ const patchBody = z
     notes: z.string().max(5000).nullable().optional(),
     stageId: z.string().cuid().optional(),
     stageReason: z.string().max(200).optional(),
+    // What the stage books as the lead enters it (lib/leads/stageBookings.ts):
+    // "YYYY-MM-DDTHH:mm" on the workspace's clock, or an ISO instant.
+    visitAt: z.string().max(40).optional(),
+    projectId: z.string().cuid().optional(),
+    meetingAt: z.string().max(40).optional(),
     ownerId: z.string().cuid().nullable().optional(),
     secondaryOwnerId: z.string().cuid().nullable().optional(),
     /** Custom field values by key (Administration → Custom fields); null clears one. */
