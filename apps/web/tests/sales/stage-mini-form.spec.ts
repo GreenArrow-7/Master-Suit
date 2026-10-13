@@ -35,6 +35,8 @@ import { PATCH as patchLead } from '@/app/api/v1/leads/[id]/route';
 import { PATCH as patchStage, POST as postStage } from '@/app/api/v1/workspaces/[workspaceSlug]/sales/stages/route';
 import LeadPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
 import LeadDetail from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/LeadDetail';
+import SiteVisitsPage from '@/app/(workspace)/[workspaceSlug]/sales/site-visits/page';
+import SiteVisitPage from '@/app/(workspace)/[workspaceSlug]/sales/site-visits/[id]/page';
 import StageRail from '@/components/ui/StageRail';
 import StageReason from '@/components/workspace/StageReason';
 import { createWorkspaceUser, grantPermissions, seedTwoTenants, type Fixture, type Grants } from '../helpers/fixtures';
@@ -501,5 +503,34 @@ describe('the lead page', () => {
     expect(markup).toMatch(/type="time"[^>]*required[^>]*aria-label="Visit date and time, time"/);
     expect(markup).toMatch(/<select[^>]*name="projectId"[^>]*required/);
     expect(markup).toContain(`<option value="${marina.id}">Marina Heights</option>`);
+  });
+});
+
+/** Every string a server page puts in its tree, props included, without rendering client components. */
+function texts(node: unknown): string[] {
+  if (typeof node === 'string') return [node];
+  if (Array.isArray(node)) return node.flatMap(texts);
+  if (node && typeof node === 'object' && 'props' in node) return Object.values(node.props as object).flatMap(texts);
+  return [];
+}
+
+describe('the Site visits register', () => {
+  it('shows a visit at the time typed, on the workspace’s clock, not the server’s', async () => {
+    const leadId = await lead('Register clock');
+    const moved = await patch(
+      patchLead,
+      url(leadId),
+      { stageId: visitStage.id, visitAt: `${day}T16:30`, projectId: marina.id },
+      fixture.a.cookie,
+    );
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    const visit = (await visitsOf(leadId))[0]!;
+    cookieJar.value = fixture.a.cookie;
+    const shown = (all: string[]) => all.filter((text) => /\d{4}, \d{2}:\d{2}$/.test(text));
+    const list = texts(await SiteVisitsPage({ searchParams: Promise.resolve({}) }));
+    const page = texts(await SiteVisitPage({ params: Promise.resolve({ id: visit.id }) }));
+    const typed = new Date(`${day}T12:00:00Z`).toLocaleDateString('en-GB', { dateStyle: 'medium', timeZone: 'UTC' });
+    expect(shown(list)).toContain(`${typed}, 16:30`);
+    expect(shown(page)).toContain(`${typed}, 16:30`);
   });
 });
