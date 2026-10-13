@@ -370,6 +370,40 @@ fresh `.next`: `lead-send-share` 1 of 1, `lead-contact-masking` 3 of 3,
 hit P2028 on the lead page, which #180 addresses); `redesign-mobile` skips
 without the demo workspace.
 
+**Merge of #180, #183, #184 and #181 (13 Oct).** `main` merged in three
+times as it moved (`6ced63d`, `bab4f40`, `6e2c0cc`). Resolved keeping both
+sides:
+
+- `LeadGrid.tsx`: the bulk bar has Assign, Change stage, Add task, Add tag,
+  Close out, Merge, Move to Data, Send template and Delete; the Send template
+  dialog renders once, outside the bar.
+- `sales/leads/page.tsx`, `sales/smart-views/page.tsx`: #183's grid stays
+  mounted with no rows, and gets both `canMoveToData` and `canMessage`.
+- The lead page keeps #180's two `withTx` groups; `leadShares` reads outside
+  them, beside the timeline. `timeline.ts` reads its six feeds in #180's one
+  `withTx`; the messages feed is no longer skipped without the inbox, since
+  `inboxReach` now gives such a role its own messages.
+- `PROJECT.md`: Sales 76, Real Estate 42, Lead Eagle 31 (counted), #181's
+  merge and import sentence and this entry's.
+
+`main` brought no migration (still 108). `tsc` clean; eslint no errors (the
+same 10 `no-explicit-any` warnings); prettier clean. The lead specs with
+#181's (`lead-send`, `share-page`, `bulk-template-send`,
+`lead-page-connections`, `lead-bulk-actions`, `lead-grid-pages`,
+`lead-timeline`, `lead-call-log`, `module-entitlement`, `lead-eagle-routes`,
+`workspace-nav`, `lead-merge`, `lead-import`, `provision-lead-work`) 671 of
+671 (`mu182b-vitest-target3`). `tests/sales` and `tests/permission`: 101
+files, 1,797 passed; `lead-eagle-reports` and `lead-timeline` stopped by a
+60 s `beforeAll` under load and pass alone, 14 of 14 (`mu182b-vitest-re3`).
+E2E, each on a fresh `.next`, on the final code: `lead-send-share` 1 of 1,
+`crm-lifecycle` 6 of 6, `lead-contact-masking` 3 of 3, `lead-bulk-actions` 8
+of 8, `lead-views-board` 5 of 5, `redesign-mobile` 3 of 3 (demo workspace
+seeded), `lead-merge-import` 2 of 2, `lead-call-log` 1 of 1 on its rerun (the
+first timed out at 20 s on the wizard's first password change, before any lead
+screen). Earlier in the merge, `lead-send-share` failed once with "Target page,
+context or browser has been closed" after the revoke step and passed on its
+three reruns.
+
 **Left open.**
 
 - Existing Lead Eagle workspaces: their administrator grants Communications
