@@ -14,7 +14,7 @@ Paths below are under `apps/web/`.
 | Sales | `sales/` | 75 | leads (spreadsheet import, close-out), contacts, accounts, opportunities, tasks, follow-ups; calls with AI coaching, analysis and audits; campaigns, inbox, forms, landing pages, social leads; dashboards, leadership (productivity, value, daily target); projects, listings, bookings, collections, commissions, proposals, portals |
 | HRMS | `people/` | 32 | employees, users, roles, departments; face check-in, attendance, shifts, roster, leave, overtime; payroll, payslips, WPS; recruitment, performance, documents, compliance |
 | Real Estate | `realty/` | 40 | the Sales property screens as a brokerage works them, plus Properties, allocation (data pool), events with QR passes, lead recycling, website forms and landing pages |
-| Lead Eagle | `lead-eagle/` | 29 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads, follow-ups, tasks, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle, Google Ads lead forms and any other sender through a signed Custom webhook (Admin → Integrations → Lead sources; any lead module), each with a Deliveries tab (outcome, Replay) and a field mapping (`/admin/lead-sources/{source}`), and a lead can be recorded as a Referral with its referrer. Every lead module also has QR Capture, Cold Data, Targets, website forms and landing pages (public `/f/{ws}/{key}` and `/l/{ws}/{slug}`; `/embed.js` frames a form on the brokerage's own site), and Lead Stages and Sources (the source and sub-source catalogue) under Administration → Settings |
+| Lead Eagle | `lead-eagle/` | 29 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads, follow-ups, tasks, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle, Google Ads lead forms any other sender through a signed Custom webhook, and the portals’ lead emails through Portal emails, posted by a mail service the workspace runs (Admin → Integrations → Lead sources; any lead module), each with a Deliveries tab (outcome, Replay) and a field mapping (`/admin/lead-sources/{source}`), and a lead can be recorded as a Referral with its referrer. A WhatsApp message from a number no lead holds, and a call from a number no lead or contact holds, become leads for distribution (switches on the WhatsApp Business and telephony cards: on by default in Lead Eagle, and for callers in every lead module). Every lead module also has QR Capture, Cold Data, Targets, website forms and landing pages (public `/f/{ws}/{key}` and `/l/{ws}/{slug}`; `/embed.js` frames a form on the brokerage's own site), and Lead Stages and Sources (the source and sub-source catalogue) under Administration → Settings |
 
 Outside the modules: `check-in` and `attendance` (every workspace), `admin/`
 (users, roles, work locations, settings, audit), `profile/`, and the platform
@@ -185,8 +185,9 @@ Waiting on the owner:
 - **Lead Eagle inside YOUHAN ONE** — every phase of the plan
   (`changes/2026-10-05-lead-eagle-plan.md`) is live: phase 1 since f89ae61,
   phases 2–6 since c46624f (8 Oct, #134 + #139). What waits on the owner:
-  partner credentials for the portals and Google Ads, opening sign-up, and a
-  real standalone database for the move tool, if one exists.
+  partner credentials for the portals and Google Ads (or, until then, a mail
+  service posting their lead emails to a Portal emails source), opening
+  sign-up, and a real standalone database for the move tool, if one exists.
 - **Self-serve sign-up** — built and closed: the platform owner decides whether
   to open it (console → Settings → Self-serve sign-up, trial days).
   Phase 2 is built: Google Ads lead forms work once connected; Property Finder,
