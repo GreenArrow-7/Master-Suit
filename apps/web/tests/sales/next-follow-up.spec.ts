@@ -407,6 +407,41 @@ describe('the write path recomputes, through the real routes', () => {
     await prisma.employeeTarget.delete({ where: { tenantId: T(), id: target.id } });
   });
 
+  // Both requests read completedAt null before either commits; only the one
+  // whose conditional update claims the completion counts.
+  it('two concurrent completions count once', async () => {
+    const target = await prisma.employeeTarget.create({
+      data: {
+        tenantId: T(),
+        userId: h.repA1.id,
+        metric: 'FOLLOWUPS_COMPLETED',
+        period: 'DAILY',
+        targetValue: 5,
+        periodStart: new Date(Date.now() - 3_600_000),
+        periodEnd: new Date(Date.now() + 3_600_000),
+      },
+    });
+    const leadId = await makeLead('complete-race');
+    const created = await post(
+      createFollowUp,
+      '/api/v1/follow-ups',
+      { leadId, title: 'Raced', dueAt: '2026-10-10T09:00:00Z' },
+      h.repA1.cookie,
+    );
+    const id = created.body.data?.id ?? created.body.id;
+
+    const answers = await Promise.all([
+      patch(patchFollowUp, at(id).path, { status: 'COMPLETED' }, h.repA1.cookie, at(id).params),
+      patch(patchFollowUp, at(id).path, { status: 'COMPLETED' }, h.repA1.cookie, at(id).params),
+    ]);
+    expect(answers.map((a) => a.status)).toEqual([200, 200]);
+    const progress = await prisma.targetProgress.findMany({ where: { tenantId: T(), targetId: target.id } });
+    expect(progress.reduce((sum, row) => sum + row.achieved, 0)).toBe(1);
+
+    await prisma.targetProgress.deleteMany({ where: { tenantId: T(), targetId: target.id } });
+    await prisma.employeeTarget.delete({ where: { tenantId: T(), id: target.id } });
+  });
+
   it('completing one of two falls back to the other', async () => {
     const leadId = await makeLead('complete-one');
     const first = await post(

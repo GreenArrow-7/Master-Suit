@@ -343,6 +343,23 @@ export async function reverseReceipt(input: ReverseReceiptInput) {
     await assertBookingInScope(tx, ctx, 'collections', 'CREATE', original.bookingId, 'Receipt');
     await lockBooking(tx, ctx.tenantId, original.bookingId);
 
+    // The replay before the business checks: after a full reversal nothing is
+    // left to reverse, and a retry of that request must get its answer, not 422.
+    const idem = input.requestKey
+      ? {
+          tenantId: ctx.tenantId,
+          operation: 'collections.receipt.reverse',
+          requestKey: input.requestKey,
+          actorUserId: ctx.actor.id,
+          scopeRef: original.id,
+          input: { receiptId: original.id, amount: amount.toFixed(2), reason: input.reason },
+        }
+      : null;
+    if (idem) {
+      const replay = await findReplay<{ id: string; reference: string }>(idem, tx);
+      if (replay) return { receipt: replay.result, replayed: true as const };
+    }
+
     if (original.kind !== 'RECEIPT' || original.status !== 'VERIFIED') {
       throw Conflict('Only a verified receipt can be reversed. Reject a pending one instead.');
     }
@@ -359,21 +376,6 @@ export async function reverseReceipt(input: ReverseReceiptInput) {
           message: `Only ${remaining.toFixed(2)} ${original.currency} of ${original.reference} is still reversible.`,
         },
       ]);
-    }
-
-    const idem = input.requestKey
-      ? {
-          tenantId: ctx.tenantId,
-          operation: 'collections.receipt.reverse',
-          requestKey: input.requestKey,
-          actorUserId: ctx.actor.id,
-          scopeRef: original.id,
-          input: { receiptId: original.id, amount: amount.toFixed(2), reason: input.reason },
-        }
-      : null;
-    if (idem) {
-      const replay = await findReplay<{ id: string; reference: string }>(idem, tx);
-      if (replay) return { receipt: replay.result, replayed: true as const };
     }
 
     const reference = await nextReference(tx, ctx.tenantId, 'RECEIPT');
