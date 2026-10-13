@@ -375,6 +375,38 @@ describe('the write path recomputes, through the real routes', () => {
     expect(await storedValue(leadId)).toBeNull();
   });
 
+  // Counted after the commit: inside the transaction the global client had no
+  // tenant pinned, RLS hid the target, and nothing was ever counted.
+  it('completing counts once toward the owner follow-up target', async () => {
+    const target = await prisma.employeeTarget.create({
+      data: {
+        tenantId: T(),
+        userId: h.repA1.id,
+        metric: 'FOLLOWUPS_COMPLETED',
+        period: 'DAILY',
+        targetValue: 5,
+        periodStart: new Date(Date.now() - 3_600_000),
+        periodEnd: new Date(Date.now() + 3_600_000),
+      },
+    });
+    const leadId = await makeLead('complete-target');
+    const created = await post(
+      createFollowUp,
+      '/api/v1/follow-ups',
+      { leadId, title: 'Counted', dueAt: '2026-10-10T09:00:00Z' },
+      h.repA1.cookie,
+    );
+    const id = created.body.data?.id ?? created.body.id;
+
+    await patch(patchFollowUp, at(id).path, { status: 'COMPLETED' }, h.repA1.cookie, at(id).params);
+    await patch(patchFollowUp, at(id).path, { status: 'COMPLETED' }, h.repA1.cookie, at(id).params);
+    const progress = await prisma.targetProgress.findMany({ where: { tenantId: T(), targetId: target.id } });
+    expect(progress.reduce((sum, row) => sum + row.achieved, 0)).toBe(1);
+
+    await prisma.targetProgress.deleteMany({ where: { tenantId: T(), targetId: target.id } });
+    await prisma.employeeTarget.delete({ where: { tenantId: T(), id: target.id } });
+  });
+
   it('completing one of two falls back to the other', async () => {
     const leadId = await makeLead('complete-one');
     const first = await post(

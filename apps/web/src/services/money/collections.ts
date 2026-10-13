@@ -372,7 +372,7 @@ export async function reverseReceipt(input: ReverseReceiptInput) {
         }
       : null;
     if (idem) {
-      const replay = await findReplay<{ id: string; reference: string }>(idem);
+      const replay = await findReplay<{ id: string; reference: string }>(idem, tx);
       if (replay) return { receipt: replay.result, replayed: true as const };
     }
 

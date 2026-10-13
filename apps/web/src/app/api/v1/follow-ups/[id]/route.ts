@@ -32,8 +32,8 @@ export const PATCH = route(
     body: patchBody,
     auditEvent: 'RECORD_UPDATED',
   },
-  async ({ ctx, params, body }) =>
-    withTx(ctx.tenantId, async (tx) => {
+  async ({ ctx, params, body }) => {
+    const { updated, completingNow } = await withTx(ctx.tenantId, async (tx) => {
       const followUp = await tx.followUpTask.findFirst({ where: { tenantId: ctx.tenantId, id: params.id } });
       if (!followUp) throw NotFound('Follow-up');
 
@@ -75,11 +75,17 @@ export const PATCH = route(
 
       for (const leadId of locked) await recomputeNextFollowUp(tx, ctx.tenantId, leadId);
 
-      // Counted on the transition only — completingNow is false for a repeat
-      // PATCH of an already-completed task, so it cannot double count. Credited
-      // to the task's owner: theirs is the target this work fulfils.
-      if (completingNow) await recordTargetProgress(ctx, updated.ownerId, 'FOLLOWUPS_COMPLETED');
+      return { updated, completingNow };
+    });
 
-      return updated;
-    }),
+    // Counted on the transition only — completingNow is false for a repeat
+    // PATCH of an already-completed task, so it cannot double count. Credited
+    // to the task's owner: theirs is the target this work fulfils. After the
+    // commit, like every other caller: it reads through the global client, which
+    // inside withTx has no tenant pinned, so RLS found no target and nothing
+    // was ever counted.
+    if (completingNow) await recordTargetProgress(ctx, updated.ownerId, 'FOLLOWUPS_COMPLETED');
+
+    return updated;
+  },
 );

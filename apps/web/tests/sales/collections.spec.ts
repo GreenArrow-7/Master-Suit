@@ -365,6 +365,25 @@ describe('duplicate submission and workspace boundary', () => {
     expect(tampered.status).toBe(409);
   });
 
+  // The reversal looks its key up inside its own transaction. Read through the
+  // global client there, RLS hid the recorded key and the retry answered 409.
+  it('a reversal retried with the same request key replays instead of conflicting', async () => {
+    const b = await sale();
+    const receiptId = await verifiedReceipt(b.id, '1000.00');
+    const input = {
+      ctx: recorderCtx,
+      receiptId,
+      amount: '10.00',
+      reason: 'Bank charge',
+      requestKey: `rev-${suffix}-${randomBytes(4).toString('hex')}`,
+    };
+    const first = await reverseReceipt(input);
+    const second = await reverseReceipt(input);
+    expect(second.replayed).toBe(true);
+    expect(second.receipt.id).toBe(first.receipt.id);
+    expect(await prisma.agencyFeeReceipt.count({ where: { tenantId, reversesId: receiptId } })).toBe(1);
+  });
+
   it('finance in another workspace can neither record against nor verify this booking', async () => {
     const b = await sale();
     const rec = await post(recordRoute, '/api/v1/collections/receipts', receiptBody(b.id, '10.00'), recorder.cookie);
