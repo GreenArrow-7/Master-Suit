@@ -13,6 +13,8 @@ import {
 } from '@/lib/security/fieldSecurity';
 import { findDuplicates } from './findDuplicates';
 import { assertLeadSource } from './leadSources';
+import { withSourceScore } from './scoring';
+import { customForCreate } from './customFields';
 import { normalizePhone } from './normalizePhone';
 import { nextReference } from '../shared/reference';
 import { enqueue } from '@/lib/queue';
@@ -125,6 +127,8 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
   // The catalogue entry it is attributed to: this workspace's, or not found.
   const sourceId = (input.sourceId as string | undefined) ?? null;
   if (sourceId) await assertLeadSource(prisma, ctx.tenantId, sourceId);
+  // The workspace's own fields checked by type (M4-13): a wrong one is a 422, not a failed insert.
+  const custom = await customForCreate(prisma, ctx.tenantId, input.custom ?? {});
 
   const lead = await withTx(ctx.tenantId, async (tx) => {
     const reference = await nextReference(tx, ctx.tenantId, 'LEAD');
@@ -145,7 +149,8 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
         city: (input.city as string) ?? null,
         source: (input.source as any) ?? 'MANUAL',
         sourceDetail: (input.sourceDetail as string) ?? null,
-        sourceId,
+        // The entry, and the points a lead from it starts with (M4-11).
+        ...(await withSourceScore(tx, ctx.tenantId, sourceId)),
         campaignName: (input.campaignName as string) ?? null,
         campaignId: (input.campaignId as string) ?? null,
         nationality: (input.nationality as string) ?? null,
@@ -156,7 +161,7 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
         assignedAt: ownerId ? new Date() : null,
         priority: (input.priority as any) ?? 'MEDIUM',
         tags: (input.tags as string[]) ?? [],
-        customData: (input.custom ?? {}) as any,
+        customData: custom.data as any,
         slaDueAt: stage.slaMinutes ? new Date(Date.now() + stage.slaMinutes * 60_000) : null,
         createdById: ctx.actor.id,
         updatedById: ctx.actor.id,
@@ -164,20 +169,8 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
     });
 
     // Normalized custom-field values; Lead.customData above is the read projection.
-    if (input.custom && Object.keys(input.custom).length) {
-      const defs = await tx.leadCustomFieldDefinition.findMany({
-        where: { tenantId: ctx.tenantId, objectType: 'LEAD', key: { in: Object.keys(input.custom) } },
-      });
-      for (const def of defs) {
-        await tx.leadCustomFieldValue.create({
-          data: {
-            tenantId: ctx.tenantId,
-            leadId: created.id,
-            definitionId: def.id,
-            ...columnFor(def.type, input.custom[def.key]),
-          },
-        });
-      }
+    for (const row of custom.rows) {
+      await tx.leadCustomFieldValue.create({ data: { tenantId: ctx.tenantId, leadId: created.id, ...row } });
     }
 
     await tx.leadStageHistory.create({
@@ -247,24 +240,4 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
   if (ownerId) await recordTargetProgress(ctx, ownerId, 'LEADS_ASSIGNED');
 
   return lead;
-}
-
-function columnFor(type: string, value: unknown) {
-  switch (type) {
-    case 'NUMBER':
-    case 'CURRENCY':
-    case 'PERCENTAGE':
-      return { valueNumber: value as any };
-    case 'CHECKBOX':
-      return { valueBool: Boolean(value) };
-    case 'DATE':
-    case 'DATETIME':
-      return { valueDate: new Date(value as string) };
-    case 'MULTI_SELECT':
-    case 'GEO_POINT':
-    case 'FORMULA':
-      return { valueJson: value as any };
-    default:
-      return { valueText: value == null ? null : String(value) };
-  }
 }

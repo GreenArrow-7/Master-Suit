@@ -637,6 +637,8 @@ model Tenant {
   proposalItems       ProposalItem[]
   leadPhones          LeadPhone[]
   leadSources         LeadSource[]
+  leadProjects        LeadProject[]
+  leadListings        LeadListing[]
   captureLinks        CaptureLink[]
   dataRecords         DataRecord[]
 
@@ -3412,10 +3414,13 @@ model Lead {
   tickets        Ticket[]
   submissions    FormSubmission[]
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  socialComments SocialComment[]
-  phones         LeadPhone[]
-  dataRecords    DataRecord[]
+  tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  socialComments   SocialComment[]
+  phones           LeadPhone[]
+  /// The projects and listings it asked about (M4-06).
+  projectInterests LeadProject[]
+  listingInterests LeadListing[]
+  dataRecords      DataRecord[]
 
   @@unique([tenantId, reference])
   @@index([tenantId, stageId, updatedAt(sort: Desc)])
@@ -3451,6 +3456,8 @@ model LeadSource {
   name      String
   isActive  Boolean  @default(true)
   position  Int      @default(0)
+  /// Lead scoring (M4-11): a new lead from this entry starts with this many points.
+  weight    Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -3481,6 +3488,40 @@ model LeadPhone {
 
   @@unique([leadId, normalized])
   @@index([tenantId, normalized])
+}
+
+/// A project a lead asked about (M4-06), the standalone's LeadProject. Projects
+/// are a shared book, so the link is the lead's: it is read and written under
+/// the lead's scope.
+model LeadProject {
+  tenantId    String
+  leadId      String
+  projectId   String
+  createdAt   DateTime @default(now())
+  createdById String?
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead    Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([leadId, projectId])
+  @@index([tenantId, projectId])
+}
+
+/// A listing a lead asked about (M4-06), alongside LeadProject.
+model LeadListing {
+  tenantId    String
+  leadId      String
+  listingId   String
+  createdAt   DateTime @default(now())
+  createdById String?
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead    Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@id([leadId, listingId])
+  @@index([tenantId, listingId])
 }
 
 /// A QR code's form: a short public page, `/c/{workspace}/{key}`, that creates
@@ -3661,6 +3702,8 @@ model LeadScoreHistory {
   tenantId   String
   leadId     String
   ruleId     String?
+  /// The activity whose type's points this move was, or took back on its deletion (M4-11).
+  activityId String?
   delta      Int
   scoreAfter Int
   reason     String?
@@ -6648,6 +6691,7 @@ model Project {
   listings    Listing[]
   siteVisits  SiteVisit[]
   bookings    Booking[]
+  interested  LeadProject[]
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -6967,6 +7011,7 @@ model Listing {
   permitExpiry  DateTime?
   publications  ListingPublication[]
   proposalItems ProposalItem[]
+  interested    LeadListing[]
 
   @@unique([tenantId, reference])
   /// The keyset order, matching the project catalogue.
@@ -7084,6 +7129,12 @@ model ClientRequirement {
 
   /// "I need to be in by March." Matched against a listing's availableFrom.
   possessionBy DateTime?
+  /// The kind within the type, as the client said it: "Duplex", "Hotel apartment" (M4-05).
+  subType      String?
+  /// Communities or areas, as typed: "Dubai Marina", "JLT" (M4-05). Recorded, not
+  /// matched: matching keys on micromarketIds.
+  /// ponytail: free text until a community registry exists; map onto micromarkets then.
+  locations    String[]    @default([])
   furnishing   Furnishing?
 
   notes   String?

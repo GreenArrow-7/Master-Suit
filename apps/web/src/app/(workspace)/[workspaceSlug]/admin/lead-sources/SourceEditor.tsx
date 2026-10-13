@@ -11,6 +11,8 @@ interface Entry {
   name: string;
   parentId: string | null;
   isActive: boolean;
+  /** The points a new lead from this entry starts with (M4-11). */
+  weight: number;
   /** Of the leads the viewer may see; null without `leads:VIEW`. */
   leads: number | null;
 }
@@ -67,7 +69,9 @@ function EntryRow({ entry, canEdit, heading }: { entry: Entry; canEdit: boolean;
   const { busy, run, note } = useRun();
   const [name, setName] = useState(entry.name);
   const [isActive, setIsActive] = useState(entry.isActive);
-  const dirty = name.trim() !== entry.name || isActive !== entry.isActive;
+  const [weight, setWeight] = useState(String(entry.weight));
+  const points = Math.min(100, Math.max(0, Math.round(Number(weight) || 0)));
+  const dirty = name.trim() !== entry.name || isActive !== entry.isActive || points !== entry.weight;
   const leads = entry.leads === null ? null : `${entry.leads} lead${entry.leads === 1 ? '' : 's'}`;
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -86,6 +90,23 @@ function EntryRow({ entry, canEdit, heading }: { entry: Entry; canEdit: boolean;
       {leads && <Badge tone="slate">{leads}</Badge>}
       {canEdit ? (
         <label style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
+          Starts at
+          <input
+            className="lf-input"
+            type="number"
+            min={0}
+            max={100}
+            aria-label={`Starting score for ${entry.name}`}
+            value={weight}
+            onChange={(e) => setWeight(e.target.value)}
+            style={{ width: 64 }}
+          />
+        </label>
+      ) : (
+        entry.weight > 0 && <Badge tone="slate">{`Starts at ${entry.weight}`}</Badge>
+      )}
+      {canEdit ? (
+        <label style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
           Offered on the form
         </label>
@@ -96,7 +117,9 @@ function EntryRow({ entry, canEdit, heading }: { entry: Entry; canEdit: boolean;
         <button
           className="lf-btn lf-btn--sm"
           disabled={busy || !dirty || !name.trim()}
-          onClick={() => run(() => send(`${API}?id=${entry.id}`, 'PATCH', { name: name.trim(), isActive }), 'Saved.')}
+          onClick={() =>
+            run(() => send(`${API}?id=${entry.id}`, 'PATCH', { name: name.trim(), isActive, weight: points }), 'Saved.')
+          }
         >
           Save
         </button>

@@ -76,6 +76,14 @@ export const patch = (
   params?: Record<string, string>,
 ) => send(handler, 'PATCH', path, as, body, params);
 
+export const put = (
+  handler: RouteHandler,
+  path: string,
+  body: Record<string, unknown>,
+  as?: As,
+  params?: Record<string, string>,
+) => send(handler, 'PUT', path, as, body, params);
+
 export const del = (handler: RouteHandler, path: string, as?: As, params?: Record<string, string>) =>
   send(handler, 'DELETE', path, as, undefined, params);
 

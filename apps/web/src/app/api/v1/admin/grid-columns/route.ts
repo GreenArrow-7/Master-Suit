@@ -3,20 +3,28 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Invalid } from '@/lib/errors';
 import { GRID_COLUMNS, resolveColumns, storedColumnsFor, type GridObject } from '@/lib/grid/columns';
+import { customColumns } from '@/services/leads/customFields';
 
 const OBJECTS = Object.keys(GRID_COLUMNS) as [GridObject, ...GridObject[]];
 
 const query = z.object({ object: z.enum(OBJECTS) }).strict();
+
+/** The lead grid also offers the workspace's custom fields (M4-13). */
+const extraFor = (tenantId: string, object: GridObject) =>
+  object === 'LEAD' ? customColumns(tenantId) : Promise.resolve([]);
 
 export const GET = route({ module: 'settings', action: 'VIEW', query }, async ({ ctx, query }) => {
   const setting = await prisma.organizationSetting.findUnique({
     where: { tenantId: ctx.tenantId },
     select: { gridColumns: true },
   });
+  const extra = await extraFor(ctx.tenantId, query.object);
   return {
     object: query.object,
-    catalogue: GRID_COLUMNS[query.object],
-    columns: resolveColumns(query.object, storedColumnsFor(setting?.gridColumns, query.object)).map((c) => c.key),
+    catalogue: [...GRID_COLUMNS[query.object], ...extra],
+    columns: resolveColumns(query.object, storedColumnsFor(setting?.gridColumns, query.object), extra).map(
+      (c) => c.key,
+    ),
   };
 });
 
@@ -31,7 +39,8 @@ const body = z
 export const PUT = route(
   { module: 'settings', action: 'MANAGE_CONFIGURATION', body, auditEvent: 'PERMISSION_CHANGED' },
   async ({ ctx, body }) => {
-    const catalogue = GRID_COLUMNS[body.object];
+    const extra = await extraFor(ctx.tenantId, body.object);
+    const catalogue = [...GRID_COLUMNS[body.object], ...extra];
     const known = new Set(catalogue.map((column) => column.key));
     const unknown = body.columns.filter((key) => !known.has(key));
     if (unknown.length > 0) {
@@ -61,6 +70,6 @@ export const PUT = route(
       data: { gridColumns: merged },
     });
 
-    return { object: body.object, columns: resolveColumns(body.object, deduped).map((c) => c.key) };
+    return { object: body.object, columns: resolveColumns(body.object, deduped, extra).map((c) => c.key) };
   },
 );
