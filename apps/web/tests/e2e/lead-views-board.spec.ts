@@ -6,7 +6,7 @@
  *   will not move it without the meeting's date and time, and the move books the
  *   meeting; a card's Move menu (the keyboard's and the phone's way) moves it
  *   into Dropped only with a reason, and into Pending with no dialog, at 390 px
- *   with no sideways page scroll;
+ *   with no sideways page scroll; the arrow keys on the menu move nothing;
  * - filters applied from the Filters panel are the URL; Save view keeps them
  *   under a name that reopens them, and Delete view removes it;
  * - ⌘K (Ctrl+K) on any screen searches the leads by a number typed in any
@@ -122,11 +122,27 @@ test.describe('Lead Eagle lead views', () => {
     const page = await context.newPage();
     await signIn(page);
     await page.goto(at('/lead-eagle/leads?layout=board'));
+    const card = page.locator('.lf-board__card', { hasText: name });
     const menu = page.getByLabel(`Move ${name}`);
     await expect(menu).toBeVisible({ timeout: 60_000 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 
-    await menu.selectOption({ label: 'Dropped' });
+    // Looking through the menu with the arrow keys moves nothing.
+    const patches: string[] = [];
+    page.on('request', (request) => {
+      if (request.method() === 'PATCH') patches.push(request.url());
+    });
+    await menu.focus();
+    for (const key of ['ArrowDown', 'ArrowDown', 'ArrowUp']) await page.keyboard.press(key);
+    await page.waitForTimeout(1_000);
+    expect(patches).toEqual([]);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(await stageOf()).toBe('meeting_scheduled');
+
+    // Enter opens it; each stage is a button, and Enter on one moves the card.
+    await page.keyboard.press('Enter');
+    await card.getByRole('button', { name: 'Dropped', exact: true }).focus();
+    await page.keyboard.press('Enter');
     const dialog = page.getByRole('dialog', { name: 'Move to Dropped' });
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Move to Dropped' }).click();
@@ -137,8 +153,8 @@ test.describe('Lead Eagle lead views', () => {
     await expect(dialog).toHaveCount(0, { timeout: 30_000 });
     await expect.poll(stageOf).toBe('dropped');
 
-    await expect(page.getByLabel(`Move ${name}`)).toBeEnabled({ timeout: 30_000 });
-    await page.getByLabel(`Move ${name}`).selectOption({ label: 'Pending' });
+    await page.getByRole('group', { name: 'Exits' }).getByLabel(`Move ${name}`).click({ timeout: 30_000 });
+    await card.getByRole('button', { name: 'Pending', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect.poll(stageOf).toBe('pending');
     await context.close();

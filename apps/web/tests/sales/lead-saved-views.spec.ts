@@ -29,6 +29,7 @@ import LeadGrid, { type LeadRow } from '@/app/(workspace)/[workspaceSlug]/sales/
 import LeadFilters from '@/app/(workspace)/[workspaceSlug]/sales/leads/LeadFilters';
 import LeadViews from '@/app/(workspace)/[workspaceSlug]/sales/leads/LeadViews';
 import { ensureLeadSources } from '@/services/leads/leadSources';
+import { todayKey } from '@/services/targets/dailyBoard';
 import { createWorkspaceUser, grantPermissions, type Grants } from '../helpers/fixtures';
 import { createSessionToken } from '../helpers/session';
 import { del, post } from '../helpers/request';
@@ -78,6 +79,13 @@ async function page(cookie: string, params: Record<string, string>) {
 }
 const names = (ids: string[]) =>
   ids.map((id) => Object.entries(leads).find(([, value]) => value === id)?.[0] ?? id).sort();
+
+/** The CSV export of `/leads?…` with these params, as `cookie`. */
+const exportCsv = (cookie: string, params: Record<string, string>) =>
+  exportLeads(
+    new Request(`http://localhost/api/v1/leads/export?${new URLSearchParams(params)}`, { headers: { cookie } }),
+    { params: Promise.resolve({}) },
+  );
 
 /** A module-relative `/leads?…` link as the page's searchParams. */
 const paramsOf = (href: string) => Object.fromEntries(new URL(href, 'http://x').searchParams);
@@ -182,9 +190,23 @@ describe('the filter chips combine, in the URL, inside the lead scope', () => {
   });
 
   it('the updated date is its own choice', async () => {
-    const future = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
-    expect((await page(people.admin.cookie, { date: 'updated', from: future })).rows).toEqual([]);
-    expect((await page(people.admin.cookie, { date: 'created', to: '2026-09-30' })).rows).toEqual([]);
+    // Every lead here was created on 1 or 2 October and last updated today.
+    const today = todayKey('Asia/Dubai');
+    const everyone = Object.keys(leads).sort();
+    expect(names((await page(people.admin.cookie, { date: 'updated', from: today })).rows)).toEqual(everyone);
+    expect((await page(people.admin.cookie, { from: today })).rows).toEqual([]);
+    expect((await page(people.admin.cookie, { date: 'updated', to: '2026-10-02' })).rows).toEqual([]);
+    expect(names((await page(people.admin.cookie, { to: '2026-10-02' })).rows)).toEqual(everyone);
+  });
+
+  it('a date that is no day drops itself from the page, and the export refuses it', async () => {
+    const everyone = Object.keys(leads).sort();
+    for (const bad of ['2026-00-10', '2026-02-31', '0000-01-01']) {
+      const shown = await page(people.admin.cookie, { from: bad, to: bad });
+      expect(names(shown.rows)).toEqual(everyone);
+      expect(shown.filters!.params).toEqual({});
+      expect((await exportCsv(people.admin.cookie, { from: bad })).status).toBe(422);
+    }
   });
 
   it('a source takes its sub-sources with it; a sub-source is only itself', async () => {
@@ -226,6 +248,30 @@ describe('the filter chips combine, in the URL, inside the lead scope', () => {
     const csv = await res.text();
     for (const name of ['match', 'marina', 'website']) expect(csv).toContain(`${name} ${suffix}`);
     for (const name of ['lateFirst', 'newStage', 'otherOwner']) expect(csv).not.toContain(`${name} ${suffix}`);
+  });
+
+  it('the CSV export’s audit row says what was asked, and not what was typed', async () => {
+    const res = await exportCsv(people.admin.cookie, { sort: 'name', stage: stages.meeting, q: suffix });
+    const csv = await res.text();
+    for (const name of Object.keys(leads)) expect(csv.includes(`${name} ${suffix}`)).toBe(name !== 'newStage');
+    const row = await prisma.auditLog.findFirstOrThrow({
+      where: { tenantId, event: 'EXPORT_REQUESTED', actorUserId: people.admin.id },
+      orderBy: { occurredAt: 'desc' },
+      select: { metadata: true },
+    });
+    expect(row.metadata).toMatchObject({ rows: 6, sort: 'name', stage: stages.meeting, searched: true });
+    expect(JSON.stringify(row.metadata)).not.toContain(suffix);
+  });
+
+  it('the CSV export answers the follow-up filters: overdue_mine is the viewer’s own', async () => {
+    const csvOf = async (cookie: string, filter: string) => (await exportCsv(cookie, { filter })).text();
+    const mine = await csvOf(people.admin.cookie, 'overdue_mine');
+    for (const name of Object.keys(leads)) expect(mine).not.toContain(`${name} ${suffix}`);
+    const team = await csvOf(people.admin.cookie, 'overdue');
+    for (const name of Object.keys(leads))
+      expect(team.includes(`${name} ${suffix}`)).toBe(['match', 'website'].includes(name));
+    const agents = await csvOf(people.agent.cookie, 'overdue_mine');
+    for (const name of ['match', 'website']) expect(agents).toContain(`${name} ${suffix}`);
   });
 });
 
@@ -294,6 +340,10 @@ describe('a saved view is a person’s own', () => {
       200,
     );
     expect(await prisma.smartView.count({ where: { tenantId, id: viewId } })).toBe(0);
+    // Once: deleting it again (a double click, a retry) is a missing view, and audits nothing.
+    expect((await del(deleteView, `/api/v1/leads/views/${viewId}`, people.agent.cookie, { id: viewId })).status).toBe(
+      404,
+    );
     const { views } = await page(people.agent.cookie, {});
     expect((views!.views as { id: string }[]).map((view) => view.id)).not.toContain(viewId);
     const trail = await prisma.auditLog.findMany({
@@ -307,6 +357,12 @@ describe('a saved view is a person’s own', () => {
   it('a view needs a name', async () => {
     const res = await post(saveView, '/api/v1/leads/views', { name: ' ', params: {} }, people.agent.cookie);
     expect(res.status).toBe(422);
+  });
+
+  it('a role that may not read leads keeps no view', async () => {
+    const tasker = await member('tasker', [['tasks', 'VIEW']], 'OWN');
+    const res = await post(saveView, '/api/v1/leads/views', { name: 'Mine', params: {} }, tasker.cookie);
+    expect(res.status).toBe(403);
   });
 
   it('a view may show the workspace’s custom fields as columns (M4-13)', async () => {
@@ -325,6 +381,27 @@ describe('a saved view is a person’s own', () => {
       'reference',
       'fullName',
       'cf:budget',
+    ]);
+  });
+
+  it('a view keeps as many columns as it may save (30 keys of 60 characters)', async () => {
+    const keys = Array.from({ length: 30 }, (_, i) => `cf:wide_${String(i).padStart(2, '0')}_${'x'.repeat(49)}`);
+    expect(keys.every((key) => key.length === 60)).toBe(true);
+    await prisma.leadCustomFieldDefinition.createMany({
+      data: keys.map((key) => ({ tenantId, key: key.slice(3), label: key.slice(3, 10), type: 'TEXT' as const })),
+    });
+    const saved = await post(
+      saveView,
+      '/api/v1/leads/views',
+      { name: 'Wide', params: {}, columns: keys },
+      people.agent.cookie,
+    );
+    expect(saved.status).toBe(200);
+    const reopened = await page(people.agent.cookie, paramsOf(saved.body.href));
+    expect((reopened.grid!.columns as { key: string }[]).map((column) => column.key)).toEqual([
+      'reference',
+      'fullName',
+      ...keys,
     ]);
   });
 });

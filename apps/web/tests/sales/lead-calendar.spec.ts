@@ -10,13 +10,14 @@ import { randomBytes } from 'node:crypto';
 import type { ReactElement } from 'react';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-const cookieJar = vi.hoisted(() => ({ value: '' }));
+const cookieJar = vi.hoisted(() => ({ value: '', path: '/' }));
 vi.mock('next/headers', () => ({
-  headers: async () => new Headers({ cookie: cookieJar.value, 'x-pathname': '/' }),
+  headers: async () => new Headers({ cookie: cookieJar.value, 'x-pathname': cookieJar.path }),
   cookies: async () => ({ get: () => undefined }),
 }));
 
 import { prisma } from '@/lib/db';
+import { invalidateEntitlements } from '@/lib/security/entitlements';
 import CalendarPage from '@/app/(workspace)/[workspaceSlug]/sales/calendar/page';
 import CalendarView from '@/app/(workspace)/[workspaceSlug]/sales/calendar/CalendarView';
 import { createWorkspaceUser, grantPermissions, type Grants } from '../helpers/fixtures';
@@ -24,15 +25,17 @@ import { createSessionToken } from '../helpers/session';
 
 const suffix = randomBytes(4).toString('hex');
 let tenantId = '';
-const people: Record<'admin' | 'agent', { id: string; cookie: string }> = {
+const people: Record<'admin' | 'agent' | 'tasker', { id: string; cookie: string }> = {
   admin: { id: '', cookie: '' },
   agent: { id: '', cookie: '' },
+  tasker: { id: '', cookie: '' },
 };
 const ids: Record<string, string> = {};
 
 interface Item {
   id: string;
   kind: string;
+  label: string;
   href?: string;
   day: string;
 }
@@ -58,10 +61,12 @@ const elements = (node: unknown): ReactElement<Record<string, unknown>>[] => {
   return [el, ...elements(el.props.children)];
 };
 
-async function drawn(cookie: string, month: string): Promise<Item[]> {
+async function page(cookie: string, month: string) {
   cookieJar.value = cookie;
-  const tree = await CalendarPage({ searchParams: Promise.resolve({ month }) });
-  return elements(tree).find((el) => el.type === CalendarView)!.props.items as Item[];
+  return elements(await CalendarPage({ searchParams: Promise.resolve({ month }) }));
+}
+async function drawn(cookie: string, month: string): Promise<Item[]> {
+  return (await page(cookie, month)).find((el) => el.type === CalendarView)!.props.items as Item[];
 }
 
 beforeAll(async () => {
@@ -85,6 +90,8 @@ beforeAll(async () => {
   ];
   people.admin = await member('admin', grants, 'ORGANIZATION');
   people.agent = await member('agent', grants, 'OWN');
+  // Tasks at every scope, and no grant on leads.
+  people.tasker = await member('tasker', [['tasks', 'VIEW']], 'ORGANIZATION');
 
   const stage = await prisma.leadStage.create({
     data: { tenantId, key: 'new', name: 'New', position: 0, isDefault: true },
@@ -135,6 +142,46 @@ beforeAll(async () => {
       })
     ).id;
   }
+  ids.lead = lead.id;
+  ids['fup-tasker'] = (
+    await prisma.followUpTask.create({
+      data: {
+        tenantId,
+        ownerId: people.tasker.id,
+        leadId: lead.id,
+        title: 'Chase',
+        dueAt: new Date('2026-12-11T08:00:00Z'),
+      },
+    })
+  ).id;
+  // Visits that will not happen, and a meeting with the client (no project).
+  for (const status of ['CANCELLED', 'REJECTED'] as const) {
+    ids[`visit-${status}`] = (
+      await prisma.siteVisit.create({
+        data: {
+          tenantId,
+          ownerId: people.admin.id,
+          leadId: lead.id,
+          projectId: project.id,
+          status,
+          decidedById: people.admin.id,
+          scheduledAt: new Date('2026-12-13T12:30:00Z'),
+        },
+      })
+    ).id;
+  }
+  ids.meeting = (
+    await prisma.siteVisit.create({
+      data: {
+        tenantId,
+        kind: 'CLIENT_MEETING',
+        ownerId: people.admin.id,
+        leadId: lead.id,
+        address: 'Café on the Marina',
+        scheduledAt: new Date('2026-12-14T08:00:00Z'),
+      },
+    })
+  ).id;
   ids.event = (
     await prisma.event.create({
       data: {
@@ -187,5 +234,61 @@ describe('the calendar in a Lead-Eagle-only workspace', () => {
     expect(december.find((item) => item.id === `visit-${ids['visit-agent']}`)?.day).toBe('2026-12-12');
     const november = (await drawn(people.admin.cookie, '2026-11')).map((item) => item.id);
     expect(november).not.toContain(`task-${ids['task-agent']}`);
+  });
+
+  it('leaves off visits that will not happen, and calls a meeting a meeting', async () => {
+    const items = await drawn(people.admin.cookie, '2026-12');
+    const shown = items.map((item) => item.id);
+    expect(shown).not.toContain(`visit-${ids['visit-CANCELLED']}`);
+    expect(shown).not.toContain(`visit-${ids['visit-REJECTED']}`);
+    expect(items.find((item) => item.id === `visit-${ids.meeting}`)?.label).toBe('Meeting');
+    expect(items.find((item) => item.id === `visit-${ids['visit-admin']}`)?.label).toBe(
+      `Site visit · Marina ${suffix}`,
+    );
+  });
+
+  it('without leads:VIEW, the follow-ups are the caller’s own', async () => {
+    const shown = (await drawn(people.tasker.cookie, '2026-12')).filter((item) => item.kind === 'follow-up');
+    expect(shown.map((item) => item.id)).toEqual([`fup-${ids['fup-tasker']}`]);
+  });
+
+  it('a month past the cap draws the first 300 of a kind, by date, and says so', async () => {
+    // Inserted latest first, so a read without an order returns the wrong end of the month.
+    await prisma.followUpTask.createMany({
+      data: Array.from({ length: 301 }, (_, i) => ({
+        tenantId,
+        ownerId: people.admin.id,
+        leadId: ids.lead!,
+        title: `Bulk ${300 - i}`,
+        dueAt: new Date(Date.UTC(2027, 0, 2, 0, 300 - i)),
+      })),
+    });
+    const tree = await page(people.admin.cookie, '2027-01');
+    const labels = (tree.find((el) => el.type === CalendarView)!.props.items as Item[])
+      .filter((item) => item.kind === 'follow-up')
+      .map((item) => item.label);
+    expect(labels).toHaveLength(300);
+    expect(labels).toContain('Bulk 0');
+    expect(labels).not.toContain('Bulk 300');
+    const text = (el: ReactElement<Record<string, unknown>>) => [el.props.children].flat().join('');
+    expect(tree.some((el) => text(el).includes('first 300'))).toBe(true);
+    expect((await page(people.admin.cookie, '2026-12')).some((el) => text(el).includes('first 300'))).toBe(false);
+  });
+
+  it('events show where the plan has them, and not under Lead Eagle, which has no Events screen', async () => {
+    await prisma.moduleEntitlement.create({ data: { tenantId, module: 'REAL_ESTATE', state: 'ACTIVE' } });
+    await invalidateEntitlements(tenantId);
+    try {
+      cookieJar.path = `/calendar-${suffix}/realty/calendar`;
+      expect(
+        (await drawn(people.admin.cookie, '2026-12')).find((item) => item.id === `event-${ids.event}`),
+      ).toMatchObject({ kind: 'event', href: `/events/${ids.event}` });
+      cookieJar.path = `/calendar-${suffix}/lead-eagle/calendar`;
+      expect((await drawn(people.admin.cookie, '2026-12')).some((item) => item.kind === 'event')).toBe(false);
+    } finally {
+      cookieJar.path = '/';
+      await prisma.moduleEntitlement.deleteMany({ where: { tenantId, module: 'REAL_ESTATE' } });
+      await invalidateEntitlements(tenantId);
+    }
   });
 });

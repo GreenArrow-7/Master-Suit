@@ -120,23 +120,29 @@ export default function LeadBoard({
             <span className="lf-board__meta">
               {card.reference} · {card.owner ?? 'Unassigned'}
             </span>
+            {/* A disclosure of stage buttons, not a <select>: a closed select
+                changes on an arrow key, and a change here is a move. */}
             {canEdit && (
-              <select
-                className="lf-input lf-board__move"
-                aria-label={`Move ${card.fullName}`}
-                value=""
-                disabled={busy}
-                onChange={(event) => move(card, stage.id, event.target.value)}
-              >
-                <option value="">Move to…</option>
-                {columns
-                  .filter((other) => other.stage.id !== stage.id)
-                  .map((other) => (
-                    <option key={other.stage.id} value={other.stage.id}>
-                      {other.stage.name}
-                    </option>
-                  ))}
-              </select>
+              <details className="lf-board__move">
+                <summary className="lf-btn lf-btn--secondary lf-btn--sm" aria-label={`Move ${card.fullName}`}>
+                  Move to…
+                </summary>
+                <div className="lf-board__stages">
+                  {columns
+                    .filter((other) => other.stage.id !== stage.id)
+                    .map((other) => (
+                      <button
+                        key={other.stage.id}
+                        type="button"
+                        className="lf-menu__item"
+                        disabled={busy}
+                        onClick={() => move(card, stage.id, other.stage.id)}
+                      >
+                        {other.stage.name}
+                      </button>
+                    ))}
+                </div>
+              </details>
             )}
           </li>
         ))}

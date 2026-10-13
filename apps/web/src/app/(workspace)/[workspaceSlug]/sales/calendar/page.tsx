@@ -1,3 +1,4 @@
+import { headers } from 'next/headers';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { mergeWhere } from '@/lib/api/where';
 import { visibilityWhere } from '@/lib/security/visibility';
@@ -10,6 +11,9 @@ import { dayBounds, todayKey } from '@/services/targets/dailyBoard';
 import CalendarView from './CalendarView';
 
 export const metadata = { title: 'Calendar' };
+
+/** Entries of one kind a month draws; past it the page says so. */
+const CAP = 300;
 
 /** `?month=YYYY-MM`, clamped to a sane window around `today` (the workspace's YYYY-MM-DD). */
 function parseMonth(raw: string | undefined, today: string): { year: number; month: number } {
@@ -52,12 +56,15 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
    * entries. A missing permission should subtract a layer, not the page.
    * Follow-ups are read as the Follow-ups list reads them (`workListScope`),
    * and without `leads:VIEW` only the caller's own; events only where the plan
-   * has them (Sales or Real Estate: Lead Eagle has no Events screen).
+   * has them (Sales or Real Estate), and not under /lead-eagle/, which has no
+   * Events screen for their links to open.
    */
   const canSeeActivities = can(ctx, 'activities', 'VIEW');
   const canSeeCalls = can(ctx, 'calls', 'VIEW');
   const canSeeVisits = can(ctx, 'visits', 'VIEW');
-  const canSeeEvents = can(ctx, 'events', 'VIEW') && (await hasAnyModuleEntitlement(ctx.tenantId, SALES_OR_REALTY));
+  const underLeadEagle = (await headers()).get('x-pathname')?.split('/')[2] === 'lead-eagle';
+  const canSeeEvents =
+    can(ctx, 'events', 'VIEW') && !underLeadEagle && (await hasAnyModuleEntitlement(ctx.tenantId, SALES_OR_REALTY));
   const [taskScope, activityScope, callScope, followUpScope, visitScope] = await Promise.all([
     visibilityWhere(ctx, 'tasks', 'VIEW', { ownerField: 'ownerId' }),
     canSeeActivities ? visibilityWhere(ctx, 'activities', 'VIEW', { ownerField: 'ownerId' }) : null,
@@ -69,19 +76,22 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const [tasks, activities, followUps, calls, events, visits] = await Promise.all([
     prisma.task.findMany({
       where: { ...taskScope, deletedAt: null, dueAt: inMonth },
-      take: 300,
+      orderBy: [{ dueAt: 'asc' }, { id: 'asc' }],
+      take: CAP,
       select: { id: true, title: true, dueAt: true, status: true },
     }),
     activityScope
       ? prisma.activity.findMany({
           where: { ...activityScope, deletedAt: null, occurredAt: inMonth },
-          take: 300,
+          orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+          take: CAP,
           select: { id: true, occurredAt: true, leadId: true, type: { select: { name: true } } },
         })
       : [],
     prisma.followUpTask.findMany({
       where: mergeWhere(followUpScope, { deletedAt: null, dueAt: inMonth }),
-      take: 300,
+      orderBy: [{ dueAt: 'asc' }, { id: 'asc' }],
+      take: CAP,
       select: { id: true, title: true, dueAt: true, status: true, ownerId: true },
     }),
     callScope
@@ -93,7 +103,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             deletedAt: null,
             OR: [{ startedAt: inMonth }, { startedAt: null, createdAt: inMonth }],
           }),
-          take: 300,
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          take: CAP,
           select: { id: true, startedAt: true, createdAt: true, direction: true, status: true },
         })
       : [],
@@ -106,15 +117,22 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             startAt: inMonth,
             ...(await eventListScope(ctx)),
           },
-          take: 300,
+          orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
+          take: CAP,
           select: { id: true, title: true, startAt: true },
         })
       : [],
     visitScope
       ? prisma.siteVisit.findMany({
-          where: mergeWhere(visitScope, { deletedAt: null, scheduledAt: inMonth }),
-          take: 300,
-          select: { id: true, scheduledAt: true, status: true, project: { select: { name: true } } },
+          // A refused or called-off visit is not on anyone's day.
+          where: mergeWhere(visitScope, {
+            deletedAt: null,
+            scheduledAt: inMonth,
+            status: { notIn: ['REJECTED', 'CANCELLED'] },
+          }),
+          orderBy: [{ scheduledAt: 'asc' }, { id: 'asc' }],
+          take: CAP,
+          select: { id: true, kind: true, scheduledAt: true, status: true, project: { select: { name: true } } },
         })
       : [],
   ]);
@@ -162,7 +180,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     ...visits.map((v) => ({
       id: `visit-${v.id}`,
       ...at(v.scheduledAt),
-      label: v.project ? `Site visit · ${v.project.name}` : 'Site visit',
+      label: v.kind === 'CLIENT_MEETING' ? 'Meeting' : v.project ? `Site visit · ${v.project.name}` : 'Site visit',
       kind: 'visit' as const,
       completed: v.status === 'COMPLETED',
       href: `/site-visits/${v.id}`,
@@ -170,6 +188,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   ];
 
   const isCurrentMonth = key === today.slice(0, 7);
+  // ponytail: a cap per kind, not paging; a month this full needs a day view.
+  const capped = [tasks, activities, followUps, calls, events, visits].some((list) => list.length === CAP);
 
   return (
     <>
@@ -180,6 +200,11 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         <p style={{ margin: '2px 0 0', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
           Tasks, follow-ups, site visits, calls{canSeeEvents ? ', events' : ''} and activities
         </p>
+        {capped && (
+          <p role="note" style={{ margin: '4px 0 0', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
+            {`A busy month: each kind shows its first ${CAP}, by date.`}
+          </p>
+        )}
       </header>
       <CalendarView
         items={items}

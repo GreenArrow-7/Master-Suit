@@ -20,6 +20,9 @@ vi.mock('next/headers', () => ({
 }));
 
 import { prisma } from '@/lib/db';
+import { executeTool } from '@/lib/ai/assistant/tools';
+import type { PermissionMap } from '@/lib/security/rbac';
+import { buildActor, buildCtx } from '../helpers/ctx';
 import { GET as listLeads } from '@/app/api/v1/leads/route';
 import { GET as exportLeads } from '@/app/api/v1/leads/export/route';
 import LeadsPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/page';
@@ -36,6 +39,7 @@ const MAIN = `+97155${tail}`; // the first lead's main number, normalised
 const local = (n: string) => `0${n.slice(4, 6)} ${n.slice(6, 9)} ${n.slice(9)}`; // "050 123 4567"
 
 let tenantId = '';
+let adminId = '';
 const cookies: Record<'admin' | 'masked' | 'rep', string> = { admin: '', masked: '', rep: '' };
 const ids: Record<'main' | 'other' | 'repOwn', string> = { main: '', other: '', repOwn: '' };
 
@@ -83,6 +87,7 @@ beforeAll(async () => {
   const masked = await member('masked', reads);
   const rep = await member('rep', [...reads, ['leads', 'VIEW_SENSITIVE_FIELDS']], 'OWN');
   cookies.admin = admin.cookie;
+  adminId = admin.id;
   cookies.masked = masked.cookie;
   cookies.rep = rep.cookie;
   // The grid shows the phone only where the workspace chose it.
@@ -168,6 +173,21 @@ describe('the same search behind the list API and the export', () => {
     expect(csv).toContain(`Other Number ${suffix}`);
     expect(csv).not.toContain(`Main Number ${suffix}`);
   });
+
+  it('the assistant’s lead search finds it by its other number too', async () => {
+    const ctx = buildCtx(
+      buildActor({
+        id: adminId,
+        tenantId,
+        permissions: new Map([
+          ['leads:VIEW', 'ORGANIZATION'],
+          ['leads:VIEW_SENSITIVE_FIELDS', 'ORGANIZATION'],
+        ]) as PermissionMap,
+      }),
+    );
+    const res = await executeTool(ctx, 'searchLeads', { q: local(OTHER) });
+    expect((res.data as { leads: { id: string }[] }).leads.map((lead) => lead.id)).toEqual([ids.other]);
+  });
 });
 
 describe('masked numbers and scope', () => {
@@ -177,7 +197,9 @@ describe('masked numbers and scope', () => {
     expect(rows[0]!.phone).toContain('•');
     const mainRows = await listed(cookies.masked, MAIN);
     expect(mainRows.map((row) => row.id)).toEqual([ids.main]);
-    expect(mainRows[0]!.phone).not.toContain(MAIN.slice(4, 9));
+    // Stored as 055-…-…: masked, only its last two digits show.
+    expect(mainRows[0]!.phone).toContain('•');
+    expect(mainRows[0]!.phone).not.toContain(MAIN.slice(-4));
   });
 
   it('a masked role never finds a lead by a fragment of a number', async () => {

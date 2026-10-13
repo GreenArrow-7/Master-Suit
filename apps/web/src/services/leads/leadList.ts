@@ -11,7 +11,11 @@ import { OPEN_LEADS_WHERE } from './closeOut';
 import { leadSearch } from './createLead';
 import { obligationAccess, obligationWhere } from './nextFollowUp';
 
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/** A real calendar day: not "2026-02-31", nor "2026-00-10", on which `dayBounds` throws. */
+const day = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((v) => v >= '1000' && !Number.isNaN(Date.parse(v)) && new Date(v).toISOString().startsWith(v));
 
 /**
  * What the lead grid, its board and its CSV export read from the URL (M4-19,
@@ -31,7 +35,8 @@ export const leadListParams = z
     from: day,
     to: day,
     sort: z.enum(['updated', 'created', 'score', 'name']),
-    cols: z.string().max(400),
+    // As many as a saved view keeps: 30 keys of up to 60 characters (POST /api/v1/leads/views).
+    cols: z.string().max(30 * 61),
     layout: z.enum(['list', 'board']),
   })
   .partial();

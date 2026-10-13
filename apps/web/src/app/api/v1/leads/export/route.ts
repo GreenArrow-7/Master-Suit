@@ -93,6 +93,9 @@ export const GET = route(
       async pull(controller) {
         const page = await prismaRead.lead.findMany({
           where,
+          // By id whatever the grid's sort: the cursor walks a key no edit
+          // changes, where an updatedAt walk would skip or repeat a lead edited
+          // while the file streams.
           orderBy: { id: 'asc' },
           // The last page is trimmed to land exactly on the cap rather than
           // overshooting it by up to PAGE-1 rows.
@@ -122,12 +125,17 @@ export const GET = route(
           // system — including `truncated`, because a caller who received a capped
           // file and a reviewer reading this row must both be able to tell that
           // the export is not the whole answer.
+          // What was asked for, so a narrowed file reads as one; whether it was
+          // searched, not what was typed (a phone number stays out of the trail).
+          const { q, ...asked } = params;
           await audit(ctx, {
             event: 'EXPORT_REQUESTED',
             objectType: 'leads',
             metadata: {
               rows: exported,
+              ...asked,
               filter: params.filter ?? null,
+              searched: Boolean(q),
               truncated: exported >= MAX_ROWS,
               ...(exported >= MAX_ROWS ? { limit: MAX_ROWS } : {}),
             },

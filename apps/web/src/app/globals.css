@@ -5409,9 +5409,21 @@ a.lf-kpi:hover {
   font-size: var(--lf-text-xs);
   color: var(--lf-ink-3);
 }
-.lf-board__move.lf-input {
-  height: 32px;
-  font-size: var(--lf-text-xs);
+.lf-board__move > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.lf-board__move > summary::-webkit-details-marker {
+  display: none;
+}
+.lf-board__stages {
+  display: flex;
+  flex-direction: column;
+  margin-top: 4px;
+  padding: 4px;
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius-sm);
+  background: var(--lf-surface);
 }
 .lf-board__more {
   display: inline-block;
@@ -5422,8 +5434,9 @@ a.lf-kpi:hover {
   .lf-board__col {
     flex-basis: min(78vw, 264px);
   }
-  .lf-board__move.lf-input {
-    height: 40px;
+  .lf-board__move > summary,
+  .lf-board__stages .lf-menu__item {
+    min-height: 40px;
   }
 }
 

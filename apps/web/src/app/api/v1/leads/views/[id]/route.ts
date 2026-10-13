@@ -14,7 +14,14 @@ export const DELETE = route(
   async ({ ctx, params }) =>
     withTx(ctx.tenantId, async (tx) => {
       const { count } = await tx.smartView.updateMany({
-        where: { tenantId: ctx.tenantId, id: params.id, objectType: LEAD_LIST_VIEW, ownerId: ctx.actor.id },
+        // deletedAt by hand: the soft-delete guard adds it to reads only, and a second DELETE is a missing view.
+        where: {
+          tenantId: ctx.tenantId,
+          id: params.id,
+          objectType: LEAD_LIST_VIEW,
+          ownerId: ctx.actor.id,
+          deletedAt: null,
+        },
         data: { deletedAt: new Date(), updatedById: ctx.actor.id },
       });
       if (count === 0) throw NotFound('View');
