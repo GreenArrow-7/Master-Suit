@@ -29,7 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
-| 2026-10-13 | [A Lead Eagle workspace starts with its own pipeline; moving a lead to a visit or a meeting books it](2026-10-12-lead-eagle-pipeline-stages.md) | - | Lead Eagle, pipeline |
+| 2026-10-13 | [A Lead Eagle workspace starts with its own pipeline; moving a lead to a visit or a meeting books it](2026-10-12-lead-eagle-pipeline-stages.md) | #174 | Lead Eagle, pipeline |
 | 2026-10-12 | [Cold data follows the lead scope; a cold call is a logged call that counts toward the daily target and the check-out gate](2026-10-12-cold-data-scope-calls.md) | #171 | Lead Eagle, cold data, targets |
 | 2026-10-12 | [Lead Eagle gets website forms, landing pages, an embed snippet and a Referral source](2026-10-12-intake-forms-landing-embed.md) | #170 | Lead Eagle, lead intake |
 | 2026-10-12 | [Lead record fields: WhatsApp on the main number, sources and sub-sources, nationality, a second owner, tags, a duplicate check on edit](2026-10-12-lead-record-fields.md) | #169 | Lead Eagle, leads |
