@@ -10,6 +10,8 @@ import { telephonyProvider } from '@/lib/integrations/telephony';
 import { TERMINAL_EVENTS, type CallEvent, type CallEventKind } from '@/lib/integrations/telephony/types';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { touchLead } from '@/services/leads/touch';
+import { capturesUnknown, heldInWorkspace, takeEnquiry } from '@/services/leads/intake';
+import { leadSourceIdFor } from '@/services/leads/leadSources';
 import { isUniqueViolation } from '@/lib/errors';
 
 /**
@@ -167,18 +169,34 @@ export async function handleTelephonyWebhook(webhookKey: string, req: Request): 
 }
 
 /**
- * Who answers an inbound call in the CRM: the owner of the lead or contact with
- * that number; otherwise the most senior active user, so the call is still
- * recorded and can be re-linked by hand. Nothing is created when the workspace
- * has no active user at all.
+ * The numbers Twilio sends as `From` when a caller withholds theirs: anonymous,
+ * unknown, restricted, blocked. Each is a stand-in, not anybody's number; taken
+ * for one, every withheld caller would land on the same record.
  */
-async function createInboundCall(connection: { id: string; tenantId: string; provider: string }, event: CallEvent) {
+const WITHHELD = new Set(['+266696687', '+86282452253', '+7378742833', '+2562533']);
+
+/**
+ * Who answers an inbound call in the CRM: the owner of the lead (by any of its
+ * numbers) or contact with that number; otherwise the most senior active user,
+ * so the call is still recorded and can be re-linked by hand, and the caller
+ * becomes a lead unless the connection says not to. Nothing is created when the
+ * workspace has no active user at all.
+ */
+async function createInboundCall(
+  connection: { id: string; tenantId: string; provider: string; metadata: unknown },
+  event: CallEvent,
+) {
   const tenantId = connection.tenantId;
-  const phoneNormalized = normalizePhone(event.from!);
+  const caller = normalizePhone(event.from!);
+  const phoneNormalized = caller && !WITHHELD.has(caller) ? caller : null;
   const [lead, contact] = await Promise.all([
     phoneNormalized
       ? prisma.lead.findFirst({
-          where: { tenantId, phoneNormalized, deletedAt: null },
+          where: {
+            tenantId,
+            deletedAt: null,
+            OR: [{ phoneNormalized }, { phones: { some: { normalized: phoneNormalized } } }],
+          },
           orderBy: { updatedAt: 'desc' },
           select: { id: true, ownerId: true },
         })
@@ -225,7 +243,36 @@ async function createInboundCall(connection: { id: string; tenantId: string; pro
     { vendor: connection.provider, callId: created.id, matched: lead ? 'lead' : contact ? 'contact' : 'none' },
     'inbound call created',
   );
-  return created;
+
+  // M6-11: a number no lead, contact or colleague holds is somebody new. After
+  // the call is created, so of two first callbacks racing for one call, only the
+  // one whose create won the call's unique key makes the lead.
+  if (lead || contact || !phoneNormalized) return created;
+  if (!(await capturesUnknown(tenantId, 'createLeadsFromUnknownCallers', connection.metadata))) return created;
+  if (await heldInWorkspace(tenantId, phoneNormalized)) return created;
+  // The line this connection advertises, else the number dialled (a vendor's
+  // `to` may be the agent the call was put through to).
+  const line = (connection.metadata as { callerNumber?: string } | null)?.callerNumber || event.to;
+  const taken = await takeEnquiry(
+    tenantId,
+    // Not the number as the name: a role that sees numbers masked would read it there.
+    { fullName: 'Unknown caller', email: null, phones: [event.from!], message: null, reference: null, details: [] },
+    {
+      label: 'Telephony',
+      source: 'TELEPHONY',
+      sourceDetail: line ? `${connection.provider}:${line}` : connection.provider,
+      sourceId: await leadSourceIdFor(prisma, tenantId, 'telephony'),
+      consent: 'UNKNOWN',
+    },
+  ).catch((err: Error) => {
+    // The call is the record the vendor is waiting on; a retry would be dropped as a duplicate delivery anyway.
+    logger.error({ vendor: connection.provider, tenantId, err: err.message }, 'unknown caller not made a lead');
+    return null;
+  });
+  // A new lead waits for distribution, which tells the agent it picks.
+  return taken?.leadId
+    ? prisma.call.update({ where: { id: created.id, tenantId }, data: { leadId: taken.leadId } })
+    : created;
 }
 
 async function applyCallEvent(

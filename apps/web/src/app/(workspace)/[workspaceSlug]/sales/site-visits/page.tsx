@@ -5,6 +5,7 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { workspaceTimezone } from '@/services/hr/attendance';
 import { leaderQueues } from '@/services/visits/lifecycle';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -50,7 +51,7 @@ export default async function SiteVisitsPage({
           ? { locationSuspect: true }
           : {};
 
-  const [rows, queues] = await Promise.all([
+  const [rows, queues, timeZone] = await Promise.all([
     prisma.siteVisit.findMany({
       where: mergeWhere(scope, { deletedAt: null }, queueWhere),
       orderBy: { scheduledAt: 'desc' },
@@ -74,6 +75,7 @@ export default async function SiteVisitsPage({
       },
     }),
     isLeader ? leaderQueues(ctx) : null,
+    workspaceTimezone(ctx),
   ]);
 
   return (
@@ -162,7 +164,7 @@ export default async function SiteVisitsPage({
               {rows.map((v) => (
                 <tr key={v.id}>
                   <td style={{ fontWeight: 500 }}>
-                    {v.scheduledAt.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
+                    {v.scheduledAt.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone })}
                   </td>
                   <td>
                     {v.project ? (
@@ -183,7 +185,7 @@ export default async function SiteVisitsPage({
                   </td>
                   <td>
                     {v.checkInAt
-                      ? v.checkInAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                      ? v.checkInAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone })
                       : '—'}
                   </td>
                   <td style={{ textAlign: 'right' }} className="lf-num">

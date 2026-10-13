@@ -59,6 +59,30 @@ export const PUT = route(
         unknown.map((field) => ({ field, code: 'unknown', message: `${spec.label} has no field named ${field}.` })),
       );
     }
+    // A switch is on or off: anything else would be stored and then read as unset.
+    const notSwitches = spec.settings.filter(
+      (f) => f.toggle && f.key in body.settings && typeof body.settings[f.key] !== 'boolean',
+    );
+    if (notSwitches.length) {
+      throw Invalid(notSwitches.map((f) => ({ field: f.key, code: 'invalid', message: `${f.label} is on or off.` })));
+    }
+
+    // Flipping a switch on a connection is a preference, not a new credential:
+    // nothing to check with the vendor, and a vendor that is briefly down must not
+    // take a live connection offline (its callbacks are refused while it reads ERROR).
+    const changed = [...Object.keys(body.credentials), ...Object.keys(body.settings)];
+    if (changed.length && changed.every((k) => spec.settings.some((f) => f.toggle && f.key === k))) {
+      const where = { tenantId_provider: { tenantId: ctx.tenantId, provider: params.provider } };
+      const stored = await prisma.integrationConnection.findUnique({ where, select: { metadata: true } });
+      if (stored) {
+        const connection = await prisma.integrationConnection.update({
+          where,
+          data: { metadata: { ...((stored.metadata ?? {}) as Record<string, unknown>), ...body.settings } },
+          select: { id: true, provider: true, status: true, webhookKey: true, metadata: true, lastSyncAt: true },
+        });
+        return { ...connection, verification: { ok: null, detail: 'The connection was not re-checked.' } };
+      }
+    }
 
     // Merge over what is stored, so a partial edit does not wipe a token the
     // admin was never shown.

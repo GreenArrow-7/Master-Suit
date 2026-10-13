@@ -303,7 +303,7 @@ describe('inbound calls', () => {
     expect(done.durationSecs).toBe(45);
   });
 
-  it('still records an inbound call from an unknown number, against the most senior active user', async () => {
+  it('still records an inbound call from an unknown number, and makes the caller a lead (M6-11)', async () => {
     const res = await deliver(
       webhookKey,
       twilioRequest(webhookKey, {
@@ -318,8 +318,10 @@ describe('inbound calls', () => {
     const call = await prisma.call.findFirstOrThrow({
       where: { tenantId: fixture.a.tenantId, externalCallId: `${INBOUND_ID}x` },
     });
-    expect(call.leadId).toBeNull();
     expect(call.direction).toBe('INBOUND');
+    // The connection has not switched it off: tests/sales/telephony-unknown-caller.spec.ts.
+    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId: fixture.a.tenantId, id: call.leadId! } });
+    expect(lead).toMatchObject({ phoneNormalized: '+971500001234', source: 'TELEPHONY' });
   });
 
   it('does not create a call for an outbound callback it cannot find', async () => {
