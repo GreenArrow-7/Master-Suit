@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-13 | [Two leads merge into one; a lead import can update the leads it matches, be checked first, and hand back its refused rows](2026-10-13-lead-merge-import.md) | - | Lead Eagle, leads, import |
 | 2026-10-13 | [Lead sources get a Custom webhook, a field mapping and a Deliveries tab; the API honours Idempotency-Key](2026-10-12-intake-webhook-mapping-deliveries.md) | #173 | Lead Eagle, lead intake |
 | 2026-10-13 | [A form or landing-page lead names its form again](2026-10-13-lead-source-detail-label.md) | #175 | Lead Eagle, fix |
 | 2026-10-13 | [Site visits show their time on the workspace's clock](2026-10-13-site-visits-workspace-clock.md) | #176 | Lead Eagle, fix |
