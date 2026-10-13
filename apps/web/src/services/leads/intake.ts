@@ -1,24 +1,32 @@
 /**
  * An enquiry becomes a lead, or a fresh enquiry on the lead that already holds
- * the person's number or email: a portal or ad delivery (`applyEnquiry`), or a
- * QR capture form (`takeEnquiry`).
+ * the person's number or email: a portal or ad delivery or a portal's lead email
+ * (`applyEnquiry`), or a QR capture form, a website form, a new WhatsApp number
+ * or an unknown caller (`takeEnquiry`).
  *
  * Runs on the `webhook` queue (five attempts, exponential backoff) after the
  * receiver in api/v1/webhooks/leads has verified, stored and de-duplicated the
  * delivery. Reads the stored payload rather than the job's, so fixing a field
  * mapping and replaying the event is enough to recover a badly parsed lead.
  */
-import type { RecordSource } from '@prisma/client';
+import type { ConsentStatus, RecordSource } from '@prisma/client';
+import type { SettingField } from '@/lib/integrations/registry';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { enqueue } from '@/lib/queue';
 import { audit } from '@/lib/security/audit';
-import { assertAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitlements';
+import {
+  assertAnyModuleEntitlement,
+  hasAnyModuleEntitlement,
+  hasModuleEntitlement,
+  LEAD_MODULES,
+} from '@/lib/security/entitlements';
 import type { Ctx } from '@/lib/security/rbac';
 import {
   fieldMapOf,
   LEAD_SOURCES,
   parseEnquiry,
+  parsePortalEmail,
   type Enquiry,
   type LeadSourceKey,
 } from '@/lib/integrations/leadSources';
@@ -53,20 +61,78 @@ export async function applyEnquiry({ tenantId, provider, externalId, source }: E
     where: { tenantId_provider: { tenantId, provider: source } },
     select: { metadata: true },
   });
-  const enquiry = parseEnquiry(JSON.parse(event.payload as string), fieldMapOf(connection?.metadata));
+  const payload = JSON.parse(event.payload as string);
+  const fieldMap = fieldMapOf(connection?.metadata);
+  // A portal's lead email is that portal's lead (M6-12); any other email is kept unread.
+  const mail = source === 'inbound_email' ? parsePortalEmail(payload, fieldMap) : null;
+  if (source === 'inbound_email' && !mail) return { skipped: 'unparsed' as const };
+  const kind = mail?.portal ?? source;
+  const enquiry = mail?.enquiry ?? parseEnquiry(payload, fieldMap);
   if (enquiry.isTest) return { skipped: 'test' as const };
 
-  const { label, source: recordSource } = LEAD_SOURCES[source];
+  const { label, source: recordSource } = LEAD_SOURCES[kind];
   return takeEnquiry(tenantId, enquiry, {
-    label,
+    label: mail ? `${label} email` : label,
     source: recordSource,
-    sourceDetail: enquiry.reference ? `${source}:${enquiry.reference}` : source,
+    sourceDetail: enquiry.reference ? `${kind}:${enquiry.reference}` : kind,
     // The workspace's catalogue entry for this kind of connection (M4-03). The
     // defaults have none for a Custom webhook: its leads land on one once an
     // administrator adds "Custom webhook" under Sources.
-    sourceId: await leadSourceIdFor(prisma, tenantId, source),
+    sourceId: await leadSourceIdFor(prisma, tenantId, kind),
     reached: event.leadId,
   });
+}
+
+/** The connection setting that decides it (lib/integrations/registry.ts). */
+export type CaptureSetting = 'createLeadsFromNewNumbers' | 'createLeadsFromUnknownCallers';
+
+/**
+ * Whether a number nobody holds becomes a lead: a WhatsApp sender (M6-10,
+ * `createLeadsFromNewNumbers` on the WhatsApp Business connection) or a caller
+ * (M6-11, `createLeadsFromUnknownCallers` on a telephony one). The setting once
+ * an administrator has saved it; until then on for callers, and for WhatsApp
+ * only in a Lead Eagle workspace (elsewhere a new number opens a conversation
+ * only, as it always did). Never without a lead product.
+ */
+export async function capturesUnknown(tenantId: string, setting: CaptureSetting, metadata: unknown) {
+  if (!(await hasAnyModuleEntitlement(tenantId, LEAD_MODULES))) return false;
+  const saved = (metadata as Record<string, unknown> | null)?.[setting];
+  if (typeof saved === 'boolean') return saved;
+  return setting === 'createLeadsFromUnknownCallers' || hasModuleEntitlement(tenantId, 'LEAD_EAGLE');
+}
+
+/**
+ * A connection's switches as Integrations lists them: each as saved or as its
+ * default, the way `capturesUnknown` reads it, and none in a workspace without
+ * a lead product, where they would switch nothing.
+ */
+export async function withSwitches(tenantId: string, fields: readonly SettingField[], metadata: unknown) {
+  const leads = await hasAnyModuleEntitlement(tenantId, LEAD_MODULES);
+  const settings = { ...((metadata ?? {}) as Record<string, unknown>) };
+  for (const f of fields.filter((f) => f.toggle)) {
+    if (leads) settings[f.key] = await capturesUnknown(tenantId, f.key as CaptureSetting, metadata);
+    else delete settings[f.key];
+  }
+  return { settingFields: fields.filter((f) => leads || !f.toggle), settings };
+}
+
+/**
+ * A number a contact or a colleague holds: a customer already on the books, or
+ * somebody on the staff ringing in from their own phone. Neither is somebody new.
+ */
+export async function heldInWorkspace(tenantId: string, phoneNormalized: string) {
+  const contact = await prisma.contact.findFirst({
+    where: { tenantId, phoneNormalized, deletedAt: null },
+    select: { id: true },
+  });
+  if (contact) return true;
+  // ponytail: User.phone is stored as typed, so each colleague's is normalised here; a
+  // normalised column is the upgrade if a workspace's staff runs into the thousands.
+  const staff = await prisma.user.findMany({
+    where: { tenantId, deletedAt: null, phone: { not: null } },
+    select: { phone: true },
+  });
+  return staff.some((u) => normalizePhone(u.phone!) === phoneNormalized);
 }
 
 /** Where an enquiry came from, as the lead records it. */
@@ -87,6 +153,11 @@ export interface EnquiryOrigin {
    * written and nobody is told.
    */
   reached?: string | null;
+  /**
+   * Implied, for somebody who asked to be contacted. A caller or a message from
+   * a new number has not asked for marketing: UNKNOWN, which campaigns pass by.
+   */
+  consent?: ConsentStatus;
 }
 
 export async function takeEnquiry(
@@ -211,7 +282,7 @@ export async function takeEnquiry(
         // The entry, and the points a lead from it starts with (M4-11).
         ...(await withSourceScore(tx, tenantId, origin.sourceId)),
         // They asked to be contacted.
-        consentStatus: 'IMPLIED',
+        consentStatus: origin.consent ?? 'IMPLIED',
         slaDueAt,
         ...(ownerId && { ownerId, assignedAt: new Date() }),
       },
