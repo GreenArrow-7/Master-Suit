@@ -285,7 +285,7 @@ export default async function LeadsPage({
             type="search"
             className="lf-input"
             defaultValue={params.q ?? ''}
-            placeholder="Search name, phone, email, reference"
+            placeholder="Search leads"
             aria-label="Search leads"
           />
         </form>
