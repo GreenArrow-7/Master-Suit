@@ -5,7 +5,9 @@ import { leadScope } from '@/lib/security/record-scope';
 import { requirePageAccess } from '@/lib/workspace-page';
 import ListHeader from '@/components/workspace/ListHeader';
 import { listLeadSources } from '@/services/leads/leadSources';
+import { decayRule } from '@/services/leads/scoring';
 import SourceEditor from './SourceEditor';
+import ScoreDecay from './ScoreDecay';
 
 export const metadata = { title: 'Lead sources' };
 
@@ -14,11 +16,13 @@ export const metadata = { title: 'Lead sources' };
  * its sub-sources, offered on the lead form and grouped in the source reports.
  * An entry is deactivated, never deleted. Each one's lead count is of the leads
  * the viewer may see, and there is none for a viewer without `leads:VIEW`.
+ * Lead scoring is set here too (M4-11): each entry's starting points, and the
+ * workspace's decay.
  */
 export default async function LeadSourcesPage() {
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['settings', 'VIEW'] });
   const seesLeads = can(ctx, 'leads', 'VIEW');
-  const [entries, counted] = await Promise.all([
+  const [entries, counted, decay] = await Promise.all([
     listLeadSources(prisma, ctx.tenantId),
     seesLeads
       ? prisma.lead.groupBy({
@@ -31,6 +35,7 @@ export default async function LeadSourcesPage() {
           _count: { _all: true },
         })
       : [],
+    decayRule(prisma, ctx.tenantId),
   ]);
   const leads = new Map(counted.map((row) => [row.sourceId, row._count._all]));
 
@@ -50,6 +55,7 @@ export default async function LeadSourcesPage() {
         canEdit={can(ctx, 'settings', 'MANAGE_CONFIGURATION')}
         entries={entries.map((entry) => ({ ...entry, leads: seesLeads ? (leads.get(entry.id) ?? 0) : null }))}
       />
+      <ScoreDecay canEdit={can(ctx, 'settings', 'MANAGE_CONFIGURATION')} decay={decay} />
     </>
   );
 }

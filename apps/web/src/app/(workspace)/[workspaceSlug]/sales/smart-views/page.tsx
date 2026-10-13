@@ -11,6 +11,7 @@ import { compileFilterTree, referencedFields, type FilterNode } from '@/lib/api/
 import { mergeWhere } from '@/lib/api/where';
 import { can } from '@/lib/security/rbac';
 import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
+import { customCells, customColumns } from '@/services/leads/customFields';
 import { prisma } from '@/lib/db';
 import { leadSearch, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { bookableProjects } from '@/services/leads/updateLead';
@@ -196,6 +197,7 @@ export default async function SmartViewsPage({
         score: true,
         grade: true,
         tags: true,
+        customData: true,
         priority: true,
         slaState: true,
         nextFollowUpAt: true,
@@ -225,7 +227,11 @@ export default async function SmartViewsPage({
     prisma.organizationSetting.findUnique({ where: { tenantId: ctx.tenantId }, select: { gridColumns: true } }),
   ]);
   const projects = await bookableProjects(ctx, stages);
-  const columns = resolveColumns('LEAD', storedColumnsFor(setting?.gridColumns, 'LEAD'));
+  const columns = resolveColumns(
+    'LEAD',
+    storedColumnsFor(setting?.gridColumns, 'LEAD'),
+    await customColumns(ctx.tenantId),
+  );
 
   // The grid shows the viewer's own obligations, never the stored aggregate —
   // same derivation as the leads list, so the same lead reads the same way on
@@ -236,7 +242,11 @@ export default async function SmartViewsPage({
     access,
   );
   const data = rows
-    .map((r) => ({ ...r, nextFollowUpAt: due.get(r.id) ?? null }))
+    .map(({ customData, ...r }) => ({
+      ...r,
+      custom: customCells(columns, customData),
+      nextFollowUpAt: due.get(r.id) ?? null,
+    }))
     .map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
 
   const activeName = activeSystem?.name ?? activeSaved?.name ?? 'All Leads';

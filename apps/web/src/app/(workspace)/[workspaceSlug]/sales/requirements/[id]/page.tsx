@@ -107,6 +107,9 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
           value={requirement.propertyTypes.length ? requirement.propertyTypes.length.toString() : 'Any'}
         />
         <Metric label="Live matches" value={matches.length.toString()} />
+        {/* What the lead page's composer and intake record (M4-05); recorded, not matched. */}
+        <Metric label="Areas" value={requirement.locations.join(', ') || 'Any'} />
+        {requirement.subType && <Metric label="Sub-type" value={requirement.subType} />}
       </section>
 
       {requirement.notes && (

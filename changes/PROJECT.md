@@ -14,7 +14,7 @@ Paths below are under `apps/web/`.
 | Sales | `sales/` | 75 | leads (spreadsheet import, close-out), contacts, accounts, opportunities, tasks, follow-ups; calls with AI coaching, analysis and audits; campaigns, inbox, forms, landing pages, social leads; dashboards, leadership (productivity, value, daily target); projects, listings, bookings, collections, commissions, proposals, portals |
 | HRMS | `people/` | 32 | employees, users, roles, departments; face check-in, attendance, shifts, roster, leave, overtime; payroll, payslips, WPS; recruitment, performance, documents, compliance |
 | Real Estate | `realty/` | 41 | the Sales property screens as a brokerage works them, plus Properties, allocation (data pool), events with QR passes, lead recycling, website forms and landing pages |
-| Lead Eagle | `lead-eagle/` | 30 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads (a grid or a board by stage, filter chips, each person's saved views), follow-ups, tasks, calendar, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle and Google Ads lead forms (Admin → Integrations → Lead sources; any lead module), and a lead can be recorded as a Referral with its referrer. Every lead module also has the Calendar, QR Capture, Cold Data, Targets, website forms and landing pages (public `/f/{ws}/{key}` and `/l/{ws}/{slug}`; `/embed.js` frames a form on the brokerage's own site), and Lead Stages and Sources (the source and sub-source catalogue) under Administration → Settings |
+| Lead Eagle | `lead-eagle/` | 30 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads (a grid or a board by stage, filter chips, each person's saved views), follow-ups, tasks, calendar, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle and Google Ads lead forms (Admin → Integrations → Lead sources; any lead module), and a lead can be recorded as a Referral with its referrer. Every lead module also has the Calendar, QR Capture, Cold Data, Targets, website forms and landing pages (public `/f/{ws}/{key}` and `/l/{ws}/{slug}`; `/embed.js` frames a form on the brokerage's own site), and Lead Stages, Sources (the source and sub-source catalogue, each entry's starting score, and the score decay) and Custom Fields under Administration → Settings; and on the lead page a requirement, interest links to projects and listings, and the workspace's custom fields |
 
 Outside the modules: `check-in` and `attendance` (every workspace), `admin/`
 (users, roles, work locations, settings, audit), `profile/`, and the platform
@@ -69,7 +69,10 @@ Node 22 or newer (CI uses 24).
   (`src/lib/security/record-scope.ts`): out of scope answers 404, like a
   missing id. A lead's second owner (`secondaryOwnerId`) reaches it as its
   owner does: lead reads go through `leadScope` (placing a waiting lead from
-  the Allocation queue excepted). HR's predicates are in `src/services/hr/access.ts`. A manager's authority over
+  the Allocation queue excepted). A lead's requirement on its page and its
+  interest links (projects, listings) are the lead's: written under
+  `leads:EDIT` on its scope, an interest naming, and the lead page showing,
+  only a project or listing the caller can see. HR's predicates are in `src/services/hr/access.ts`. A manager's authority over
   people stops at their reporting line (`reportingLine`, `src/services/hr/leave.ts`).
   A task is read under `tasks` wherever it shows, a lead's page included, and
   a follow-up under `leads` (`src/services/leads/nextFollowUp.ts`); a task is
@@ -150,6 +153,12 @@ Node 22 or newer (CI uses 24).
   EXPORT, not VIEW, and writes `EXPORT_REQUESTED`.
 - **Attendance is not HR.** Check-in, the attendance record and attendance
   requests work in every workspace; everything else in HR needs HRMS.
+- **Lead scores** move by event, each a LeadScoreHistory row and an audit row
+  (`src/services/leads/scoring.ts`): a new lead starts at its source's
+  `weight`, a logged activity adds its type's `scoreDelta` (taken back if the
+  activity is deleted), and the nightly `lead-score-decay` job applies the
+  workspace's first DECAY `ScoringRule` (off unless set). Each move locks the
+  lead's row. The post-call AI temperature still sets the score outright.
 - **Background jobs.** One `JOBS` table in `src/workers/jobs.ts`, keyed by queue;
   `src/workers/index.ts` starts a worker per queue. CI's observability gate reads
   that table, so keep it a literal.

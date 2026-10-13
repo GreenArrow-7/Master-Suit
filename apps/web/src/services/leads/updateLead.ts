@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { AppError, Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { audit, auditDiff } from '@/lib/security/audit';
@@ -11,6 +12,7 @@ import { BOOKING_FIELDS } from '@/lib/leads/stageBookings';
 import { withRecompute } from './nextFollowUp';
 import { findDuplicates } from './findDuplicates';
 import { assertLeadSource } from './leadSources';
+import { withCustomValues } from './customFields';
 import { normalizePhone } from './normalizePhone';
 
 export interface UpdateLeadInput {
@@ -39,6 +41,8 @@ export interface UpdateLeadInput {
   ownerId?: string | null;
   /** A second person who works the lead; named under the same scope as the owner. */
   secondaryOwnerId?: string | null;
+  /** Custom field values by key (M4-13); null or '' clears one. */
+  custom?: Record<string, unknown>;
   [k: string]: unknown;
 }
 
@@ -75,12 +79,6 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
 
   const updated = await withTx(ctx.tenantId, async (tx) => {
     const before = await assertLeadInScope(ctx, id, tx, 'EDIT');
-    // Only a move into a stage books (below): a visit or meeting sent with no
-    // move, e.g. to the stage the lead is already in, would vanish without a word.
-    const moving = !!input.stageId && input.stageId !== before.stageId;
-    if (!moving && [...BOOKING_FIELDS, 'projectId'].some((field) => input[field] !== undefined)) {
-      refuse('stageId', 'The lead is already in this stage: book the visit or meeting from Site visits or Tasks.');
-    }
     // The new owner: someone the scope of the action that allows the change reaches.
     const action = can(ctx, 'leads', 'ASSIGN') ? 'ASSIGN' : 'REASSIGN';
     if (input.ownerId && input.ownerId !== before.ownerId) {
@@ -96,6 +94,19 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
     }
     if (input.secondaryOwnerId && input.secondaryOwnerId !== before.secondaryOwnerId) {
       await assertAssignableUser(ctx, tx, 'leads', action, input.secondaryOwnerId);
+    }
+
+    // Each one a field of this workspace, checked by its type, after the scope
+    // check above and before the stage's requirements below.
+    const customData = input.custom
+      ? await withCustomValues(tx, ctx.tenantId, id, before.customData, input.custom)
+      : undefined;
+
+    // Only a move into a stage books (below): a visit or meeting sent with no
+    // move, e.g. to the stage the lead is already in, would vanish without a word.
+    const moving = !!input.stageId && input.stageId !== before.stageId;
+    if (!moving && [...BOOKING_FIELDS, 'projectId'].some((field) => input[field] !== undefined)) {
+      refuse('stageId', 'The lead is already in this stage: book the visit or meeting from Site visits or Tasks.');
     }
 
     if (moving) {
@@ -150,6 +161,7 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
     const after = await tx.lead.update({
       where: { tenantId: ctx.tenantId, id },
       data: {
+        ...(customData && { customData: customData as Prisma.InputJsonValue }),
         ...(input.fullName !== undefined && { fullName: input.fullName }),
         ...(input.email !== undefined && { email: input.email.toLowerCase() }),
         // Both columns, as updateContact does: duplicate matching reads the

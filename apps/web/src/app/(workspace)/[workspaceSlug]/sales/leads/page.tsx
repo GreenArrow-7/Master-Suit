@@ -27,6 +27,7 @@ import ColumnEditor from '@/components/workspace/ColumnEditor';
 import LeadImport from './LeadImport';
 import Pager from '@/components/workspace/Pager';
 import { GRID_COLUMNS, resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
+import { customCells, customColumns } from '@/services/leads/customFields';
 import { emptyFollowUpLabel, obligationAccess, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 
 export const metadata = { title: 'Leads' };
@@ -86,6 +87,7 @@ export default async function LeadsPage({
     score: true,
     grade: true,
     tags: true,
+    customData: true,
     priority: true,
     slaState: true,
     nextFollowUpAt: true,
@@ -136,7 +138,10 @@ export default async function LeadsPage({
   ]);
   const projects = await bookableProjects(ctx, stages);
 
-  const columns = resolveColumns('LEAD', params.cols?.split(',') ?? storedColumnsFor(setting?.gridColumns, 'LEAD'));
+  // The workspace's custom fields can be columns too (M4-13), in a saved view as well.
+  const customColumnDefs = await customColumns(ctx.tenantId);
+  const stored = storedColumnsFor(setting?.gridColumns, 'LEAD');
+  const columns = resolveColumns('LEAD', params.cols?.split(',') ?? stored, customColumnDefs);
   const activeView = views.find((v) => v.id === savedId) ?? null;
 
   /**
@@ -198,7 +203,12 @@ export default async function LeadsPage({
     pageRows.map((r) => r.id),
     access,
   );
-  const withFollowUp = pageRows.map((r) => ({ ...r, nextFollowUpAt: due.get(r.id) ?? null }));
+  // Only the custom columns' values leave the server, never the rest of customData.
+  const withFollowUp = pageRows.map(({ customData, ...r }) => ({
+    ...r,
+    custom: customCells(columns, customData),
+    nextFollowUpAt: due.get(r.id) ?? null,
+  }));
 
   const data = withFollowUp.map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
   const shown = new Set(columns.map((column) => column.key));
@@ -230,9 +240,8 @@ export default async function LeadsPage({
             {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
               <ColumnEditor
                 object="LEAD"
-                current={resolveColumns('LEAD', storedColumnsFor(setting?.gridColumns, 'LEAD')).map(
-                  (column) => column.key,
-                )}
+                current={resolveColumns('LEAD', stored, customColumnDefs).map((column) => column.key)}
+                extra={customColumnDefs}
               />
             )}
           </>
@@ -335,11 +344,13 @@ export default async function LeadsPage({
         views={views.map((v) => ({ id: v.id, name: v.name, href: savedViewHref(v) }))}
         activeId={activeView?.id ?? null}
         params={params}
-        columns={GRID_COLUMNS.LEAD.filter((column) => !column.fixed).map((column) => ({
-          key: column.key,
-          label: column.label,
-          shown: shown.has(column.key),
-        }))}
+        columns={[...GRID_COLUMNS.LEAD, ...customColumnDefs]
+          .filter((column) => !column.fixed)
+          .map((column) => ({
+            key: column.key,
+            label: column.label,
+            shown: shown.has(column.key),
+          }))}
         listHref={leadListHref(params)}
       />
 

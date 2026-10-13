@@ -7,8 +7,15 @@ import { useModuleBase } from '@/components/workspace/SalesLink';
 import { dialable, whatsappLink } from '@/components/workspace/CallLink';
 import SourcePicker, { type SourceOption } from '@/components/forms/SourcePicker';
 import { parseTags } from '@/lib/leads/tags';
+import { customPatch } from '@/lib/leads/customPatch';
 import Field from '@/components/forms/Field';
+import DateInput from '@/components/forms/DateInput';
+import { formatTypedDate } from '@/lib/dates';
+import type { LeadField } from '@/services/leads/customFields';
+import type { LeadRequirement } from '@/services/leads/requirement';
 import TaskComposer from '../../tasks/TaskComposer';
+import RequirementCard from './RequirementCard';
+import InterestsCard from './InterestsCard';
 import StageReason, { asksBeforeMove, type StageMove } from '@/components/workspace/StageReason';
 import { sendOrQueue } from '@/lib/offline';
 
@@ -104,6 +111,12 @@ interface LeadData {
   grade: string | null;
   notes: string | null;
   tags: string[];
+  /** The open requirement (M4-05, M4-08), its date as the workspace's calendar day. */
+  requirement: LeadRequirement | null;
+  /** The workspace's custom field values, by key (M4-13). */
+  custom: Record<string, string | number>;
+  /** The projects and listings it asked about (M4-06). */
+  interests: { projects: { id: string; name: string }[]; listings: { id: string; reference: string; title: string }[] };
   /** The viewer's own next obligation on this lead. */
   nextFollowUpAt: string | null;
   /** What to say when they have none — a statement about them, not the lead. */
@@ -134,6 +147,13 @@ interface Props {
   users: User[];
   /** The source catalogue offered on edit (Administration → Settings → Sources). */
   sources: SourceOption[];
+  /** The workspace's active custom fields (Administration → Custom fields). */
+  customFields: LeadField[];
+  /** What the interest pickers offer; null where the viewer cannot see projects or listings. */
+  projectOptions: { id: string; name: string }[] | null;
+  listingOptions: { id: string; reference: string; title: string }[] | null;
+  /** The requirement's page, where the viewer may open it. */
+  matchesHref: string | null;
   canEdit: boolean;
   canDeleteDocuments: boolean;
   canAssign: boolean;
@@ -179,6 +199,10 @@ export default function LeadDetail({
   taskTypes,
   users,
   sources,
+  customFields,
+  projectOptions,
+  listingOptions,
+  matchesHref,
   canEdit,
   canDeleteDocuments,
   canAssign,
@@ -331,14 +355,31 @@ export default function LeadDetail({
           </nav>
 
           {tab === 'Overview' && (
-            <OverviewTab
-              lead={lead}
-              editing={editing}
-              setEditing={setEditing}
-              patchLead={patchLead}
-              canEdit={canEdit}
-              sources={sources}
-            />
+            <div style={{ display: 'grid', gap: 'var(--lf-space-4)' }}>
+              <OverviewTab
+                lead={lead}
+                editing={editing}
+                setEditing={setEditing}
+                patchLead={patchLead}
+                canEdit={canEdit}
+                sources={sources}
+                customFields={customFields}
+              />
+              <RequirementCard
+                leadId={lead.id}
+                requirement={lead.requirement}
+                canEdit={canEdit}
+                matchesHref={matchesHref}
+              />
+              <InterestsCard
+                leadId={lead.id}
+                projects={lead.interests.projects}
+                listings={lead.interests.listings}
+                projectOptions={projectOptions}
+                listingOptions={listingOptions}
+                canEdit={canEdit}
+              />
+            </div>
           )}
           {tab === 'Timeline' && <TimelineTab lead={lead} activityTypes={activityTypes} router={router} />}
           {tab === 'Tasks' && <TasksTab lead={lead} taskTypes={taskTypes} router={router} />}
@@ -672,6 +713,7 @@ function OverviewTab({
   patchLead,
   canEdit,
   sources,
+  customFields,
 }: {
   lead: Props['lead'];
   editing: boolean;
@@ -679,6 +721,7 @@ function OverviewTab({
   patchLead: (d: Record<string, unknown>) => Promise<void>;
   canEdit: boolean;
   sources: SourceOption[];
+  customFields: LeadField[];
 }) {
   // The lead's entry, split back into the source and the sub-source under it.
   const entry = sources.find((s) => s.id === lead.sourceId);
@@ -696,6 +739,9 @@ function OverviewTab({
     subSourceId: entry?.parentId ? entry.id : '',
     tags: lead.tags.join(', '),
   });
+  // Custom field values as typed, by key; '' is none.
+  const customStart = Object.fromEntries(customFields.map((f) => [f.key, String(lead.custom[f.key] ?? '')]));
+  const [custom, setCustom] = useState(customStart);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -717,6 +763,8 @@ function OverviewTab({
       if (sourceId !== lead.sourceId) patch.sourceId = sourceId;
       const tags = parseTags(form.tags);
       if (tags.join(',') !== lead.tags.join(',')) patch.tags = tags;
+      const customValues = customPatch(customFields, custom, customStart);
+      if (customValues) patch.custom = customValues;
       if (Object.keys(patch).length > 0) await patchLead(patch);
       setEditing(false);
     } catch (e: any) {
@@ -825,6 +873,28 @@ function OverviewTab({
               </dd>
             </div>
           )}
+          {customFields.map((field) => (
+            <div key={field.key}>
+              <dt className="lf-label" data-required={editing && field.isRequired ? '' : undefined}>
+                {field.label}
+              </dt>
+              <dd style={{ margin: '3px 0 0', fontSize: 'var(--lf-text-sm)', overflowWrap: 'anywhere' }}>
+                {editing ? (
+                  <CustomInput
+                    field={field}
+                    value={custom[field.key] ?? ''}
+                    onChange={(value) => setCustom((c) => ({ ...c, [field.key]: value }))}
+                  />
+                ) : lead.custom[field.key] == null ? (
+                  '—'
+                ) : field.type === 'DATE' ? (
+                  formatTypedDate(String(lead.custom[field.key]))
+                ) : (
+                  String(lead.custom[field.key])
+                )}
+              </dd>
+            </div>
+          ))}
         </dl>
         {lead.phones && (lead.phones.length > 0 || canEdit) && (
           <OtherNumbers phones={lead.phones} leadId={lead.id} canEdit={canEdit && !lead.contactMasked.phone} />
@@ -841,6 +911,36 @@ function OverviewTab({
         )}
       </section>
     </div>
+  );
+}
+
+/** A custom field's control, by its type (M4-13); the server checks the value again. */
+function CustomInput({ field, value, onChange }: { field: LeadField; value: string; onChange: (v: string) => void }) {
+  const common = { 'aria-label': field.label, style: { width: '100%', fontSize: 'var(--lf-text-sm)' } };
+  if (field.type === 'DATE')
+    return <DateInput {...common} value={value} onChange={onChange} required={field.isRequired} />;
+  if (field.type === 'DROPDOWN') {
+    return (
+      <select className="lf-input" {...common} value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">—</option>
+        {field.options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  return (
+    <input
+      className="lf-input"
+      {...common}
+      type={field.type === 'NUMBER' ? 'number' : 'text'}
+      step={field.type === 'NUMBER' ? 'any' : undefined}
+      maxLength={500}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
   );
 }
 

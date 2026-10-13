@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { GRID_COLUMNS, type GridObject } from '@/lib/grid/columns';
+import { GRID_COLUMNS, type ColumnDef, type GridObject } from '@/lib/grid/columns';
 
 /**
  * Lets an administrator choose which columns a list grid shows, and in what order.
@@ -16,8 +16,17 @@ import { GRID_COLUMNS, type GridObject } from '@/lib/grid/columns';
  * past the bottom of it. Opening it closes the ••• menu it lives in, the page
  * behind stops scrolling, Escape closes it, and focus returns to the button.
  */
-export default function ColumnEditor({ object, current }: { object: GridObject; current: string[] }) {
-  const catalogue = GRID_COLUMNS[object];
+export default function ColumnEditor({
+  object,
+  current,
+  extra = [],
+}: {
+  object: GridObject;
+  current: string[];
+  /** The workspace's own columns beside the catalogue: a lead's custom fields. */
+  extra?: ColumnDef[];
+}) {
+  const catalogue = [...GRID_COLUMNS[object], ...extra];
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [chosen, setChosen] = useState<string[]>(current.filter((key) => !catalogue.find((c) => c.key === key)?.fixed));

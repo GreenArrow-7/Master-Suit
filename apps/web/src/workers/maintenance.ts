@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger';
 import { runRetentionCleanup } from '@/lib/jobs/retention';
 import { runReminderSweep } from '@/services/crm/reminders';
 import { runRecycleSweep } from '@/services/leads/recycle';
+import { runScoreDecay } from '@/services/leads/scoring';
 import { sweepStaleTriage, sweepTriageDeadlines, sweepTriageNotifications } from '@/services/distribution/triageQueue';
 import { deliverOutbox } from '@/services/notifications/outbox';
 import { sweepDriftCanary } from '@/services/leads/nextFollowUpReconcile';
@@ -95,6 +96,15 @@ export const MAINTENANCE_JOBS = {
     return result;
   },
   /**
+   * Lead scores lose points for every period without activity (M4-11), in the
+   * workspaces whose rule is on; a no-op everywhere else.
+   */
+  'lead-score-decay': async () => {
+    const result = await runScoreDecay();
+    logger.info(result, 'lead score decay complete');
+    return result;
+  },
+  /**
    * Report-only, by design and without an override.
    *
    * Every writer recomputes under the lead's lock, so a non-zero count here
@@ -152,6 +162,8 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
     // at 04:10 than at noon — and running it hourly would only multiply the
     // chances of colliding with somebody actually working a record.
     { id: 'lead-recycle-daily', pattern: '10 4 * * *', name: 'lead-recycle' },
+    // 03:40, once a day: a step is a whole period of days, so the hour only has to be steady.
+    { id: 'lead-score-decay-daily', pattern: '40 3 * * *', name: 'lead-score-decay' },
   ];
   const queue = new Queue('maintenance', { connection: redis });
   for (const schedule of schedules) {
