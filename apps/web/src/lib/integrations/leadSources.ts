@@ -17,6 +17,9 @@ export const LEAD_SOURCES = {
   google_ads: { label: 'Google Ads lead forms', source: 'AD_LEAD_FORM' },
   // Any sender without an adapter of its own: a website, a CRM, Zapier (M6-08).
   custom_webhook: { label: 'Custom webhook', source: 'WEBHOOK' },
+  // The portals' lead emails, posted by the workspace's mail service (M6-12). A
+  // lead takes its portal's source and entry (`parsePortalEmail`), never this one.
+  inbound_email: { label: 'Portal emails', source: 'EMAIL_PARSER' },
 } as const;
 
 export type LeadSourceKey = keyof typeof LEAD_SOURCES;
@@ -217,5 +220,125 @@ export function parseEnquiry(payload: Record<string, unknown>, fieldMap: FieldMa
       return v ? [`${label}: ${v}`] : [];
     }),
     isTest: flat.get('istest') === 'true',
+  };
+}
+
+/**
+ * The portals whose lead emails a Portal emails source reads (M6-12), each as it
+ * names itself in a sender's address, a subject or a body.
+ */
+const PORTAL_MAIL: [LeadSourceKey, RegExp][] = [
+  ['property_finder', /property ?finder/i],
+  ['bayut', /bayut/i],
+  ['dubizzle', /dubizzle/i],
+];
+
+/** The portal a text names first, if any. */
+const portalNamedIn = (text: string) =>
+  PORTAL_MAIL.map(([kind, name]) => [kind, text.search(name)] as const)
+    .filter(([, at]) => at >= 0)
+    .sort((a, b) => a[1] - b[1])[0]?.[0];
+
+/** Email labels the parser's keys word differently, by `key()`. */
+const MAIL_LABELS: Record<string, string> = {
+  reference: 'listingreference',
+  ref: 'listingreference',
+  refno: 'listingreference',
+  referenceno: 'listingreference',
+  listingref: 'listingreference',
+  propertyref: 'listingreference',
+  propertyid: 'listingreference',
+  adid: 'listingreference',
+  adref: 'listingreference',
+  telephone: 'phone',
+  tel: 'phone',
+  phoneno: 'phone',
+  mobileno: 'phone',
+  mobilenumber: 'mobile',
+  leadname: 'clientname',
+};
+
+/** `Label: value`, or a table row's `Label` cell then its value; the label starts with a letter. */
+const LINE = /^[\s>*•-]*(\p{L}[\p{L}\d .#/&()'’-]{0,40}?)\s*(?:[:：]|\t)\s*(.*?)\s*$/u;
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+
+/** The body as lines: the text part, else the HTML with its cells split by a tab and its rows by a line. */
+function mailText(text: unknown, html: unknown): string {
+  if (typeof text === 'string' && text.trim()) return text;
+  if (typeof html !== 'string') return '';
+  return html
+    .replace(/<(style|script|head)\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/<\/t[dh]>/gi, '\t')
+    .replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d|table)>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (entity, name: string) => {
+      if (name[0] !== '#') return ENTITIES[name.toLowerCase()] ?? entity;
+      const code = name[1] === 'x' || name[1] === 'X' ? parseInt(name.slice(2), 16) : Number(name.slice(1));
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : entity;
+    });
+}
+
+/**
+ * Every `Label: value` line, first of each label kept. A label whose value is
+ * on the lines after it (a message) reads them up to a blank line or the next
+ * label.
+ */
+function labelled(body: string): Record<string, string> {
+  const lines = body.split(/\r?\n/);
+  const out: Record<string, string> = {};
+  for (let i = 0; i < lines.length; i++) {
+    const match = LINE.exec(lines[i]!);
+    if (!match) continue;
+    let value = match[2]!.replace(/\s+/g, ' ').trim();
+    if (!value) {
+      const rest: string[] = [];
+      while (i + 1 < lines.length && !lines[i + 1]!.trim()) i++;
+      while (i + 1 < lines.length && lines[i + 1]!.trim() && !LINE.test(lines[i + 1]!)) rest.push(lines[++i]!.trim());
+      value = rest.join(' ');
+    }
+    const label = match[1]!.trim();
+    if (!value) continue;
+    if (!Object.hasOwn(out, label)) out[label] = value;
+    const alias = MAIL_LABELS[key(label)];
+    if (alias && !Object.hasOwn(out, alias)) out[alias] = value;
+  }
+  return out;
+}
+
+/** An email's own id, which a second copy of it repeats: the receiver's idempotency key. */
+export const emailIdOf = (payload: Record<string, unknown>) =>
+  typeof payload.messageId === 'string' ? payload.messageId.trim().slice(0, 200) || null : null;
+
+/**
+ * A portal's lead email, as the workspace's mail service posts it:
+ * `{ from, to, subject, text, html, messageId }` (M6-12). Ported from the
+ * standalone Lead Eagle's EMAIL_PARSER, which reads the `Label: value` lines a
+ * portal's notification carries; here those lines go through `parseEnquiry`,
+ * so the source's field map names a label the parser does not know.
+ *
+ * The portal is the first one named by the sender, else the subject, else the
+ * body (the earliest mention: a forwarded email quotes its sender at the top,
+ * and Bayut's footer names dubizzle). Null for an email no portal sent, or one
+ * that gives no number or address to reach anybody at: the delivery is kept
+ * unread rather than guessed into a lead.
+ */
+export function parsePortalEmail(payload: Record<string, unknown>, fieldMap: FieldMap = {}) {
+  const text = (value: unknown) => (typeof value === 'string' ? value : '');
+  const body = mailText(payload.text, payload.html);
+  const subject = text(payload.subject);
+  const portal = [text(payload.from), subject, body].map(portalNamedIn).find(Boolean);
+  if (!portal) return null;
+  const enquiry = parseEnquiry(labelled(body), fieldMap);
+  if (!enquiry.phones.length && !enquiry.email) return null;
+  // `Ref: PF-1`, `Reference no. 88`; not the "ref" of "refurbished".
+  const subjectRef = /\bref(?:erence)?\b(?:\s*(?:no|number)\b)?\.?\s*[:#]?\s*([a-z0-9][\w/-]{2,})/i.exec(subject)?.[1];
+  return {
+    portal,
+    enquiry: {
+      ...enquiry,
+      externalId: emailIdOf(payload),
+      reference: enquiry.reference ?? subjectRef ?? null,
+      isTest: false,
+    },
   };
 }

@@ -10,6 +10,8 @@ import { telephonyProvider } from '@/lib/integrations/telephony';
 import { TERMINAL_EVENTS, type CallEvent, type CallEventKind } from '@/lib/integrations/telephony/types';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { touchLead } from '@/services/leads/touch';
+import { capturesUnknown, takeEnquiry } from '@/services/leads/intake';
+import { leadSourceIdFor } from '@/services/leads/leadSources';
 import { isUniqueViolation } from '@/lib/errors';
 
 /**
@@ -169,10 +171,14 @@ export async function handleTelephonyWebhook(webhookKey: string, req: Request): 
 /**
  * Who answers an inbound call in the CRM: the owner of the lead or contact with
  * that number; otherwise the most senior active user, so the call is still
- * recorded and can be re-linked by hand. Nothing is created when the workspace
- * has no active user at all.
+ * recorded and can be re-linked by hand, and the caller becomes a lead unless
+ * the connection says not to. Nothing is created when the workspace has no
+ * active user at all.
  */
-async function createInboundCall(connection: { id: string; tenantId: string; provider: string }, event: CallEvent) {
+async function createInboundCall(
+  connection: { id: string; tenantId: string; provider: string; metadata: unknown },
+  event: CallEvent,
+) {
   const tenantId = connection.tenantId;
   const phoneNormalized = normalizePhone(event.from!);
   const [lead, contact] = await Promise.all([
@@ -225,7 +231,38 @@ async function createInboundCall(connection: { id: string; tenantId: string; pro
     { vendor: connection.provider, callId: created.id, matched: lead ? 'lead' : contact ? 'contact' : 'none' },
     'inbound call created',
   );
-  return created;
+
+  // M6-11: a number no lead or contact holds is somebody new. After the call is
+  // created, so of two first callbacks racing for one call, only the one whose
+  // create won the call's unique key makes the lead.
+  if (lead || contact || !phoneNormalized) return created;
+  if (!(await capturesUnknown(tenantId, 'createLeadsFromUnknownCallers', connection.metadata))) return created;
+  // The line they dialled, which tells one advertised number from another.
+  const line = event.to ?? (connection.metadata as { callerNumber?: string } | null)?.callerNumber;
+  const taken = await takeEnquiry(
+    tenantId,
+    // Not the number as the name: a role that sees numbers masked would read it there.
+    { fullName: 'Unknown caller', email: null, phones: [event.from!], message: null, reference: null, details: [] },
+    {
+      label: 'Telephony',
+      source: 'TELEPHONY',
+      sourceDetail: line ? `${connection.provider}:${line}` : connection.provider,
+      sourceId: await leadSourceIdFor(prisma, tenantId, 'telephony'),
+    },
+  ).catch((err: Error) => {
+    // The call is the record the vendor is waiting on; a retry would be dropped as a duplicate delivery anyway.
+    logger.error({ vendor: connection.provider, tenantId, err: err.message }, 'unknown caller not made a lead');
+    return null;
+  });
+  const leadId = taken?.leadId;
+  if (!leadId) return created;
+  // A new lead waits for distribution. A lead holding the number as a second one
+  // was found by the intake instead, and its owner takes the call as above.
+  const joined = await prisma.lead.findFirst({ where: { tenantId, id: leadId }, select: { ownerId: true } });
+  return prisma.call.update({
+    where: { id: created.id, tenantId },
+    data: { leadId, ...(joined?.ownerId && { callerId: joined.ownerId }) },
+  });
 }
 
 async function applyCallEvent(

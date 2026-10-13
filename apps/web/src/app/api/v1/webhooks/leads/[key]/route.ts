@@ -5,7 +5,7 @@ import { logger } from '@/lib/logger';
 import { enqueue } from '@/lib/queue';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { decryptCredentials } from '@/lib/integrations/connection';
-import { isLeadSource, parseEnquiry, verifyDelivery } from '@/lib/integrations/leadSources';
+import { emailIdOf, isLeadSource, parseEnquiry, verifyDelivery } from '@/lib/integrations/leadSources';
 import { isUniqueViolation } from '@/lib/errors';
 
 /**
@@ -65,10 +65,11 @@ export async function POST(req: Request, context: { params: Promise<{ key: strin
 
   const { tenantId } = connection;
   const provider = `${connection.provider}:${connection.id}`;
-  // The sender's idempotency key, else its lead id, else the body's hash: each
-  // is what a retry of the same delivery repeats.
+  // The sender's idempotency key, else its lead id (an email's Message-ID), else
+  // the body's hash: each is what a retry of the same delivery repeats.
   const keyed = req.headers.get('idempotency-key')?.slice(0, 200);
-  let externalId = keyed || parseEnquiry(payload).externalId || createHash('sha256').update(raw, 'utf8').digest('hex');
+  const named = connection.provider === 'inbound_email' ? emailIdOf(payload) : parseEnquiry(payload).externalId;
+  let externalId = keyed || named || createHash('sha256').update(raw, 'utf8').digest('hex');
   if (keyed) {
     // A key names one body: another body under it is refused, not dropped behind
     // a 200. And one body is one delivery whatever key it comes under — the

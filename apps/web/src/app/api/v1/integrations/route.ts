@@ -52,7 +52,7 @@ export const GET = route({ module: 'integrations', action: 'VIEW' }, async ({ ct
       capabilities: spec.capabilities,
       unsignedCallbacks: spec.unsignedCallbacks ?? false,
       credentialFields: spec.credentials.map(({ key, label, secret, hint }) => ({ key, label, secret, hint })),
-      settingFields: spec.settings.map(({ key, label, hint }) => ({ key, label, hint })),
+      settingFields: spec.settings.map(({ key, label, hint, toggle }) => ({ key, label, hint, toggle: !!toggle })),
       status: conn?.status ?? 'NOT_CONFIGURED',
       settings: (conn?.metadata ?? {}) as Record<string, unknown>,
       lastSyncAt: conn?.lastSyncAt ?? null,

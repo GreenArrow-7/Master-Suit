@@ -59,6 +59,13 @@ export const PUT = route(
         unknown.map((field) => ({ field, code: 'unknown', message: `${spec.label} has no field named ${field}.` })),
       );
     }
+    // A switch is on or off: anything else would be stored and then read as unset.
+    const notSwitches = spec.settings.filter(
+      (f) => f.toggle && f.key in body.settings && typeof body.settings[f.key] !== 'boolean',
+    );
+    if (notSwitches.length) {
+      throw Invalid(notSwitches.map((f) => ({ field: f.key, code: 'invalid', message: `${f.label} is on or off.` })));
+    }
 
     // Merge over what is stored, so a partial edit does not wipe a token the
     // admin was never shown.

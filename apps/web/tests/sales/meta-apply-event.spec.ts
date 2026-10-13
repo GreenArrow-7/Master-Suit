@@ -16,6 +16,7 @@ const prisma = {
   leadStage: { findFirst: vi.fn() },
   conversation: { upsert: vi.fn() },
   communication: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+  integrationConnection: { findFirst: vi.fn() },
   // The lead's audit row; tests/sales/lead-audit-trail.spec.ts checks it on a real database.
   auditLog: { create: vi.fn() },
 };
@@ -31,6 +32,8 @@ vi.mock('@/services/leads/findDuplicates', () => ({ findDuplicates }));
 vi.mock('@/lib/queue', () => ({ enqueue }));
 vi.mock('@/lib/integrations/connection', () => ({ connectionCredentials }));
 vi.mock('@/services/shared/reference', () => ({ nextReference: async () => 'LEAD-1' }));
+// A new number makes a lead only where the connection says so (tests/sales/whatsapp-unknown-number.spec.ts).
+vi.mock('@/services/leads/intake', () => ({ capturesUnknown: async () => false, takeEnquiry: vi.fn() }));
 // The workspace's catalogue entry for a key (M4-03), as `source-<key>`.
 vi.mock('@/services/leads/leadSources', () => ({
   leadSourceIdFor: async (_db: unknown, _tenantId: string, key: string) => `source-${key}`,
@@ -160,7 +163,7 @@ describe('inbound WhatsApp → conversation', () => {
     prisma.communication.create.mockResolvedValue({ id: 'msg-1' });
   });
 
-  /** §29: an unknown number opens a thread, and must not manufacture a customer. */
+  /** §29: an unknown number opens a thread, and makes no customer where the connection makes no leads of one. */
   it('opens a thread for an unknown number without creating a lead', async () => {
     findDuplicates.mockResolvedValue([]);
 

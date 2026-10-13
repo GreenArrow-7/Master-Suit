@@ -14,6 +14,11 @@ export type IntegrationCategory = 'TELEPHONY' | 'MESSAGING' | 'MEETINGS' | 'TRAN
 export interface SettingField extends VendorField {
   /** Settings live in `metadata` and are readable without the encryption key. */
   setting?: true;
+  /**
+   * On or off, a checkbox rather than a text box. Unsaved, it reads as its
+   * default: `capturesUnknown` in services/leads/intake.ts.
+   */
+  toggle?: true;
 }
 
 export interface ProviderSpec {
@@ -49,6 +54,14 @@ const TELEPHONY_SETTINGS: SettingField[] = [
     hint: 'E.164, e.g. +971500000000. The number the client sees.',
   },
   { key: 'country', label: 'Country', secret: false, setting: true, hint: 'ISO code, e.g. AE or IN' },
+  {
+    key: 'createLeadsFromUnknownCallers',
+    label: 'Create leads from unknown callers',
+    secret: false,
+    setting: true,
+    toggle: true,
+    hint: 'A call, answered or missed, from a number no lead or contact holds becomes a lead for your distribution rule, the call on it. On unless switched off.',
+  },
 ];
 
 const TELEPHONY_LABELS: Record<string, { label: string; description: string; unsigned?: boolean }> = {
@@ -111,7 +124,16 @@ export const PROVIDERS: ProviderSpec[] = [
         hint: 'A string you choose, echoed back on the subscription handshake. Not the app secret.',
       },
     ],
-    settings: [],
+    settings: [
+      {
+        key: 'createLeadsFromNewNumbers',
+        label: 'Create leads from new numbers',
+        secret: false,
+        setting: true,
+        toggle: true,
+        hint: 'A message from a number no lead holds becomes a lead for your distribution rule, the message its note. On by default in Lead Eagle; off, a new number opens a conversation only.',
+      },
+    ],
     capabilities: ['TEMPLATE_MESSAGE', 'DELIVERY_STATUS'],
     webhook: 'meta',
   },
@@ -189,13 +211,15 @@ export const PROVIDERS: ProviderSpec[] = [
     webhook: false,
   },
   ...Object.entries(LEAD_SOURCES).map<ProviderSpec>(([key, { label }]) =>
-    key === 'custom_webhook'
+    key === 'custom_webhook' || key === 'inbound_email'
       ? {
           key,
           label,
           category: 'LEADS',
           description:
-            'Leads from any system without a connector of its own: post JSON to the URL below, signed with HMAC-SHA256 of the raw body in X-Signature. Fields read by default: name, phone, email, message, source_detail; map others on Deliveries and field mapping. Send an Idempotency-Key header and a retry makes nothing new.',
+            key === 'custom_webhook'
+              ? 'Leads from any system without a connector of its own: post JSON to the URL below, signed with HMAC-SHA256 of the raw body in X-Signature. Fields read by default: name, phone, email, message, source_detail; map others on Deliveries and field mapping. Send an Idempotency-Key header and a retry makes nothing new.'
+              : 'Lead emails from Property Finder, Bayut and dubizzle, where the portal sends you no feed. Your mail service posts each email it receives to the URL below as JSON (from, to, subject, text, html, messageId), signed with HMAC-SHA256 of the raw body in X-Signature. A portal lead email becomes that portal’s lead; any other email is kept, unread, on Deliveries. The same messageId twice makes one lead.',
           credentials: [],
           settings: [],
           capabilities: ['LEADS'],

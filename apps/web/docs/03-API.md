@@ -102,7 +102,7 @@ GET    /admin/settings             PATCH /admin/settings
 
 POST   /public/forms/{key}/submit  unauthenticated, CAPTCHA + rate limited
 POST   /webhooks/inbound/{key}     signature-verified provider callbacks
-POST   /webhooks/leads/{key}       lead sources: portals, Google Ads, Custom webhook (§6)
+POST   /webhooks/leads/{key}       lead sources: portals, Google Ads, Custom webhook, Portal emails (§6)
 ```
 
 ## 5. Filter tree
@@ -177,6 +177,20 @@ issued when it is connected and shown once.
 - 200 `{}` means stored; the worker makes the lead. Every delivery is on the
   source's Deliveries tab with what became of it, and can be replayed there
   once the queue is done with it.
+
+**Portal emails** (a lead source connected like a Custom webhook, its secret
+issued and shown once) take the lead emails Property Finder, Bayut and dubizzle
+send an agency, from a mail service the workspace runs: it posts each email it
+receives, signed as above, as `{ "from", "to", "subject", "text", "html",
+"messageId" }` (`text` read first, else `html`; at most 256 KB in all).
+`messageId` is the delivery's identity: the same email again makes nothing new.
+The sender, else the subject, else the body names the portal; the body's
+`Label: value` lines (or an HTML table of label and value cells) give the name,
+phone, email, reference and message, and the field mapping names a label the
+parser does not know. The lead takes that portal's source, `sourceDetail`
+(`bayut:<reference>`) and catalogue entry. An email no portal sent, or one with
+no phone or email in it, is kept and shown on Deliveries as _Not read: unknown
+email_.
 
 `Idempotency-Key` on the API itself (§2): per workspace, method and path, by
 the same caller; a retry with the same body gets the first 2xx answer back
