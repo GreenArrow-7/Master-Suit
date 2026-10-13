@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-13 | [One-step call log from the lead list; the lead's whole timeline, its done follow-ups and its matching stock](2026-10-13-lead-call-log-timeline.md) | - | Lead Eagle, leads |
 | 2026-10-13 | [Lead requirement, interest links, custom fields and scoring on the lead page](2026-10-12-lead-requirement-interest-fields.md) | #172 | Lead Eagle, leads |
 | 2026-10-12 | [Cold data follows the lead scope; a cold call is a logged call that counts toward the daily target and the check-out gate](2026-10-12-cold-data-scope-calls.md) | #171 | Lead Eagle, cold data, targets |
 | 2026-10-12 | [Lead Eagle gets website forms, landing pages, an embed snippet and a Referral source](2026-10-12-intake-forms-landing-embed.md) | #170 | Lead Eagle, lead intake |

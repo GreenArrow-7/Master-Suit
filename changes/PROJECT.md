@@ -14,7 +14,7 @@ Paths below are under `apps/web/`.
 | Sales | `sales/` | 75 | leads (spreadsheet import, close-out), contacts, accounts, opportunities, tasks, follow-ups; calls with AI coaching, analysis and audits; campaigns, inbox, forms, landing pages, social leads; dashboards, leadership (productivity, value, daily target); projects, listings, bookings, collections, commissions, proposals, portals |
 | HRMS | `people/` | 32 | employees, users, roles, departments; face check-in, attendance, shifts, roster, leave, overtime; payroll, payslips, WPS; recruitment, performance, documents, compliance |
 | Real Estate | `realty/` | 40 | the Sales property screens as a brokerage works them, plus Properties, allocation (data pool), events with QR passes, lead recycling, website forms and landing pages |
-| Lead Eagle | `lead-eagle/` | 29 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads, follow-ups, tasks, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle and Google Ads lead forms (Admin → Integrations → Lead sources; any lead module), and a lead can be recorded as a Referral with its referrer. Every lead module also has QR Capture, Cold Data, Targets, website forms and landing pages (public `/f/{ws}/{key}` and `/l/{ws}/{slug}`; `/embed.js` frames a form on the brokerage's own site), and Lead Stages, Sources (the source and sub-source catalogue, each entry's starting score, and the score decay) and Custom Fields under Administration → Settings; and on the lead page a requirement, interest links to projects and listings, and the workspace's custom fields |
+| Lead Eagle | `lead-eagle/` | 29 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads, follow-ups, tasks, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle and Google Ads lead forms (Admin → Integrations → Lead sources; any lead module), and a lead can be recorded as a Referral with its referrer. Every lead module also has QR Capture, Cold Data, Targets, website forms and landing pages (public `/f/{ws}/{key}` and `/l/{ws}/{slug}`; `/embed.js` frames a form on the brokerage's own site), and Lead Stages, Sources (the source and sub-source catalogue, each entry's starting score, and the score decay) and Custom Fields under Administration → Settings; and on the lead page a requirement, interest links to projects and listings, and the workspace's custom fields. Every lead-list row and the lead page log a call in one step (outcome, note, the next follow-up); the lead page has a paged timeline of activity, stage moves, field edits, assignments, calls and messages, its done follow-ups, and the stock its requirement matches |
 
 Outside the modules: `check-in` and `attendance` (every workspace), `admin/`
 (users, roles, work locations, settings, audit), `profile/`, and the platform
@@ -120,7 +120,10 @@ Node 22 or newer (CI uses 24).
   `maskCallNumbers` (a call's lead side), and builds `tel:` and `wa.me` links
   with `dialable()`, which refuses a mask. A notification names the lead, not
   its number. Cold Data shows a record's number as stored to its own agent and
-  as a lead's phone reads to the role otherwise. Still outside it: the
+  as a lead's phone reads to the role otherwise. The lead timeline shows a
+  field edit as the field reads to the viewer, a call only under
+  `callScope`, and a message's text only under the inbox's
+  `communications` rule (`src/services/leads/timeline.ts`). Still outside it: the
   campaign dialer, event invitees and the inbox
   (`changes/2026-10-11-lead-contact-masking.md`).
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
