@@ -95,7 +95,7 @@ export interface Tile {
 export interface LeaderboardRow {
   userId: string;
   name: string;
-  /** Calls made (placed or logged); null without `calls:VIEW`. */
+  /** Calls completed or logged (a missed or failed dial is not one); null without `calls:VIEW`. */
   calls: number | null;
   /** Meetings booked; null without `tasks:VIEW`. */
   meetings: number | null;
@@ -134,8 +134,8 @@ export interface RealtyDashboard {
     leadsBySource: { label: string; count: number; href: string | null }[];
   };
   funnel: { stageId: string; name: string; category: StageCategory; count: number; href: string }[];
-  /** The last 14 days, oldest first: leads received, and leads first contacted. */
-  trend: { date: string; received: number; worked: number; href: string }[];
+  /** The last 14 days, oldest first: leads received, and leads first contacted, each with its list. */
+  trend: { date: string; received: number; worked: number; href: string; workedHref: string }[];
   /** Today and the six days after: follow-ups due. */
   followUpDays: { date: string; count: number; href: string }[];
   calls: { made: number; connected: number; seconds: number; href: string } | null;
@@ -386,7 +386,9 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
     visits: new Map<string, number>(),
     booked: new Map<string, number>(),
   };
-  for (const row of read.placed ?? []) tally(perPerson.calls, row.callerId, row._count._all);
+  for (const row of read.placed ?? []) {
+    if (row.status === 'COMPLETED') tally(perPerson.calls, row.callerId, row._count._all);
+  }
   for (const row of read.logged ?? []) if (row.ownerId) tally(perPerson.calls, row.ownerId, row._count._all);
   for (const row of read.meetings ?? []) if (row.ownerId) tally(perPerson.meetings, row.ownerId, row._count._all);
   for (const row of read.visited ?? []) tally(perPerson.visits, row.ownerId, row._count._all);
@@ -467,6 +469,7 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
       received: received.get(date) ?? 0,
       worked: worked.get(date) ?? 0,
       href: dayList(date),
+      workedHref: `/leads?date=contacted&from=${date}&to=${date}`,
     })),
     followUpDays: stripDays.map((date) => ({ date, count: due.get(date) ?? 0, href: `/follow-ups?date=${date}` })),
     calls,

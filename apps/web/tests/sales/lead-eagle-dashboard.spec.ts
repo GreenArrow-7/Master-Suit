@@ -29,11 +29,17 @@ import WorkspaceDashboard from '@/app/(workspace)/[workspaceSlug]/dashboard/page
 import ConfigurableGrid from '@/components/workspace/ConfigurableGrid';
 import { GET as listFollowUps, POST as createFollowUp } from '@/app/api/v1/follow-ups/route';
 import { POST as logCall } from '@/app/api/v1/leads/[id]/call-log/route';
+import { POST as placeCall } from '@/app/api/v1/calls/route';
+import { PATCH as updateCall } from '@/app/api/v1/calls/[id]/route';
+import { POST as logActivity } from '@/app/api/v1/activities/route';
+import SalesHome from '@/app/(workspace)/[workspaceSlug]/sales/page';
+import { checkLeadFirstContact } from '@/services/sla/checkLeadFirstContact';
+import { takeEnquiry } from '@/services/leads/intake';
 import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import { createSessionToken } from '../helpers/session';
 import { leadEagleWorkspace } from '../helpers/leadSource';
 import { pageText } from '../helpers/render';
-import { get, post } from '../helpers/request';
+import { get, patch, post } from '../helpers/request';
 
 /**
  * The Lead Eagle board (audit rows M3-01–05, M3-09–15): every figure counted
@@ -63,6 +69,7 @@ const MANAGER: [string, PermissionAction][] = [
   ['leads', 'ASSIGN'],
   ['leads', 'VIEW_SENSITIVE_FIELDS'],
 ];
+const CALLER: [string, PermissionAction][] = [...AGENT, ['calls', 'CREATE'], ['calls', 'EDIT']];
 
 async function member(tenantId: string, name: string, grants: [string, PermissionAction][], scope: VisibilityScope) {
   const suffix = tag();
@@ -77,7 +84,10 @@ async function member(tenantId: string, name: string, grants: [string, Permissio
   return { id: user.id, cookie: await createSessionToken(tenantId, user.id) };
 }
 
-/** Lead Eagle's ladder, enough of it: the helper's New (OPEN, default) comes first. */
+/**
+ * Lead Eagle's ladder, enough of it: the helper's New (OPEN, default) comes
+ * first. Created last stage first, so only reading `position` puts it in order.
+ */
 async function ladder(tenantId: string) {
   const stage = (
     key: string,
@@ -96,14 +106,12 @@ async function ladder(tenantId: string) {
       },
     });
   const first = await prisma.leadStage.findFirstOrThrow({ where: { tenantId }, select: { id: true } });
-  return {
-    new: first.id,
-    callback: (await stage('callback', 'Callback', 1)).id,
-    meetingScheduled: (await stage('meeting_scheduled', 'Meeting Scheduled', 2)).id,
-    meetingDone: (await stage('meeting_done', 'Meeting Done', 3)).id,
-    booked: (await stage('booked', 'Booked', 4, 'CONVERSION')).id,
-    notInterested: (await stage('not_interested', 'Not Interested', 5, 'TERMINAL_NEGATIVE')).id,
-  };
+  const notInterested = (await stage('not_interested', 'Not Interested', 5, 'TERMINAL_NEGATIVE')).id;
+  const booked = (await stage('booked', 'Booked', 4, 'CONVERSION')).id;
+  const meetingDone = (await stage('meeting_done', 'Meeting Done', 3)).id;
+  const meetingScheduled = (await stage('meeting_scheduled', 'Meeting Scheduled', 2)).id;
+  const callback = (await stage('callback', 'Callback', 1)).id;
+  return { new: first.id, callback, meetingScheduled, meetingDone, booked, notInterested };
 }
 
 const elements = (node: unknown): ReactElement<Record<string, unknown>>[] => {
@@ -120,6 +128,7 @@ describe('the board at 12:00 on 15 Oct 2026 in Dubai', () => {
   let manager: { id: string; cookie: string };
   let agentA: { id: string; cookie: string };
   let agentB: { id: string; cookie: string };
+  let viewer: { id: string; cookie: string };
   let stages: Awaited<ReturnType<typeof ladder>>;
   const src: Record<string, string> = {};
 
@@ -130,6 +139,8 @@ describe('the board at 12:00 on 15 Oct 2026 in Dubai', () => {
     await prisma.tenant.update({ where: { id: tenantId }, data: { timezone: 'Asia/Dubai' } });
     agentA = await member(tenantId, 'Agent Amal', AGENT, 'OWN');
     agentB = await member(tenantId, 'Agent Bilal', AGENT, 'OWN');
+    // Reads every lead, and no calls, tasks or visits.
+    viewer = await member(tenantId, 'Lead Viewer', [['leads', 'VIEW']], 'ORGANIZATION');
     stages = await ladder(tenantId);
 
     await ensureLeadSources(prisma, tenantId);
@@ -374,6 +385,7 @@ describe('the board at 12:00 on 15 Oct 2026 in Dubai', () => {
     expect(a.funnel.map((row) => row.count)).toEqual([1, 1, 0, 0, 0, 0]);
   });
 
+  // Calls completed or logged: Amal's missed dial on the 14th is not one.
   it('ranks agents by calls over the last seven days (M3-12)', async () => {
     const org = await board(manager.cookie);
     expect(org.period).toEqual({ from: '2026-10-09', to: '2026-10-15' });
@@ -390,7 +402,7 @@ describe('the board at 12:00 on 15 Oct 2026 in Dubai', () => {
       {
         userId: agentA.id,
         name: 'Agent Amal',
-        calls: 3,
+        calls: 2,
         meetings: 1,
         visits: 0,
         booked: 0,
@@ -399,6 +411,20 @@ describe('the board at 12:00 on 15 Oct 2026 in Dubai', () => {
     ]);
     // An agent at OWN scope would rank only themselves: no board.
     expect((await board(agentA.cookie)).leaderboard).toBeNull();
+    // Without calls, tasks or visits to read, those columns are withheld, not zero; and so is the Calls panel.
+    const blind = await board(viewer.cookie);
+    expect(blind.leaderboard).toEqual([
+      {
+        userId: agentB.id,
+        name: 'Agent Bilal',
+        calls: null,
+        meetings: null,
+        visits: null,
+        booked: 1,
+        href: `/leads?owner=${agentB.id}`,
+      },
+    ]);
+    expect(blind.calls).toBeNull();
   });
 
   it('counts calls made, connected and talk time, provider calls with logged ones (M3-13)', async () => {
@@ -417,6 +443,7 @@ describe('the board at 12:00 on 15 Oct 2026 in Dubai', () => {
       received: 1,
       worked: 1,
       href: '/leads?from=2026-10-15&to=2026-10-15',
+      workedHref: '/leads?date=contacted&from=2026-10-15&to=2026-10-15',
     });
     expect(day('2026-10-14')).toMatchObject({ received: 1, worked: 0 });
     expect(day('2026-10-12')).toMatchObject({ received: 1, worked: 0 });
@@ -481,6 +508,7 @@ describe('the board at 12:00 on 15 Oct 2026 in Dubai', () => {
         // The page runs on the real clock.
         `/leads?from=${todayKey('Asia/Dubai')}&to=${todayKey('Asia/Dubai')}`,
         `/follow-ups?date=${todayKey('Asia/Dubai')}`,
+        `/leads?date=contacted&from=${todayKey('Asia/Dubai')}&to=${todayKey('Asia/Dubai')}`,
       ]) {
         expect(text).toContain(href);
       }
@@ -497,8 +525,12 @@ describe('each tile opens the list of what it counted', () => {
   let tenantId: string;
   let manager: { id: string; cookie: string };
   let agent: { id: string; cookie: string };
+  // TEAM scope over the agent, and no ASSIGN: claims nothing, so has no Unassigned tile.
+  let teamLead: { id: string; cookie: string };
   let stages: Awaited<ReturnType<typeof ladder>>;
   let workedLeadId: string;
+  const cookieOf = (who: string) =>
+    who === 'manager' ? manager.cookie : who === 'agent' ? agent.cookie : teamLead.cookie;
 
   beforeAll(async () => {
     ws = await leadEagleWorkspace('drill', MANAGER);
@@ -508,6 +540,11 @@ describe('each tile opens the list of what it counted', () => {
     await prisma.moduleEntitlement.create({ data: { tenantId, module: 'SALES', state: 'ACTIVE' } });
     await prisma.tenant.update({ where: { id: tenantId }, data: { timezone: 'Asia/Dubai' } });
     agent = await member(tenantId, 'Drill Agent', AGENT, 'OWN');
+    teamLead = await member(tenantId, 'Drill Team Lead', AGENT, 'TEAM');
+    const team = await prisma.team.create({ data: { tenantId, name: 'Drill team', code: `DRILL-${tag()}` } });
+    await prisma.userTeam.createMany({
+      data: [teamLead.id, agent.id].map((userId) => ({ tenantId, userId, teamId: team.id })),
+    });
     stages = await ladder(tenantId);
 
     const lead = (name: string, data: Record<string, unknown>) =>
@@ -517,6 +554,8 @@ describe('each tile opens the list of what it counted', () => {
     workedLeadId = (await lead('Worked lead', { ownerId: agent.id, firstContactedAt: new Date() })).id;
     await lead('Won lead', { ownerId: agent.id, stageId: stages.booked, firstContactedAt: new Date() });
     await lead('Closed lead', { ownerId: agent.id, status: 'DUPLICATE' });
+    // Nobody's, and closed out: on no working list, so on no Unassigned figure.
+    await lead('Closed pool lead', { status: 'DUPLICATE' });
     await lead('Their lead', { ownerId: manager.id, lastActivityAt: new Date(), firstContactedAt: new Date() });
     await ensureLeadSources(prisma, tenantId);
     const entry = async (key: string) =>
@@ -546,6 +585,11 @@ describe('each tile opens the list of what it counted', () => {
     await followUp(agent.id, new Date(today.from.getTime() + 60_000), 'CALL');
     await followUp(agent.id, new Date(today.to.getTime() - 60_000), 'MEETING');
     await followUp(manager.id, new Date(today.to.getTime() + 6 * 3_600_000), 'CALL');
+
+    // A call each today, for the leaderboard's reach: the team lead's ranks only the team.
+    for (const callerId of [agent.id, manager.id]) {
+      await prisma.call.create({ data: { tenantId, callerId, status: 'COMPLETED', outcome: 'CONNECTED' } });
+    }
   }, 120_000);
 
   afterAll(async () => {
@@ -566,9 +610,9 @@ describe('each tile opens the list of what it counted', () => {
     return ((grid?.props.rows ?? []) as { id: string }[]).map((row) => row.id);
   };
 
-  for (const who of ['manager', 'agent'] as const) {
+  for (const who of ['manager', 'agent', 'team lead'] as const) {
     it(`the lead and follow-up tiles agree with their lists, for the ${who}`, async () => {
-      const cookie = who === 'manager' ? manager.cookie : agent.cookie;
+      const cookie = cookieOf(who);
       const board = await realtyDashboard(await ctxFrom(cookie));
       const leadTiles = [
         board.pipeline.totalLeads,
@@ -581,6 +625,19 @@ describe('each tile opens the list of what it counted', () => {
         expect((await leadRows(cookie, tile.href)).length, tile.href).toBe(tile.value);
       }
       expect(await leadRows(cookie, '/leads?filter=untouched')).toEqual(['Untouched lead']);
+      // The list names the filter a tile opened it on.
+      for (const [filter, label] of [
+        ['untouched', 'Untouched'],
+        ['won', 'Won'],
+      ]) {
+        jar.cookie = cookie;
+        const tree = await LeadsPage({ searchParams: Promise.resolve({ filter }) });
+        const chip = elements(tree).find(
+          (el) => el.props.className === 'lf-chip' && el.props.href === `/leads?filter=${filter}`,
+        );
+        expect(chip?.props.children, filter).toBe(label);
+        expect(chip?.props['aria-current'], filter).toBe('page');
+      }
 
       const followUpTiles = [
         board.today.overdue,
@@ -596,7 +653,7 @@ describe('each tile opens the list of what it counted', () => {
 
     // The lead list's stage, source, owner and date filters (#179).
     it(`each stage, source, meeting and day opens the leads it counted, for the ${who}`, async () => {
-      const cookie = who === 'manager' ? manager.cookie : agent.cookie;
+      const cookie = cookieOf(who);
       const board = await realtyDashboard(await ctxFrom(cookie));
       const linked = [
         board.today.newLeads,
@@ -605,6 +662,7 @@ describe('each tile opens the list of what it counted', () => {
         ...board.funnel.map((row) => ({ value: row.count, href: row.href })),
         ...board.business.leadsBySource.flatMap((row) => (row.href ? [{ value: row.count, href: row.href }] : [])),
         ...board.trend.map((day) => ({ value: day.received, href: day.href })),
+        ...board.trend.map((day) => ({ value: day.worked, href: day.workedHref })),
       ];
       for (const tile of linked) {
         expect((await leadRows(cookie, tile.href)).length, tile.href).toBe(tile.value);
@@ -620,11 +678,24 @@ describe('each tile opens the list of what it counted', () => {
       );
       expect(board.pipeline.meetingsScheduled?.value).toBe(1);
       expect(board.today.newLeads.value).toBe(who === 'manager' ? 6 : 4);
+      expect(board.trend.at(-1)!.worked).toBe(who === 'manager' ? 5 : 3);
+      // Ranked within the viewer's reach: none for the agent, the team for its lead.
+      expect(board.leaderboard?.map((row) => [row.name, row.calls])).toEqual(
+        who === 'manager'
+          ? [
+              ['Drill Agent', 1],
+              ['Sources Admin', 1],
+            ]
+          : who === 'agent'
+            ? undefined
+            : [['Drill Agent', 1]],
+      );
       if (who === 'manager') {
         // A name on the leaderboard opens that person's leads.
         expect(await leadRows(cookie, `/leads?owner=${agent.id}`)).not.toContain('Their lead');
       }
-    });
+      // About forty lists, each rendered as its page.
+    }, 120_000);
   }
 
   it('the follow-ups API reads the day and the kind as the list does', async () => {
@@ -667,8 +738,27 @@ describe('each tile opens the list of what it counted', () => {
     const chip = elements(tree).find((el) => el.props.href === `/${ws.slug}/sales/leads?filter=unassigned`);
     expect(chip, 'the chip links the unassigned list').toBeDefined();
     const count = elements(chip!.props.children).find((el) => el.props.className === 'lf-attn__count');
+    // The pool lead; the closed-out one is on no working list.
     expect(count?.props.children).toBe(1);
     expect((await leadRows(manager.cookie, '/leads?filter=unassigned')).length).toBe(1);
+
+    // A team lead who may not claim a lead is shown no workspace-wide number.
+    jar.cookie = teamLead.cookie;
+    const theirs = await WorkspaceDashboard({ params: Promise.resolve({ workspaceSlug: ws.slug }) });
+    expect(
+      elements(theirs).find((el) => el.props.href === `/${ws.slug}/sales/leads?filter=unassigned`),
+    ).toBeUndefined();
+  });
+
+  it('the Sales home’s overdue and today figures count what the Follow-ups list it links shows', async () => {
+    jar.cookie = agent.cookie;
+    const home = elements(await SalesHome())[0]!;
+    // The page hands an agent their own day: rendered here as Next would.
+    const day = elements(await (home.type as (props: unknown) => Promise<unknown>)(home.props));
+    for (const href of ['/follow-ups?view=mine&due=overdue', '/follow-ups?view=mine&due=today']) {
+      const figure = day.find((el) => el.props.href === href && 'n' in el.props);
+      expect(figure?.props.n, href).toBe((await followUpRows(agent.cookie, href)).length);
+    }
   });
 
   it('the first touch on a lead stamps when it was first contacted, and an earlier one moves it back', async () => {
@@ -694,14 +784,70 @@ describe('each tile opens the list of what it counted', () => {
     expect(await leadRows(agent.cookie, '/leads?filter=untouched')).toEqual(['Untouched lead']);
     void workedLeadId;
   });
+
+  it('booking a call, calling it off or writing a note is not contact; placing it is', async () => {
+    const caller = await member(tenantId, 'Drill Caller', CALLER, 'OWN');
+    const fresh = (name: string) =>
+      prisma.lead.create({
+        data: { tenantId, reference: `C-${tag()}`, fullName: name, stageId: stages.new, ownerId: caller.id },
+      });
+    const stamp = async (id: string) =>
+      (await prisma.lead.findFirstOrThrow({ where: { tenantId, id } })).firstContactedAt?.toISOString() ?? null;
+    const lead = await fresh('Booked lead');
+    const book = () =>
+      post(placeCall, '/api/v1/calls', { leadId: lead.id, recipientNumber: '+971501234567' }, caller.cookie);
+
+    const booked = await book();
+    expect(booked.status, JSON.stringify(booked.body)).toBe(200);
+    const note = await prisma.activityType.upsert({
+      where: { tenantId_key: { tenantId, key: 'note' } },
+      update: {},
+      create: { tenantId, key: 'note', name: 'Note' },
+    });
+    const noted = await post(
+      logActivity,
+      '/api/v1/activities',
+      { typeId: note.id, leadId: lead.id, notes: 'Asked reception for him' },
+      caller.cookie,
+    );
+    expect(noted.status, JSON.stringify(noted.body)).toBe(200);
+    const off = await patch(
+      updateCall,
+      `/api/v1/calls/${booked.body.id}`,
+      { status: 'CANCELLED', notes: 'Not today' },
+      caller.cookie,
+    );
+    expect(off.status, JSON.stringify(off.body)).toBe(200);
+    expect(await stamp(lead.id)).toBeNull();
+    expect(await leadRows(caller.cookie, '/leads?filter=untouched')).toEqual(['Booked lead']);
+
+    // Booked again, then dialled: contact.
+    const again = await book();
+    const placed = await patch(
+      updateCall,
+      `/api/v1/calls/${again.body.id}`,
+      { status: 'COMPLETED', outcome: 'CONNECTED' },
+      caller.cookie,
+    );
+    expect(placed.status, JSON.stringify(placed.body)).toBe(200);
+    expect(await stamp(lead.id)).not.toBeNull();
+    expect(await leadRows(caller.cookie, '/leads?filter=untouched')).toEqual([]);
+
+    // A lead with only a call booked breaches its first-contact deadline.
+    const waiting = await fresh('Waiting lead');
+    await post(placeCall, '/api/v1/calls', { leadId: waiting.id, recipientNumber: '+971501234568' }, caller.cookie);
+    await checkLeadFirstContact(tenantId, waiting.id);
+    expect((await prisma.lead.findFirstOrThrow({ where: { tenantId, id: waiting.id } })).slaState).toBe('BREACHED');
+  });
 });
 
 /**
- * Leads worked before the stamp existed: the migration dates their first
- * contact from their earliest activity or call. Run here as written, limited
- * to this spec's workspace so a parallel spec's tenants are never touched.
+ * Leads worked or received before this change: the migration dates their first
+ * contact from their earliest contact, and gives a portal lead from before the
+ * catalogue its portal's entry. Run here as written, limited to this spec's
+ * workspace so a parallel spec's tenants are never touched.
  */
-describe('the first-contact backfill in 20261015100000_lead_dashboard', () => {
+describe('the backfills in 20261015100000_lead_dashboard', () => {
   const sql = readFileSync(
     path.join(__dirname, '..', '..', 'prisma', 'migrations', '20261015100000_lead_dashboard', 'migration.sql'),
     'utf8',
@@ -715,42 +861,142 @@ describe('the first-contact backfill in 20261015100000_lead_dashboard', () => {
     await ws.cleanup();
   });
 
-  it('dates first contact from the earliest activity or call, and leaves the rest alone', async () => {
+  it('dates first contact from the earliest call or contact, never from a note, a booking or a missed inbound call', async () => {
     const { tenantId, userId } = ws;
+    await ensureLeadSources(prisma, tenantId);
+    const entry = async (key: string) =>
+      (await prisma.leadSource.findFirstOrThrow({ where: { tenantId, key }, select: { id: true } })).id;
     const stageId = (await prisma.leadStage.findFirstOrThrow({ where: { tenantId } })).id;
-    const lead = (name: string, firstContactedAt: Date | null = null) =>
+    const lead = (name: string, data: Record<string, unknown> = {}) =>
       prisma.lead.create({
-        data: { tenantId, reference: `M-${tag()}`, fullName: name, stageId, ownerId: userId, firstContactedAt },
+        data: { tenantId, reference: `M-${tag()}`, fullName: name, stageId, ownerId: userId, ...data },
       });
+    const type = (key: string) =>
+      prisma.activityType.upsert({
+        where: { tenantId_key: { tenantId, key } },
+        update: {},
+        create: { tenantId, key, name: key },
+      });
+    const note = await type('note');
+    const callOut = await type('call_out');
+    const call = (leadId: string, data: Record<string, unknown>) =>
+      prisma.call.create({ data: { tenantId, callerId: userId, leadId, ...data } });
+
     const worked = await lead('Worked before');
-    const kept = await lead('Already stamped', at('2026-09-20T08:00:00Z'));
-    const never = await lead('Never worked');
-    const type = await prisma.activityType.create({ data: { tenantId, key: 'note', name: 'Note' } });
     await prisma.activity.create({
-      data: { tenantId, typeId: type.id, leadId: worked.id, occurredAt: at('2026-10-01T08:00:00Z') },
+      data: { tenantId, typeId: note.id, leadId: worked.id, ownerId: userId, occurredAt: at('2026-09-25T08:00:00Z') },
     });
-    await prisma.call.create({
-      data: { tenantId, callerId: userId, leadId: worked.id, createdAt: at('2026-09-30T08:00:00Z') },
+    await call(worked.id, { createdAt: at('2026-09-20T08:00:00Z') }); // booked, never placed
+    await call(worked.id, { status: 'CANCELLED', createdAt: at('2026-09-21T08:00:00Z') });
+    await call(worked.id, { direction: 'INBOUND', status: 'MISSED', createdAt: at('2026-09-26T08:00:00Z') });
+    // Dialled on the 28th (booked the day before): the first contact.
+    await call(worked.id, {
+      status: 'MISSED',
+      createdAt: at('2026-09-27T08:00:00Z'),
+      startedAt: at('2026-09-28T08:00:00Z'),
     });
-    await prisma.call.create({
-      data: { tenantId, callerId: userId, leadId: kept.id, createdAt: at('2026-09-01T08:00:00Z') },
+    await prisma.activity.create({
+      data: {
+        tenantId,
+        typeId: callOut.id,
+        leadId: worked.id,
+        ownerId: userId,
+        occurredAt: at('2026-10-01T08:00:00Z'),
+      },
     });
+    const kept = await lead('Already stamped', { firstContactedAt: at('2026-09-20T08:00:00Z') });
+    await call(kept.id, { status: 'COMPLETED', createdAt: at('2026-09-01T08:00:00Z') });
+
+    // A portal enquiry, as intake writes it ("Enquiry via Dubizzle"), and an
+    // import's remarks: notes, then a call booked and a missed one from the lead.
+    const enquiry = await takeEnquiry(
+      tenantId,
+      {
+        fullName: 'Enquired only',
+        email: null,
+        phones: [`+97155${String(Date.now()).slice(-7)}`],
+        message: 'Is the villa free?',
+        reference: 'D-1',
+        details: [],
+      },
+      {
+        label: 'Dubizzle',
+        source: 'MARKETPLACE',
+        sourceDetail: 'dubizzle:D-1',
+        sourceId: await entry('dubizzle'),
+        ownerId: userId,
+      },
+    );
+    const enquired = (enquiry as { leadId: string }).leadId;
+    expect(await prisma.activity.count({ where: { tenantId, leadId: enquired, typeId: note.id } })).toBe(1);
+    await prisma.activity.create({
+      data: { tenantId, typeId: note.id, leadId: enquired, ownerId: userId, source: 'IMPORT', notes: 'Remarks' },
+    });
+    await call(enquired, {});
+    await call(enquired, { direction: 'INBOUND', status: 'MISSED' });
+
+    // Before the catalogue: the portal is named only in the detail.
+    const portal = await lead('Old Bayut lead', { source: 'MARKETPLACE', sourceDetail: 'bayut:B-77' });
+    const keyless = await lead('Old Property Finder lead', { source: 'MARKETPLACE', sourceDetail: 'property_finder' });
+    const meta = await lead('Old Meta lead', { source: 'AD_LEAD_FORM', sourceDetail: 'facebook:123' });
+    const referred = await lead('Referred lead', { source: 'REFERRAL', sourceDetail: 'bayut' });
+    const typed = await lead('Typed lead', { source: 'MANUAL', sourceDetail: 'website' });
 
     const updates = sql.split(/;\s*\n/).filter((part) => /UPDATE "Lead"/.test(part));
-    expect(updates).toHaveLength(1);
-    await withPlatformTx((tx) =>
-      tx.$executeRawUnsafe(
-        updates[0]!.replace(
-          'WHERE l."firstContactedAt" IS NULL',
-          `WHERE l."firstContactedAt" IS NULL AND l."tenantId" = '${tenantId}'`,
-        ),
-      ),
-    );
+    for (const update of updates) {
+      const mine = update.replace(/WHERE l\."(\w+)" IS NULL/, `WHERE l."tenantId" = '${tenantId}' AND l."$1" IS NULL`);
+      expect(mine).toContain(tenantId);
+      await withPlatformTx((tx) => tx.$executeRawUnsafe(mine));
+    }
 
-    const stamped = async (id: string) =>
-      (await prisma.lead.findFirstOrThrow({ where: { tenantId, id } })).firstContactedAt?.toISOString() ?? null;
-    expect(await stamped(worked.id)).toBe('2026-09-30T08:00:00.000Z');
+    const row = (id: string) => prisma.lead.findFirstOrThrow({ where: { tenantId, id } });
+    const stamped = async (id: string) => (await row(id)).firstContactedAt?.toISOString() ?? null;
+    expect(await stamped(worked.id)).toBe('2026-09-28T08:00:00.000Z');
     expect(await stamped(kept.id)).toBe('2026-09-20T08:00:00.000Z');
-    expect(await stamped(never.id)).toBeNull();
+    expect(await stamped(enquired)).toBeNull();
+
+    expect((await row(portal.id)).sourceId).toBe(await entry('bayut'));
+    expect((await row(keyless.id)).sourceId).toBe(await entry('property_finder'));
+    expect((await row(meta.id)).sourceId).toBe(await entry('meta'));
+    expect((await row(referred.id)).sourceId).toBeNull();
+    expect((await row(typed.id)).sourceId).toBeNull();
+
+    // The board names those portals, each row opening its list.
+    const board = await realtyDashboard(await ctxFrom(ws.cookie));
+    const rows = Object.fromEntries(board.business.leadsBySource.map((source) => [source.label, source]));
+    expect(rows['Bayut']).toEqual({ label: 'Bayut', count: 1, href: `/leads?source=${await entry('bayut')}` });
+    expect(rows['Property Finder']?.count).toBe(1);
+    expect(rows['Meta']?.count).toBe(1);
+    expect(rows['Dubizzle']?.count).toBe(1);
+  });
+});
+
+describe('the leaderboard', () => {
+  let ws: Awaited<ReturnType<typeof leadEagleWorkspace>>;
+
+  beforeAll(async () => {
+    ws = await leadEagleWorkspace('top', MANAGER);
+  }, 60_000);
+  afterAll(async () => {
+    await ws.cleanup();
+  });
+
+  it('shows the top six by calls', async () => {
+    const { tenantId } = ws;
+    for (let i = 1; i <= 7; i += 1) {
+      const caller = await member(tenantId, `Caller ${i}`, AGENT, 'OWN');
+      await prisma.call.createMany({
+        data: Array.from({ length: i }, () => ({ tenantId, callerId: caller.id, status: 'COMPLETED' as const })),
+      });
+    }
+    const board = await realtyDashboard(await ctxFrom(ws.cookie));
+    expect(board.leaderboard?.map((row) => [row.name, row.calls])).toEqual([
+      ['Caller 7', 7],
+      ['Caller 6', 6],
+      ['Caller 5', 5],
+      ['Caller 4', 4],
+      ['Caller 3', 3],
+      ['Caller 2', 2],
+    ]);
   });
 });

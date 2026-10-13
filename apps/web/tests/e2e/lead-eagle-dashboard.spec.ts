@@ -14,8 +14,8 @@ import {
  * Lead-Eagle-only workspace: its tiles and charts at 1280 and 390 px, light and
  * dark, with no sideways scroll on a phone, and a tile opening the list of what
  * it counted: Callbacks lists the call due today and not the meeting due today;
- * Untouched lists the leads nobody has contacted; Overdue the one from two days
- * ago.
+ * Unassigned the lead nobody owns; Untouched the leads nobody has contacted,
+ * with its chip lit; Overdue the one from two days ago.
  */
 test.describe.configure({ mode: 'serial' });
 
@@ -32,6 +32,7 @@ test.describe('The Lead Eagle board', () => {
   const at = (path: string) => `/${eagle.slug}${path}`;
   const FRESH = `Fresh Board Lead ${run}`;
   const CALLED = `Called Board Lead ${run}`;
+  const POOL = `Pool Board Lead ${run}`;
 
   /** A time later today in Dubai (at least a minute ahead), or `days` from now. */
   function due(days = 0) {
@@ -49,18 +50,21 @@ test.describe('The Lead Eagle board', () => {
   test.beforeAll(resetLoginThrottle);
 
   test('tiles and charts at desktop and phone width, each opening its list', async ({ page }) => {
-    await test.step('a Lead-Eagle-only workspace with two leads and three follow-ups', async () => {
+    await test.step('a Lead-Eagle-only workspace with three leads (one unowned) and three follow-ups', async () => {
       await loginPlatformOwner(page);
       await createWorkspaceViaWizard(page, eagle);
       await logout(page);
       await login(page, eagle.adminEmail, eagle.adminPassword);
       const stamp = String(Date.now()).slice(-7);
       const ids: string[] = [];
-      for (const [index, fullName] of [FRESH, CALLED].entries()) {
+      for (const [index, fullName] of [FRESH, CALLED, POOL].entries()) {
         const res = await page.request.post('/api/v1/leads', { data: { fullName, phone: `+97155${index}${stamp}` } });
         expect(res.status(), await res.text()).toBeLessThan(300);
         ids.push((await res.json()).id);
       }
+      // Nobody owns the third: the Unassigned tile counts it.
+      const unowned = await page.request.patch(`/api/v1/leads/${ids[2]}`, { data: { ownerId: null } });
+      expect(unowned.status(), await unowned.text()).toBe(200);
       // One lead called: it is no longer untouched.
       const logged = await page.request.post(`/api/v1/leads/${ids[1]}/call-log`, { data: { outcome: 'Connected' } });
       expect(logged.status(), await logged.text()).toBe(200);
@@ -82,7 +86,8 @@ test.describe('The Lead Eagle board', () => {
       await expect(figure(page, 'Callbacks').locator('.lf-hero-figure')).toHaveText('1');
       await expect(figure(page, 'Overdue').locator('.lf-hero-figure')).toHaveText('1');
       await expect(figure(page, 'Untouched').locator('.lf-hero-figure')).toHaveText('1');
-      await expect(figure(page, 'Total Leads').locator('.lf-hero-figure')).toHaveText('2');
+      await expect(figure(page, 'Total Leads').locator('.lf-hero-figure')).toHaveText('3');
+      await expect(figure(page, 'Unassigned').locator('.lf-hero-figure')).toHaveText('1');
       for (const panel of [
         'Leads by Stage',
         'Leads by Source',
@@ -95,6 +100,14 @@ test.describe('The Lead Eagle board', () => {
       await expect(page.getByRole('heading', { name: 'Leaderboard', exact: true })).toBeVisible();
       await expect(page.getByText('Revenue Today')).toHaveCount(0);
       await page.screenshot({ path: `test-results/lead-eagle-board-1280-${run}.png`, fullPage: true });
+    });
+
+    await test.step('Unassigned opens the lead nobody owns', async () => {
+      await figure(page, 'Unassigned').click();
+      await expect(page).toHaveURL(new RegExp(`${at('/lead-eagle/leads')}\\?filter=unassigned$`));
+      await expect(page.getByText(POOL).first()).toBeVisible();
+      await expect(page.getByText(FRESH)).toHaveCount(0);
+      await page.goto(at('/lead-eagle/dashboard'));
     });
 
     await test.step('Callbacks opens the call due today, and not the meeting', async () => {
@@ -120,6 +133,8 @@ test.describe('The Lead Eagle board', () => {
       await expect(page).toHaveURL(new RegExp(`${at('/lead-eagle/leads')}\\?filter=untouched$`));
       await expect(page.getByText(FRESH).first()).toBeVisible();
       await expect(page.getByText(CALLED)).toHaveCount(0);
+      const views = page.getByRole('navigation', { name: 'Saved views' });
+      await expect(views.locator('[aria-current="page"]')).toHaveText('Untouched');
     });
 
     await test.step('390 px: Overdue in the week strip opens the follow-up from two days ago', async () => {

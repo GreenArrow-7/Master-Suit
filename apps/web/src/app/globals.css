@@ -6539,13 +6539,6 @@ a.lf-bars__row:focus-visible .lf-bars__label {
   min-width: 0;
   color: var(--lf-ink-3);
   font-size: var(--lf-text-2xs);
-  text-decoration: none;
-  border-radius: var(--lf-radius-sm);
-}
-.lf-pairs__day:hover,
-.lf-pairs__day:focus-visible {
-  background: color-mix(in srgb, var(--lf-line) 45%, transparent);
-  color: var(--lf-ink);
 }
 .lf-pairs__bars {
   display: flex;
@@ -6553,8 +6546,20 @@ a.lf-bars__row:focus-visible .lf-bars__label {
   gap: 2px;
   height: 100%;
 }
-.lf-pairs__bars > span {
-  width: 6px;
+/* Each bar opens its own list; the whole column above it is the link, so a short bar is still a target. */
+.lf-pairs__bar {
+  display: flex;
+  align-items: flex-end;
+  width: 8px;
+  height: 100%;
+  border-radius: var(--lf-radius-sm);
+}
+.lf-pairs__bar:hover,
+.lf-pairs__bar:focus-visible {
+  background: color-mix(in srgb, var(--lf-line) 45%, transparent);
+}
+.lf-pairs__bar > span {
+  width: 100%;
   border-radius: 4px 4px 0 0;
 }
 .lf-strip {

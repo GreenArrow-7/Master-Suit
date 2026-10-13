@@ -125,10 +125,18 @@ function Bars({ rows }: { rows: { key: string; label: string; count: number; hre
   );
 }
 
-/** Two bars a day for 14 days: leads received, and leads first contacted. */
+/** Two bars a day for 14 days: leads received, and leads first contacted; each bar opens its day's list. */
 function ReceivedVsWorked({ trend }: { trend: RealtyDashboard['trend'] }) {
   const max = Math.max(1, ...trend.flatMap((day) => [day.received, day.worked]));
   const total = (key: 'received' | 'worked') => trend.reduce((sum, day) => sum + day[key], 0);
+  const bar = (date: string, series: 'received' | 'worked', count: number, href: string) => {
+    const words = `${onDay(date)}: ${count} ${series}`;
+    return (
+      <SalesLink className="lf-pairs__bar" href={href} aria-label={words} title={words}>
+        <span data-series={series} style={{ height: `${(count / max) * 100}%` }} />
+      </SalesLink>
+    );
+  };
   return (
     <>
       <p className="lf-legend">
@@ -140,20 +148,17 @@ function ReceivedVsWorked({ trend }: { trend: RealtyDashboard['trend'] }) {
         </span>
       </p>
       <div className="lf-pairs">
-        {trend.map((day) => {
-          const words = `${onDay(day.date)}: ${day.received} received, ${day.worked} worked`;
-          return (
-            <SalesLink key={day.date} className="lf-pairs__day" href={day.href} aria-label={words} title={words}>
-              <span className="lf-pairs__bars" aria-hidden="true">
-                <span data-series="received" style={{ height: `${(day.received / max) * 100}%` }} />
-                <span data-series="worked" style={{ height: `${(day.worked / max) * 100}%` }} />
-              </span>
-              <span className="lf-pairs__date" aria-hidden="true">
-                {Number(day.date.slice(8))}
-              </span>
-            </SalesLink>
-          );
-        })}
+        {trend.map((day) => (
+          <div key={day.date} className="lf-pairs__day">
+            <span className="lf-pairs__bars">
+              {bar(day.date, 'received', day.received, day.href)}
+              {bar(day.date, 'worked', day.worked, day.workedHref)}
+            </span>
+            <span className="lf-pairs__date" aria-hidden="true">
+              {Number(day.date.slice(8))}
+            </span>
+          </div>
+        ))}
       </div>
     </>
   );
