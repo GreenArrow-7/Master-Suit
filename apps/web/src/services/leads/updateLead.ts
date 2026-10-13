@@ -276,11 +276,13 @@ export async function deleteLead(ctx: Ctx, id: string) {
  * The grid's Undo of a delete (M4-36): the lead returns to every list it left.
  * Reached under the delete's own scope; a lead that is not deleted, or not
  * the caller's to delete, answers 404. One whose number or email another lead
- * took meanwhile answers 409, as creating it again would (`createLead`).
+ * took meanwhile answers 409, as creating it again would (`createLead`). A
+ * merged lead is not a deleted one (its work went to the kept lead): 404.
  */
 export async function restoreLead(ctx: Ctx, id: string) {
   // Before the transaction, as `refuseDuplicate`: findDuplicates reads on its own connection.
   const deleted = await assertLeadInScope(ctx, id, prisma, 'DELETE', { deleted: true });
+  if (deleted.isMerged) throw NotFound('Lead');
   const [match] = await findDuplicates(ctx.tenantId, {
     phoneNormalized: deleted.phoneNormalized,
     email: deleted.email,

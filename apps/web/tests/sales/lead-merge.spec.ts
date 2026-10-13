@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { VisibilityScope } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { POST as mergePost } from '@/app/api/v1/leads/[id]/merge/route';
+import { POST as restorePost } from '@/app/api/v1/leads/[id]/restore/route';
 import LeadDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
 import MergeLeadsPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/merge/page';
 import { createWorkspaceUser, grantPermissions, seedHierarchy, type Grants, type Hierarchy } from '../helpers/fixtures';
@@ -510,5 +511,29 @@ describe('POST /api/v1/leads/{id}/merge', () => {
       secondaryEmail: null,
       company: 'Masked Co',
     });
+  });
+
+  it('a merged lead is not restored as a deleted one (the grid’s Undo route)', async () => {
+    const restorer = await person('restorer', [
+      [
+        [
+          ['leads', 'VIEW'],
+          ['leads', 'EDIT'],
+          ['leads', 'DELETE'],
+        ],
+        'ORGANIZATION',
+      ],
+    ]);
+    const kept = await lead(restorer.id);
+    const other = await lead(restorer.id);
+    expect((await merge(restorer.cookie, kept.id, other.id)).status).toBe(200);
+    const res = await post(restorePost, `/api/v1/leads/${other.id}/restore`, {}, restorer.cookie, { id: other.id });
+    expect(res.status, JSON.stringify(res.body)).toBe(404);
+    expect(
+      await prisma.lead.findFirst({
+        where: { tenantId: h.tenantId, id: other.id, isMerged: true, deletedAt: { not: null } },
+        select: { id: true },
+      }),
+    ).toEqual({ id: other.id });
   });
 });
