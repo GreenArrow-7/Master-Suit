@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { audit } from '@/lib/security/audit';
+import { notifyCrm } from '@/services/crm/notify';
 import { assessEligibility, lockAndVerify, policyFromRule, redactForSales, type Eligibility } from './eligibility';
 import { openTriageEntry, resolveTriageEntry, type TriageDetail, type TriageReason } from './triage';
 
@@ -77,7 +78,7 @@ function rotationOrder(pool: string[], lastAssignedUserId: string | null): strin
 export async function assignLead(tenantId: string, leadId: string, now = new Date()): Promise<AssignOutcome> {
   const lead = await prisma.lead.findFirst({
     where: { tenantId, id: leadId, deletedAt: null },
-    select: { id: true, ownerId: true, teamId: true },
+    select: { id: true, ownerId: true, teamId: true, fullName: true, reference: true },
   });
   if (!lead) return { outcome: 'gone', leadId };
   if (lead.ownerId) return { outcome: 'already-assigned', leadId };
@@ -158,7 +159,25 @@ export async function assignLead(tenantId: string, leadId: string, now = new Dat
       now,
       why(rule.name, order, userId, detail, people),
     );
-    if (placed.outcome !== 'retry') return placed.result;
+    if (placed.outcome !== 'retry') {
+      // The agent hears the lead is theirs, in the bell and on the phone, as a
+      // reassignment by hand tells them; after the commit, and never failing it.
+      if (placed.result.outcome === 'assigned') {
+        await notifyCrm(
+          { tenantId, actor: { id: 'distribution' } },
+          {
+            event: 'lead.assigned',
+            ownerId: userId,
+            title: `Lead assigned: ${lead.fullName}`,
+            body: lead.reference,
+            objectType: 'lead',
+            recordId: lead.id,
+            priority: 'HIGH',
+          },
+        );
+      }
+      return placed.result;
+    }
     detail.candidates = detail.candidates?.map((c) =>
       c.userId === userId ? { userId, blockers: redactForSales(placed.blockers, false) } : c,
     );

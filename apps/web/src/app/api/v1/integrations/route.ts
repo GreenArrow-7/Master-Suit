@@ -6,6 +6,7 @@ import { Invalid } from '@/lib/errors';
 import { callbackSecrets, TELEPHONY_VENDORS, UNSIGNED_VENDORS } from '@/lib/integrations/telephony';
 import { defaultVendor } from '@/lib/integrations/telephony/resolve';
 import { PROVIDERS } from '@/lib/integrations/registry';
+import { withSwitches } from '@/services/leads/intake';
 
 /**
  * The integrations board: what could be connected, what is, and whether it works.
@@ -39,30 +40,35 @@ export const GET = route({ module: 'integrations', action: 'VIEW' }, async ({ ct
   const byProvider = new Map(connections.map((c) => [c.provider, c]));
   const base = env.APP_URL.replace(/\/$/, '');
 
-  const providers = PROVIDERS.map((spec) => {
-    const conn = byProvider.get(spec.key);
-    const token =
-      conn && UNSIGNED_VENDORS.includes(spec.key as never) ? `?token=${callbackSecrets(conn.webhookKey).urlToken}` : '';
+  const providers = await Promise.all(
+    PROVIDERS.map(async (spec) => {
+      const conn = byProvider.get(spec.key);
+      const token =
+        conn && UNSIGNED_VENDORS.includes(spec.key as never)
+          ? `?token=${callbackSecrets(conn.webhookKey).urlToken}`
+          : '';
+      const { settingFields, settings } = await withSwitches(ctx.tenantId, spec.settings, conn?.metadata);
 
-    return {
-      key: spec.key,
-      label: spec.label,
-      category: spec.category,
-      description: spec.description,
-      capabilities: spec.capabilities,
-      unsignedCallbacks: spec.unsignedCallbacks ?? false,
-      credentialFields: spec.credentials.map(({ key, label, secret, hint }) => ({ key, label, secret, hint })),
-      settingFields: spec.settings.map(({ key, label, hint }) => ({ key, label, hint })),
-      status: conn?.status ?? 'NOT_CONFIGURED',
-      settings: (conn?.metadata ?? {}) as Record<string, unknown>,
-      lastSyncAt: conn?.lastSyncAt ?? null,
-      errorMessage: conn?.errorMessage ?? null,
-      updatedAt: conn?.updatedAt ?? null,
-      expiresAt: conn?.expiresAt ?? null,
-      /** Only meaningful once connected: the key is minted with the connection. */
-      webhookUrl: spec.webhook && conn ? `${base}/api/v1/webhooks/${spec.webhook}/${conn.webhookKey}${token}` : null,
-    };
-  });
+      return {
+        key: spec.key,
+        label: spec.label,
+        category: spec.category,
+        description: spec.description,
+        capabilities: spec.capabilities,
+        unsignedCallbacks: spec.unsignedCallbacks ?? false,
+        credentialFields: spec.credentials.map(({ key, label, secret, hint }) => ({ key, label, secret, hint })),
+        settingFields: settingFields.map(({ key, label, hint, toggle }) => ({ key, label, hint, toggle: !!toggle })),
+        status: conn?.status ?? 'NOT_CONFIGURED',
+        settings,
+        lastSyncAt: conn?.lastSyncAt ?? null,
+        errorMessage: conn?.errorMessage ?? null,
+        updatedAt: conn?.updatedAt ?? null,
+        expiresAt: conn?.expiresAt ?? null,
+        /** Only meaningful once connected: the key is minted with the connection. */
+        webhookUrl: spec.webhook && conn ? `${base}/api/v1/webhooks/${spec.webhook}/${conn.webhookKey}${token}` : null,
+      };
+    }),
+  );
 
   return {
     providers,

@@ -1,13 +1,14 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { mergeWhere } from '@/lib/api/where';
-import { assignableUsers, leadScope } from '@/lib/security/record-scope';
+import { assignableUsers, leadReach, leadScope } from '@/lib/security/record-scope';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { SIMPLE_NAMED_LEAD_FILTERS } from '@/lib/leads/namedFilters';
 import { contactSearch, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
+import { workspaceTimezone } from '@/services/hr/attendance';
 import { bookableProjects } from '@/services/leads/updateLead';
 import LeadGrid from './LeadGrid';
 import EmptyState from '@/components/ui/EmptyState';
@@ -117,7 +118,7 @@ export default async function LeadsPage({
   // are reached only through their own chip.
   const where = mergeWhere(scope, extra, search, params.filter === 'closed_out' ? null : OPEN_LEADS_WHERE);
 
-  const [rows, stages, users, taskTypes, setting] = await Promise.all([
+  const [rows, stages, users, taskTypes, setting, timeZone] = await Promise.all([
     prisma.lead.findMany({
       where,
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
@@ -139,6 +140,7 @@ export default async function LeadsPage({
         nextFollowUpAt: true,
         updatedAt: true,
         ownerId: true,
+        secondaryOwnerId: true,
         stage: { select: { key: true, name: true, color: true } },
         owner: { select: { fullName: true } },
       },
@@ -159,6 +161,7 @@ export default async function LeadsPage({
       where: { tenantId: ctx.tenantId },
       select: { gridColumns: true },
     }),
+    workspaceTimezone(ctx),
   ]);
   const projects = await bookableProjects(ctx, stages);
 
@@ -186,11 +189,14 @@ export default async function LeadsPage({
     pageRows.map((r) => r.id),
     access,
   );
+  // Log call where its route takes the lead.
+  const logs = await leadReach(ctx, 'EDIT');
   // Only the custom columns' values leave the server, never the rest of customData.
-  const withFollowUp = pageRows.map(({ customData, ...r }) => ({
+  const withFollowUp = pageRows.map(({ customData, secondaryOwnerId, ...r }) => ({
     ...r,
     custom: customCells(columns, customData),
     nextFollowUpAt: due.get(r.id) ?? null,
+    canLog: logs({ ownerId: r.ownerId, secondaryOwnerId }),
   }));
 
   const data = withFollowUp.map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
@@ -322,6 +328,7 @@ export default async function LeadsPage({
           canEdit={can(ctx, 'leads', 'EDIT')}
           canDelete={can(ctx, 'leads', 'DELETE')}
           emptyLabel={emptyFollowUpLabel(access, view, ctx.actor.id)}
+          timeZone={timeZone}
         />
       )}
 

@@ -17,9 +17,12 @@ import { leadsInScope } from '@/lib/security/record-scope';
 
 const PAGE_SIZE = 25;
 
-/** What became of a delivery: the intake's outcome once worked, else where the queue stands. */
+/**
+ * What became of a delivery: the intake's outcome once worked (`unparsed`: an
+ * email no portal sent, or one naming nobody to reach), else where the queue stands.
+ */
 export type DeliveryStatus =
-  'created' | 'attached' | 'test' | 'anonymous' | 'processed' | 'queued' | 'retrying' | 'dead_lettered';
+  'created' | 'attached' | 'test' | 'anonymous' | 'unparsed' | 'processed' | 'queued' | 'retrying' | 'dead_lettered';
 
 const statusOf = (e: { processed: boolean; outcome: string | null; attempts: number }): DeliveryStatus =>
   e.processed

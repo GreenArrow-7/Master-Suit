@@ -13,7 +13,8 @@ export interface ProviderCard {
   capabilities: readonly string[];
   unsignedCallbacks: boolean;
   credentialFields: { key: string; label: string; secret: boolean; hint?: string }[];
-  settingFields: { key: string; label: string; hint?: string }[];
+  /** `toggle`: on or off, its value in `settings` already the saved one or its default. */
+  settingFields: { key: string; label: string; hint?: string; toggle?: boolean }[];
   status: string;
   settings: Record<string, unknown>;
   lastSyncAt: string | null;
@@ -357,7 +358,7 @@ function DefaultProviderPicker({
 function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [values, setValues] = useState<Record<string, string | boolean>>({});
   const [busy, setBusy] = useState<'save' | 'test' | 'disconnect' | null>(null);
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   /** Second press confirms; blurring the button forgets the first one. */
@@ -434,6 +435,13 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
               Supports: {provider.capabilities.map((c) => c.replace(/_/g, ' ').toLowerCase()).join(', ')}
             </p>
           )}
+          {provider.settingFields
+            .filter((f) => f.toggle)
+            .map((f) => (
+              <p key={f.key} className="lf-hint" style={{ marginTop: 4 }}>
+                {f.label}: {provider.settings[f.key] ? 'on' : 'off'}
+              </p>
+            ))}
           {provider.errorMessage && (
             <p className="lf-hint lf-hint--error" style={{ marginTop: 4 }}>
               {provider.errorMessage}
@@ -557,6 +565,22 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
           {[...provider.credentialFields, ...provider.settingFields].map((field) => {
             const stored = 'secret' in field && field.secret ? configured : false;
             const settingValue = provider.settings[field.key];
+            if ('toggle' in field && field.toggle) {
+              return (
+                <div className="lf-field" key={field.key}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      disabled={!canEdit}
+                      checked={(values[field.key] ?? settingValue) === true}
+                      onChange={(e) => setValues({ ...values, [field.key]: e.target.checked })}
+                    />
+                    {field.label}
+                  </label>
+                  {field.hint && <p className="lf-hint">{field.hint}</p>}
+                </div>
+              );
+            }
             return (
               <div className="lf-field" key={field.key}>
                 <label className="lf-label" htmlFor={`${provider.key}-${field.key}`}>
@@ -575,7 +599,7 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
                         ? settingValue
                         : (field.hint ?? '')
                   }
-                  value={values[field.key] ?? ''}
+                  value={String(values[field.key] ?? '')}
                   onChange={(e) => setValues({ ...values, [field.key]: e.target.value })}
                 />
                 {field.hint && <p className="lf-hint">{field.hint}</p>}
@@ -619,7 +643,7 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
   );
 }
 
-const pick = (values: Record<string, string>, keys: string[]) =>
+const pick = (values: Record<string, string | boolean>, keys: string[]) =>
   Object.fromEntries(keys.filter((k) => k in values).map((k) => [k, values[k]]));
 
 function relative(date: string | null): string {
