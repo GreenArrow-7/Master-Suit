@@ -102,7 +102,7 @@ GET    /admin/settings             PATCH /admin/settings
 
 POST   /public/forms/{key}/submit  unauthenticated, CAPTCHA + rate limited
 POST   /webhooks/inbound/{key}     signature-verified provider callbacks
-POST   /webhooks/leads/{key}       lead sources: portals, Google Ads, Custom webhook (§6)
+POST   /webhooks/leads/{key}       lead sources: portals, Google Ads, Custom webhook, Portal emails (§6)
 ```
 
 ## 5. Filter tree
@@ -177,6 +177,27 @@ issued when it is connected and shown once.
 - 200 `{}` means stored; the worker makes the lead. Every delivery is on the
   source's Deliveries tab with what became of it, and can be replayed there
   once the queue is done with it.
+
+**Portal emails** (a lead source connected like a Custom webhook, its secret
+issued and shown once) take the lead emails Property Finder, Bayut and dubizzle
+send an agency. No inbound-mail service posts this body as it is: the workspace
+runs one (SES, Mailgun, Postmark, SendGrid Inbound Parse, or a mail-server
+worker) with a small relay that turns each received email into
+`{ "from", "to", "subject", "text", "html", "messageId" }` and posts it, signed
+as above (at most 256 KB in all). `messageId` is the delivery's identity, over
+any `Idempotency-Key`: the same email again makes nothing new. The portal is
+the one the sender names, else the sender a forwarded email quotes, else the
+subject; a portal named only in the body is not enough. `text` is read, else
+`html` when `text` gives nobody to contact. A forwarded email is read from
+its quoted header down (the forwarder's note and signature are not the
+client's). The `Label: value` lines (or an HTML table of label and value
+cells) give the name, one phone, email, reference and message; lines under a
+label or heading about the agent, broker or owner are not read as the client's,
+and of several numbers the first under a client label is kept, else the first
+in the email. The field mapping names a label the parser does not know. The
+lead takes that portal's source, `sourceDetail` (`bayut:<reference>`) and
+catalogue entry. Any other email, or one with no phone or email in it, is kept
+and shown on Deliveries as _Not read: unknown email_.
 
 `Idempotency-Key` on the API itself (§2): per workspace, method and path, by
 the same caller; a retry with the same body gets the first 2xx answer back

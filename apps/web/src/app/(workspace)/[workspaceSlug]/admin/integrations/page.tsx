@@ -10,6 +10,7 @@ import { buildId } from '@/lib/build';
 import IntegrationBoard, { type ProviderCard } from '@/components/workspace/IntegrationBoard';
 import ChannelOverview from '@/components/workspace/ChannelOverview';
 import { channelCards } from '@/services/integrations/channelState';
+import { withSwitches } from '@/services/leads/intake';
 
 export const metadata = { title: 'Integrations' };
 
@@ -42,28 +43,34 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ w
   const byProvider = new Map(connections.map((c) => [c.provider, c]));
   const base = env.APP_URL.replace(/\/$/, '');
 
-  const providers: ProviderCard[] = PROVIDERS.map((spec) => {
-    const conn = byProvider.get(spec.key);
-    const token =
-      conn && UNSIGNED_VENDORS.includes(spec.key as never) ? `?token=${callbackSecrets(conn.webhookKey).urlToken}` : '';
+  const providers: ProviderCard[] = await Promise.all(
+    PROVIDERS.map(async (spec) => {
+      const conn = byProvider.get(spec.key);
+      const token =
+        conn && UNSIGNED_VENDORS.includes(spec.key as never)
+          ? `?token=${callbackSecrets(conn.webhookKey).urlToken}`
+          : '';
+      // A switch shows what it does now: as saved, or its default.
+      const { settingFields, settings } = await withSwitches(ctx.tenantId, spec.settings, conn?.metadata);
 
-    return {
-      key: spec.key,
-      label: spec.label,
-      category: spec.category,
-      description: spec.description,
-      capabilities: spec.capabilities,
-      unsignedCallbacks: spec.unsignedCallbacks ?? false,
-      credentialFields: spec.credentials.map(({ key, label, secret, hint }) => ({ key, label, secret, hint })),
-      settingFields: spec.settings.map(({ key, label, hint }) => ({ key, label, hint })),
-      status: conn?.status ?? 'NOT_CONFIGURED',
-      settings: (conn?.metadata ?? {}) as Record<string, unknown>,
-      lastSyncAt: conn?.lastSyncAt?.toISOString() ?? null,
-      errorMessage: conn?.errorMessage ?? null,
-      webhookUrl: spec.webhook && conn ? `${base}/api/v1/webhooks/${spec.webhook}/${conn.webhookKey}${token}` : null,
-      manageHref: spec.category === 'LEADS' && conn ? `/${workspaceSlug}/admin/lead-sources/${spec.key}` : null,
-    };
-  });
+      return {
+        key: spec.key,
+        label: spec.label,
+        category: spec.category,
+        description: spec.description,
+        capabilities: spec.capabilities,
+        unsignedCallbacks: spec.unsignedCallbacks ?? false,
+        credentialFields: spec.credentials.map(({ key, label, secret, hint }) => ({ key, label, secret, hint })),
+        settingFields: settingFields.map(({ key, label, hint, toggle }) => ({ key, label, hint, toggle: !!toggle })),
+        status: conn?.status ?? 'NOT_CONFIGURED',
+        settings,
+        lastSyncAt: conn?.lastSyncAt?.toISOString() ?? null,
+        errorMessage: conn?.errorMessage ?? null,
+        webhookUrl: spec.webhook && conn ? `${base}/api/v1/webhooks/${spec.webhook}/${conn.webhookKey}${token}` : null,
+        manageHref: spec.category === 'LEADS' && conn ? `/${workspaceSlug}/admin/lead-sources/${spec.key}` : null,
+      };
+    }),
+  );
 
   return (
     <>
