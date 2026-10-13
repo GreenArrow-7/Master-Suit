@@ -67,28 +67,38 @@ Estate, Lead Eagle):
   shows with a link that drops it; the named filters (Overdue, SLA breached…)
   keep the chips and the search. List / Board switch. My views: a chip per
   saved view, Save view (a name and the columns to show, the workspace's custom
-  fields among them) and Delete view on the open one. A view opens its own
-  filters, sort and columns; nobody else lists, opens as theirs or deletes it
-  (404). Saving and deleting are audited.
+  fields among them, up to 30) and Delete view on the open one. A view opens
+  its own filters, sort and columns; nobody else lists, opens as theirs or
+  deletes it (404), and deleting it twice answers 404. Saving and deleting are
+  audited. A date that is no day ("2026-00-10", "2026-02-31") drops itself
+  from the list and the board; the export answers 422.
 - Board: columns in Admin → Lead Stages order, lost and junk stages in an Exits
   group after the ladder; each column shows 20 cards and its whole count, and
   "N more" opens the list of that stage with the same filters. Drag a card, or
-  pick from its Move menu: Site Visit Scheduled, Meeting Scheduled and Dropped
-  open "Move to …" and the server still refuses the move without its fields
-  (422). At 390 px the columns scroll sideways, the page does not.
+  open its "Move to…" (a button per stage; the arrow keys on it move nothing):
+  Site Visit Scheduled, Meeting Scheduled and Dropped open "Move to …" and the
+  server still refuses the move without its fields (422). At 390 px the
+  columns scroll sideways, the page does not.
 - Search (the list's box, Cmd+K, `GET /api/v1/leads?q=`, the CSV export, the
   assistant): "050 123 4567", "+971 50 123 4567", "00971501234567" and
   "501234567" find a lead holding +971501234567 as its main or any other number.
   A role that sees numbers masked finds a lead by a whole number only and reads
   it masked. Cmd+K's "Search leads" opens Sales' list, else Real Estate's, else
   Lead Eagle's.
-- CSV export: answers the URL it was clicked from (chips, sort, a saved view's
-  columns); `overdue_mine` and `no_next_action` used to export every lead.
-- Calendar: Sales, Real Estate and Lead Eagle; site visits (to the visit's
-  page) beside tasks, follow-ups, calls and activities, each in the caller's
-  scope; follow-ups as the Follow-ups list reads them (a team lead sees the
-  team's; the caller's own open under Mine); events only where the plan has
-  Sales or Real Estate. The month, each day and each time are the workspace's
+- CSV export: answers the URL it was clicked from (the named filter, the
+  search, the chips, a saved view's grid columns; not its custom-field ones,
+  see Left open), in id order whatever the sort; `overdue_mine` and
+  `no_next_action` used to export every lead. Its audit row records the
+  filters, the sort and the columns asked for, and whether it was searched,
+  never the search text.
+- Calendar: Sales, Real Estate and Lead Eagle; site visits and client meetings
+  (to the visit's page; not rejected or cancelled ones) beside tasks,
+  follow-ups, calls and activities, each in the caller's scope; follow-ups as
+  the Follow-ups list reads them (a team lead sees the team's; the caller's own
+  open under Mine); events only where the plan has Sales or Real Estate, and
+  not under `/lead-eagle/`, which has no Events screen for them to open. Each
+  kind is read in date order, the first 300 of the month, and the page says
+  so when a kind is cut. The month, each day and each time are the workspace's
   zone: an entry at 01:00 Dubai sits on its Dubai day. Seven columns at 390 px
   (a phone rule had folded the month to two). The legend names what the month
   draws. An activity with no lead no longer links to the Activity Log.
@@ -110,7 +120,18 @@ Estate, Lead Eagle):
   - The board is the list page with `?layout=board`, not a route of its own;
     "more" is the list of that stage, not a longer column. Cards show name,
     reference and owner, no number. Drag is the browser's own (no library), so
-    a phone moves a card with its Move menu.
+    a phone moves a card with its Move menu. The Move menu is a `<details>`
+    of stage buttons that opens inside the card (a popover would be clipped
+    by the board's sideways scroll), not a `<select>`, which moves on an
+    arrow key.
+  - Under `/lead-eagle/` the calendar leaves events out rather than linking
+    them to another module's screen; `/sales/calendar` and `/realty/calendar`
+    show them.
+  - The calendar keeps its cap of 300 entries a kind and reads each kind in
+    date order; past the cap it says so instead of paging.
+  - The CSV export keeps id order whatever the grid's sort: it streams in
+    keyset pages, and a walk over `updatedAt` (the default sort) would skip or
+    repeat a lead edited while the file streams.
   - Cmd+K keeps its palette: "Search leads for …" opens the lead list, which
     shows the matches scoped and masked; no inline results.
   - A role that sees numbers still matches the text as typed (`contains`) as
@@ -163,6 +184,14 @@ Estate, Lead Eagle):
   "050 123" against "+97150123…") finds nothing; whole numbers do.
 - The calendar has no API to widen (it is a server page); the assistant's
   `getCalendar` still has no site visits.
+- The CSV export has no custom-field columns (as before #172 and since): a
+  saved view's `cf:` columns, and a workspace's stored ones, are left out of
+  the file. Adding them means honouring each field's `includeInExport` and
+  `isSensitive`.
+- The owner chip offers active members only. A departed member holds no open
+  lead (deactivating hands them on, `handOverOpenWork`), but their won or lost
+  leads cannot be picked by owner, and an old link reads "Owner: Someone else".
+- A month with more than 300 entries of a kind shows the first 300.
 - PROP-02.2 (log a call from the list in three clicks) is another lane's.
 
 **Merge-up with the base, 13 Oct.** The base branch took #172 (requirement and
@@ -180,3 +209,50 @@ skipped, 1 failed on "Unable to start a transaction in the given time"
 (`lead-record-scope`, 341 of 341 alone); security and integration 58 files,
 729 of 729; E2E `lead-views-board`, `lead-stage-mini-form` and
 `lead-bulk-stage` 9 of 9 on a fresh `.next`.
+
+**Review round, 13 Oct.** Fixed:
+
+- The board's Move menu was a `<select>` that moved the lead on change, and a
+  closed select changes on an arrow key (Chrome, Edge and Firefox on
+  Windows): looking through it moved the lead, with nothing to confirm a stage
+  that asks nothing. It is now a disclosure of stage buttons. A new E2E step
+  focuses it and presses ArrowDown, ArrowDown, ArrowUp: on the old board one
+  PATCH went out (`expect(patches).toEqual([])` failed); now none, and Enter
+  opens it and moves the card.
+- The calendar drew rejected and cancelled site visits like booked ones, and
+  called a client meeting a site visit; it linked events to a Lead Eagle
+  Events page that does not exist; it read 300 entries a kind in no order,
+  with no word when it cut. Now as in Behaviour above.
+- A second DELETE of a saved view answered 200 and audited again (the
+  soft-delete guard adds `deletedAt: null` to reads only); now 404.
+- A saved view of more than about 400 characters of columns reopened with the
+  default columns: `cols` now takes what POST accepts (30 keys of 60).
+- "2026-00-10" or "0000-01-01" passed the date check and `dayBounds` threw:
+  500 on the list, the board and the export. A date is now a real day.
+- The export's audit row held only the named filter; it now holds what was
+  asked for. This entry said the export kept the grid's sort; it keeps id
+  order, by design (Decisions taken), and says so now.
+- Tests that could not fail: the updated-date case passed whichever column
+  was filtered (now it tells them apart; with the column forced to
+  `createdAt` it fails, "expected [] to deeply equal [ Array(7) ]"); the
+  masked-main-number check looked for digits the dashed number never held
+  (now it fails when the row is read unmasked, "expected '055-246-5894' to
+  contain '•'"). Added cases: the export with `overdue_mine` and `overdue`,
+  the assistant's search by another number (both fail with the base's export
+  route and assistant), follow-ups without `leads:VIEW` are the caller's own,
+  a role without `leads:VIEW` keeps no view (403).
+
+On this branch's source before the fixes 7 of the new cases fail (the no-day
+date, the export's audit row, the second delete, 30 columns, cancelled visits, the
+cap, events under `/lead-eagle/`). After: `lead-saved-views` 19, `lead-search`
+14, `lead-calendar` 8; the nine new and touched spec files 813 of 813; the
+permission, sales, tenant, unit and platform directories 174 files, 3093
+passed, 2 skipped, none failed; security and integration 58 files, 729 of
+729; `tsc --noEmit` clean; eslint no errors; prettier clean. E2E on a fresh
+`.next`: `lead-views-board` 5 of 5; `lead-stage-mini-form`, `lead-bulk-stage`
+and `every-route` 8 of 8. The board's Move list checked by eye at 390 px
+(light and dark) and 1280 px; no sideways page scroll. Refuted: the owner chip
+"for a departed agent's leads" (a member is not deactivated while holding open
+leads; their closed ones are under Left open); the calendar case's
+"Unable to start a transaction" under load (passed alone, and in every run
+since).
