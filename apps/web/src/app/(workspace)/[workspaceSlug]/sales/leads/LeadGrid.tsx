@@ -11,6 +11,7 @@ import RowDetails from '@/components/workspace/RowDetails';
 import StageReason, { asksBeforeMove, type ReasonedStage, type StageMove } from '@/components/workspace/StageReason';
 import { dialable } from '@/components/workspace/CallLink';
 import CallLogDialog, { useAfterDial, type CallLogLead } from './CallLogDialog';
+import TemplateSendDialog from './TemplateSendDialog';
 
 export interface LeadRow {
   id: string;
@@ -51,6 +52,7 @@ export default function LeadGrid({
   canAssign,
   canEdit,
   canDelete,
+  canMessage = false,
   emptyLabel,
   timeZone,
 }: {
@@ -65,6 +67,8 @@ export default function LeadGrid({
   canEdit: boolean;
   /** `leads:DELETE`; the endpoint asserts it again whatever this renders. */
   canDelete: boolean;
+  /** Send template (M4-38): `communications:CREATE`; the endpoint skips the leads it may not message. */
+  canMessage?: boolean;
   /** What an empty follow-up cell says for this viewer. */
   emptyLabel: string;
   /** The workspace's, for the call log's follow-up clock. */
@@ -80,6 +84,8 @@ export default function LeadGrid({
   const [failure, setFailure] = useState<BulkOutcome | null>(null);
   /** The lead whose call is being logged (PROP-02.2): from its row, or on return from dialling it. */
   const [logFor, setLogFor] = useState<CallLogLead | null>(null);
+  /** The leads a Send template is for, while its dialog is open. */
+  const [sendTo, setSendTo] = useState<string[] | null>(null);
   const dialled = useAfterDial(setLogFor);
 
   const sorted = useMemo(() => {
@@ -249,7 +255,7 @@ export default function LeadGrid({
       {selected.size > 0 && (
         <div className="lf-toast" style={{ marginBottom: 'var(--lf-space-3)', flexWrap: 'wrap' }} role="status">
           <span className="lf-num">{selected.size}</span> selected
-          <span style={{ display: 'flex', gap: 'var(--lf-space-2)', marginLeft: 'auto' }}>
+          <span style={{ display: 'flex', gap: 'var(--lf-space-2)', marginLeft: 'auto', flexWrap: 'wrap' }}>
             {canAssign && (
               <button
                 className="lf-btn lf-btn--sm lf-btn--secondary"
@@ -283,6 +289,11 @@ export default function LeadGrid({
                 onClick={() => setAction(action === 'closeout' ? null : 'closeout')}
               >
                 Close out
+              </button>
+            )}
+            {canMessage && (
+              <button className="lf-btn lf-btn--sm lf-btn--secondary" onClick={() => setSendTo([...selected])}>
+                Send template
               </button>
             )}
             {canDelete && (
@@ -446,6 +457,15 @@ export default function LeadGrid({
             </div>
           )}
         </div>
+      )}
+
+      {sendTo && (
+        <TemplateSendDialog
+          channel="WHATSAPP"
+          target={{ leadIds: sendTo }}
+          onClose={() => setSendTo(null)}
+          onSent={() => router.refresh()}
+        />
       )}
 
       {/* Outside the bar, whose colours it would otherwise inherit. */}

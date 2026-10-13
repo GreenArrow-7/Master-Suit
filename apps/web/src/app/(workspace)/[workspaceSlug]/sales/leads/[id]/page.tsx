@@ -15,6 +15,8 @@ import { fieldForScreen, leadFields } from '@/services/leads/customFields';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { leadTimeline, onClock } from '@/services/leads/timeline';
 import { matchesForRequirement } from '@/services/inventory/demand';
+import { leadShares } from '@/services/leads/leadShares';
+import { whatsappLink } from '@/components/workspace/CallLink';
 import StageRail from '@/components/ui/StageRail';
 import LeadDetail from './LeadDetail';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -167,7 +169,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
   // What it is owed and what was done (M4-47): its open follow-ups beside the
   // open tasks, and the last 10 done of either, newest first.
-  const [timeline, openFollowUps, doneTasks, doneFollowUps, completes, logs, matched] = await Promise.all([
+  const [timeline, openFollowUps, doneTasks, doneFollowUps, completes, logs, matched, shared] = await Promise.all([
     leadTimeline(ctx, lead.id),
     prisma.followUpTask.findMany({
       where: {
@@ -213,6 +215,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     leadReach(ctx, 'EDIT'),
     // Matching stock (M4-48): the listings its open requirement matches, for a viewer who sees listings.
     requirement && seesListings ? matchesForRequirement(ctx.tenantId, requirement.id, STOCK_CAP) : null,
+    // Its shared links (M4-30), for the card that makes and revokes them.
+    leadShares(ctx.tenantId, lead.id),
   ]);
   const done = [
     ...doneTasks.map((t) => ({ ...t, key: `task:${t.id}` })),
@@ -232,6 +236,41 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   // where it is hidden.
   const sees = (field: 'phone' | 'email') => seesField(ctx, 'LEAD', rules, field, LEAD_SENSITIVE_FIELDS);
   const phoneVisible = sees('phone');
+
+  // Messaging and sharing (M4-28, M4-30) are lead work: where `leads:EDIT` reaches it, as Log call is.
+  const works = logs(lead);
+  const shown = (raw: string) => (phoneVisible ? raw : (asLeadPhone(ctx, rules, raw) ?? null));
+  // The numbers marked as on WhatsApp, main first, as the viewer reads them; the send names one by id.
+  const waNumbers = [
+    ...(lead.phone && lead.phoneIsWhatsapp
+      ? [{ id: 'main', raw: lead.phoneNormalized ?? lead.phone, label: 'Main' }]
+      : []),
+    ...lead.phones.filter((p) => p.isWhatsapp).map((p) => ({ id: p.id, raw: p.normalized, label: p.label ?? 'Other' })),
+  ];
+  const sends = works && can(ctx, 'communications', 'CREATE');
+  // Whether the workspace has WhatsApp to send through: the send says so too (403).
+  const whatsappOn =
+    sends &&
+    (await prisma.integrationConnection.count({
+      where: { tenantId: ctx.tenantId, provider: 'meta', status: 'CONNECTED' },
+    })) > 0;
+  const messaging = sends
+    ? {
+        numbers: waNumbers.map((n) => ({ id: n.id, label: [n.label, shown(n.raw)].filter(Boolean).join(' · ') })),
+        whatsappBlocked: lead.whatsappOptOut
+          ? `${lead.fullName} has opted out of WhatsApp.`
+          : !waNumbers.length
+            ? 'No number is marked as on WhatsApp.'
+            : whatsappOn
+              ? null
+              : 'WhatsApp is not connected for this workspace.',
+        emailBlocked: lead.emailOptOut
+          ? `${lead.fullName} has opted out of email.`
+          : lead.email
+            ? null
+            : 'No email address.',
+      }
+    : null;
 
   // Serialize dates to ISO strings for the client component
   const serializedLead = {
@@ -363,7 +402,28 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         matchesHref={opensRequirement ? `/requirements/${requirement!.id}` : null}
         timeZone={timeZone}
         canEdit={can(ctx, 'leads', 'EDIT')}
-        canLog={logs(lead)}
+        canLog={works}
+        messaging={messaging}
+        sharing={
+          works
+            ? {
+                firstName: lead.firstName?.trim() || lead.fullName.split(/\s+/)[0] || lead.fullName,
+                // Never to a lead that opted out of WhatsApp, nor through a number masked to the viewer.
+                whatsapp:
+                  phoneVisible && !lead.whatsappOptOut && waNumbers[0] ? whatsappLink(waNumbers[0].raw, true) : null,
+                shares: shared.map((share) => ({
+                  id: share.id,
+                  title: share.title,
+                  kind: share.kind,
+                  url: share.url,
+                  views: share.views,
+                  lastViewed: share.lastViewedAt ? onClock(share.lastViewedAt, timeZone) : null,
+                  until: onClock(share.expiresAt, timeZone),
+                  live: share.live,
+                })),
+              }
+            : null
+        }
         canAssign={can(ctx, 'leads', 'ASSIGN')}
         canDelete={can(ctx, 'leads', 'DELETE')}
         // Deleting an attachment is its own authority, not part of editing the

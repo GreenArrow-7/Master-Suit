@@ -158,6 +158,7 @@ describe('which area and tab a URL belongs to', () => {
 
   it('files the Sources catalogue under Sources, and each lead source’s deliveries under Integrations', () => {
     expect(at(nav, '/ws/admin/lead-sources')).toBe('settings / Sources');
+    expect(at(nav, '/ws/admin/email-templates')).toBe('settings / Email Templates');
     for (const key of Object.keys(LEAD_SOURCES))
       expect(at(nav, `/ws/admin/lead-sources/${key}`), key).toBe('settings / Integrations');
   });

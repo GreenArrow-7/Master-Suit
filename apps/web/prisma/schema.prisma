@@ -639,6 +639,7 @@ model Tenant {
   leadSources         LeadSource[]
   leadProjects        LeadProject[]
   leadListings        LeadListing[]
+  leadShares          LeadShare[]
   captureLinks        CaptureLink[]
   dataRecords         DataRecord[]
 
@@ -3420,6 +3421,8 @@ model Lead {
   /// The projects and listings it asked about (M4-06).
   projectInterests LeadProject[]
   listingInterests LeadListing[]
+  /// The projects and listings shared with it as a public page (M4-30).
+  shares           LeadShare[]
   dataRecords      DataRecord[]
 
   @@unique([tenantId, reference])
@@ -3522,6 +3525,33 @@ model LeadListing {
 
   @@id([leadId, listingId])
   @@index([tenantId, listingId])
+}
+
+/// A project or a listing shared with a lead (M4-30). Its public page is
+/// `/s/{token}`: the token is signed and derived (services/leads/leadShares.ts),
+/// never stored. The page shows public-safe fields only and logs an opening on
+/// the lead. It lapses at `expiresAt` and stops at `revokedAt`. Exactly one of
+/// `projectId` and `listingId`, enforced in the migration.
+model LeadShare {
+  id           String    @id @default(cuid())
+  tenantId     String
+  leadId       String
+  projectId    String?
+  listingId    String?
+  createdById  String?
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  /// Every opening; the lead's timeline logs one per visitor per day.
+  viewCount    Int       @default(0)
+  lastViewedAt DateTime?
+  createdAt    DateTime  @default(now())
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead    Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  listing Listing? @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, leadId, createdAt(sort: Desc)])
 }
 
 /// A QR code's form: a short public page, `/c/{workspace}/{key}`, that creates
@@ -6692,6 +6722,7 @@ model Project {
   siteVisits  SiteVisit[]
   bookings    Booking[]
   interested  LeadProject[]
+  sharedWith  LeadShare[]
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -7012,6 +7043,7 @@ model Listing {
   publications  ListingPublication[]
   proposalItems ProposalItem[]
   interested    LeadListing[]
+  sharedWith    LeadShare[]
 
   @@unique([tenantId, reference])
   /// The keyset order, matching the project catalogue.

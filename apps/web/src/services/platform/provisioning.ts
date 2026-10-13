@@ -10,7 +10,9 @@ const WORK: PermissionAction[] = ['VIEW', 'CREATE', 'EDIT'];
 /**
  * An agent's day in Lead Eagle: leads with their follow-ups, activity and cold
  * data (all `leads`), calls, tasks, site visits, buyer requirements, asking the
- * pool for leads, the inventory to pitch, and their own figures.
+ * pool for leads, the inventory to pitch, and their own figures; and writing
+ * to their leads, a WhatsApp or email template from the lead (M4-28, M4-38),
+ * whose messages show on its timeline.
  */
 const AGENT = {
   leads: [...WORK, 'VIEW_SENSITIVE_FIELDS', 'EXPORT'],
@@ -22,6 +24,7 @@ const AGENT = {
   projects: ['VIEW'],
   listings: ['VIEW'],
   reports: ['VIEW'],
+  communications: ['VIEW', 'CREATE'],
 } satisfies Grants;
 
 const at = (scope: VisibilityScope, grants: Grants) =>

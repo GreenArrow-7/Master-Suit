@@ -123,6 +123,8 @@ export const limits = {
   platformService: (id: string, max: number) => ({ key: `svc:${id}`, max, windowSeconds: 60 }),
   sessionUser: (id: string) => ({ key: `user:${id}`, max: 1200, windowSeconds: 60 }),
   publicForm: (ip: string) => ({ key: `form:${ip}`, max: 5, windowSeconds: 60 }),
+  /** A shared listing or project page (M4-30), per client: as many as the public form's own read allows. */
+  publicShare: (ip: string) => ({ key: `share:${ip}`, max: 60, windowSeconds: 60 }),
   exportCreate: (id: string) => ({ key: `export:${id}`, max: 10, windowSeconds: 3600 }),
   /** Confirming an authenticator code: brute-forcing six digits must not be free. */
   mfaConfirm: (userId: string) => ({ key: `mfa:confirm:${userId}`, max: 10, windowSeconds: 300 }),

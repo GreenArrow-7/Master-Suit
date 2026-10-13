@@ -461,10 +461,15 @@ describe('the Lead Eagle starter roles', () => {
     expect(agent.get('attendance:VIEW')).toBe('OWN');
     expect(agent.has('leads:ASSIGN')).toBe(false);
     expect(agent.has('attendance:APPROVE')).toBe(false);
+    // Writing to its own leads from the lead page and the grid (M4-28, M4-38).
+    expect(agent.get('communications:CREATE')).toBe('OWN');
+    expect(agent.get('communications:VIEW')).toBe('OWN');
 
     const telecaller = await grants(wizardMade, 'Telecaller');
     expect(telecaller.get('leads:CREATE')).toBe('OWN');
     expect([...telecaller.keys()].filter((key) => /:(VIEW_SENSITIVE_FIELDS|EXPORT)$/.test(key))).toEqual([]);
+    // It sends to a number it cannot read: the server addresses it.
+    expect(telecaller.get('communications:CREATE')).toBe('OWN');
 
     const teamLead = await grants(wizardMade, 'Team Lead');
     expect(teamLead.get('leads:VIEW')).toBe('TEAM');

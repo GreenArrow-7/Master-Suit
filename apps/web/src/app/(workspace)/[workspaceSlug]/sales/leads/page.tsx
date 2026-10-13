@@ -327,6 +327,7 @@ export default async function LeadsPage({
           canAssign={can(ctx, 'leads', 'ASSIGN')}
           canEdit={can(ctx, 'leads', 'EDIT')}
           canDelete={can(ctx, 'leads', 'DELETE')}
+          canMessage={can(ctx, 'communications', 'CREATE')}
           emptyLabel={emptyFollowUpLabel(access, view, ctx.actor.id)}
           timeZone={timeZone}
         />
