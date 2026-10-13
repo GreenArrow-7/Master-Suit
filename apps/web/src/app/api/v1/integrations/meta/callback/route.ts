@@ -118,10 +118,17 @@ export async function GET(req: Request) {
         businessName: assets.businessName ?? assets.pageName,
       },
     } as const;
+    const where = { tenantId_provider: { tenantId: ctx.tenantId, provider: 'meta' } };
+    // A reconnect is a new token and Page, not a reset: the administrator's own
+    // settings (the WhatsApp "Create leads from new numbers" switch) stay as saved.
+    const stored = await prisma.integrationConnection.findUnique({ where, select: { metadata: true } });
     await prisma.integrationConnection.upsert({
-      where: { tenantId_provider: { tenantId: ctx.tenantId, provider: 'meta' } },
+      where,
       create: { ...connection, tenantId: ctx.tenantId, provider: 'meta', createdById: ctx.actor.id },
-      update: connection,
+      update: {
+        ...connection,
+        metadata: { ...((stored?.metadata ?? {}) as Record<string, unknown>), ...connection.metadata },
+      },
     });
 
     // Never the token, and never the secret — only that a connection changed and

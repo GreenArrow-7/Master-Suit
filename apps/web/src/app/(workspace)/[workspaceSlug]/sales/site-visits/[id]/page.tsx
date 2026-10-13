@@ -4,6 +4,7 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { workspaceTimezone } from '@/services/hr/attendance';
 import { visitPolicy } from '@/services/visits/punch';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -24,7 +25,7 @@ export default async function SiteVisitPage({ params }: { params: Promise<{ id: 
   const { id } = await params;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['visits', 'VIEW'] });
 
-  const [visit, policy] = await Promise.all([
+  const [visit, policy, timeZone] = await Promise.all([
     // Scoped like the list: a colleague's visit, client and phone included, is not found.
     prisma.siteVisit.findFirst({
       where: { ...(await visibilityWhere(ctx, 'visits', 'VIEW')), id, deletedAt: null },
@@ -35,6 +36,7 @@ export default async function SiteVisitPage({ params }: { params: Promise<{ id: 
       },
     }),
     visitPolicy(ctx.tenantId),
+    workspaceTimezone(ctx),
   ]);
   if (!visit) notFound();
 
@@ -90,16 +92,18 @@ export default async function SiteVisitPage({ params }: { params: Promise<{ id: 
       <section className="lf-metric-grid">
         <Metric
           label="Scheduled"
-          value={visit.scheduledAt.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
+          value={visit.scheduledAt.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone })}
         />
         <Metric label="Duration" value={`${visit.durationMin} min`} />
         <Metric
           label="Checked in"
-          value={visit.checkInAt ? visit.checkInAt.toLocaleTimeString('en-GB', { timeStyle: 'short' }) : '—'}
+          value={visit.checkInAt ? visit.checkInAt.toLocaleTimeString('en-GB', { timeStyle: 'short', timeZone }) : '—'}
         />
         <Metric
           label="Checked out"
-          value={visit.checkOutAt ? visit.checkOutAt.toLocaleTimeString('en-GB', { timeStyle: 'short' }) : '—'}
+          value={
+            visit.checkOutAt ? visit.checkOutAt.toLocaleTimeString('en-GB', { timeStyle: 'short', timeZone }) : '—'
+          }
         />
         <Metric
           label="Distance"
@@ -187,7 +191,7 @@ export default async function SiteVisitPage({ params }: { params: Promise<{ id: 
                   {visit.amendReason}
                   <span className="lf-hint">
                     {' '}
-                    · {visit.amendedAt?.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
+                    · {visit.amendedAt?.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone })}
                   </span>
                 </dd>
               </>
