@@ -233,6 +233,121 @@ test.describe('Lead grid bulk actions', () => {
     await context.close();
   });
 
+  /** A box's edge against the page: its border's width and colour, beside the page's and its own fill. */
+  const edgeOf = (el: Element) => {
+    const style = getComputedStyle(el);
+    return {
+      width: parseFloat(style.borderTopWidth),
+      edge: style.borderTopColor,
+      fill: style.backgroundColor,
+      page: getComputedStyle(document.body).backgroundColor,
+    };
+  };
+  const visibleEdge = (box: ReturnType<typeof edgeOf>) => {
+    expect.soft(box.width, JSON.stringify(box)).toBeGreaterThanOrEqual(1);
+    expect.soft(box.edge).not.toBe(box.page);
+    expect.soft(box.edge).not.toBe(box.fill);
+  };
+
+  test('at 1440 px the Undo toast clears the assistant, both bars show an edge in the dark theme, Undo stands off its text', async ({
+    browser,
+  }, testInfo) => {
+    const { context, page } = await signedIn(browser, 1440);
+    const names = await leads(page, 'edge', 1);
+    await page.goto(at(`/lead-eagle/leads?q=${encodeURIComponent(`Bulk edge ${run}`)}`));
+    await select(page, names);
+    await page.evaluate(() => (document.documentElement.dataset.theme = 'dark'));
+    const bar = page.locator('.lf-toast').filter({ hasText: 'selected' });
+    visibleEdge(await bar.evaluate(edgeOf));
+    await page.evaluate(() => delete document.documentElement.dataset.theme);
+
+    page.once('dialog', (dialog) => void dialog.accept());
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
+    const toast = page.locator('.lf-toast').filter({ hasText: 'deleted' });
+    await expect(toast).toContainText('1 lead deleted.', { timeout: 30_000 });
+
+    // Beside the assistant's button, not over it.
+    const [note, assistant] = [await toast.boundingBox(), await page.locator('.lf-ai-fab').boundingBox()];
+    expect(note && assistant).toBeTruthy();
+    const apart =
+      note!.x + note!.width <= assistant!.x ||
+      assistant!.x + assistant!.width <= note!.x ||
+      note!.y + note!.height <= assistant!.y ||
+      assistant!.y + assistant!.height <= note!.y;
+    expect.soft(apart, JSON.stringify({ note, assistant })).toBe(true);
+
+    // The focus ring (4 px) around Undo has room before the text it follows.
+    const gap = await toast.evaluate((el) => {
+      const button = el.querySelector('button')!;
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let last: Text | null = null;
+      for (let node = walker.nextNode(); node && !button.contains(node); node = walker.nextNode()) {
+        if (node.textContent!.trim()) last = node as Text;
+      }
+      const range = document.createRange();
+      const end = last!.textContent!.trimEnd().length;
+      range.setStart(last!, end - 1);
+      range.setEnd(last!, end);
+      return button.getBoundingClientRect().left - range.getBoundingClientRect().right;
+    });
+    expect.soft(gap, 'px between the text and Undo').toBeGreaterThanOrEqual(8);
+
+    await page.evaluate(() => (document.documentElement.dataset.theme = 'dark'));
+    visibleEdge(await toast.evaluate(edgeOf));
+    await page.evaluate(() => delete document.documentElement.dataset.theme);
+    await shots(page, testInfo.outputPath('undo-toast-1440'));
+    await context.close();
+  });
+
+  test('Cold Data at 390 px labels each value on a card and marks the list it was opened on', async ({
+    browser,
+  }, testInfo) => {
+    const { context, page } = await signedIn(browser, 390);
+    const [name] = await leads(page, 'cold', 1);
+    const { id } = await prisma.lead.findFirstOrThrow({ where: { tenantId, fullName: name }, select: { id: true } });
+    const moved = await page.request.post(`/api/v1/leads/${id}/move-to-data`);
+    expect(moved.status(), await moved.text()).toBe(200);
+    const { batch } = (await moved.json()) as { batch: string };
+
+    await page.goto(at(`/lead-eagle/cold-data?list=${encodeURIComponent(batch)}`));
+    // Rows as cards (display: flex) may leave the table's roles behind: found by element.
+    const card = page.locator('tbody tr').filter({ hasText: name! });
+    await expect(card).toBeVisible({ timeout: 30_000 });
+    const cells = await card.locator('td').evaluateAll((tds) =>
+      tds.map((td) => {
+        const label = getComputedStyle(td, '::before');
+        return { shown: label.display !== 'none', label: label.content };
+      }),
+    );
+    // The name is the card's title; every other value has its label, and no cell an empty label column.
+    expect
+      .soft(cells.filter((cell) => cell.shown).map((cell) => cell.label))
+      .toEqual(['"Phone"', '"Company"', '"List"', '"Agent"', '"Outcome"']);
+
+    const chosen = page.locator('tbody tr').filter({ has: page.getByRole('link', { name: batch, exact: true }) });
+    await expect(chosen).toHaveAttribute('aria-current', 'true');
+    /** The chosen list's row is marked, a record's row is not: a tint and a keyline. */
+    const marked = async (width: number) => {
+      const [mark, plain] = await Promise.all([
+        chosen.evaluate((row) => ({
+          fill: getComputedStyle(row).backgroundColor,
+          rule: getComputedStyle(row).boxShadow,
+        })),
+        card.evaluate((row) => getComputedStyle(row).backgroundColor),
+      ]);
+      expect.soft(mark.fill, `the chosen list's row against a plain one (${width} px)`).not.toBe(plain);
+      expect.soft(mark.rule).toContain('inset');
+    };
+    await marked(390);
+    await noSidewaysScroll(page, 390);
+    await shots(page, testInfo.outputPath('cold-data-390'));
+    // And on a desktop, where the lists are a table.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await marked(1440);
+    await shots(page, testInfo.outputPath('cold-data-1440'));
+    await context.close();
+  });
+
   test('Next and Previous page through the list by keyset (M4-20)', async ({ browser }) => {
     const { context, page } = await signedIn(browser, 390);
     const names = await leads(page, 'pages', 53);

@@ -238,6 +238,12 @@
   .lf-grid tbody tr[aria-selected='true'] {
     background: color-mix(in srgb, var(--yh-primary, var(--lf-wine-700)) 8%, transparent);
   }
+  /* The row a screen is filtered to (globals.css) keeps its mark: the Records
+     rule clears every row's fill and shadow, :last-child at the same weight. */
+  .lf-table tbody tr[aria-current='true'] {
+    background: var(--lf-wine-050);
+    box-shadow: inset 3px 0 0 var(--lf-wine-500);
+  }
   /* Select for bulk actions: a small box in the corner; the name is the way in. */
   .lf-grid tbody td.lf-grid__select {
     position: absolute;

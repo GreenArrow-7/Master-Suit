@@ -1686,11 +1686,17 @@ a:hover {
   background: var(--lf-wine-900);
   color: var(--yh-on-midnight);
   border-radius: var(--lf-radius);
+  /* The toast is midnight and so is the dark theme's canvas, where its shadow
+     is black on black: the edge is what sets it off the page there. In the
+     light theme it is a hairline on the canvas, out of sight. */
+  border: 1px solid var(--lf-line-2);
   box-shadow: var(--lf-shadow-3);
   font-size: var(--lf-text-sm);
 }
 .lf-toast__action {
   margin-left: auto;
+  /* Room inside the focus ring, so it does not sit on the word. */
+  padding: 2px 4px;
   color: var(--lf-wine-300);
   background: none;
   border: 0;
@@ -1706,7 +1712,9 @@ a:hover {
    person is, not at the top of a long screen; above the phone's tab bar. */
 .lf-outbox {
   position: fixed;
-  right: var(--lf-space-4);
+  /* Clear of the assistant's button, which floats in that corner above the
+     phone tier (on a phone it docks into the tab bar, below this). */
+  right: var(--lf-fab-gutter);
   bottom: var(--lf-space-4);
   left: var(--lf-space-4);
   z-index: 60;
@@ -1715,8 +1723,14 @@ a:hover {
   max-width: 480px;
   margin-left: auto;
 }
+/* An action after the sentence it belongs to ("2 leads deleted. Undo"): apart
+   from it, so its focus ring does not touch the text. */
+.lf-outbox .lf-toast__action {
+  margin-left: var(--lf-space-2);
+}
 @media (max-width: 760px) {
   .lf-outbox {
+    right: var(--lf-space-4);
     bottom: calc(76px + env(safe-area-inset-bottom));
   }
 }
@@ -1970,11 +1984,15 @@ a:hover {
     letter-spacing: 0.09em;
     text-transform: uppercase;
   }
-  /* A cell whose header is blank is an actions cell: give it the full width. */
-  .lf-table tbody td[data-label='']::before {
+  /* A cell whose header is blank is an actions cell: give it the full width.
+     So is a cell with no label at all (a table written by hand, not through
+     WorkspaceTable): a label column with nothing in it is an empty left half. */
+  .lf-table tbody td[data-label='']::before,
+  .lf-table tbody td:not([data-label])::before {
     display: none;
   }
-  .lf-table tbody td[data-label=''] {
+  .lf-table tbody td[data-label=''],
+  .lf-table tbody td:not([data-label]) {
     grid-template-columns: 1fr;
   }
 }
@@ -5206,6 +5224,12 @@ a.lf-kpi:hover {
 .lf-grid tbody tr:hover .lf-sticky,
 .lf-grid tbody tr:hover .lf-grid__actions {
   background: color-mix(in srgb, var(--lf-surface-2) 55%, var(--lf-surface));
+}
+/* The row a screen is filtered to (Cold Data's list, `?list=`): a keyline plus
+   a tint, never the tint alone, as a selected thread. */
+.lf-table tbody tr[aria-current='true'] {
+  background: var(--lf-wine-050);
+  box-shadow: inset 3px 0 0 var(--lf-wine-500);
 }
 .lf-grid tbody tr[aria-selected='true'],
 .lf-grid tbody tr[aria-selected='true'] .lf-sticky,
