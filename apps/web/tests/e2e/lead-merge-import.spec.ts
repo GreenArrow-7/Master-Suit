@@ -148,7 +148,8 @@ test.describe('Merging two leads, and an import checked before it runs', () => {
     ].join('\n');
 
     await page.goto(at('/lead-eagle/leads'));
-    await page.getByRole('button', { name: 'Import' }).click();
+    // Exact: each row's "Log call for Import Existing …" (#178) also names Import.
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
     await page
       .getByLabel('Spreadsheet file')
       .setInputFiles({ name: `expo-${run}.csv`, mimeType: 'text/csv', buffer: Buffer.from(csv) });
