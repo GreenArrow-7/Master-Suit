@@ -416,3 +416,125 @@ describe('an enquiry that says what it wants writes the requirement (M4-05, M6-2
     expect(await open((result as { leadId: string }).leadId)).toEqual([]);
   });
 });
+
+describe('matching stock on the lead Overview (M4-48)', () => {
+  it('lists the live listings its open requirement matches, to a role that sees listings, with the full list a click away', async () => {
+    const suffix = randomBytes(4).toString('hex');
+    const role = await prisma.role.create({ data: { tenantId, key: `stock-${suffix}`, name: 'Stock', rank: 80 } });
+    await grantPermissions(tenantId, role.id, [
+      ['leads', 'VIEW'],
+      ['leads', 'EDIT'],
+      ['listings', 'VIEW'],
+      ['requirements', 'VIEW'],
+    ]);
+    const user = await createWorkspaceUser({
+      tenantId,
+      roleId: role.id,
+      email: `stock-${suffix}@a.test`,
+      fullName: 'Stock',
+    });
+    const stock = await createSessionToken(tenantId, user.id);
+    const lead = await prisma.lead.create({
+      data: { tenantId, reference: `MS-${suffix}`, fullName: 'Stock Lead', stageId: fixture.a.stageId },
+    });
+    const villa = (title: string, data: Record<string, unknown> = {}) =>
+      prisma.listing.create({
+        data: {
+          tenantId,
+          reference: `MS-${randomBytes(3).toString('hex')}`,
+          title,
+          listingType: 'SALE',
+          status: 'ACTIVE',
+          propertyType: 'VILLA',
+          bedrooms: 5,
+          price: 4_500_000,
+          ...data,
+        },
+      });
+    const palm = await villa(`Palm villa ${suffix}`);
+    await villa(`Rented villa ${suffix}`, { listingType: 'RENT', rentFrequency: 'YEARLY', price: 450_000 });
+    await villa(`Pricey villa ${suffix}`, { price: 9_000_000 });
+    await villa(`Lapsed villa ${suffix}`, { mandateExpires: new Date(Date.now() - 86_400_000) });
+    await villa(`Sold villa ${suffix}`, { status: 'SOLD' });
+
+    /** What the page hands the lead screen, as this viewer. */
+    const shown = async (as: string) => {
+      cookieJar.value = as;
+      try {
+        const tree = (await LeadDetailPage({ params: Promise.resolve({ id: lead.id }) })) as {
+          props: { children: ({ props?: Record<string, any> } | null)[] };
+        };
+        return tree.props.children.find((child) => child?.props?.lead)!.props!;
+      } finally {
+        cookieJar.value = admin;
+      }
+    };
+
+    // No requirement yet: the card asks for one.
+    expect((await shown(stock)).lead.matchingStock).toEqual({
+      hasRequirement: false,
+      total: 0,
+      more: false,
+      listings: [],
+    });
+
+    expect(
+      (
+        await put(
+          saveRequirement,
+          url(lead.id),
+          { purpose: 'BUY', propertyTypes: ['VILLA'], bedroomsMin: 5, budgetMax: 5_000_000 },
+          admin,
+        )
+      ).status,
+    ).toBe(200);
+    const [requirement] = await open(lead.id);
+
+    const seen = await shown(stock);
+    const titles = seen.lead.matchingStock.listings.map((l: { title: string }) => l.title);
+    expect(titles).toContain(`Palm villa ${suffix}`);
+    expect(seen.lead.matchingStock.listings.find((l: { id: string }) => l.id === palm.id)).toMatchObject({
+      reference: palm.reference,
+      price: 'AED 4,500,000',
+      bedrooms: 5,
+    });
+    for (const left of ['Rented villa', 'Pricey villa', 'Lapsed villa', 'Sold villa']) {
+      expect(titles).not.toContain(`${left} ${suffix}`);
+    }
+    // The full match list is the requirement's page.
+    expect(seen.matchesHref).toBe(`/requirements/${requirement!.id}`);
+
+    // A role that does not see listings is shown none.
+    const blind = await shown(admin);
+    expect(blind.lead.matchingStock).toBeNull();
+    expect(await pageText(LeadDetailPage({ params: Promise.resolve({ id: lead.id }) }))).not.toContain(
+      `Palm villa ${suffix}`,
+    );
+
+    // More than the card reads: it says so, rather than giving the cap as the count.
+    expect(seen.lead.matchingStock).toMatchObject({ more: false });
+    await prisma.listing.createMany({
+      data: Array.from({ length: 26 }, (_, i) => ({
+        tenantId,
+        reference: `MT-${suffix}-${i}`,
+        title: `Townhouse ${i} ${suffix}`,
+        listingType: 'SALE' as const,
+        status: 'ACTIVE' as const,
+        propertyType: 'TOWNHOUSE' as const,
+        bedrooms: 7,
+        price: 3_000_000 + i,
+      })),
+    });
+    expect(
+      (
+        await put(
+          saveRequirement,
+          url(lead.id),
+          { purpose: 'BUY', propertyTypes: ['TOWNHOUSE'], bedroomsMin: 7 },
+          admin,
+        )
+      ).status,
+    ).toBe(200);
+    expect((await shown(stock)).lead.matchingStock).toMatchObject({ total: 25, more: true });
+  });
+});

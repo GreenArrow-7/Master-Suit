@@ -652,6 +652,33 @@ body:has(main[data-embed]) {
   min-height: 40px;
 }
 
+/* ── The call log (sales/leads/CallLogDialog.tsx) ─────────────────────────
+   A native modal <dialog>, centred, never wider than the phone less its
+   gutters. Its outcomes wrap rather than scroll sideways as toolbar chips do
+   on a phone. The backdrop is the sheets' scrim. */
+.lf-calllog {
+  width: min(460px, calc(100vw - 32px));
+  max-height: 88dvh;
+  padding: var(--lf-space-5);
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius-lg);
+  background: var(--lf-surface);
+  color: var(--lf-ink);
+  box-shadow: var(--lf-shadow-3);
+}
+.lf-calllog::backdrop {
+  background: rgb(15 10 12 / 0.45);
+}
+.lf-calllog .lf-chips {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+.lf-calllog .lf-chip:has(input:checked) {
+  background: var(--lf-wine-050);
+  border-color: var(--lf-wine-300);
+  color: var(--yh-primary);
+}
+
 /* ── Sheets ───────────────────────────────────────────────────────────────
    One surface for everything that is a side drawer or a centred dialog on a
    desktop and should be a bottom sheet on a phone: filters, record previews,
@@ -1488,6 +1515,14 @@ a:hover {
   background: inherit;
   box-shadow: 1px 0 0 var(--lf-line);
 }
+/* And the row's own actions (Call, Log call) at the right edge, in reach however far it scrolls. */
+.lf-grid td.lf-grid__actions {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: var(--lf-surface);
+  box-shadow: -1px 0 0 var(--lf-line);
+}
 
 .lf-score {
   display: inline-flex;
@@ -1720,9 +1755,13 @@ a:hover {
   .lf-grid tbody td:not([data-label]) {
     grid-template-columns: 1fr;
   }
-  .lf-grid .lf-sticky {
+  .lf-grid .lf-sticky,
+  .lf-grid td.lf-grid__actions {
     position: static;
     box-shadow: none;
+  }
+  .lf-grid td.lf-grid__actions {
+    background: none;
   }
   .lf-grid td[data-hide-mobile] {
     display: none;
@@ -1747,6 +1786,10 @@ a:hover {
   .lf-grid tbody td:not([data-label]) .lf-btn {
     min-height: 44px;
     margin-right: var(--lf-fab-gutter);
+  }
+  /* Two actions side by side: only the last stops short of the assistant. */
+  .lf-grid tbody td.lf-grid__actions .lf-btn:not(:last-child) {
+    margin-right: 0;
   }
   /* A status pill should hug its word.
 
@@ -5155,11 +5198,13 @@ a.lf-kpi:hover {
 }
 .lf-table tbody tr:hover,
 .lf-grid tbody tr:hover,
-.lf-grid tbody tr:hover .lf-sticky {
+.lf-grid tbody tr:hover .lf-sticky,
+.lf-grid tbody tr:hover .lf-grid__actions {
   background: color-mix(in srgb, var(--lf-surface-2) 55%, var(--lf-surface));
 }
 .lf-grid tbody tr[aria-selected='true'],
-.lf-grid tbody tr[aria-selected='true'] .lf-sticky {
+.lf-grid tbody tr[aria-selected='true'] .lf-sticky,
+.lf-grid tbody tr[aria-selected='true'] .lf-grid__actions {
   background: var(--lf-wine-050);
 }
 .lf-grid thead th[aria-sort]:hover {

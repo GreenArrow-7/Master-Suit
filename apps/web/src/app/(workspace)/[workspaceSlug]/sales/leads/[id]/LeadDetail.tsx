@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
-import { useModuleBase } from '@/components/workspace/SalesLink';
+import SalesLink, { useModuleBase } from '@/components/workspace/SalesLink';
 import { dialable, whatsappLink } from '@/components/workspace/CallLink';
 import SourcePicker, { type SourceOption } from '@/components/forms/SourcePicker';
 import { parseTags } from '@/lib/leads/tags';
@@ -13,9 +13,11 @@ import DateInput from '@/components/forms/DateInput';
 import { formatTypedDate } from '@/lib/dates';
 import type { LeadField } from '@/services/leads/customFields';
 import type { LeadRequirement } from '@/services/leads/requirement';
+import type { TimelineEntry, TimelinePage } from '@/services/leads/timeline';
 import TaskComposer from '../../tasks/TaskComposer';
 import RequirementCard from './RequirementCard';
 import InterestsCard from './InterestsCard';
+import CallLogDialog, { useAfterDial } from '../CallLogDialog';
 import StageReason, { asksBeforeMove, type StageMove } from '@/components/workspace/StageReason';
 import { sendOrQueue } from '@/lib/offline';
 
@@ -43,15 +45,6 @@ interface Stage {
   requiresReason: boolean;
   reasons: string[];
   requiredFields: string[];
-}
-
-interface Activity {
-  id: string;
-  outcome: string | null;
-  notes: string | null;
-  occurredAt: string;
-  durationSecs: number | null;
-  type: { name: string; key: string };
 }
 
 interface TaskItem {
@@ -128,9 +121,28 @@ interface LeadData {
   owner: { id: string; fullName: string; email: string } | null;
   /** A second person who works the lead, reaching it as the owner does. */
   secondaryOwner: { id: string; fullName: string } | null;
-  activities: Activity[];
-  stageChanges: { id: string; at: string; from: string | null; to: string; reason: string | null }[];
+  /** The first page of its timeline (M4-12, M4-46); older pages come from GET /leads/{id}/timeline. */
+  timeline: TimelinePage;
   tasks: TaskItem[];
+  /** Its open follow-ups the viewer may see, due on the workspace's clock. */
+  followUps: { id: string; title: string; dueAt: string; due: string; canComplete: boolean }[];
+  /** The last 10 tasks and follow-ups done, newest first, on the workspace's clock (M4-47). */
+  done: { key: string; title: string; doneAt: string }[];
+  /** What its open requirement matches (M4-48); null where the viewer does not see listings. */
+  matchingStock: {
+    hasRequirement: boolean;
+    total: number;
+    /** More match than `total` counts. */
+    more: boolean;
+    listings: {
+      id: string;
+      reference: string;
+      title: string;
+      price: string;
+      bedrooms: number | null;
+      community: string | null;
+    }[];
+  } | null;
   documents: Doc[];
 }
 
@@ -151,7 +163,11 @@ interface Props {
   listingOptions: { id: string; reference: string; title: string }[] | null;
   /** The requirement's page, where the viewer may open it. */
   matchesHref: string | null;
+  /** The workspace's, for the call log's follow-up clock. */
+  timeZone: string;
   canEdit: boolean;
+  /** Its call can be logged: `leads:EDIT` reaches this lead. */
+  canLog: boolean;
   canDeleteDocuments: boolean;
   canAssign: boolean;
   canDelete: boolean;
@@ -200,7 +216,9 @@ export default function LeadDetail({
   projectOptions,
   listingOptions,
   matchesHref,
+  timeZone,
   canEdit,
+  canLog,
   canDeleteDocuments,
   canAssign,
   canDelete,
@@ -227,6 +245,11 @@ export default function LeadDetail({
 
   // -- More menu (edit / delete) --
   const [showMore, setShowMore] = useState(false);
+
+  // -- The call log (PROP-02.2): from its button, or on return from dialling --
+  const [logging, setLogging] = useState(false);
+  const openLog = useCallback(() => setLogging(true), []);
+  const dialled = useAfterDial(openLog);
 
   function withBusy(fn: () => Promise<void>) {
     return async () => {
@@ -303,7 +326,8 @@ export default function LeadDetail({
   };
 
   const followUpOverdue = lead.nextFollowUpAt ? new Date(lead.nextFollowUpAt) < new Date() : false;
-  const openTaskCount = lead.tasks.filter((t) => t.status === 'OPEN' || t.status === 'IN_PROGRESS').length;
+  const openTaskCount =
+    lead.tasks.filter((t) => t.status === 'OPEN' || t.status === 'IN_PROGRESS').length + lead.followUps.length;
 
   return (
     <>
@@ -343,9 +367,12 @@ export default function LeadDetail({
             {TABS.map((t) => (
               <button key={t} className="lf-tab" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
                 {t}
-                {t === 'Tasks' && lead.tasks.length > 0 && <span className="lf-tab__count">{lead.tasks.length}</span>}
-                {t === 'Timeline' && lead.activities.length + lead.stageChanges.length > 0 && (
-                  <span className="lf-tab__count">{lead.activities.length + lead.stageChanges.length}</span>
+                {t === 'Tasks' && openTaskCount > 0 && <span className="lf-tab__count">{openTaskCount}</span>}
+                {t === 'Timeline' && lead.timeline.entries.length > 0 && (
+                  <span className="lf-tab__count">
+                    {lead.timeline.entries.length}
+                    {lead.timeline.next ? '+' : ''}
+                  </span>
                 )}
               </button>
             ))}
@@ -361,6 +388,7 @@ export default function LeadDetail({
                 canEdit={canEdit}
                 sources={sources}
                 customFields={customFields}
+                onDial={canLog ? () => dialled(lead) : undefined}
               />
               <RequirementCard
                 leadId={lead.id}
@@ -368,6 +396,7 @@ export default function LeadDetail({
                 canEdit={canEdit}
                 matchesHref={matchesHref}
               />
+              {lead.matchingStock && <MatchingStock stock={lead.matchingStock} matchesHref={matchesHref} />}
               <InterestsCard
                 leadId={lead.id}
                 projects={lead.interests.projects}
@@ -378,7 +407,14 @@ export default function LeadDetail({
               />
             </div>
           )}
-          {tab === 'Timeline' && <TimelineTab lead={lead} activityTypes={activityTypes} router={router} />}
+          {tab === 'Timeline' && (
+            <TimelineTab
+              key={lead.timeline.entries[0]?.key ?? 'empty'}
+              lead={lead}
+              activityTypes={activityTypes}
+              router={router}
+            />
+          )}
           {tab === 'Tasks' && <TasksTab lead={lead} taskTypes={taskTypes} router={router} />}
           {tab === 'Notes' && <NotesTab lead={lead} patchLead={patchLead} canEdit={canEdit} />}
           {tab === 'Documents' && (
@@ -421,10 +457,20 @@ export default function LeadDetail({
                       ? `Phone ${lead.phone} from this device — no AI assistance`
                       : 'No phone number'
                 }
-                onClick={() => tel && window.open(`tel:${tel}`)}
+                onClick={() => {
+                  if (!tel) return;
+                  // Back from the call, the call log opens (M4-27).
+                  if (canLog) dialled(lead);
+                  window.open(`tel:${tel}`);
+                }}
               >
                 Phone
               </button>
+              {canLog && (
+                <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={openLog}>
+                  Log call
+                </button>
+              )}
               <button
                 className="lf-btn lf-btn--secondary lf-btn--sm"
                 disabled={!lead.email || lead.contactMasked.email}
@@ -684,6 +730,14 @@ export default function LeadDetail({
           </section>
         </aside>
       </div>
+      {logging && (
+        <CallLogDialog
+          lead={lead}
+          timeZone={timeZone}
+          onClose={() => setLogging(false)}
+          onLogged={() => router.refresh()}
+        />
+      )}
     </>
   );
 }
@@ -711,6 +765,7 @@ function OverviewTab({
   canEdit,
   sources,
   customFields,
+  onDial,
 }: {
   lead: Props['lead'];
   editing: boolean;
@@ -719,6 +774,8 @@ function OverviewTab({
   canEdit: boolean;
   sources: SourceOption[];
   customFields: LeadField[];
+  /** Dialling one of its other numbers. */
+  onDial?: () => void;
 }) {
   // The lead's entry, split back into the source and the sub-source under it.
   const entry = sources.find((s) => s.id === lead.sourceId);
@@ -884,7 +941,12 @@ function OverviewTab({
           ))}
         </dl>
         {lead.phones && (lead.phones.length > 0 || canEdit) && (
-          <OtherNumbers phones={lead.phones} leadId={lead.id} canEdit={canEdit && !lead.contactMasked.phone} />
+          <OtherNumbers
+            phones={lead.phones}
+            leadId={lead.id}
+            canEdit={canEdit && !lead.contactMasked.phone}
+            onDial={onDial}
+          />
         )}
         {editing && (
           <div style={{ display: 'flex', gap: 'var(--lf-space-2)', marginTop: 'var(--lf-space-4)' }}>
@@ -939,10 +1001,13 @@ function OtherNumbers({
   phones,
   leadId,
   canEdit,
+  onDial,
 }: {
   phones: NonNullable<LeadData['phones']>;
   leadId: string;
   canEdit: boolean;
+  /** Back from dialling one, the call log opens (M4-27). */
+  onDial?: () => void;
 }) {
   const router = useRouter();
   const blank = { phone: '', label: '', isWhatsapp: true };
@@ -975,7 +1040,13 @@ function OtherNumbers({
             key={p.id}
             style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--lf-text-sm)' }}
           >
-            {dialable(p.raw) ? <a href={`tel:${dialable(p.raw)}`}>{p.raw}</a> : <span>{p.raw}</span>}
+            {dialable(p.raw) ? (
+              <a href={`tel:${dialable(p.raw)}`} onClick={onDial}>
+                {p.raw}
+              </a>
+            ) : (
+              <span>{p.raw}</span>
+            )}
             {p.label && <span style={{ color: 'var(--lf-ink-3)' }}>{p.label}</span>}
             {whatsappLink(p.normalized, p.isWhatsapp) && (
               <a href={whatsappLink(p.normalized, p.isWhatsapp)!} target="_blank" rel="noreferrer">
@@ -1057,28 +1128,24 @@ function TimelineTab({
   const [form, setForm] = useState({ typeId: activityTypes[0]?.id ?? '', outcome: '', notes: '', durationMins: '' });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // The server's first page, then each older page asked for (M4-46).
+  const [entries, setEntries] = useState<TimelineEntry[]>(lead.timeline.entries);
+  const [next, setNext] = useState(lead.timeline.next);
+  const [loading, setLoading] = useState(false);
 
-  // Activities and stage changes, one timeline, newest first (ISO instants sort as text).
-  const entries = [
-    ...lead.activities.map((a) => ({
-      key: a.id,
-      at: a.occurredAt,
-      title: a.type.name,
-      kind: a.type.key.startsWith('call') ? 'call' : 'default',
-      outcome: a.outcome,
-      notes: a.notes,
-      durationSecs: a.durationSecs,
-    })),
-    ...lead.stageChanges.map((h) => ({
-      key: `stage-${h.id}`,
-      at: h.at,
-      title: h.from ? `Stage: ${h.from} → ${h.to}` : `Stage: ${h.to}`,
-      kind: 'default',
-      outcome: h.reason,
-      notes: null,
-      durationSecs: null,
-    })),
-  ].sort((x, y) => y.at.localeCompare(x.at));
+  const older = async () => {
+    if (!next) return;
+    setLoading(true);
+    setErr(null);
+    try {
+      const page: TimelinePage = await api(`/api/v1/leads/${lead.id}/timeline?cursor=${encodeURIComponent(next)}`);
+      setEntries((shown) => [...shown, ...page.entries]);
+      setNext(page.next);
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+    setLoading(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1191,6 +1258,15 @@ function TimelineTab({
           </button>
         </form>
       )}
+      {err && !showForm && (
+        <div
+          className="lf-alert"
+          role="alert"
+          style={{ marginBottom: 'var(--lf-space-3)', fontSize: 'var(--lf-text-sm)' }}
+        >
+          {err}
+        </div>
+      )}
 
       {entries.length === 0 ? (
         <p style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)', margin: 0 }}>
@@ -1201,26 +1277,50 @@ function TimelineTab({
           {entries.map((e) => (
             <div key={e.key} className="lf-timeline__item" data-kind={e.kind}>
               <span className="lf-timeline__dot" aria-hidden="true" />
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--lf-space-3)' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--lf-space-3)', flexWrap: 'wrap' }}>
                 <strong style={{ fontSize: 'var(--lf-text-sm)', fontFamily: 'var(--lf-font-ui)', fontWeight: 600 }}>
                   {e.title}
                 </strong>
-                <span className="lf-timeline__time">{fmtDateTime(e.at)}</span>
-                {e.durationSecs != null && (
-                  <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
-                    {Math.round(e.durationSecs / 60)}m
-                  </span>
-                )}
+                <span className="lf-timeline__time">{e.when}</span>
+                {e.by && <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>{e.by}</span>}
               </div>
-              {e.outcome && (
-                <div style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)', marginTop: 2 }}>{e.outcome}</div>
+              {e.detail && (
+                <div
+                  style={{
+                    fontSize: 'var(--lf-text-sm)',
+                    color: 'var(--lf-ink-2)',
+                    marginTop: 2,
+                    overflowWrap: 'anywhere',
+                  }}
+                >
+                  {e.detail}
+                </div>
               )}
               {e.notes && (
-                <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)', marginTop: 2 }}>{e.notes}</div>
+                <div
+                  style={{
+                    fontSize: 'var(--lf-text-xs)',
+                    color: 'var(--lf-ink-3)',
+                    marginTop: 2,
+                    overflowWrap: 'anywhere',
+                  }}
+                >
+                  {e.notes}
+                </div>
               )}
             </div>
           ))}
         </div>
+      )}
+      {next && (
+        <button
+          className="lf-btn lf-btn--secondary lf-btn--sm"
+          style={{ marginTop: 'var(--lf-space-4)' }}
+          disabled={loading}
+          onClick={() => void older()}
+        >
+          {loading ? 'Loading…' : 'Show older'}
+        </button>
       )}
     </section>
   );
@@ -1239,17 +1339,25 @@ function TasksTab({
 }) {
   const [err, setErr] = useState<string | null>(null);
 
-  const completeTask = async (taskId: string) => {
+  const complete = async (url: string, body: Record<string, unknown>) => {
     try {
-      await api(`/api/v1/tasks/${taskId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: 'COMPLETED', completedAt: new Date().toISOString() }),
-      });
+      await api(url, { method: 'PATCH', body: JSON.stringify(body) });
       router.refresh();
     } catch (e: any) {
       setErr(e.message);
     }
   };
+  const completeTask = (taskId: string) =>
+    complete(`/api/v1/tasks/${taskId}`, { status: 'COMPLETED', completedAt: new Date().toISOString() });
+  const row = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 'var(--lf-space-3)',
+    padding: 'var(--lf-space-3)',
+    border: '1px solid var(--lf-line)',
+    borderRadius: 6,
+  } as const;
+  const list = { listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 'var(--lf-space-3)' } as const;
 
   return (
     <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
@@ -1265,24 +1373,14 @@ function TasksTab({
         </div>
       )}
 
-      {lead.tasks.length === 0 ? (
+      {lead.tasks.length + lead.followUps.length === 0 ? (
         <p style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)', margin: 0 }}>No open tasks.</p>
       ) : (
-        <div style={{ display: 'grid', gap: 'var(--lf-space-3)' }}>
+        <ul style={list}>
           {lead.tasks.map((t) => {
             const overdue = t.status !== 'COMPLETED' && new Date(t.dueAt) < new Date();
             return (
-              <div
-                key={t.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--lf-space-3)',
-                  padding: 'var(--lf-space-3)',
-                  border: '1px solid var(--lf-line)',
-                  borderRadius: 6,
-                }}
-              >
+              <li key={t.id} style={row}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 500, fontSize: 'var(--lf-text-sm)' }}>{t.title}</div>
                   <div
@@ -1313,10 +1411,122 @@ function TasksTab({
                     Complete
                   </button>
                 )}
-              </div>
+              </li>
             );
           })}
-        </div>
+          {/* Its follow-ups, as the Follow-ups list has them, due on the workspace's clock. */}
+          {lead.followUps.map((f) => {
+            const overdue = new Date(f.dueAt) < new Date();
+            return (
+              <li key={f.id} style={row}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 500, fontSize: 'var(--lf-text-sm)' }}>{f.title}</div>
+                  <div style={{ display: 'flex', gap: 'var(--lf-space-2)', marginTop: 4, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>Follow-up</span>
+                    <span
+                      style={{
+                        fontSize: 'var(--lf-text-xs)',
+                        color: overdue ? 'var(--lf-vermillion)' : 'var(--lf-ink-3)',
+                        fontWeight: overdue ? 600 : 400,
+                      }}
+                    >
+                      Due {f.due}
+                    </span>
+                  </div>
+                </div>
+                {f.canComplete && (
+                  <button
+                    className="lf-btn lf-btn--sm lf-btn--secondary"
+                    onClick={() => complete(`/api/v1/follow-ups/${f.id}`, { status: 'COMPLETED' })}
+                  >
+                    Complete
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {/* What was done stays in view (M4-47): the last 10, newest first. */}
+      {lead.done.length > 0 && (
+        <section aria-labelledby="lead-done" style={{ marginTop: 'var(--lf-space-5)' }}>
+          <h3 id="lead-done" className="lf-eyebrow" style={{ margin: '0 0 var(--lf-space-3)' }}>
+            Done
+          </h3>
+          <ul style={list}>
+            {lead.done.map((d) => (
+              <li key={d.key} style={{ ...row, color: 'var(--lf-ink-2)' }}>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--lf-text-sm)', overflowWrap: 'anywhere' }}>
+                  {d.title}
+                </span>
+                <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)', whiteSpace: 'nowrap' }}>
+                  Done {d.doneAt}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </section>
+  );
+}
+
+// ── Matching stock ──────────────────────────────────────────────────────────
+
+/** The live listings the open requirement matches (M4-48), the first five; the rest on the requirement's page. */
+function MatchingStock({
+  stock,
+  matchesHref,
+}: {
+  stock: NonNullable<LeadData['matchingStock']>;
+  matchesHref: string | null;
+}) {
+  const hint = { color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)', margin: 0 } as const;
+  return (
+    <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }} aria-labelledby="matching-stock">
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          gap: 'var(--lf-space-3)',
+          flexWrap: 'wrap',
+          marginBottom: 'var(--lf-space-3)',
+        }}
+      >
+        <h2 id="matching-stock" className="lf-eyebrow" style={{ margin: 0 }}>
+          Matching stock
+        </h2>
+        {matchesHref && stock.total > 0 && (
+          <SalesLink href={matchesHref} style={{ fontSize: 'var(--lf-text-sm)' }}>
+            {stock.more
+              ? 'All matches'
+              : stock.total > stock.listings.length
+                ? `All ${stock.total} matches`
+                : 'Open the match list'}
+          </SalesLink>
+        )}
+      </div>
+      {!stock.hasRequirement ? (
+        <p style={hint}>Add a requirement to see the listings that match.</p>
+      ) : stock.listings.length === 0 ? (
+        <p style={hint}>No live listing matches the requirement yet.</p>
+      ) : (
+        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 'var(--lf-space-2)' }}>
+          {stock.listings.map((l) => (
+            <li key={l.id} style={{ fontSize: 'var(--lf-text-sm)', overflowWrap: 'anywhere' }}>
+              <SalesLink href={`/listings/${l.id}`} style={{ fontWeight: 500 }}>
+                {l.title}
+              </SalesLink>
+              <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)', marginTop: 2 }}>
+                {[l.reference, l.price, l.bedrooms != null && `${l.bedrooms} bed`, l.community]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );
@@ -1594,10 +1804,6 @@ function DocumentsTab({
 
 function fmtDate(v: string) {
   return new Date(v).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-function fmtDateTime(v: string) {
-  return new Date(v).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
 function fmtBytes(n: number) {

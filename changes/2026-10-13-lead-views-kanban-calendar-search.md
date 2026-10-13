@@ -257,3 +257,8 @@ and `every-route` 8 of 8. The board's Move list checked by eye at 390 px
 leads; their closed ones are under Left open); the calendar case's
 "Unable to start a transaction" under load (passed alone, and in every run
 since).
+
+**Merge-up with main, 13 Oct.** Main took #178 (one-step call log, the lead
+timeline). Every grid row and phone card of the filtered list, and of Smart
+Views, keeps #178's Call and Log call beside this change's chips, saved views
+and phone search; the board's cards carry no call actions.
