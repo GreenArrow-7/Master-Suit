@@ -27,7 +27,7 @@ export const QUEUE_NAMES = [
 
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
-const RETRY: Record<QueueName, { attempts: number; backoff: any }> = {
+export const RETRY: Record<QueueName, { attempts: number; backoff: any }> = {
   automation: { attempts: 5, backoff: { type: 'exponential', delay: 2_000 } },
   distribution: { attempts: 3, backoff: { type: 'exponential', delay: 1_000 } },
   sla: { attempts: 3, backoff: { type: 'fixed', delay: 30_000 } },

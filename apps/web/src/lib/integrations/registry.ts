@@ -33,6 +33,11 @@ export interface ProviderSpec {
    * only credential. Surfaced in the UI rather than buried in a doc.
    */
   unsignedCallbacks?: boolean;
+  /**
+   * The workspace issues the signing secret on connecting, shown once (the
+   * Custom webhook): there is no vendor console to copy one from.
+   */
+  issuesSecret?: true;
 }
 
 const TELEPHONY_SETTINGS: SettingField[] = [
@@ -184,42 +189,55 @@ export const PROVIDERS: ProviderSpec[] = [
     webhook: false,
   },
   ...Object.entries(LEAD_SOURCES).map<ProviderSpec>(([key, { label }]) =>
-    key === 'google_ads'
+    key === 'custom_webhook'
       ? {
           key,
           label,
           category: 'LEADS',
           description:
-            'Leads from your Google Ads lead forms. In the form’s lead delivery settings, paste the webhook URL below and enter the same key.',
-          credentials: [
-            {
-              key: 'secret',
-              label: 'Key',
-              secret: true,
-              hint: 'Any long random text; Google sends it back with every lead.',
-            },
-          ],
+            'Leads from any system without a connector of its own: post JSON to the URL below, signed with HMAC-SHA256 of the raw body in X-Signature. Fields read by default: name, phone, email, message, source_detail; map others on Deliveries and field mapping. Send an Idempotency-Key header and a retry makes nothing new.',
+          credentials: [],
           settings: [],
           capabilities: ['LEADS'],
           webhook: 'leads',
+          issuesSecret: true,
         }
-      : {
-          key,
-          label,
-          category: 'LEADS',
-          description: `Enquiries from your ${label} listings, delivered as they arrive. ${label} signs each delivery with the secret below.`,
-          credentials: [
-            {
-              key: 'secret',
-              label: 'Signing secret',
-              secret: true,
-              hint: `The secret ${label} issues for your account, or one you choose and send them.`,
-            },
-          ],
-          settings: [],
-          capabilities: ['LEADS'],
-          webhook: 'leads',
-        },
+      : key === 'google_ads'
+        ? {
+            key,
+            label,
+            category: 'LEADS',
+            description:
+              'Leads from your Google Ads lead forms. In the form’s lead delivery settings, paste the webhook URL below and enter the same key.',
+            credentials: [
+              {
+                key: 'secret',
+                label: 'Key',
+                secret: true,
+                hint: 'Any long random text; Google sends it back with every lead.',
+              },
+            ],
+            settings: [],
+            capabilities: ['LEADS'],
+            webhook: 'leads',
+          }
+        : {
+            key,
+            label,
+            category: 'LEADS',
+            description: `Enquiries from your ${label} listings, delivered as they arrive. ${label} signs each delivery with the secret below.`,
+            credentials: [
+              {
+                key: 'secret',
+                label: 'Signing secret',
+                secret: true,
+                hint: `The secret ${label} issues for your account, or one you choose and send them.`,
+              },
+            ],
+            settings: [],
+            capabilities: ['LEADS'],
+            webhook: 'leads',
+          },
   ),
 ];
 

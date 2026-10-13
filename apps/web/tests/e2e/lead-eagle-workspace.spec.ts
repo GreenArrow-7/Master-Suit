@@ -247,6 +247,9 @@ test.describe('Lead Eagle, from the platform portal to a lead', () => {
         );
       await page.goto(at('/sales/events'));
       await expect(page.getByRole('heading', { name: 'Events is part of Sales or Real Estate.' })).toBeVisible();
+      // Push only once the plan page's watch is mounted: before hydration the
+      // router accepts the push but nothing re-asks the server.
+      await expect(page.locator('html[data-plan-recheck="ready"]')).toHaveCount(1);
       await push(at('/sales/opportunities'));
       await expect(page.getByRole('heading', { name: 'Opportunities is part of Sales.' })).toBeVisible();
       await push(at(`/sales/leads/${leadId}`));
