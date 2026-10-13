@@ -28,6 +28,7 @@ import type { PermissionMap } from '@/lib/security/rbac';
 
 const suffix = randomBytes(4).toString('hex');
 let tenantId = '';
+let roleId = '';
 let managerUserId = '';
 const reportUserIds: string[] = [];
 const outsiderUserIds: string[] = [];
@@ -74,6 +75,7 @@ beforeAll(async () => {
   const role = await prisma.role.create({
     data: { tenantId, key: `mgr-${suffix}`, name: 'Manager', rank: 20 },
   });
+  roleId = role.id;
 
   managerUserId = await makeEmployee('boss', null, role.id);
   for (const n of [1, 2, 3]) reportUserIds.push(await makeEmployee(`report${n}`, managerUserId, role.id));
@@ -133,5 +135,35 @@ describe('the manager dashboard counts the manager’s team and nobody else', ()
     // Three people are PRESENT today; only two of them are this manager's.
     // A filter that lost its scope would say 3.
     expect(onSite?.value).toBe(2);
+  });
+});
+
+/**
+ * The lifecycle half of the HR administrator's dashboard is read by
+ * lifecycleDashboard, inside loadDashboard's transaction. It read through the
+ * global client, which has no tenant pinned there, so RLS returned nothing and
+ * every joiner, overdue task and expiring document showed as zero.
+ */
+describe('the HR administrator dashboard reads the lifecycle inside its transaction', () => {
+  it('counts somebody joining', async () => {
+    const joinerId = await makeEmployee('joiner', null, roleId);
+    await prisma.employeeProfile.updateMany({
+      where: { tenantId, membership: { salesUserId: joinerId } },
+      data: { employmentStatus: 'ONBOARDING' },
+    });
+    const ctx = buildCtx(
+      buildActor({
+        id: managerUserId,
+        tenantId,
+        permissions: new Map([
+          ['employee:VIEW', 'ORGANIZATION'],
+          ['employee:EDIT', 'ORGANIZATION'],
+        ]) as unknown as PermissionMap,
+      }),
+    );
+
+    const data = await loadDashboard(ctx);
+    expect(data.persona).toBe('hr_admin');
+    expect(data.stats.find((s) => s.label === 'Joining')?.value).toBe(1);
   });
 });

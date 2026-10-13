@@ -166,7 +166,7 @@ async function hrAdmin(ctx: Ctx, db: Db): Promise<DashboardData> {
       },
     }),
     db.hrLeaveRequest.count({ where: { tenantId: ctx.tenantId, status: 'PENDING' } }),
-    lifecycleDashboard(ctx),
+    lifecycleDashboard(ctx, db),
     db.employeeProfile.count({ where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'NOTICE' } }),
   ]);
   return {
@@ -270,7 +270,7 @@ async function itAdmin(ctx: Ctx, db: Db): Promise<DashboardData> {
     db.workspaceMembership.count({
       where: { tenantId: ctx.tenantId, status: 'ACTIVE', platformUser: { mfaEnabled: false } },
     }),
-    lifecycleDashboard(ctx).then((l) => l.joining.length),
+    lifecycleDashboard(ctx, db).then((l) => l.joining.length),
   ]);
   return {
     persona: 'it_admin',

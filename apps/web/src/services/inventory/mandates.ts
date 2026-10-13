@@ -236,9 +236,13 @@ export async function expireLapsedMandates(tenantId: string): Promise<number> {
  *
  * Called from the listing PATCH rather than enforced by a constraint, because
  * the rule spans two tables and a database check cannot see across them.
+ *
+ * Takes the caller's transaction: inside withTx the global client does not pin
+ * the tenant, so a read through it lands on another pooled connection with no
+ * `app.tenant_id`, and forced RLS hides the very mandate this looks for.
  */
-export async function assertMarketable(tenantId: string, listingId: string) {
-  const live = await prisma.mandate.findFirst({
+export async function assertMarketable(tx: TxClient, tenantId: string, listingId: string) {
+  const live = await tx.mandate.findFirst({
     where: { tenantId, listingId, status: 'ACTIVE', expiresAt: { gt: new Date() } },
     select: { id: true },
   });
