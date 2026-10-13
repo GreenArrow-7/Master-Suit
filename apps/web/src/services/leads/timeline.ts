@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { callScope } from '@/lib/security/record-scope';
 import { visibilityWhere } from '@/lib/security/visibility';
@@ -139,58 +139,68 @@ export async function leadTimeline(
     : null;
   const take = limit + 1;
 
-  const [activities, stages, edits, assignments, calls, messages, timeZone, rules] = await Promise.all([
-    prisma.activity.findMany({
-      where: {
-        tenantId,
-        leadId,
-        deletedAt: null,
-        AND: [after<Prisma.ActivityWhereInput>(cursor, 'activity', 'occurredAt')],
-      },
-      orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
-      take,
-      select: {
-        id: true,
-        occurredAt: true,
-        outcome: true,
-        notes: true,
-        durationSecs: true,
-        ownerId: true,
-        type: { select: { name: true } },
-      },
-    }),
-    prisma.leadStageHistory.findMany({
-      where: { tenantId, leadId, AND: [after<Prisma.LeadStageHistoryWhereInput>(cursor, 'stage', 'createdAt')] },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take,
-    }),
-    prisma.auditLog.findMany({
-      where: {
-        tenantId,
-        objectType: 'lead',
-        recordId: leadId,
-        fieldKey: { in: Object.keys(FIELD_LABELS) },
-        AND: [after<Prisma.AuditLogWhereInput>(cursor, 'field', 'occurredAt')],
-      },
-      orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
-      take,
-    }),
-    prisma.leadAssignmentHistory.findMany({
-      where: {
-        tenantId,
-        leadId,
-        AND: [after<Prisma.LeadAssignmentHistoryWhereInput>(cursor, 'assignment', 'createdAt')],
-      },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take,
-    }),
-    callScope(ctx, 'VIEW').then((scope) =>
-      prisma.call.findMany({
+  const [callWhere, inbox, timeZone, rules] = await Promise.all([
+    callScope(ctx, 'VIEW'),
+    inboxReach(ctx),
+    workspaceTimezone(ctx),
+    loadFieldRules(ctx, 'LEAD'),
+  ]);
+  // The six feeds through one tenant transaction, so one connection. As six
+  // pinned queries (lib/db.ts runPinned) they asked the pool for six at once,
+  // on top of the lead page's own reads, and the page outran the pool: P2028.
+  // Only `tx` inside: the global client there runs without the tenant.
+  const [activities, stages, edits, assignments, calls, messages] = await withTx(tenantId, (tx) =>
+    Promise.all([
+      tx.activity.findMany({
         where: {
           tenantId,
           leadId,
           deletedAt: null,
-          AND: [scope as Prisma.CallWhereInput, after<Prisma.CallWhereInput>(cursor, 'call', 'createdAt')],
+          AND: [after<Prisma.ActivityWhereInput>(cursor, 'activity', 'occurredAt')],
+        },
+        orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+        take,
+        select: {
+          id: true,
+          occurredAt: true,
+          outcome: true,
+          notes: true,
+          durationSecs: true,
+          ownerId: true,
+          type: { select: { name: true } },
+        },
+      }),
+      tx.leadStageHistory.findMany({
+        where: { tenantId, leadId, AND: [after<Prisma.LeadStageHistoryWhereInput>(cursor, 'stage', 'createdAt')] },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take,
+      }),
+      tx.auditLog.findMany({
+        where: {
+          tenantId,
+          objectType: 'lead',
+          recordId: leadId,
+          fieldKey: { in: Object.keys(FIELD_LABELS) },
+          AND: [after<Prisma.AuditLogWhereInput>(cursor, 'field', 'occurredAt')],
+        },
+        orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+        take,
+      }),
+      tx.leadAssignmentHistory.findMany({
+        where: {
+          tenantId,
+          leadId,
+          AND: [after<Prisma.LeadAssignmentHistoryWhereInput>(cursor, 'assignment', 'createdAt')],
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take,
+      }),
+      tx.call.findMany({
+        where: {
+          tenantId,
+          leadId,
+          deletedAt: null,
+          AND: [callWhere as Prisma.CallWhereInput, after<Prisma.CallWhereInput>(cursor, 'call', 'createdAt')],
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take,
@@ -206,10 +216,8 @@ export async function leadTimeline(
           callerId: true,
         },
       }),
-    ),
-    inboxReach(ctx).then((inbox) =>
       inbox
-        ? prisma.communication.findMany({
+        ? tx.communication.findMany({
             where: {
               tenantId,
               // A thread's earlier messages carry no lead: it was linked after them.
@@ -231,10 +239,8 @@ export async function leadTimeline(
             },
           })
         : [],
-    ),
-    workspaceTimezone(ctx),
-    loadFieldRules(ctx, 'LEAD'),
-  ]);
+    ]),
+  );
 
   const userIds = [
     ...activities.map((a) => a.ownerId),
