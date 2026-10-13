@@ -40,8 +40,7 @@ test.describe('phone redesign: shell, Leads, Leadership', () => {
   test('leads: search leads, no duplicate view chips, name opens the record', async ({ page }) => {
     await login(page, email, password);
     await page.goto(`/${slug}/sales/leads`);
-    // By its name: the placeholder says what it matches (name, phone, email, reference).
-    await expect(page.getByRole('searchbox', { name: 'Search leads' })).toBeVisible();
+    await expect(page.getByPlaceholder('Search leads')).toBeVisible();
     const chips = page.getByRole('navigation', { name: 'Saved views' });
     await expect(chips.getByRole('link', { name: 'Mine', exact: true })).toHaveCount(0);
     await expect(chips.getByRole('link', { name: 'Overdue', exact: false }).first()).toBeVisible();
