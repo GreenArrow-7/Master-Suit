@@ -51,6 +51,9 @@ export default async function ColdDataPage({
   // scope now lists, read as a lead's phone reads to your role (#158).
   const phoneOf = (record: { ownerId: string | null; phone: string | null }) =>
     record.ownerId === ctx.actor.id ? record.phone : asLeadPhone(ctx, rules, record.phone);
+  // A number in its notes reads as its phone does: Move to Data writes a lead's other numbers there.
+  const notesOf = (record: { ownerId: string | null; notes: string | null }) =>
+    record.notes?.replace(/\+\d{7,15}/g, (phone) => phoneOf({ ...record, phone }) ?? '');
   // A converted record's lead may be another agent's: link only what the lead page would show.
   const convertedIds = records.flatMap((r) => (r.convertedLeadId ? [r.convertedLeadId] : []));
   const openable = new Set(
@@ -166,7 +169,7 @@ export default async function ColdDataPage({
                       {record.notes && (
                         <details>
                           <summary className="lf-hint">Notes</summary>
-                          <div style={{ whiteSpace: 'pre-line', fontSize: 'var(--lf-text-xs)' }}>{record.notes}</div>
+                          <div style={{ whiteSpace: 'pre-line', fontSize: 'var(--lf-text-xs)' }}>{notesOf(record)}</div>
                         </details>
                       )}
                     </td>

@@ -6,24 +6,38 @@ import SalesLink from '@/components/workspace/SalesLink';
 interface CalendarItem {
   id: string;
   date: string; // ISO
+  /** YYYY-MM-DD on the workspace's clock: the cell the item sits in. */
+  day: string;
   label: string;
-  kind: 'task' | 'activity' | 'follow-up' | 'call' | 'event';
+  kind: 'task' | 'activity' | 'follow-up' | 'call' | 'event' | 'visit';
   completed?: boolean;
   href?: string;
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+// Theme tokens only: three of these named tokens that never existed, so their
+// literal fallbacks drew the same dots in the dark theme.
 const KIND_COLOR: Record<CalendarItem['kind'], string> = {
-  task: 'var(--lf-brass, #ca8a04)',
-  activity: 'var(--lf-wine-700, #7f1d4e)',
-  'follow-up': 'var(--lf-teal, #0d9488)',
-  call: 'var(--lf-plum, #7c3aed)',
-  event: 'var(--lf-sky, #0369a1)',
+  task: 'var(--lf-brass)',
+  activity: 'var(--lf-wine-700)',
+  'follow-up': 'var(--lf-info)',
+  call: 'var(--lf-slate)',
+  event: 'var(--lf-wine-300)',
+  visit: 'var(--lf-ink)',
+};
+
+const KIND_LABEL: Record<CalendarItem['kind'], string> = {
+  task: 'Task',
+  activity: 'Activity',
+  'follow-up': 'Follow-up',
+  call: 'Call',
+  event: 'Event',
+  visit: 'Site visit',
 };
 
 function dotColor(item: CalendarItem): string {
-  if (item.completed) return 'var(--lf-viridian, #16a34a)';
+  if (item.completed) return 'var(--lf-viridian)';
   return KIND_COLOR[item.kind];
 }
 
@@ -31,12 +45,15 @@ function dotColor(item: CalendarItem): string {
  * Month grid over the items the server fetched for `year`/`month`. Month
  * navigation is URL-driven (`?month=YYYY-MM`) so each arrow re-queries the
  * server, survives refresh and supports direct links; only the day-detail
- * selection lives client-side.
+ * selection lives client-side. Days and times are the workspace's
+ * (`timeZone`), as the server placed them, not the browser's.
  */
 export default function CalendarView({
   items,
   year,
   month,
+  today,
+  timeZone,
   prevHref,
   nextHref,
   todayHref,
@@ -44,32 +61,33 @@ export default function CalendarView({
   items: CalendarItem[];
   year: number;
   month: number;
+  /** YYYY-MM-DD, the workspace's today. */
+  today: string;
+  timeZone: string;
   prevHref: string;
   nextHref: string;
   todayHref: string | null;
 }) {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [today] = useState(() => new Date());
 
   const viewDate = new Date(year, month, 1);
   const monthLabel = viewDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const startDow = new Date(year, month, 1).getDay();
+  const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
 
   const byDay = useMemo(() => {
     const map = new Map<number, CalendarItem[]>();
     for (const item of items) {
-      const d = new Date(item.date);
-      if (d.getFullYear() === year && d.getMonth() === month) {
-        const day = d.getDate();
-        if (!map.has(day)) map.set(day, []);
-        map.get(day)!.push(item);
-      }
+      if (!item.day.startsWith(`${monthKey}-`)) continue;
+      const day = Number(item.day.slice(8));
+      if (!map.has(day)) map.set(day, []);
+      map.get(day)!.push(item);
     }
     return map;
-  }, [items, year, month]);
+  }, [items, monthKey]);
 
-  const todayKey = today.getFullYear() === year && today.getMonth() === month ? today.getDate() : -1;
+  const todayKey = today.startsWith(`${monthKey}-`) ? Number(today.slice(8)) : -1;
 
   const cells: (number | null)[] = [];
   for (let i = 0; i < startDow; i++) cells.push(null);
@@ -104,17 +122,10 @@ export default function CalendarView({
         )}
       </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(7, 1fr)',
-          gap: 1,
-          background: 'var(--lf-ink-4, #e2e8f0)',
-          border: '1px solid var(--lf-ink-4, #e2e8f0)',
-          borderRadius: 'var(--lf-radius, 8px)',
-          overflow: 'hidden',
-        }}
-      >
+      {/* A class, not an inline grid: the phone rule that folds inline
+          `repeat(n, …)` grids to two columns (redesign-mobile.css) made the
+          month two days wide under seven day names. */}
+      <div className="lf-cal">
         {DAYS.map((d) => (
           <div
             key={d}
@@ -123,7 +134,7 @@ export default function CalendarView({
               fontSize: 'var(--lf-text-xs)',
               fontWeight: 600,
               textAlign: 'center',
-              background: 'var(--lf-surface-2, #f8fafc)',
+              background: 'var(--lf-surface-2)',
               color: 'var(--lf-ink-3)',
             }}
           >
@@ -153,7 +164,7 @@ export default function CalendarView({
               style={{
                 minHeight: 64,
                 padding: 'var(--lf-space-1)',
-                background: isSelected ? 'var(--lf-wine-050)' : 'var(--lf-surface, #fff)',
+                background: isSelected ? 'var(--lf-wine-050)' : 'var(--lf-surface)',
                 cursor: day ? 'pointer' : 'default',
               }}
             >
@@ -168,8 +179,8 @@ export default function CalendarView({
                       borderRadius: '50%',
                       fontSize: 'var(--lf-text-sm)',
                       fontWeight: isToday ? 700 : 400,
-                      background: isToday ? 'var(--lf-wine-700, #7f1d4e)' : 'transparent',
-                      color: isToday ? '#fff' : 'var(--lf-ink)',
+                      background: isToday ? 'var(--lf-wine-700)' : 'transparent',
+                      color: isToday ? 'var(--yh-on-primary)' : 'var(--lf-ink)',
                     }}
                   >
                     {day}
@@ -200,14 +211,17 @@ export default function CalendarView({
           color: 'var(--lf-ink-3)',
         }}
       >
-        {(Object.keys(KIND_COLOR) as CalendarItem['kind'][]).map((kind) => (
-          <span key={kind} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: KIND_COLOR[kind] }} />
-            {kind === 'follow-up' ? 'Follow-up' : kind[0].toUpperCase() + kind.slice(1)}
-          </span>
-        ))}
+        {/* What this month draws: a Lead Eagle calendar has no events to explain. */}
+        {(Object.keys(KIND_COLOR) as CalendarItem['kind'][])
+          .filter((kind) => items.some((item) => item.kind === kind))
+          .map((kind) => (
+            <span key={kind} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: KIND_COLOR[kind] }} />
+              {KIND_LABEL[kind]}
+            </span>
+          ))}
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--lf-viridian, #16a34a)' }} />
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--lf-viridian)' }} />
           Completed
         </span>
       </div>
@@ -249,10 +263,14 @@ export default function CalendarView({
                         flexShrink: 0,
                       }}
                     >
-                      {item.kind}
+                      {KIND_LABEL[item.kind]}
                     </span>
                     <span>
-                      {new Date(item.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(item.date).toLocaleTimeString('en-GB', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        timeZone,
+                      })}
                       {' · '}
                       {item.label}
                     </span>
