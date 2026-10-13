@@ -15,7 +15,13 @@ import { enqueue } from '@/lib/queue';
 import { audit } from '@/lib/security/audit';
 import { assertAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitlements';
 import type { Ctx } from '@/lib/security/rbac';
-import { LEAD_SOURCES, parseEnquiry, type Enquiry, type LeadSourceKey } from '@/lib/integrations/leadSources';
+import {
+  fieldMapOf,
+  LEAD_SOURCES,
+  parseEnquiry,
+  type Enquiry,
+  type LeadSourceKey,
+} from '@/lib/integrations/leadSources';
 import { findDuplicates } from './findDuplicates';
 import { leadSourceIdFor } from './leadSources';
 import { takeRequirement } from './requirement';
@@ -34,15 +40,20 @@ export interface EnquiryJob {
 export async function applyEnquiry({ tenantId, provider, externalId, source }: EnquiryJob) {
   const event = await prisma.webhookEvent.findUnique({
     where: { tenantId_provider_externalId: { tenantId, provider, externalId } },
-    select: { payload: true, processed: true },
+    select: { payload: true, processed: true, leadId: true },
   });
   if (!event || event.processed) return;
   // Thrown, so the delivery waits, stored, rather than becoming a lead in a
   // workspace that can no longer open its leads.
   await assertAnyModuleEntitlement(tenantId, LEAD_MODULES);
 
-  // Stored as the raw body: see the receiver.
-  const enquiry = parseEnquiry(JSON.parse(event.payload as string));
+  // Stored as the raw body: see the receiver. Read through the source's field
+  // map as it is now, so a replay after the map is fixed reads it right.
+  const connection = await prisma.integrationConnection.findUnique({
+    where: { tenantId_provider: { tenantId, provider: source } },
+    select: { metadata: true },
+  });
+  const enquiry = parseEnquiry(JSON.parse(event.payload as string), fieldMapOf(connection?.metadata));
   if (enquiry.isTest) return { skipped: 'test' as const };
 
   const { label, source: recordSource } = LEAD_SOURCES[source];
@@ -50,8 +61,11 @@ export async function applyEnquiry({ tenantId, provider, externalId, source }: E
     label,
     source: recordSource,
     sourceDetail: enquiry.reference ? `${source}:${enquiry.reference}` : source,
-    // The workspace's catalogue entry for this kind of connection (M4-03).
+    // The workspace's catalogue entry for this kind of connection (M4-03). The
+    // defaults have none for a Custom webhook: its leads land on one once an
+    // administrator adds "Custom webhook" under Sources.
     sourceId: await leadSourceIdFor(prisma, tenantId, source),
+    reached: event.leadId,
   });
 }
 
@@ -67,6 +81,12 @@ export interface EnquiryOrigin {
   ownerId?: string | null;
   /** The person who sent it in (cold data); none is the system, audited as `sourceDetail`. */
   actor?: Ctx;
+  /**
+   * The lead this enquiry already made or joined: a replayed delivery. Matching
+   * it again is the same enquiry, not the client coming back, so nothing is
+   * written and nobody is told.
+   */
+  reached?: string | null;
 }
 
 export async function takeEnquiry(
@@ -101,6 +121,8 @@ export async function takeEnquiry(
       fullName: enquiry.fullName,
     })
   ).find((m) => m.matchedOn !== 'fullName');
+
+  if (match && match.id === origin.reached) return { leadId: match.id, created: false, unchanged: true as const };
 
   const { label, source: recordSource, ownerId } = origin;
   const note = [

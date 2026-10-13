@@ -16,6 +16,8 @@ export const LEAD_SOURCES = {
   bayut: { label: 'Bayut', source: 'MARKETPLACE' },
   dubizzle: { label: 'Dubizzle', source: 'MARKETPLACE' },
   google_ads: { label: 'Google Ads lead forms', source: 'AD_LEAD_FORM' },
+  // Any sender without an adapter of its own: a website, a CRM, Zapier (M6-08).
+  custom_webhook: { label: 'Custom webhook', source: 'WEBHOOK' },
 } as const;
 
 export type LeadSourceKey = keyof typeof LEAD_SOURCES;
@@ -131,6 +133,39 @@ const DETAILS: [label: string, field: keyof Wants, keys: string[]][] = [
   ['Budget', 'budget', ['budget', 'pricerange', 'price', 'budgetmax', 'pricemax']],
 ];
 
+/**
+ * The lead fields an administrator may map a sender's field to (M6-20), each
+ * with the parser key it is read as. A mapped field is read from the sender's
+ * field alone: each key is the first one its field reads, and a mapped name
+ * (full, or first and last) or phone also sets aside every other guess.
+ */
+export const MAPPABLE_FIELDS = {
+  fullName: { label: 'Full name', key: 'clientname' },
+  firstName: { label: 'First name', key: 'firstname' },
+  lastName: { label: 'Last name', key: 'lastname' },
+  phone: { label: 'Phone', key: 'clientphone' },
+  email: { label: 'Email', key: 'clientemail' },
+  message: { label: 'Message', key: 'message' },
+  reference: { label: 'Reference (source detail)', key: 'listingreference' },
+  purpose: { label: 'Purpose', key: 'purpose' },
+  propertyType: { label: 'Property type', key: 'propertytype' },
+  area: { label: 'Area', key: 'location' },
+  bedrooms: { label: 'Bedrooms', key: 'bedrooms' },
+  budget: { label: 'Budget', key: 'budget' },
+} as const;
+
+export type MappableField = keyof typeof MAPPABLE_FIELDS;
+/**
+ * `{ senderKey: leadField }`. A nested sender field is `parent.field`; a deeper
+ * one is read by its last two names (`data.client.phone` as `client.phone`),
+ * the way the payload is flattened.
+ */
+export type FieldMap = Record<string, MappableField>;
+
+/** The map stored in a connection's settings, or none. */
+export const fieldMapOf = (metadata: unknown): FieldMap =>
+  ((metadata as { fieldMap?: FieldMap } | null)?.fieldMap ?? {}) as FieldMap;
+
 /** What an enquiry said it wants, as the sender worded it. */
 export type Wants = Partial<Record<'purpose' | 'type' | 'area' | 'bedrooms' | 'budget', string | null>>;
 
@@ -210,14 +245,25 @@ export function requirementFrom(wants: Wants): RequirementDraft | null {
   return wanted ? { purpose, propertyTypes, subType, locations, bedroomsMin, bedroomsMax, budgetMin, budgetMax } : null;
 }
 
-export function parseEnquiry(payload: Record<string, unknown>): Enquiry {
+export function parseEnquiry(payload: Record<string, unknown>, fieldMap: FieldMap = {}): Enquiry {
   const flat = flatten(payload);
+  // Applied before anything is read. `parent.field` is the flattened `parentfield`.
+  const mapped = new Set<MappableField>();
+  for (const [sender, field] of Object.entries(fieldMap)) {
+    const value = flat.get(key(sender.split('.').slice(-2).join('')));
+    if (value && Object.hasOwn(MAPPABLE_FIELDS, field)) {
+      flat.set(MAPPABLE_FIELDS[field].key, value);
+      mapped.add(field);
+    }
+  }
   const get = (...keys: string[]) => keys.map((k) => flat.get(k)).find(Boolean) ?? null;
   const wants: Wants = Object.fromEntries(DETAILS.map(([, field, keys]) => [field, get(...keys)]));
 
   const first = get('firstname');
   const last = get('lastname');
-  const phones = [
+  // A mapped first or last name is the client's, over a guessed `name` (the form's, the campaign's).
+  const byParts = !mapped.has('fullName') && (mapped.has('firstName') || mapped.has('lastName'));
+  const guessedPhones = [
     'clientphone',
     'clientmobile',
     'contactphone',
@@ -233,6 +279,8 @@ export function parseEnquiry(payload: Record<string, unknown>): Enquiry {
   ]
     .map((k) => flat.get(k))
     .filter((p): p is string => !!p);
+  // A mapped number is the client's; any other the body carries is not (an office, an agent).
+  const phones = mapped.has('phone') ? [flat.get(MAPPABLE_FIELDS.phone.key)!] : guessedPhones;
 
   return {
     // Only keys that name the lead itself. A bare `id` or `reference` may be the
@@ -240,13 +288,14 @@ export function parseEnquiry(payload: Record<string, unknown>): Enquiry {
     // listing sharing an id would drop the second as a retry.
     externalId: get('leadid', 'leaduuid'),
     fullName:
-      get('clientname', 'contactname', 'customername', 'fullname', 'name') ??
+      (byParts ? null : get('clientname', 'contactname', 'customername', 'fullname', 'name')) ??
       ([first, last].filter(Boolean).join(' ') || null),
     email:
       get('clientemail', 'contactemail', 'customeremail', 'email', 'emailaddress', 'workemail')?.toLowerCase() ?? null,
     phones: [...new Set(phones)],
     message: get('message', 'comments', 'comment', 'enquiry', 'inquiry', 'notes'),
-    reference: get('listingreference', 'propertyreference', 'referencenumber', 'listingid', 'formid'),
+    // `source_detail` is the Custom webhook's documented name for it.
+    reference: get('listingreference', 'propertyreference', 'referencenumber', 'listingid', 'formid', 'sourcedetail'),
     details: DETAILS.flatMap(([label, field]) => (wants[field] ? [`${label}: ${wants[field]}`] : [])),
     requirement: requirementFrom(wants),
     isTest: flat.get('istest') === 'true',

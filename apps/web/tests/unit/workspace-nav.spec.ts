@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { LEAD_SOURCES } from '@/lib/integrations/leadSources';
 import {
   activeModule,
   buildNavigation,
@@ -154,6 +155,12 @@ describe('which area and tab a URL belongs to', () => {
 
   it('does not let a module root claim every page beneath it', () => {
     expect(at(nav, '/ws/sales/not-a-screen')).toBeNull();
+  });
+
+  it('files the Sources catalogue under Sources, and each lead source’s deliveries under Integrations', () => {
+    expect(at(nav, '/ws/admin/lead-sources')).toBe('settings / Sources');
+    for (const key of Object.keys(LEAD_SOURCES))
+      expect(at(nav, `/ws/admin/lead-sources/${key}`), key).toBe('settings / Integrations');
   });
 });
 

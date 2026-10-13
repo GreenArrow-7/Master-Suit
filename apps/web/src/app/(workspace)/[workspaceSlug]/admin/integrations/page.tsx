@@ -61,6 +61,7 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ w
       lastSyncAt: conn?.lastSyncAt?.toISOString() ?? null,
       errorMessage: conn?.errorMessage ?? null,
       webhookUrl: spec.webhook && conn ? `${base}/api/v1/webhooks/${spec.webhook}/${conn.webhookKey}${token}` : null,
+      manageHref: spec.category === 'LEADS' && conn ? `/${workspaceSlug}/admin/lead-sources/${spec.key}` : null,
     };
   });
 

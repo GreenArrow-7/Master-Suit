@@ -1214,8 +1214,15 @@ function definitions(slug: string): SectionDef[] {
             {
               label: 'Integrations',
               href: a('/integrations'),
+              // A lead source's deliveries and field map, opened from its card: one
+              // page per LEAD_SOURCES key (lib/integrations/leadSources.ts, which
+              // this client-side module cannot import). `/lead-sources` itself is
+              // the Sources catalogue above.
+              aliases: ['property_finder', 'bayut', 'dubizzle', 'google_ads', 'custom_webhook'].map((key) =>
+                a(`/lead-sources/${key}`),
+              ),
               permission: 'integrations',
-              keywords: 'meta whatsapp telephony',
+              keywords: 'meta whatsapp telephony webhook lead sources deliveries',
             },
             {
               label: 'Channels',

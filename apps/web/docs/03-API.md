@@ -32,7 +32,7 @@ request
 | Filtering     | `?filter=<base64 filter tree>` or repeated `?f.stage=qualified&f.score.gte=70`             |
 | Sorting       | `?sort=-updatedAt,fullName`                                                                |
 | Sparse fields | `?fields=id,fullName,stage,owner`                                                          |
-| Idempotency   | `Idempotency-Key` on POST/PATCH; stored 24 h, replays return the original response         |
+| Idempotency   | `Idempotency-Key` on a JSON POST/PATCH: 24 h, the first answer replayed; reused → 409      |
 | Concurrency   | `If-Match: <version>` on PATCH; mismatch returns 409                                       |
 | Errors        | RFC 9457 problem+json                                                                      |
 | Versioning    | Path-versioned. v1 is additive-only; breaking changes open v2.                             |
@@ -102,6 +102,7 @@ GET    /admin/settings             PATCH /admin/settings
 
 POST   /public/forms/{key}/submit  unauthenticated, CAPTCHA + rate limited
 POST   /webhooks/inbound/{key}     signature-verified provider callbacks
+POST   /webhooks/leads/{key}       lead sources: portals, Google Ads, Custom webhook (§6)
 ```
 
 ## 5. Filter tree
@@ -157,6 +158,32 @@ Events: `lead.created` `lead.updated` `lead.stage_changed` `lead.assigned`
 `opportunity.created` `opportunity.stage_changed` `opportunity.won`
 `opportunity.lost` `task.completed` `form.submitted` `ticket.created`
 `ticket.resolved`.
+
+### Inbound: lead sources
+
+`POST /api/v1/webhooks/leads/{key}` takes enquiries from the property portals,
+Google Ads lead forms and any other sender, connected as a **Custom webhook**
+(Admin → Integrations → Lead sources). A Custom webhook's signing secret is
+issued when it is connected and shown once.
+
+- Sign the raw body: `X-Signature: sha256=<hex HMAC-SHA256 of the body>`.
+- Send an `Idempotency-Key`: a retry under the same key stores nothing new and
+  is answered 200 like the first; the same key with a different body is 409.
+  A body already received is the same delivery under any key.
+- The body is a JSON object. Read by default: `name` (or `first_name` and
+  `last_name`), `phone`, `email`, `message`, `source_detail`. Any other
+  field is read through the source's field mapping (`parent.field` for a
+  nested one).
+- 200 `{}` means stored; the worker makes the lead. Every delivery is on the
+  source's Deliveries tab with what became of it, and can be replayed there
+  once the queue is done with it.
+
+`Idempotency-Key` on the API itself (§2): per workspace, method and path, by
+the same caller; a retry with the same body gets the first 2xx answer back
+without running again, and a different body or caller under the key is 409.
+Routes whose answer is a credential shown once, or whose body carries a
+password, ignore it: your own password and two-factor (`identity/self`), and an
+administrator's password reset and account creation (`identity/{action}`).
 
 ## 7. API keys
 

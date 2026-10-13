@@ -414,6 +414,14 @@ describe('a screen or route outside the plan says which products carry it', () =
     );
   });
 
+  it('a lead source’s deliveries and field map are for any lead product (M6-20, M6-21)', async () => {
+    const { default: LeadSourcesLayout } = await import('@/app/(workspace)/[workspaceSlug]/admin/lead-sources/layout');
+    expect(await shown(await LeadSourcesLayout(open(hrOnly, '/admin/lead-sources/bayut')))).toContain(
+      'Lead sources is part of Sales, Real Estate or Lead Eagle.',
+    );
+    expect(await LeadSourcesLayout(open(leadEagleOnly, '/admin/lead-sources/bayut'))).toBe('the screen');
+  });
+
   it('an entitled workspace gets its screen', async () => {
     expect(await SalesLayout(open(salesOnly, '/sales/events'))).toBe('the screen');
     expect(await LeadEagleLayout(open(leadEagleOnly, '/lead-eagle/leads'))).toBe('the screen');
