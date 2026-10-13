@@ -9,6 +9,7 @@ import { SIMPLE_NAMED_LEAD_FILTERS } from '@/lib/leads/namedFilters';
 import { contactSearch, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
 import { workspaceTimezone } from '@/services/hr/attendance';
+import { bookableProjects } from '@/services/leads/updateLead';
 import LeadGrid from './LeadGrid';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -147,7 +148,7 @@ export default async function LeadsPage({
     prisma.leadStage.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null },
       orderBy: { position: 'asc' },
-      select: { id: true, key: true, name: true, requiresReason: true, reasons: true },
+      select: { id: true, key: true, name: true, requiresReason: true, reasons: true, requiredFields: true },
     }),
     // Bulk assign offers whom the API accepts.
     assignableUsers(ctx, 'leads', 'ASSIGN'),
@@ -162,6 +163,7 @@ export default async function LeadsPage({
     }),
     workspaceTimezone(ctx),
   ]);
+  const projects = await bookableProjects(ctx, stages);
 
   // The workspace's custom fields can be columns too (M4-13).
   const customColumnDefs = await customColumns(ctx.tenantId);
@@ -319,6 +321,7 @@ export default async function LeadsPage({
           rows={data as any}
           columns={columns}
           stages={stages}
+          projects={projects}
           users={users}
           taskTypes={taskTypes}
           canAssign={can(ctx, 'leads', 'ASSIGN')}

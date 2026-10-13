@@ -6309,6 +6309,10 @@ model WebhookEvent {
   processedAt  DateTime?
   attempts     Int       @default(0)
   errorMessage String?
+  /// A lead source's delivery: what the intake made of it (created, attached,
+  /// test, anonymous), and the lead it made or joined. Shown on Deliveries.
+  outcome      String?
+  leadId       String?
   createdAt    DateTime  @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)

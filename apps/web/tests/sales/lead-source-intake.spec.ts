@@ -2,6 +2,8 @@ import { createHmac } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { wrapCredentials } from '@/lib/integrations/connection';
+import { LEAD_SOURCES } from '@/lib/integrations/leadSources';
+import { providerSpec } from '@/lib/integrations/registry';
 import { POST as receive } from '@/app/api/v1/webhooks/leads/[key]/route';
 import { handleJob } from '@/workers/jobs';
 import { updateLead } from '@/services/leads/updateLead';
@@ -205,6 +207,18 @@ describe('lead source intake', () => {
     await prisma.integrationConnection.update({ where: { webhookKey: googleKey }, data: { status: 'DISCONNECTED' } });
     const body = { lead_id: 'gads-2', google_key: GOOGLE_KEY, user_column_data: [] };
     expect((await deliver(googleKey, body)).status).toBe(401);
+  });
+});
+
+describe('a source without an adapter of its own', () => {
+  it('is a Custom webhook: a lead source whose signing secret the workspace issues (M6-08)', () => {
+    expect(LEAD_SOURCES.custom_webhook).toEqual({ label: 'Custom webhook', source: 'WEBHOOK' });
+    expect(providerSpec('custom_webhook')).toMatchObject({
+      category: 'LEADS',
+      webhook: 'leads',
+      issuesSecret: true,
+      credentials: [],
+    });
   });
 });
 

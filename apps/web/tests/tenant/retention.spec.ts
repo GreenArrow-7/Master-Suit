@@ -99,6 +99,24 @@ beforeAll(async () => {
         processedAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
       },
     });
+
+    // An Idempotency-Key's record past its 24 h, and one still live.
+    for (const [requestKey, hours] of [
+      ['spent', -1],
+      ['live', 23],
+    ] as const) {
+      await prisma.idempotentRequest.create({
+        data: {
+          tenantId: tenant.id,
+          operation: 'POST /api/v1/leads',
+          requestKey: `${requestKey}-${suffix}`,
+          fingerprint: 'f',
+          actorUserId: user.id,
+          result: { id: 'lead' },
+          expiresAt: new Date(Date.now() + hours * 60 * 60 * 1000),
+        },
+      });
+    }
   }
 
   const platformUser = await prisma.platformUser.create({
@@ -151,6 +169,16 @@ describe('retention sweep', () => {
       tx.recording.count({ where: { tenantId: { in: tenants.map((t) => t.id) } } }),
     );
     expect(after).toBe(0);
+  });
+
+  it('removes Idempotency-Key records past their 24 hours, in every tenant, and keeps live ones', async () => {
+    const left = await withPlatformTx((tx) =>
+      tx.idempotentRequest.findMany({
+        where: { tenantId: { in: tenants.map((t) => t.id) } },
+        select: { requestKey: true },
+      }),
+    );
+    expect(left.map((r) => r.requestKey).sort()).toEqual([`live-${suffix}`, `live-${suffix}`]);
   });
 
   it('deletes the object for a recording we hold, and never for one the vendor still hosts', () => {

@@ -77,8 +77,16 @@ export const GET = route(
   },
 );
 
+// `idempotent: false`: password-reset and account-create answer with a temporary
+// password, shown once and kept nowhere readable — not in a replay store either.
 export const POST = route(
-  { module: 'users', action: 'MANAGE_USERS', params: paramsSchema, body: z.record(z.string(), z.unknown()) },
+  {
+    module: 'users',
+    action: 'MANAGE_USERS',
+    params: paramsSchema,
+    body: z.record(z.string(), z.unknown()),
+    idempotent: false,
+  },
   async ({ ctx, params, body }) => {
     await requireWorkspace(ctx, params.workspaceSlug);
 

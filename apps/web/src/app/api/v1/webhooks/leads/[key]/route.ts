@@ -64,13 +64,25 @@ export async function POST(req: Request, context: { params: Promise<{ key: strin
   }
 
   const { tenantId } = connection;
+  const provider = `${connection.provider}:${connection.id}`;
   // The sender's idempotency key, else its lead id, else the body's hash: each
   // is what a retry of the same delivery repeats.
-  const externalId =
-    req.headers.get('idempotency-key')?.slice(0, 200) ||
-    parseEnquiry(payload).externalId ||
-    createHash('sha256').update(raw, 'utf8').digest('hex');
-  const provider = `${connection.provider}:${connection.id}`;
+  const keyed = req.headers.get('idempotency-key')?.slice(0, 200);
+  let externalId = keyed || parseEnquiry(payload).externalId || createHash('sha256').update(raw, 'utf8').digest('hex');
+  if (keyed) {
+    // A key names one body: another body under it is refused, not dropped behind
+    // a 200. And one body is one delivery whatever key it comes under — the
+    // signature covers the body, not the key, so a captured delivery resent
+    // under fresh keys would otherwise be taken again each time.
+    const earlier = await prisma.webhookEvent.findFirst({
+      where: { tenantId, provider, OR: [{ externalId: keyed }, { payload: { equals: raw } }] },
+      select: { externalId: true, payload: true },
+    });
+    if (earlier && earlier.payload !== raw) {
+      return NextResponse.json({ error: 'this Idempotency-Key was used for another body' }, { status: 409 });
+    }
+    if (earlier) externalId = earlier.externalId;
+  }
 
   const job = { tenantId, provider, externalId, source: connection.provider };
   try {

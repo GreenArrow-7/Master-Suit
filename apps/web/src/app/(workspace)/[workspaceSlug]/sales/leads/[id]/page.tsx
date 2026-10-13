@@ -8,7 +8,8 @@ import { loadFieldRules, applyFieldSecurity, seesField } from '@/lib/security/fi
 import { can, scopeFor } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { asLeadPhone, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
-import { leadSourceLabel, listLeadSources } from '@/services/leads/leadSources';
+import { bookableProjects } from '@/services/leads/updateLead';
+import { leadSourceText, listLeadSources } from '@/services/leads/leadSources';
 import { openRequirement, requirementForPage } from '@/services/leads/requirement';
 import { fieldForScreen, leadFields } from '@/services/leads/customFields';
 import { workspaceTimezone } from '@/services/hr/attendance';
@@ -107,7 +108,15 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     prisma.leadStage.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null },
       orderBy: { position: 'asc' },
-      select: { id: true, key: true, name: true, category: true, requiresReason: true, reasons: true },
+      select: {
+        id: true,
+        key: true,
+        name: true,
+        category: true,
+        requiresReason: true,
+        reasons: true,
+        requiredFields: true,
+      },
     }),
     prisma.activityType.findMany({
       where: { tenantId: ctx.tenantId, isActive: true },
@@ -146,6 +155,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       : null,
   ]);
   if (!lead) notFound();
+  const projects = await bookableProjects(ctx, stages);
   const customData = (lead.customData ?? {}) as Record<string, unknown>;
   // The register's page lists the listings that match; offered only where the viewer may open it.
   const opensRequirement =
@@ -245,10 +255,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     city: lead.city,
     country: lead.country,
     nationality: lead.nationality,
-    source: lead.source,
-    sourceDetail: lead.sourceDetail,
     sourceId: lead.sourceId,
-    sourceLabel: leadSourceLabel(lead.leadSource),
+    sourceLabel: leadSourceText(lead),
     campaignName: lead.campaignName,
     consentStatus: lead.consentStatus,
     priority: lead.priority,
@@ -343,6 +351,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       <LeadDetail
         lead={serializedLead}
         stages={stages}
+        projects={projects}
         activityTypes={activityTypes}
         taskTypes={taskTypes}
         users={tenantUsers}

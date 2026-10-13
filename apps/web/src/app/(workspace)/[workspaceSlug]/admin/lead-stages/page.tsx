@@ -41,7 +41,8 @@ export default async function LeadStagesPage({ params }: { params: Promise<{ wor
         help={
           <p>
             A stage can require a reason when a lead enters it — one of its reasons when you list some, otherwise
-            written in — and can require fields to be filled first.
+            written in — and can require fields to be filled first. A stage can also book a site visit or a meeting:
+            moving a lead there asks for its time, and a visit its project, and books it in the same step.
           </p>
         }
       />
