@@ -5,6 +5,7 @@ import { can } from '@/lib/security/rbac';
 import EmptyState from '@/components/ui/EmptyState';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import ListHeader from '@/components/workspace/ListHeader';
+import { workspaceTimezone } from '@/services/hr/attendance';
 
 export const metadata = { title: 'Audit log' };
 
@@ -83,7 +84,7 @@ export default async function Page({
   /** The platform events that are neither an automated read nor a staff read. */
   const AUTH_EXCLUDES = ['SERVICE_READ', 'SUPPORT_READ'];
 
-  const [records, platformEvents] = await Promise.all([
+  const [records, platformEvents, timeZone] = await Promise.all([
     prisma.auditLog.findMany({
       where: { tenantId: ctx.tenantId, ...(selected ? { objectType: { in: selected.objectTypes } } : {}) },
       orderBy: { occurredAt: 'desc' },
@@ -128,6 +129,7 @@ export default async function Page({
           },
         })
       : Promise.resolve([]),
+    workspaceTimezone(ctx),
   ]);
 
   // One name lookup for both tables rather than a join per row.
@@ -218,7 +220,7 @@ export default async function Page({
     <div style={{ display: 'grid', gap: 'var(--lf-space-5)' }}>
       <ListHeader
         title="Audit log"
-        description="Review account activity and changes."
+        description={`Review account activity and changes. Times are in ${timeZone}.`}
         help={
           <p>
             Who did what, and from where. Sign-in events are merged in from the platform log so this reads as one
@@ -258,8 +260,9 @@ export default async function Page({
           row.actor,
           <strong key="a">{title(row.action)}</strong>,
           title(row.objectType),
+          // The workspace's clock (the global rule), not UTC's.
           row.at.toLocaleString('en-GB', {
-            timeZone: 'UTC',
+            timeZone,
             day: '2-digit',
             month: 'short',
             hour: '2-digit',
