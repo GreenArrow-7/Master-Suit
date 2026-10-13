@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { forbidden, notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { AppError } from '@/lib/errors';
 import { requirePageAccess } from '@/lib/workspace-page';
@@ -6,7 +6,7 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { assertLeadInScope } from '@/lib/security/record-scope';
 import { applyFieldSecurity, loadFieldRules, seesField } from '@/lib/security/fieldSecurity';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
-import { MERGE_FIELDS, type MergeField } from '@/services/leads/merge';
+import { assertMayMerge, MERGE_FIELDS, type MergeField } from '@/services/leads/merge';
 import SalesLink from '@/components/workspace/SalesLink';
 import MergeForm from './MergeForm';
 
@@ -41,12 +41,15 @@ export default async function MergeLeadsPage({
   const [{ id }, { with: otherId }] = await Promise.all([params, searchParams]);
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['leads', 'EDIT'] });
   if (!otherId || otherId === id) notFound();
-  const load = (leadId: string) =>
-    assertLeadInScope(ctx, leadId, prisma, 'EDIT').catch((err: unknown) => {
-      if (err instanceof AppError && err.status === 404) notFound();
-      throw err;
-    });
+  const refused = (err: unknown): never => {
+    if (err instanceof AppError && err.status === 404) notFound();
+    if (err instanceof AppError && err.status === 403) forbidden();
+    throw err;
+  };
+  const load = (leadId: string) => assertLeadInScope(ctx, leadId, prisma, 'EDIT').catch(refused);
   const [kept, other] = await Promise.all([load(id), load(otherId)]);
+  // The merge's own rule (owners, unassigned leads), so the screen never offers one it refuses.
+  await assertMayMerge(ctx, prisma, kept, other).catch(refused);
 
   const [rules, held] = await Promise.all([
     loadFieldRules(ctx, 'LEAD'),

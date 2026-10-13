@@ -399,8 +399,11 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
 /**
  * The leads the duplicate rules match this one with (`findDuplicates`, as on
- * create), each offered for a merge (M4-31): only those the viewer could merge,
- * in their EDIT scope, as the merge itself requires.
+ * create), each offered for a merge (M4-31): only where the viewer could merge
+ * them, as the merge itself requires (`assertMayMerge`): this lead and the match
+ * in their EDIT scope, an unassigned one only to a claimer, and another owner's
+ * only to a role that may reassign. (Whether the kept lead's owner is in that
+ * role's reach is left to the merge: it says so if not.)
  */
 async function mergeable(
   ctx: Ctx,
@@ -423,11 +426,16 @@ async function mergeable(
   const reach = await prisma.lead.findMany({
     where: {
       ...(await leadScope(ctx, 'EDIT', { includeUnassigned: true })),
-      id: { in: matches.map((match) => match.id) },
+      id: { in: [lead.id, ...matches.map((match) => match.id)] },
     },
-    select: { id: true },
+    select: { id: true, ownerId: true },
   });
-  return matches.filter((match) => reach.some((row) => row.id === match.id));
+  const self = reach.find((row) => row.id === lead.id);
+  if (!self) return [];
+  const reassigns = can(ctx, 'leads', 'ASSIGN') || can(ctx, 'leads', 'REASSIGN');
+  return matches.filter((match) =>
+    reach.some((row) => row.id === match.id && (reassigns || row.ownerId === self.ownerId)),
+  );
 }
 
 /**

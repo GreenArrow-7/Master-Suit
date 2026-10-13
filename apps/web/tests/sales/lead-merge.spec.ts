@@ -12,10 +12,12 @@ vi.mock('next/headers', () => ({
 }));
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { VisibilityScope } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { POST as mergePost } from '@/app/api/v1/leads/[id]/merge/route';
 import LeadDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
-import { createWorkspaceUser, grantPermissions, seedHierarchy, type Hierarchy } from '../helpers/fixtures';
+import MergeLeadsPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/merge/page';
+import { createWorkspaceUser, grantPermissions, seedHierarchy, type Grants, type Hierarchy } from '../helpers/fixtures';
 import { createSessionToken } from '../helpers/session';
 import { pageText } from '../helpers/render';
 import { post } from '../helpers/request';
@@ -54,6 +56,24 @@ async function lead(ownerId: string, data: Record<string, unknown> = {}) {
     },
   });
 }
+
+/** A person in the hierarchy's workspace with these lead grants, each at its scope, on `teamId`'s team. */
+async function person(key: string, grants: [Grants, VisibilityScope][], teamId?: string) {
+  const role = await prisma.role.create({
+    data: { tenantId: h.tenantId, key: `${key}-${stamp}`, name: key, rank: 70, defaultScope: 'OWN' },
+  });
+  for (const [pairs, scope] of grants) await grantPermissions(h.tenantId, role.id, pairs, scope);
+  const user = await createWorkspaceUser({
+    tenantId: h.tenantId,
+    roleId: role.id,
+    email: `${key}-${stamp}@hierarchy.test`,
+    fullName: key,
+  });
+  if (teamId) await prisma.userTeam.create({ data: { tenantId: h.tenantId, userId: user.id, teamId } });
+  return { id: user.id, cookie: await createSessionToken(h.tenantId, user.id) };
+}
+const teamOf = async (userId: string) =>
+  (await prisma.userTeam.findFirstOrThrow({ where: { tenantId: h.tenantId, userId } })).teamId;
 
 beforeAll(async () => {
   h = await seedHierarchy();
@@ -269,5 +289,226 @@ describe('POST /api/v1/leads/{id}/merge', () => {
     const cookie = await createSessionToken(h.tenantId, viewer.id);
     const two = await lead(h.repA1.id);
     expect((await merge(cookie, one.id, two.id)).status).toBe(403);
+  });
+
+  it('leaves a second client profile, a second referral and a referral between the two behind, and audits what moved', async () => {
+    const t = h.tenantId;
+    const kept = await lead(h.repA1.id);
+    const other = await lead(h.repA1.id);
+    const third = await lead(h.repA1.id);
+    // The kept lead was closed out before as a duplicate of the other: it does not become one of itself.
+    await prisma.lead.update({ where: { tenantId: t, id: kept.id }, data: { duplicateOfId: other.id } });
+    // One live client profile per lead, and one referral naming a lead as referred (partial unique indexes).
+    const keptProfile = await prisma.clientProfile.create({ data: { tenantId: t, leadId: kept.id } });
+    const otherProfile = await prisma.clientProfile.create({ data: { tenantId: t, leadId: other.id } });
+    const code = await prisma.referralCode.create({
+      data: { tenantId: t, code: `RC-${stamp}`, issuedById: h.repA1.id, leadId: third.id },
+    });
+    const referral = (data: { referredLeadId: string; referrerLeadId?: string }) =>
+      prisma.referral.create({ data: { tenantId: t, codeId: code.id, ...data } });
+    const keptReferred = await referral({ referredLeadId: kept.id });
+    const keptReferredOther = await referral({ referredLeadId: other.id, referrerLeadId: kept.id });
+    const otherReferredThird = await referral({ referredLeadId: third.id, referrerLeadId: other.id });
+    const communication = await prisma.communication.create({
+      data: { tenantId: t, leadId: other.id, channel: 'EMAIL', direction: 'INBOUND', toAddress: 'sales@merge.test' },
+    });
+    const conversation = await prisma.conversation.create({
+      data: { tenantId: t, leadId: other.id, channel: 'WHATSAPP', externalId: `wa-${stamp}` },
+    });
+    const assignment = await prisma.leadAssignmentHistory.create({
+      data: { tenantId: t, leadId: other.id, toOwnerId: h.repA1.id },
+    });
+    const started = new Date();
+
+    const res = await merge(h.repA1.cookie, kept.id, other.id);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+
+    const byId = (id: string) => ({ where: { tenantId: t, id } });
+    expect((await prisma.clientProfile.findFirstOrThrow(byId(keptProfile.id))).leadId).toBe(kept.id);
+    expect((await prisma.clientProfile.findFirstOrThrow(byId(otherProfile.id))).leadId).toBe(other.id);
+    expect((await prisma.referral.findFirstOrThrow(byId(keptReferred.id))).referredLeadId).toBe(kept.id);
+    // Kept referring kept would mean nothing: that referral stays with the merged lead.
+    expect(await prisma.referral.findFirstOrThrow(byId(keptReferredOther.id))).toMatchObject({
+      referredLeadId: other.id,
+      referrerLeadId: kept.id,
+    });
+    expect((await prisma.referral.findFirstOrThrow(byId(otherReferredThird.id))).referrerLeadId).toBe(kept.id);
+    expect((await prisma.communication.findFirstOrThrow(byId(communication.id))).leadId).toBe(kept.id);
+    expect((await prisma.conversation.findFirstOrThrow(byId(conversation.id))).leadId).toBe(kept.id);
+    expect((await prisma.leadAssignmentHistory.findFirstOrThrow(byId(assignment.id))).leadId).toBe(kept.id);
+    expect((await prisma.lead.findFirstOrThrow(byId(kept.id))).duplicateOfId).toBeNull();
+
+    // The audit names every record that moved, so a wrong merge can be taken apart by hand.
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: { tenantId: t, recordId: kept.id, fieldKey: 'mergedFrom', occurredAt: { gte: started } },
+    });
+    expect(log.metadata).toMatchObject({
+      moved: {
+        communication: [communication.id],
+        conversation: [conversation.id],
+        leadAssignmentHistory: [assignment.id],
+        referral: [otherReferredThird.id],
+      },
+    });
+  });
+
+  it('keeps one of each shared record, takes the other’s number as the main one, and a lead merged twice names the last', async () => {
+    const t = h.tenantId;
+    const keptPhone = number();
+    const otherPhone = number();
+    const first = await lead(h.repA1.id);
+    const kept = await lead(h.repA1.id, { phone: keptPhone, phoneNormalized: keptPhone });
+    const other = await lead(h.repA1.id, { phone: otherPhone, phoneNormalized: otherPhone, phoneIsWhatsapp: true });
+    for (const id of [kept.id, other.id]) {
+      await prisma.leadProject.create({ data: { tenantId: t, leadId: id, projectId } });
+      await prisma.leadCustomFieldValue.create({
+        data: { tenantId: t, leadId: id, definitionId, valueText: id === kept.id ? 'Kept' : 'Other' },
+      });
+    }
+    // The first lead went into the other one before.
+    expect((await merge(h.repA1.cookie, other.id, first.id)).status).toBe(200);
+
+    const res = await merge(h.repA1.cookie, kept.id, other.id, ['phone']);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const after = await prisma.lead.findFirstOrThrow({
+      where: { tenantId: t, id: kept.id },
+      include: { phones: true },
+    });
+    expect(after).toMatchObject({ phone: otherPhone, phoneNormalized: otherPhone, phoneIsWhatsapp: true });
+    // Its own main number is now another number, named for where it came from; the new main is not repeated.
+    expect(after.phones.map((p) => [p.normalized, p.label])).toEqual([[keptPhone, `Main number of ${kept.reference}`]]);
+    expect(await prisma.leadProject.count({ where: { tenantId: t, leadId: kept.id } })).toBe(1);
+    const values = await prisma.leadCustomFieldValue.findMany({ where: { tenantId: t, leadId: kept.id } });
+    expect(values.map((v) => v.valueText)).toEqual(['Kept']);
+
+    cookieJar.value = h.repA1.cookie;
+    const text = await pageText(LeadDetailPage({ params: Promise.resolve({ id: first.id }) }));
+    expect(text).toContain('was merged into');
+    expect(text).toContain(kept.reference);
+  });
+
+  it('needs what an owner change needs when different people own the leads, and the claim rule for an unassigned one', async () => {
+    const mine = await lead(h.repA1.id);
+    // repA1 works this one as its second owner; repA2 owns it.
+    const shared = await lead(h.repA2.id, { secondaryOwnerId: h.repA1.id });
+    const pool = await lead(h.repA1.id, { ownerId: null });
+    expect((await merge(h.repA1.cookie, mine.id, shared.id)).status).toBe(403);
+    expect((await merge(h.repA1.cookie, shared.id, mine.id)).status).toBe(403);
+    // A rep may not claim from the pool, so a merge does not either.
+    expect((await merge(h.repA1.cookie, mine.id, pool.id)).status).toBe(404);
+    expect((await merge(h.repA1.cookie, pool.id, mine.id)).status).toBe(404);
+
+    // Edits the team's leads, may not reassign them.
+    const editor = await person(
+      'team-editor',
+      [
+        [[['leads', 'VIEW']], 'ORGANIZATION'],
+        [[['leads', 'EDIT']], 'TEAM'],
+      ],
+      await teamOf(h.repA1.id),
+    );
+    const theirs = await lead(h.repA2.id);
+    expect((await merge(editor.cookie, mine.id, theirs.id)).status).toBe(403);
+    const rows = await prisma.lead.findMany({
+      where: { tenantId: h.tenantId, id: { in: [shared.id, pool.id, theirs.id] } },
+      select: { isMerged: true },
+    });
+    expect(rows.every((row) => !row.isMerged)).toBe(true);
+    // Two leads one person owns: no owner changes.
+    expect((await merge(editor.cookie, mine.id, (await lead(h.repA1.id)).id)).status).toBe(200);
+
+    // The team manager may assign within the team and claim from the pool.
+    expect((await merge(h.teamManagerA.cookie, mine.id, pool.id)).status).toBe(200);
+    expect((await merge(h.teamManagerA.cookie, mine.id, shared.id)).status).toBe(200);
+  });
+
+  it('the lead page offers a merge only where the viewer could make it', async () => {
+    const editor = await person(
+      'notice-editor',
+      [
+        [[['leads', 'VIEW']], 'ORGANIZATION'],
+        [[['leads', 'EDIT']], 'TEAM'],
+      ],
+      await teamOf(h.repA1.id),
+    );
+    const shared = number();
+    const same = { phone: shared, phoneNormalized: shared };
+    // Team 2's: they see it, they do not edit it.
+    const outside = await lead(h.repB1.id, same);
+    const inside = await lead(h.repA1.id, same);
+    const twin = await lead(h.repA1.id, same);
+    const otherOwner = await lead(h.repA2.id, same);
+    cookieJar.value = editor.cookie;
+
+    const outsideText = await pageText(LeadDetailPage({ params: Promise.resolve({ id: outside.id }) }));
+    expect(outsideText).toContain(outside.reference);
+    expect(outsideText).not.toContain('/merge?with=');
+
+    const insideText = await pageText(LeadDetailPage({ params: Promise.resolve({ id: inside.id }) }));
+    expect(insideText).toContain(`/leads/${inside.id}/merge?with=${twin.id}`);
+    // A merge would hand this one to another owner, which the role may not do.
+    expect(insideText).not.toContain(`merge?with=${otherOwner.id}`);
+    expect(insideText).not.toContain(`merge?with=${outside.id}`);
+  });
+
+  it('the compare screen opens only for two leads the viewer may merge', async () => {
+    const mine = await lead(h.repA1.id, { email: `mine-${stamp}@merge.test` });
+    const mineToo = await lead(h.repA1.id);
+    const theirs = await lead(h.repA2.id, { email: `theirs-${stamp}@merge.test` });
+    const coOwned = await lead(h.repA2.id, { secondaryOwnerId: h.repA1.id });
+    const open = (id: string, other: string) =>
+      MergeLeadsPage({ params: Promise.resolve({ id }), searchParams: Promise.resolve({ with: other }) });
+    // next.config.ts's experimental.authInterrupts, which forbidden() needs.
+    vi.stubEnv('__NEXT_EXPERIMENTAL_AUTH_INTERRUPTS', 'true');
+
+    cookieJar.value = h.repA1.cookie;
+    const text = await pageText(open(mine.id, mineToo.id));
+    expect(text).toContain(mineToo.reference);
+    expect(text).toContain(`mine-${stamp}@merge.test`);
+    await expect(open(mine.id, theirs.id)).rejects.toThrow(/;404$/);
+    await expect(open(theirs.id, mine.id)).rejects.toThrow(/;404$/);
+    // Theirs to a second owner: the merge would hand it over, which a rep may not do.
+    await expect(open(mine.id, coOwned.id)).rejects.toThrow(/;403$/);
+
+    const viewer = await person('compare-viewer', [[[['leads', 'VIEW']], 'ORGANIZATION']]);
+    cookieJar.value = viewer.cookie;
+    await expect(open(mine.id, mineToo.id)).rejects.toThrow(/;403$/);
+    vi.unstubAllEnvs();
+  });
+
+  it('a role that sees contact details masked keeps the kept lead’s and fills in none of them', async () => {
+    const masked = await person('masked', [
+      [
+        [
+          ['leads', 'VIEW'],
+          ['leads', 'EDIT'],
+        ],
+        'OWN',
+      ],
+    ]);
+    const keptPhone = number();
+    const otherPhone = number();
+    const kept = await lead(masked.id, {
+      phone: keptPhone,
+      phoneNormalized: keptPhone,
+      email: `masked-kept-${stamp}@merge.test`,
+    });
+    const other = await lead(masked.id, {
+      phone: otherPhone,
+      phoneNormalized: otherPhone,
+      email: `masked-other-${stamp}@merge.test`,
+      whatsappNumber: otherPhone,
+      secondaryEmail: `masked-second-${stamp}@merge.test`,
+      company: 'Masked Co',
+    });
+    const res = await merge(masked.cookie, kept.id, other.id, ['phone', 'email', 'company']);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await prisma.lead.findFirstOrThrow({ where: { tenantId: h.tenantId, id: kept.id } })).toMatchObject({
+      phone: keptPhone,
+      email: `masked-kept-${stamp}@merge.test`,
+      whatsappNumber: null,
+      secondaryEmail: null,
+      company: 'Masked Co',
+    });
   });
 });

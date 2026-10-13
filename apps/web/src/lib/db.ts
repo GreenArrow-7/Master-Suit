@@ -254,7 +254,7 @@ const READ_OPS = new Set([
   'groupBy',
 ]);
 const CREATE_OPS = new Set(['create', 'createMany', 'createManyAndReturn']);
-const FILTERED_WRITE_OPS = new Set(['update', 'updateMany', 'delete', 'deleteMany', 'upsert']);
+const FILTERED_WRITE_OPS = new Set(['update', 'updateMany', 'updateManyAndReturn', 'delete', 'deleteMany', 'upsert']);
 
 export class TenantGuardError extends Error {}
 

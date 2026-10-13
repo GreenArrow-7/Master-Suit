@@ -19,16 +19,18 @@ const body = z
  * Merge another lead into this one (M4-31). Needs `leads:EDIT` over both leads,
  * not `leads:DELETE`: nothing is lost, since every record moves to the kept lead
  * and the other stays resolvable, as closing it out as a duplicate needs EDIT
- * too. The service audits both leads.
+ * too. Leads different people own need what reassigning one needs, and an
+ * unassigned one the right to claim it (`assertMayMerge`). The service audits
+ * both leads.
  */
 export const POST = route(
   { module: 'leads', productModule: LEAD_MODULES, action: 'EDIT', params, body },
   async ({ ctx, params, body }) => {
+    // Outside the transaction, as PATCH loads them. A value this role may not
+    // write, or sees masked, stays the kept lead's, chosen or not (PATCH's rule).
     const rules = await loadFieldRules(ctx, 'LEAD');
-    // A value this role may not write, or sees masked, stays the kept lead's (PATCH's rule).
-    const take = body.take.filter(
-      (field) => rules.get(field)?.canEdit !== false && seesField(ctx, 'LEAD', rules, field, LEAD_SENSITIVE_FIELDS),
-    );
-    return mergeLeads(ctx, params.id, body.otherId, take);
+    const writable = (field: string) =>
+      rules.get(field)?.canEdit !== false && seesField(ctx, 'LEAD', rules, field, LEAD_SENSITIVE_FIELDS);
+    return mergeLeads(ctx, params.id, body.otherId, body.take, writable);
   },
 );
