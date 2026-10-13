@@ -518,6 +518,26 @@ describe('each tile opens the list of what it counted', () => {
     await lead('Won lead', { ownerId: agent.id, stageId: stages.booked, firstContactedAt: new Date() });
     await lead('Closed lead', { ownerId: agent.id, status: 'DUPLICATE' });
     await lead('Their lead', { ownerId: manager.id, lastActivityAt: new Date(), firstContactedAt: new Date() });
+    await ensureLeadSources(prisma, tenantId);
+    const entry = async (key: string) =>
+      (await prisma.leadSource.findFirstOrThrow({ where: { tenantId, key }, select: { id: true } })).id;
+    const marina = await prisma.leadSource.create({
+      data: { tenantId, key: 'website_marina', name: 'Marina launch', parentId: await entry('website') },
+    });
+    await lead('Portal lead', {
+      ownerId: agent.id,
+      stageId: stages.meetingScheduled,
+      source: 'MARKETPLACE',
+      sourceId: await entry('bayut'),
+      firstContactedAt: new Date(),
+    });
+    await lead('Form lead', {
+      ownerId: manager.id,
+      source: 'PUBLIC_FORM',
+      sourceId: marina.id,
+      createdAt: new Date(Date.now() - 3 * 86_400_000),
+      firstContactedAt: new Date(),
+    });
 
     const today = dayBounds(todayKey('Asia/Dubai'), 'Asia/Dubai');
     const followUp = (ownerId: string, dueAt: Date, kind: string) =>
@@ -572,6 +592,38 @@ describe('each tile opens the list of what it counted', () => {
         expect((await followUpRows(cookie, tile.href)).length, tile.href).toBe(tile.value);
       }
       expect([board.today.overdue.value, board.today.dueToday.value, board.today.callbacks.value]).toEqual([1, 2, 1]);
+    });
+
+    // The lead list's stage, source, owner and date filters (#179).
+    it(`each stage, source, meeting and day opens the leads it counted, for the ${who}`, async () => {
+      const cookie = who === 'manager' ? manager.cookie : agent.cookie;
+      const board = await realtyDashboard(await ctxFrom(cookie));
+      const linked = [
+        board.today.newLeads,
+        board.pipeline.meetingsScheduled!,
+        board.pipeline.meetingsDone!,
+        ...board.funnel.map((row) => ({ value: row.count, href: row.href })),
+        ...board.business.leadsBySource.flatMap((row) => (row.href ? [{ value: row.count, href: row.href }] : [])),
+        ...board.trend.map((day) => ({ value: day.received, href: day.href })),
+      ];
+      for (const tile of linked) {
+        expect((await leadRows(cookie, tile.href)).length, tile.href).toBe(tile.value);
+      }
+      const sources = board.business.leadsBySource.filter((row) => row.href).map((row) => [row.label, row.count]);
+      expect(sources).toEqual(
+        who === 'manager'
+          ? [
+              ['Bayut', 1],
+              ['Website', 1],
+            ]
+          : [['Bayut', 1]],
+      );
+      expect(board.pipeline.meetingsScheduled?.value).toBe(1);
+      expect(board.today.newLeads.value).toBe(who === 'manager' ? 6 : 4);
+      if (who === 'manager') {
+        // A name on the leaderboard opens that person's leads.
+        expect(await leadRows(cookie, `/leads?owner=${agent.id}`)).not.toContain('Their lead');
+      }
     });
   }
 
