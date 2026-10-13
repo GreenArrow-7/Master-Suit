@@ -4,7 +4,7 @@
 and forms use (`takeEnquiry`: the number normalised, a known number or email
 joins its lead, audited, the first-contact clock, distribution, automations).
 Audit rows M6-10, M6-11, M6-12. Branch `feat/intake-whatsapp-telephony-email`,
-stacked on #173.
+built on #173 (now on main).
 
 - **WhatsApp** (M6-10): a message from a number no lead, contact or colleague
   holds makes a lead, the message its note, when the WhatsApp Business
