@@ -20,11 +20,11 @@ import {
  * these guards used to return early from TEAM up, so a team manager read and
  * changed every call and event in the workspace by id. ORGANIZATION sees all.
  * `NotFound`, not `Forbidden`: a refusal that distinguishes "not yours" from
- * "does not exist" tells a caller which ids are real.
+ * "does not exist" tells a caller which ids are real. Inside `withTx`, pass its `tx`.
  */
-export function callScope(ctx: Ctx, action: Action): Promise<Record<string, unknown>> {
+export function callScope(ctx: Ctx, action: Action, db?: TxClient): Promise<Record<string, unknown>> {
   return can(ctx, 'calls', action)
-    ? visibilityWhere(ctx, 'calls', action, { ownerField: 'callerId' })
+    ? visibilityWhere(ctx, 'calls', action, { ownerField: 'callerId', db })
     : Promise.resolve({ tenantId: ctx.tenantId, callerId: ctx.actor.id });
 }
 

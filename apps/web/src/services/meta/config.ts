@@ -5,7 +5,7 @@
  * a GET endpoint it would only ever call from the server anyway. Mutations go
  * through the API kernel like everything else.
  */
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { metaOAuthConfigured } from '@/services/meta/oauth';
@@ -55,60 +55,66 @@ export async function metaConfig(tenantId: string) {
   const metadata = (connection?.metadata ?? {}) as Record<string, string>;
   const simulated = mode === 'SIMULATED';
 
-  const [routings, lastEvent, lastProcessed, failedCount, recentEvents, stages, users, teams] = await Promise.all([
-    prisma.metaLeadFormRouting.findMany({
-      where: { tenantId },
-      orderBy: { formName: 'asc' },
-      select: {
-        id: true,
-        providerFormId: true,
-        providerPageId: true,
-        formName: true,
-        enabled: true,
-        source: true,
-        stageId: true,
-        priority: true,
-        assignedUserId: true,
-        assignedTeamId: true,
-        lastLeadAt: true,
-        lastSyncAt: true,
-        stage: { select: { name: true } },
-        assignedUser: { select: { fullName: true } },
-        assignedTeam: { select: { name: true } },
-      },
-    }),
-    prisma.webhookEvent.findFirst({
-      where: { tenantId, provider: { startsWith: 'meta:' } },
-      orderBy: { createdAt: 'desc' },
-      select: { createdAt: true },
-    }),
-    prisma.webhookEvent.findFirst({
-      where: { tenantId, provider: { startsWith: 'meta:' }, processed: true },
-      orderBy: { processedAt: 'desc' },
-      select: { processedAt: true },
-    }),
-    prisma.webhookEvent.count({
-      where: { tenantId, provider: { startsWith: 'meta:' }, processed: false, attempts: { gt: 0 } },
-    }),
-    prisma.webhookEvent.findMany({
-      where: { tenantId, provider: { startsWith: 'meta:' } },
-      orderBy: { createdAt: 'desc' },
-      take: 8,
-      // Deliberately not `payload`: §27 — event metadata is operational, the
-      // payload carries customer data and provider detail nobody needs here.
-      select: { id: true, eventType: true, createdAt: true, processed: true, attempts: true, errorMessage: true },
-    }),
-    prisma.leadStage.findMany({ where: { tenantId }, orderBy: { position: 'asc' }, select: { id: true, name: true } }),
-    // Only users who can actually receive a lead: an assignment to a suspended
-    // account is a lead nobody works.
-    prisma.user.findMany({
-      where: { tenantId, status: 'ACTIVE', deletedAt: null },
-      orderBy: { fullName: 'asc' },
-      take: 200,
-      select: { id: true, fullName: true },
-    }),
-    prisma.team.findMany({ where: { tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
-  ]);
+  // One transaction, one connection: eight reads side by side asked the pool
+  // for eight (runPinned, lib/db.ts; #180).
+  const [routings, lastEvent, lastProcessed, failedCount, recentEvents, stages, users, teams] = await withTx(
+    tenantId,
+    (tx) =>
+      Promise.all([
+        tx.metaLeadFormRouting.findMany({
+          where: { tenantId },
+          orderBy: { formName: 'asc' },
+          select: {
+            id: true,
+            providerFormId: true,
+            providerPageId: true,
+            formName: true,
+            enabled: true,
+            source: true,
+            stageId: true,
+            priority: true,
+            assignedUserId: true,
+            assignedTeamId: true,
+            lastLeadAt: true,
+            lastSyncAt: true,
+            stage: { select: { name: true } },
+            assignedUser: { select: { fullName: true } },
+            assignedTeam: { select: { name: true } },
+          },
+        }),
+        tx.webhookEvent.findFirst({
+          where: { tenantId, provider: { startsWith: 'meta:' } },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true },
+        }),
+        tx.webhookEvent.findFirst({
+          where: { tenantId, provider: { startsWith: 'meta:' }, processed: true },
+          orderBy: { processedAt: 'desc' },
+          select: { processedAt: true },
+        }),
+        tx.webhookEvent.count({
+          where: { tenantId, provider: { startsWith: 'meta:' }, processed: false, attempts: { gt: 0 } },
+        }),
+        tx.webhookEvent.findMany({
+          where: { tenantId, provider: { startsWith: 'meta:' } },
+          orderBy: { createdAt: 'desc' },
+          take: 8,
+          // Deliberately not `payload`: §27 — event metadata is operational, the
+          // payload carries customer data and provider detail nobody needs here.
+          select: { id: true, eventType: true, createdAt: true, processed: true, attempts: true, errorMessage: true },
+        }),
+        tx.leadStage.findMany({ where: { tenantId }, orderBy: { position: 'asc' }, select: { id: true, name: true } }),
+        // Only users who can actually receive a lead: an assignment to a suspended
+        // account is a lead nobody works.
+        tx.user.findMany({
+          where: { tenantId, status: 'ACTIVE', deletedAt: null },
+          orderBy: { fullName: 'asc' },
+          take: 200,
+          select: { id: true, fullName: true },
+        }),
+        tx.team.findMany({ where: { tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+      ]),
+  );
 
   const tokenExpired = Boolean(connection?.expiresAt && connection.expiresAt.getTime() < Date.now());
 

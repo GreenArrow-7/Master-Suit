@@ -2,7 +2,7 @@ import { requirePageAccess, SELF_SERVICE } from '@/lib/workspace-page';
 import { leadScope } from '@/lib/security/record-scope';
 import { obligationAccess, obligationWhere } from '@/services/leads/nextFollowUp';
 import { atLeast } from '@/lib/security/rbac';
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -391,29 +391,33 @@ async function ManagerHome({ ctx }: { ctx: any }) {
   const where = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
   const access = await obligationAccess(ctx, 'scope');
 
-  const [total, unassigned, overdue, breached, teamTargets, byStage, recent] = await Promise.all([
-    prisma.lead.count({ where }),
-    prisma.lead.count({ where: { ...where, ownerId: null } }),
-    // Same predicate the Overdue chip on /leads uses, at the same reach, so the
-    // number on the dashboard and the list it links to are the same number.
-    prisma.lead.count({ where: { ...where, ...obligationWhere(access, 'overdue', now) } }),
-    prisma.lead.count({ where: { ...where, slaState: 'BREACHED' } }),
-    prisma.employeeTarget.findMany({
-      where: { tenantId: ctx.tenantId, periodStart: { lte: now }, periodEnd: { gte: now } },
-      include: {
-        progress: true,
-        user: { select: { id: true, fullName: true } },
-      },
-      orderBy: [{ userId: 'asc' }, { metric: 'asc' }],
-    }),
-    prisma.lead.groupBy({ by: ['stageId'], where, _count: { _all: true } }),
-    prisma.lead.findMany({
-      where,
-      orderBy: { updatedAt: 'desc' },
-      take: 8,
-      select: LEAD_ROW,
-    }),
-  ]);
+  // One transaction, one connection: seven reads side by side asked the pool
+  // for seven (runPinned, lib/db.ts; #180).
+  const [total, unassigned, overdue, breached, teamTargets, byStage, recent] = await withTx(ctx.tenantId, (tx) =>
+    Promise.all([
+      tx.lead.count({ where }),
+      tx.lead.count({ where: { ...where, ownerId: null } }),
+      // Same predicate the Overdue chip on /leads uses, at the same reach, so the
+      // number on the dashboard and the list it links to are the same number.
+      tx.lead.count({ where: { ...where, ...obligationWhere(access, 'overdue', now) } }),
+      tx.lead.count({ where: { ...where, slaState: 'BREACHED' } }),
+      tx.employeeTarget.findMany({
+        where: { tenantId: ctx.tenantId, periodStart: { lte: now }, periodEnd: { gte: now } },
+        include: {
+          progress: true,
+          user: { select: { id: true, fullName: true } },
+        },
+        orderBy: [{ userId: 'asc' }, { metric: 'asc' }],
+      }),
+      tx.lead.groupBy({ by: ['stageId'], where, _count: { _all: true } }),
+      tx.lead.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        take: 8,
+        select: LEAD_ROW,
+      }),
+    ]),
+  );
 
   const stages = await prisma.leadStage.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { position: 'asc' } });
   const counts = new Map(byStage.map((s) => [s.stageId, s._count._all]));

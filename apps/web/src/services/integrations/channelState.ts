@@ -11,7 +11,7 @@
  * derived from a real row and the mode is derived from whether the credentials
  * would actually construct a live provider.
  */
-import { prisma } from '@/lib/db';
+import { withTx } from '@/lib/db';
 import { connectionCredentials } from '@/lib/integrations/connection';
 
 /**
@@ -56,35 +56,42 @@ export async function channelCards(tenantId: string, slug: string): Promise<Chan
   const settings = `/${slug}/admin/integrations`;
   const metaPage = `${settings}/meta`;
 
-  const [meta, metaCreds, lastMetaEvent, failedEvents, templates, forms, lastSubmission, notified] = await Promise.all([
-    prisma.integrationConnection.findUnique({
-      where: { tenantId_provider: { tenantId, provider: 'meta' } },
-      select: { status: true, lastSyncAt: true, errorMessage: true, expiresAt: true, metadata: true },
-    }),
-    // Decrypts, so it is the only honest way to know whether a *live* provider
-    // would be constructed or the mock would be returned instead.
-    connectionCredentials(tenantId, 'meta'),
-    prisma.webhookEvent.findFirst({
-      where: { tenantId, provider: { startsWith: 'meta:' } },
-      orderBy: { createdAt: 'desc' },
-      select: { createdAt: true, eventType: true },
-    }),
-    prisma.webhookEvent.count({ where: { tenantId, processed: false, attempts: { gt: 0 } } }),
-    prisma.messageTemplate.count({
-      where: { tenantId, channel: 'WHATSAPP', deletedAt: null, approvalState: 'APPROVED', isActive: true },
-    }),
-    prisma.form.count({ where: { tenantId, deletedAt: null, state: 'PUBLISHED', isPublic: true } }),
-    prisma.formSubmission.findFirst({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-      select: { createdAt: true },
-    }),
-    prisma.notification.findFirst({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-      select: { createdAt: true },
-    }),
-  ]);
+  // The credentials beside one transaction for the rest: eight reads side by
+  // side asked the pool for eight (runPinned, lib/db.ts; #180).
+  const [metaCreds, [meta, lastMetaEvent, failedEvents, templates, forms, lastSubmission, notified]] =
+    await Promise.all([
+      // Decrypts, so it is the only honest way to know whether a *live* provider
+      // would be constructed or the mock would be returned instead.
+      connectionCredentials(tenantId, 'meta'),
+      withTx(tenantId, (tx) =>
+        Promise.all([
+          tx.integrationConnection.findUnique({
+            where: { tenantId_provider: { tenantId, provider: 'meta' } },
+            select: { status: true, lastSyncAt: true, errorMessage: true, expiresAt: true, metadata: true },
+          }),
+          tx.webhookEvent.findFirst({
+            where: { tenantId, provider: { startsWith: 'meta:' } },
+            orderBy: { createdAt: 'desc' },
+            select: { createdAt: true, eventType: true },
+          }),
+          tx.webhookEvent.count({ where: { tenantId, processed: false, attempts: { gt: 0 } } }),
+          tx.messageTemplate.count({
+            where: { tenantId, channel: 'WHATSAPP', deletedAt: null, approvalState: 'APPROVED', isActive: true },
+          }),
+          tx.form.count({ where: { tenantId, deletedAt: null, state: 'PUBLISHED', isPublic: true } }),
+          tx.formSubmission.findFirst({
+            where: { tenantId },
+            orderBy: { createdAt: 'desc' },
+            select: { createdAt: true },
+          }),
+          tx.notification.findFirst({
+            where: { tenantId },
+            orderBy: { createdAt: 'desc' },
+            select: { createdAt: true },
+          }),
+        ]),
+      ),
+    ]);
 
   const connected = meta?.status === 'CONNECTED';
   /**

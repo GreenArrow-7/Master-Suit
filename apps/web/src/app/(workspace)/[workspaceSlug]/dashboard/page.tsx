@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { prisma } from '@/lib/db';
+import { withTx, type TxClient } from '@/lib/db';
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
@@ -39,40 +39,43 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
   const showSubscription = can(ctx, 'settings', 'VIEW');
 
   /**
-   * One round of concurrency, not two.
+   * One transaction for every panel, not one connection per count.
    *
-   * Each group was already batched, but `await people` then `await sales` meant
-   * a workspace running both modules paid two sequential rounds — the slowest
-   * People query plus the slowest Sales query, rather than the slower of the
-   * two. Awaiting the pair together makes it one.
+   * Each query outside `withTx` is a batched transaction on a pooled connection
+   * of its own (runPinned, lib/db.ts), so these panels side by side asked the
+   * pool for 31 connections at once, three times the 10 it holds, and a second
+   * render queued behind the first: the P2028 of #180. Each panel below is a
+   * function of the transaction's client and they all read through it, the
+   * scope reads too; only the owners' names (the replica, `names`) wait for it.
    *
    * Deliberately not cached: these are record counts, and this codebase caches
    * configuration only (see lib/redis.ts and docs/00-ARCHITECTURE.md §6). A
    * dashboard showing yesterday's pending-approval count is a dashboard nobody
    * can act on.
    */
-  const peopleQuery = showPeople
-    ? Promise.all([
-        prisma.employeeProfile.count({
-          where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'ACTIVE' },
-        }),
-        prisma.hrAttendanceRecord.count({
-          where: {
-            tenantId: ctx.tenantId,
-            workDate: { gte: today, lt: tomorrow },
-            status: { in: ['PRESENT', 'LATE', 'REMOTE'] },
-          },
-        }),
-        prisma.hrAttendanceRecord.count({
-          where: { tenantId: ctx.tenantId, workDate: { gte: today, lt: tomorrow }, status: 'ABSENT' },
-        }),
-        prisma.hrLeaveRequest.count({
-          where: { tenantId: ctx.tenantId, status: 'APPROVED', startDate: { lte: today }, endDate: { gte: today } },
-        }),
-        prisma.hrLeaveRequest.count({ where: { tenantId: ctx.tenantId, status: 'PENDING' } }),
-        prisma.hrHoliday.count({ where: { tenantId: ctx.tenantId, holidayDate: { gte: today } } }),
-      ])
-    : null;
+  const peopleQuery = (db: TxClient) =>
+    showPeople
+      ? Promise.all([
+          db.employeeProfile.count({
+            where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'ACTIVE' },
+          }),
+          db.hrAttendanceRecord.count({
+            where: {
+              tenantId: ctx.tenantId,
+              workDate: { gte: today, lt: tomorrow },
+              status: { in: ['PRESENT', 'LATE', 'REMOTE'] },
+            },
+          }),
+          db.hrAttendanceRecord.count({
+            where: { tenantId: ctx.tenantId, workDate: { gte: today, lt: tomorrow }, status: 'ABSENT' },
+          }),
+          db.hrLeaveRequest.count({
+            where: { tenantId: ctx.tenantId, status: 'APPROVED', startDate: { lte: today }, endDate: { gte: today } },
+          }),
+          db.hrLeaveRequest.count({ where: { tenantId: ctx.tenantId, status: 'PENDING' } }),
+          db.hrHoliday.count({ where: { tenantId: ctx.tenantId, holidayDate: { gte: today } } }),
+        ])
+      : null;
   /**
    * §41–48: the same page IS the role dashboard, because the numbers are
    * scoped by the viewer's actual grant, not merely gated by it.
@@ -109,40 +112,41 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
    */
   const showOpportunities = showSales && can(ctx, 'opportunities', 'VIEW');
   const showTasks = showSales && can(ctx, 'tasks', 'VIEW');
-  const salesQuery = showSales
-    ? Promise.all([
-        leadScope(ctx, 'VIEW'),
-        showOpportunities ? visibilityWhere(ctx, 'opportunities', 'VIEW') : Promise.resolve(null),
-        // Follow-ups key on ownerId like leads do; they carry the lead module's
-        // grant because they are lead work.
-        visibilityWhere(ctx, 'leads', 'VIEW'),
-        showTasks ? visibilityWhere(ctx, 'tasks', 'VIEW') : Promise.resolve(null),
-      ]).then(([leadWhere, oppWhere, followUpWhere, taskWhere]) =>
-        Promise.all([
-          prisma.lead.count({ where: { ...leadWhere, deletedAt: null } }),
-          // Unassigned is a triage queue: tenant-wide by definition, shown only
-          // to viewers whose scope reaches beyond their own records.
-          salesScope === 'OWN'
-            ? Promise.resolve(0)
-            : prisma.lead.count({ where: { tenantId: ctx.tenantId, deletedAt: null, ownerId: null } }),
-          oppWhere ? prisma.opportunity.count({ where: { ...oppWhere, deletedAt: null, status: 'OPEN' } }) : 0,
-          prisma.followUpTask.count({
-            where: { ...followUpWhere, status: { in: ['OPEN', 'IN_PROGRESS'] }, dueAt: { lt: new Date() } },
-          }),
-          oppWhere
-            ? prisma.opportunity.aggregate({
-                where: { ...oppWhere, deletedAt: null, status: 'OPEN' },
-                _sum: { amount: true },
-              })
-            : { _sum: { amount: null } },
-          taskWhere
-            ? prisma.task.count({
-                where: { ...taskWhere, status: { in: ['OPEN', 'IN_PROGRESS'] }, dueAt: { lte: tomorrow } },
-              })
-            : 0,
-        ]),
-      )
-    : null;
+  const salesQuery = (db: TxClient) =>
+    showSales
+      ? Promise.all([
+          leadScope(ctx, 'VIEW', { db }),
+          showOpportunities ? visibilityWhere(ctx, 'opportunities', 'VIEW', { db }) : Promise.resolve(null),
+          // Follow-ups key on ownerId like leads do; they carry the lead module's
+          // grant because they are lead work.
+          visibilityWhere(ctx, 'leads', 'VIEW', { db }),
+          showTasks ? visibilityWhere(ctx, 'tasks', 'VIEW', { db }) : Promise.resolve(null),
+        ]).then(([leadWhere, oppWhere, followUpWhere, taskWhere]) =>
+          Promise.all([
+            db.lead.count({ where: { ...leadWhere, deletedAt: null } }),
+            // Unassigned is a triage queue: tenant-wide by definition, shown only
+            // to viewers whose scope reaches beyond their own records.
+            salesScope === 'OWN'
+              ? Promise.resolve(0)
+              : db.lead.count({ where: { tenantId: ctx.tenantId, deletedAt: null, ownerId: null } }),
+            oppWhere ? db.opportunity.count({ where: { ...oppWhere, deletedAt: null, status: 'OPEN' } }) : 0,
+            db.followUpTask.count({
+              where: { ...followUpWhere, status: { in: ['OPEN', 'IN_PROGRESS'] }, dueAt: { lt: new Date() } },
+            }),
+            oppWhere
+              ? db.opportunity.aggregate({
+                  where: { ...oppWhere, deletedAt: null, status: 'OPEN' },
+                  _sum: { amount: true },
+                })
+              : { _sum: { amount: null } },
+            taskWhere
+              ? db.task.count({
+                  where: { ...taskWhere, status: { in: ['OPEN', 'IN_PROGRESS'] }, dueAt: { lte: tomorrow } },
+                })
+              : 0,
+          ]),
+        )
+      : null;
 
   /**
    * Whose follow-ups are on this page.
@@ -158,46 +162,29 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
    * `visibilityWhere` would hand more than their own work.
    */
   const showTeamFollowUps = showSales && SCOPE_RANK[salesScope] > SCOPE_RANK.OWN;
-  const teamFollowUpQuery = showTeamFollowUps
-    ? visibilityWhere(ctx, 'leads', 'VIEW').then(async (where) => {
-        const rows = await prisma.followUpTask.findMany({
-          where: { ...where, status: { in: ['OPEN', 'IN_PROGRESS'] } },
-          orderBy: [{ dueAt: 'asc' }],
-          take: 12,
-          select: { id: true, title: true, dueAt: true, priority: true, ownerId: true, leadId: true },
-        });
-        if (rows.length === 0) return [];
+  const teamFollowUpQuery = (db: TxClient) =>
+    showTeamFollowUps
+      ? visibilityWhere(ctx, 'leads', 'VIEW', { db }).then(async (where) => {
+          const rows = await db.followUpTask.findMany({
+            where: { ...where, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+            orderBy: [{ dueAt: 'asc' }],
+            take: 12,
+            select: { id: true, title: true, dueAt: true, priority: true, ownerId: true, leadId: true },
+          });
+          if (rows.length === 0) return { rows, leadName: new Map<string, string>() };
 
-        // Two lookups for the whole list rather than a join per row. Both are
-        // tenant-scoped explicitly, which is what lets the guard set
-        // `app.tenant_id` for them — see runPinned in lib/db.ts.
-        const [ownerName, leads] = await Promise.all([
-          names(
-            ctx.tenantId,
-            rows.map((row) => row.ownerId),
-          ),
-          prisma.lead.findMany({
+          // One lookup for the whole list rather than a join per row; the owners'
+          // names follow the transaction.
+          const leads = await db.lead.findMany({
             where: {
               tenantId: ctx.tenantId,
               id: { in: [...new Set(rows.map((row) => row.leadId).filter((id): id is string => Boolean(id)))] },
             },
             select: { id: true, fullName: true },
-          }),
-        ]);
-        const leadName = new Map(leads.map((lead) => [lead.id, lead.fullName]));
-        return rows.map((row) => ({
-          id: row.id,
-          title: row.title,
-          dueAt: row.dueAt,
-          priority: row.priority as string,
-          // "Removed user" rather than a bare id: an owner whose account was
-          // deleted still owns rows, and the id tells a reader nothing.
-          owner: ownerName.get(row.ownerId) ?? 'Removed user',
-          lead: row.leadId ? (leadName.get(row.leadId) ?? '—') : '—',
-          leadId: row.leadId,
-        }));
-      })
-    : null;
+          });
+          return { rows, leadName: new Map(leads.map((lead) => [lead.id, lead.fullName])) };
+        })
+      : null;
 
   /**
    * The self-service panel — §55's employee dashboard.
@@ -207,35 +194,36 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
    * no employee profile (a platform bootstrap account) simply gets nothing
    * rather than an error.
    */
-  const mineQuery = modules.has('HRMS')
-    ? myEmployee(ctx).then((self) =>
-        self
-          ? Promise.all([
-              Promise.resolve(self),
-              prisma.hrAttendanceRecord.findFirst({
-                where: { tenantId: ctx.tenantId, employeeId: self.id, workDate: { gte: today, lt: tomorrow } },
-                select: { checkInAt: true, checkOutAt: true, status: true },
-              }),
-              prisma.hrLeaveRequest.count({
-                where: { tenantId: ctx.tenantId, employeeId: self.id, status: 'PENDING' },
-              }),
-              prisma.hrOvertimeRequest.count({
-                where: { tenantId: ctx.tenantId, employeeId: self.id, status: 'PENDING' },
-              }),
-              prisma.hrReview.count({
-                where: { tenantId: ctx.tenantId, employeeId: self.id, status: 'PENDING_SELF' },
-              }),
-              prisma.hrPayslip.count({
-                where: {
-                  tenantId: ctx.tenantId,
-                  employeeId: self.id,
-                  run: { status: { in: ['APPROVED', 'LOCKED', 'PAID'] } },
-                },
-              }),
-            ])
-          : null,
-      )
-    : null;
+  const mineQuery = (db: TxClient) =>
+    modules.has('HRMS')
+      ? myEmployee(ctx, db).then((self) =>
+          self
+            ? Promise.all([
+                Promise.resolve(self),
+                db.hrAttendanceRecord.findFirst({
+                  where: { tenantId: ctx.tenantId, employeeId: self.id, workDate: { gte: today, lt: tomorrow } },
+                  select: { checkInAt: true, checkOutAt: true, status: true },
+                }),
+                db.hrLeaveRequest.count({
+                  where: { tenantId: ctx.tenantId, employeeId: self.id, status: 'PENDING' },
+                }),
+                db.hrOvertimeRequest.count({
+                  where: { tenantId: ctx.tenantId, employeeId: self.id, status: 'PENDING' },
+                }),
+                db.hrReview.count({
+                  where: { tenantId: ctx.tenantId, employeeId: self.id, status: 'PENDING_SELF' },
+                }),
+                db.hrPayslip.count({
+                  where: {
+                    tenantId: ctx.tenantId,
+                    employeeId: self.id,
+                    run: { status: { in: ['APPROVED', 'LOCKED', 'PAID'] } },
+                  },
+                }),
+              ])
+            : null,
+        )
+      : null;
 
   /**
    * What is sitting on this person's desk — §55's manager dashboard.
@@ -244,31 +232,32 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
    * manager who approves leave but not overtime sees one number, not two. A
    * queue you cannot clear is noise.
    */
-  const approvalsQuery = modules.has('HRMS')
-    ? Promise.all([
-        can(ctx, 'leave', 'APPROVE')
-          ? prisma.hrLeaveRequest.count({ where: { tenantId: ctx.tenantId, status: 'PENDING' } })
-          : Promise.resolve(null),
-        can(ctx, 'overtime', 'APPROVE')
-          ? prisma.hrOvertimeRequest.count({ where: { tenantId: ctx.tenantId, status: 'PENDING' } })
-          : Promise.resolve(null),
-        can(ctx, 'attendance', 'APPROVE')
-          ? prisma.hrAttendancePunch.count({ where: { tenantId: ctx.tenantId, result: 'FLAGGED_REVIEW' } })
-          : Promise.resolve(null),
-        can(ctx, 'shifts', 'APPROVE')
-          ? prisma.hrShiftChangeRequest.count({ where: { tenantId: ctx.tenantId, status: 'PENDING' } })
-          : Promise.resolve(null),
-        can(ctx, 'recruitment', 'APPROVE')
-          ? prisma.hrRequisition.count({ where: { tenantId: ctx.tenantId, status: 'PENDING_APPROVAL' } })
-          : Promise.resolve(null),
-        can(ctx, 'payroll', 'APPROVE')
-          ? prisma.hrPayrollRun.count({ where: { tenantId: ctx.tenantId, status: 'PENDING_APPROVAL' } })
-          : Promise.resolve(null),
-        can(ctx, 'performance', 'APPROVE')
-          ? prisma.hrReview.count({ where: { tenantId: ctx.tenantId, status: 'CALIBRATION' } })
-          : Promise.resolve(null),
-      ])
-    : null;
+  const approvalsQuery = (db: TxClient) =>
+    modules.has('HRMS')
+      ? Promise.all([
+          can(ctx, 'leave', 'APPROVE')
+            ? db.hrLeaveRequest.count({ where: { tenantId: ctx.tenantId, status: 'PENDING' } })
+            : Promise.resolve(null),
+          can(ctx, 'overtime', 'APPROVE')
+            ? db.hrOvertimeRequest.count({ where: { tenantId: ctx.tenantId, status: 'PENDING' } })
+            : Promise.resolve(null),
+          can(ctx, 'attendance', 'APPROVE')
+            ? db.hrAttendancePunch.count({ where: { tenantId: ctx.tenantId, result: 'FLAGGED_REVIEW' } })
+            : Promise.resolve(null),
+          can(ctx, 'shifts', 'APPROVE')
+            ? db.hrShiftChangeRequest.count({ where: { tenantId: ctx.tenantId, status: 'PENDING' } })
+            : Promise.resolve(null),
+          can(ctx, 'recruitment', 'APPROVE')
+            ? db.hrRequisition.count({ where: { tenantId: ctx.tenantId, status: 'PENDING_APPROVAL' } })
+            : Promise.resolve(null),
+          can(ctx, 'payroll', 'APPROVE')
+            ? db.hrPayrollRun.count({ where: { tenantId: ctx.tenantId, status: 'PENDING_APPROVAL' } })
+            : Promise.resolve(null),
+          can(ctx, 'performance', 'APPROVE')
+            ? db.hrReview.count({ where: { tenantId: ctx.tenantId, status: 'CALIBRATION' } })
+            : Promise.resolve(null),
+        ])
+      : null;
 
   /**
    * §55's security panel. Gated on reading the audit log, because that is the
@@ -279,23 +268,24 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
    * abandoned protects nothing, and counting it would report a workspace as
    * covered when it is not.
    */
-  const securityQuery = can(ctx, 'auditlogs', 'VIEW')
-    ? Promise.all([
-        prisma.auditLog.count({
-          where: { tenantId: ctx.tenantId, event: 'LOGIN_FAILED', occurredAt: { gte: today } },
-        }),
-        prisma.user.count({ where: { tenantId: ctx.tenantId, status: { in: ['SUSPENDED', 'DEACTIVATED'] } } }),
-        prisma.user.count({ where: { tenantId: ctx.tenantId, status: 'ACTIVE' } }),
-        prisma.workspaceMembership.count({
-          where: {
-            tenantId: ctx.tenantId,
-            status: 'ACTIVE',
-            platformUser: { authenticationFactors: { some: { verifiedAt: { not: null } } } },
-          },
-        }),
-        prisma.auditLog.count({ where: { tenantId: ctx.tenantId, occurredAt: { gte: today } } }),
-      ])
-    : null;
+  const securityQuery = (db: TxClient) =>
+    can(ctx, 'auditlogs', 'VIEW')
+      ? Promise.all([
+          db.auditLog.count({
+            where: { tenantId: ctx.tenantId, event: 'LOGIN_FAILED', occurredAt: { gte: today } },
+          }),
+          db.user.count({ where: { tenantId: ctx.tenantId, status: { in: ['SUSPENDED', 'DEACTIVATED'] } } }),
+          db.user.count({ where: { tenantId: ctx.tenantId, status: 'ACTIVE' } }),
+          db.workspaceMembership.count({
+            where: {
+              tenantId: ctx.tenantId,
+              status: 'ACTIVE',
+              platformUser: { authenticationFactors: { some: { verifiedAt: { not: null } } } },
+            },
+          }),
+          db.auditLog.count({ where: { tenantId: ctx.tenantId, occurredAt: { gte: today } } }),
+        ])
+      : null;
 
   /**
    * Call quality — by permission rather than by role name, so it appears for
@@ -304,34 +294,53 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
    * Calls and Call Audits pages it links to list (`callScope`): a team manager
    * was told the workspace's backlog and shown the team's.
    */
-  const callsQuery =
+  const callsQuery = (db: TxClient) =>
     modules.has('SALES') && can(ctx, 'calls', 'VIEW')
-      ? callScope(ctx, 'VIEW').then((scope) => {
+      ? callScope(ctx, 'VIEW', db).then((scope) => {
           const audited = { tenantId: ctx.tenantId, call: { ...scope, deletedAt: null } };
           return Promise.all([
-            prisma.call.count({ where: { ...scope, deletedAt: null, startedAt: { gte: today, lt: tomorrow } } }),
-            prisma.callAudit.count({ where: { ...audited, status: 'COMPLETED', humanReviewed: false } }),
-            prisma.callAudit.count({ where: { ...audited, humanReviewed: true } }),
-            prisma.callAudit.aggregate({
+            db.call.count({ where: { ...scope, deletedAt: null, startedAt: { gte: today, lt: tomorrow } } }),
+            db.callAudit.count({ where: { ...audited, status: 'COMPLETED', humanReviewed: false } }),
+            db.callAudit.count({ where: { ...audited, humanReviewed: true } }),
+            db.callAudit.aggregate({
               where: { ...audited, status: 'COMPLETED' },
               _avg: { overallScore: true, maxScore: true },
             }),
-            prisma.callAudit.count({
+            db.callAudit.count({
               where: { ...audited, status: 'COMPLETED', humanReviewed: false, modelId: 'demo-simulation' },
             }),
           ]);
         })
       : null;
 
-  const [people, sales, mine, approvals, security, calls, teamFollowUps] = await Promise.all([
-    peopleQuery,
-    salesQuery,
-    mineQuery,
-    approvalsQuery,
-    securityQuery,
-    callsQuery,
-    teamFollowUpQuery,
-  ]);
+  const [people, sales, mine, approvals, security, calls, followUps] = await withTx(ctx.tenantId, (tx) =>
+    Promise.all([
+      peopleQuery(tx),
+      salesQuery(tx),
+      mineQuery(tx),
+      approvalsQuery(tx),
+      securityQuery(tx),
+      callsQuery(tx),
+      teamFollowUpQuery(tx),
+    ]),
+  );
+  const ownerName = followUps
+    ? await names(
+        ctx.tenantId,
+        followUps.rows.map((row) => row.ownerId),
+      )
+    : null;
+  const teamFollowUps = followUps?.rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    dueAt: row.dueAt,
+    priority: row.priority as string,
+    // "Removed user" rather than a bare id: an owner whose account was
+    // deleted still owns rows, and the id tells a reader nothing.
+    owner: ownerName!.get(row.ownerId) ?? 'Removed user',
+    lead: row.leadId ? (followUps.leadName.get(row.leadId) ?? '—') : '—',
+    leadId: row.leadId,
+  }));
 
   // ponytail: ratio of averages, not average of per-call ratios — exact only
   // while every audit shares one rubric; per-row aggregation if rubrics diverge.

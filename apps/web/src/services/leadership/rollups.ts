@@ -12,7 +12,7 @@
  * instead of being re-derived differently in six places.
  */
 import { Prisma } from '@prisma/client';
-import { prisma, prismaRead } from '@/lib/db';
+import { prisma, prismaRead, withTx } from '@/lib/db';
 import { resolveOwnerIds } from '@/lib/security/visibility';
 import { scopeFor, type Ctx } from '@/lib/security/rbac';
 import { classify } from '@/services/targets/dailyBoard';
@@ -70,28 +70,32 @@ export interface FunnelStage {
  * busy: nothing moved, but nothing left either.
  */
 export async function funnel(tenantId: string, userIds: string[], range: Range): Promise<FunnelStage[]> {
-  const [stages, open, entered] = await Promise.all([
-    prisma.leadStage.findMany({
-      where: { tenantId, deletedAt: null },
-      select: { id: true, name: true, category: true, position: true },
-      orderBy: { position: 'asc' },
-    }),
-    prisma.lead.groupBy({
-      by: ['stageId'],
-      where: { tenantId, deletedAt: null, ...ownerFilter(userIds) },
-      _count: { _all: true },
-    }),
-    prisma.leadStageHistory.groupBy({
-      by: ['toStageId'],
-      where: {
-        tenantId,
-        createdAt: { gte: range.from, lte: range.to },
-        // History has no owner of its own; it belongs to whoever owns the lead.
-        ...(userIds.length === 0 ? {} : { lead: { is: { ownerId: { in: userIds } } } }),
-      },
-      _count: { _all: true },
-    }),
-  ]);
+  // One transaction, one connection: three reads side by side asked the pool
+  // for three (runPinned, lib/db.ts; #180).
+  const [stages, open, entered] = await withTx(tenantId, (tx) =>
+    Promise.all([
+      tx.leadStage.findMany({
+        where: { tenantId, deletedAt: null },
+        select: { id: true, name: true, category: true, position: true },
+        orderBy: { position: 'asc' },
+      }),
+      tx.lead.groupBy({
+        by: ['stageId'],
+        where: { tenantId, deletedAt: null, ...ownerFilter(userIds) },
+        _count: { _all: true },
+      }),
+      tx.leadStageHistory.groupBy({
+        by: ['toStageId'],
+        where: {
+          tenantId,
+          createdAt: { gte: range.from, lte: range.to },
+          // History has no owner of its own; it belongs to whoever owns the lead.
+          ...(userIds.length === 0 ? {} : { lead: { is: { ownerId: { in: userIds } } } }),
+        },
+        _count: { _all: true },
+      }),
+    ]),
+  );
 
   const openBy = new Map(open.map((r) => [r.stageId, r._count._all]));
   const enteredBy = new Map(entered.map((r) => [r.toStageId, r._count._all]));
@@ -133,31 +137,35 @@ const rate = (numerator: number, denominator: number) =>
 export async function conversion(tenantId: string, userIds: string[], range: Range): Promise<Conversion> {
   const created = { gte: range.from, lte: range.to };
 
-  const [leads, converted, opportunities, bookings] = await Promise.all([
-    prisma.lead.count({ where: { tenantId, deletedAt: null, createdAt: created, ...ownerFilter(userIds) } }),
-    prisma.lead.count({
-      where: {
-        tenantId,
-        deletedAt: null,
-        createdAt: created,
-        // CONVERSION, not "anything but OPEN": the other two categories are
-        // TERMINAL_NEGATIVE and TERMINAL_JUNK, and counting a junked lead as
-        // qualified flatters every rate below.
-        stage: { is: { category: 'CONVERSION' } },
-        ...ownerFilter(userIds),
-      },
-    }),
-    prisma.opportunity.count({ where: { tenantId, deletedAt: null, createdAt: created, ...ownerFilter(userIds) } }),
-    prisma.booking.count({
-      where: {
-        tenantId,
-        deletedAt: null,
-        bookingDate: created,
-        status: { not: 'CANCELLED' },
-        ...ownerFilter(userIds),
-      },
-    }),
-  ]);
+  // One transaction, one connection: four reads side by side asked the pool
+  // for four (runPinned, lib/db.ts; #180).
+  const [leads, converted, opportunities, bookings] = await withTx(tenantId, (tx) =>
+    Promise.all([
+      tx.lead.count({ where: { tenantId, deletedAt: null, createdAt: created, ...ownerFilter(userIds) } }),
+      tx.lead.count({
+        where: {
+          tenantId,
+          deletedAt: null,
+          createdAt: created,
+          // CONVERSION, not "anything but OPEN": the other two categories are
+          // TERMINAL_NEGATIVE and TERMINAL_JUNK, and counting a junked lead as
+          // qualified flatters every rate below.
+          stage: { is: { category: 'CONVERSION' } },
+          ...ownerFilter(userIds),
+        },
+      }),
+      tx.opportunity.count({ where: { tenantId, deletedAt: null, createdAt: created, ...ownerFilter(userIds) } }),
+      tx.booking.count({
+        where: {
+          tenantId,
+          deletedAt: null,
+          bookingDate: created,
+          status: { not: 'CANCELLED' },
+          ...ownerFilter(userIds),
+        },
+      }),
+    ]),
+  );
 
   return {
     leads,
@@ -476,53 +484,57 @@ export async function productivity(tenantId: string, userIds: string[], range: R
   const owner = ownerFilter(userIds);
   const caller = userIds.length === 0 ? {} : { callerId: { in: userIds } };
 
-  const [assigned, calls, touchedByActivity, touchedByCall, tasks, meetings, deals, pending, users] = await Promise.all(
-    [
-      prisma.lead.groupBy({
-        by: ['ownerId'],
-        where: { tenantId, deletedAt: null, assignedAt: within, ...owner },
-        _count: { _all: true },
-      }),
-      prisma.call.groupBy({
-        by: ['callerId', 'outcome'],
-        where: { tenantId, deletedAt: null, status: 'COMPLETED', createdAt: within, ...caller },
-        _count: { _all: true },
-      }),
-      prisma.activity.findMany({
-        where: { tenantId, occurredAt: within, leadId: { not: null }, ...owner },
-        select: { ownerId: true, leadId: true },
-        distinct: ['ownerId', 'leadId'],
-      }),
-      prisma.call.findMany({
-        where: { tenantId, deletedAt: null, createdAt: within, leadId: { not: null }, ...caller },
-        select: { callerId: true, leadId: true },
-        distinct: ['callerId', 'leadId'],
-      }),
-      prisma.task.groupBy({
-        by: ['ownerId'],
-        where: { tenantId, status: 'COMPLETED', completedAt: within, ...owner },
-        _count: { _all: true },
-      }),
-      prisma.task.groupBy({
-        by: ['ownerId'],
-        where: { tenantId, createdAt: within, type: { key: 'meeting' }, ...owner },
-        _count: { _all: true },
-      }),
-      prisma.opportunity.groupBy({
-        by: ['ownerId'],
-        where: { tenantId, deletedAt: null, status: 'WON', updatedAt: within, ...owner },
-        _count: { _all: true },
-      }),
-      prisma.lead.groupBy({
-        by: ['ownerId'],
-        where: { tenantId, deletedAt: null, lastActivityAt: null, status: null, ...owner },
-        _count: { _all: true },
-      }),
-      prisma.user.findMany({
-        where: { tenantId, deletedAt: null, ...(userIds.length === 0 ? {} : { id: { in: userIds } }) },
-        select: { id: true, fullName: true },
-      }),
-    ],
+  // One transaction, one connection: nine reads side by side asked the pool
+  // for nine (runPinned, lib/db.ts; #180).
+  const [assigned, calls, touchedByActivity, touchedByCall, tasks, meetings, deals, pending, users] = await withTx(
+    tenantId,
+    (tx) =>
+      Promise.all([
+        tx.lead.groupBy({
+          by: ['ownerId'],
+          where: { tenantId, deletedAt: null, assignedAt: within, ...owner },
+          _count: { _all: true },
+        }),
+        tx.call.groupBy({
+          by: ['callerId', 'outcome'],
+          where: { tenantId, deletedAt: null, status: 'COMPLETED', createdAt: within, ...caller },
+          _count: { _all: true },
+        }),
+        tx.activity.findMany({
+          where: { tenantId, occurredAt: within, leadId: { not: null }, ...owner },
+          select: { ownerId: true, leadId: true },
+          distinct: ['ownerId', 'leadId'],
+        }),
+        tx.call.findMany({
+          where: { tenantId, deletedAt: null, createdAt: within, leadId: { not: null }, ...caller },
+          select: { callerId: true, leadId: true },
+          distinct: ['callerId', 'leadId'],
+        }),
+        tx.task.groupBy({
+          by: ['ownerId'],
+          where: { tenantId, status: 'COMPLETED', completedAt: within, ...owner },
+          _count: { _all: true },
+        }),
+        tx.task.groupBy({
+          by: ['ownerId'],
+          where: { tenantId, createdAt: within, type: { key: 'meeting' }, ...owner },
+          _count: { _all: true },
+        }),
+        tx.opportunity.groupBy({
+          by: ['ownerId'],
+          where: { tenantId, deletedAt: null, status: 'WON', updatedAt: within, ...owner },
+          _count: { _all: true },
+        }),
+        tx.lead.groupBy({
+          by: ['ownerId'],
+          where: { tenantId, deletedAt: null, lastActivityAt: null, status: null, ...owner },
+          _count: { _all: true },
+        }),
+        tx.user.findMany({
+          where: { tenantId, deletedAt: null, ...(userIds.length === 0 ? {} : { id: { in: userIds } }) },
+          select: { id: true, fullName: true },
+        }),
+      ]),
   );
 
   const rows = new Map<string, ProductivityRow>();
@@ -597,6 +609,8 @@ export async function workspaceValue(tenantId: string, range: Range): Promise<Wo
   const within = { gte: range.from, lte: range.to };
   const { valueSummary } = await import('@/lib/value/platformValue');
   const { usageMetric } = await import('@/lib/ai/usage');
+  // One transaction, one connection: eight reads side by side asked the pool
+  // for eight (runPinned, lib/db.ts; #180).
   const [
     leadsImported,
     callsAnalysed,
@@ -606,32 +620,34 @@ export async function workspaceValue(tenantId: string, range: Range): Promise<Wo
     leadsAutoAssigned,
     won,
     usage,
-  ] = await Promise.all([
-    prisma.lead.count({ where: { tenantId, source: 'IMPORT', createdAt: within } }),
-    prisma.aIAnalysis.count({
-      where: { tenantId, status: 'COMPLETED', modelId: { not: 'demo-simulation' }, createdAt: within },
-    }),
-    prisma.aIAnalysis.count({
-      where: {
-        tenantId,
-        status: 'COMPLETED',
-        modelId: { not: 'demo-simulation' },
-        humanCorrected: true,
-        createdAt: within,
-      },
-    }),
-    prisma.automationExecution.count({ where: { tenantId, status: 'SUCCEEDED', startedAt: within } }),
-    prisma.automationExecution.count({ where: { tenantId, status: 'FAILED', startedAt: within } }),
-    prisma.leadAssignmentHistory.count({ where: { tenantId, method: { not: null }, createdAt: within } }),
-    prisma.opportunity.findMany({
-      where: { tenantId, deletedAt: null, status: 'WON', updatedAt: within },
-      select: { createdAt: true, updatedAt: true },
-    }),
-    prisma.workspaceUsage.findMany({
-      where: { tenantId, metric: { in: [usageMetric('deployment'), usageMetric('workspace')] } },
-      select: { metric: true, used: true },
-    }),
-  ]);
+  ] = await withTx(tenantId, (tx) =>
+    Promise.all([
+      tx.lead.count({ where: { tenantId, source: 'IMPORT', createdAt: within } }),
+      tx.aIAnalysis.count({
+        where: { tenantId, status: 'COMPLETED', modelId: { not: 'demo-simulation' }, createdAt: within },
+      }),
+      tx.aIAnalysis.count({
+        where: {
+          tenantId,
+          status: 'COMPLETED',
+          modelId: { not: 'demo-simulation' },
+          humanCorrected: true,
+          createdAt: within,
+        },
+      }),
+      tx.automationExecution.count({ where: { tenantId, status: 'SUCCEEDED', startedAt: within } }),
+      tx.automationExecution.count({ where: { tenantId, status: 'FAILED', startedAt: within } }),
+      tx.leadAssignmentHistory.count({ where: { tenantId, method: { not: null }, createdAt: within } }),
+      tx.opportunity.findMany({
+        where: { tenantId, deletedAt: null, status: 'WON', updatedAt: within },
+        select: { createdAt: true, updatedAt: true },
+      }),
+      tx.workspaceUsage.findMany({
+        where: { tenantId, metric: { in: [usageMetric('deployment'), usageMetric('workspace')] } },
+        select: { metric: true, used: true },
+      }),
+    ]),
+  );
   const summary = valueSummary({
     leadsImported,
     callsAnalysed,
