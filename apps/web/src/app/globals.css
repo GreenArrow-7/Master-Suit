@@ -6562,13 +6562,9 @@ a.lf-bars__row:focus-visible .lf-bars__label {
   padding: 0;
   list-style: none;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* By the panel's width, not the screen's: four a row on a phone, all eight on a wide panel. */
+  grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
   gap: var(--lf-space-2);
-}
-@media (min-width: 640px) {
-  .lf-strip {
-    grid-template-columns: repeat(8, minmax(0, 1fr));
-  }
 }
 .lf-strip__day {
   display: grid;
