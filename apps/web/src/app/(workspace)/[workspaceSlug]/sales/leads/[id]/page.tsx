@@ -9,7 +9,7 @@ import { can, scopeFor } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { asLeadPhone, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { bookableProjects } from '@/services/leads/updateLead';
-import { leadSourceLabel, listLeadSources } from '@/services/leads/leadSources';
+import { leadSourceText, listLeadSources } from '@/services/leads/leadSources';
 import { openRequirement, requirementForPage } from '@/services/leads/requirement';
 import { fieldForScreen, leadFields } from '@/services/leads/customFields';
 import { workspaceTimezone } from '@/services/hr/attendance';
@@ -195,10 +195,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     city: lead.city,
     country: lead.country,
     nationality: lead.nationality,
-    source: lead.source,
-    sourceDetail: lead.sourceDetail,
     sourceId: lead.sourceId,
-    sourceLabel: leadSourceLabel(lead.leadSource),
+    sourceLabel: leadSourceText(lead),
     campaignName: lead.campaignName,
     consentStatus: lead.consentStatus,
     priority: lead.priority,

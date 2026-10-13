@@ -80,3 +80,29 @@ export const leadSourceLabel = (
   entry: { name: string; parent: { name: string } | null } | null | undefined,
   separator = ' · ',
 ) => (entry ? [entry.parent?.name, entry.name].filter(Boolean).join(separator) : null);
+
+/**
+ * A lead's source as its page reads it: the catalogue label, then what the label
+ * alone would hide: who referred it ("Referral · Maya"), or which form or landing
+ * page sent it ("Website · public form · contact", "Website · landing page ·
+ * marina-launch"). Any other detail (a portal's raw intake key) stays off. With no
+ * entry, the source and its detail, as before the catalogue.
+ */
+export function leadSourceText(lead: {
+  source: string;
+  sourceDetail: string | null;
+  leadSource: Parameters<typeof leadSourceLabel>[0];
+}) {
+  const label = leadSourceLabel(lead.leadSource);
+  const kind = lead.source.replace(/_/g, ' ').toLowerCase();
+  // A landing-page lead stores `landing:<slug>`.
+  const detail = lead.source === 'LANDING_PAGE' ? lead.sourceDetail?.replace(/^landing:/, '') : lead.sourceDetail;
+  const parts = !label
+    ? [kind, detail]
+    : lead.source === 'REFERRAL'
+      ? [label, detail]
+      : lead.source === 'PUBLIC_FORM' || lead.source === 'LANDING_PAGE'
+        ? [label, kind, detail]
+        : [label];
+  return parts.filter(Boolean).join(' · ');
+}

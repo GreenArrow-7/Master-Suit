@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-13 | [A form or landing-page lead names its form again](2026-10-13-lead-source-detail-label.md) | #175 | Lead Eagle, fix |
 | 2026-10-13 | [A Lead Eagle workspace starts with its own pipeline; moving a lead to a visit or a meeting books it](2026-10-12-lead-eagle-pipeline-stages.md) | #174 | Lead Eagle, pipeline |
 | 2026-10-13 | [Lead requirement, interest links, custom fields and scoring on the lead page](2026-10-12-lead-requirement-interest-fields.md) | #172 | Lead Eagle, leads |
 | 2026-10-12 | [Cold data follows the lead scope; a cold call is a logged call that counts toward the daily target and the check-out gate](2026-10-12-cold-data-scope-calls.md) | #171 | Lead Eagle, cold data, targets |
