@@ -483,6 +483,36 @@ describe('manual assignment', () => {
     });
   });
 
+  it('a waiting lead’s second owner, below ORGANIZATION, does not place it: placement checks no assignee', async () => {
+    const coWorker = await makeAgent('Second owner');
+    const anyone = await makeAgent('Anyone at all');
+    await setRule({ pool: [] });
+    const leadId = await makeLead();
+    await prisma.lead.update({
+      where: { tenantId: fixture.a.tenantId, id: leadId },
+      data: { secondaryOwnerId: coWorker },
+    });
+    await assignLead(fixture.a.tenantId, leadId);
+    const entry = await openEntry(leadId);
+    const own = buildCtx(
+      buildActor({
+        tenantId: fixture.a.tenantId,
+        id: coWorker,
+        permissions: new Map<string, Scope>([
+          ['leads:VIEW', 'OWN'],
+          ['leads:ASSIGN', 'OWN'],
+        ]),
+      }),
+    );
+
+    await expect(assignFromTriage({ ctx: own, entryId: entry!.id, toUserId: anyone })).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(await prisma.lead.findFirst({ where: { tenantId: fixture.a.tenantId, id: leadId } })).toMatchObject({
+      ownerId: null,
+    });
+  });
+
   it('lets a manager override a quota, which is a decision rather than a rule', async () => {
     const full = await makeAgent('Over quota taker', { dailyLeadQuota: 0 });
     await setRule({ pool: [] });

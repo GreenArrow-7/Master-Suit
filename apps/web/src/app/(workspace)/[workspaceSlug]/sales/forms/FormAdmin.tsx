@@ -143,7 +143,7 @@ export function FormRowActions({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'link' | 'embed' | null>(null);
 
   async function setState(next: string) {
     setBusy(true);
@@ -159,18 +159,27 @@ export function FormRowActions({
     }
   }
 
-  async function copy() {
-    await navigator.clipboard.writeText(`${window.location.origin}/f/${workspaceSlug}/${formKey}`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+  /** The public link, or the one-line snippet that frames the form on the brokerage's own site. */
+  async function copy(what: 'link' | 'embed') {
+    const origin = window.location.origin;
+    await navigator.clipboard.writeText(
+      what === 'link'
+        ? `${origin}/f/${workspaceSlug}/${formKey}`
+        : `<script src="${origin}/embed.js" data-workspace="${workspaceSlug}" data-form="${formKey}"></script>`,
+    );
+    setCopied(what);
+    setTimeout(() => setCopied(null), 1500);
   }
 
   return (
-    <div style={{ display: 'flex', gap: 'var(--lf-space-2)', justifyContent: 'flex-end' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--lf-space-2)', justifyContent: 'flex-end' }}>
       {state === 'PUBLISHED' ? (
         <>
-          <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={copy}>
-            {copied ? 'Copied!' : 'Copy link'}
+          <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => copy('link')}>
+            {copied === 'link' ? 'Copied!' : 'Copy link'}
+          </button>
+          <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => copy('embed')}>
+            {copied === 'embed' ? 'Copied!' : 'Copy embed code'}
           </button>
           <button
             type="button"

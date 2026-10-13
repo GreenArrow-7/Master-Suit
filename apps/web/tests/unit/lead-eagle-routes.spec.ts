@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { LEAD_EAGLE_SHARED_ROOTS, sameScreenElsewhere } from '@/lib/nav/realtyShared';
+import { buildNavigation } from '@/lib/nav/workspaceNav';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 
@@ -26,6 +27,8 @@ function files(root: string, name: string): string[] {
 const SHARED: readonly string[] = LEAD_EAGLE_SHARED_ROOTS;
 const isShared = (route: string) => SHARED.some((root) => route.startsWith(`${root}/`));
 const leadEagleRoutes = files(path.join(APP, 'lead-eagle'), 'page.tsx').filter(isShared);
+/** POST /targets/progress: a hand-typed increment to a target. */
+const PROGRESS_TALLY = 'targets/progress/route.ts';
 const apiRoutes = (roots: readonly string[]) =>
   roots.flatMap((root) => files(path.join(API, root), 'route.ts').map((rel) => `${root}/${rel}`));
 
@@ -35,8 +38,16 @@ describe('Lead Eagle is a module', () => {
     expect(LEAD_MODULES).toEqual(['SALES', 'REAL_ESTATE', 'LEAD_EAGLE']);
   });
 
+  it('counts Targets among its shared registers: the daily calling quota is lead work', () => {
+    expect(LEAD_EAGLE_SHARED_ROOTS).toContain('targets');
+  });
+
   it('gates its URLs on its own entitlement', () => {
     expect(read(path.join(APP, 'lead-eagle', 'layout.tsx'))).toContain("workspaceOwns(workspaceSlug, 'LEAD_EAGLE')");
+  });
+
+  it('shares the website forms and landing pages, its own lead sources (M6-06, M6-09)', () => {
+    expect(LEAD_EAGLE_SHARED_ROOTS).toEqual(expect.arrayContaining(['forms', 'landing-pages']));
   });
 });
 
@@ -85,6 +96,8 @@ describe('the APIs admit Lead Eagle for lead work and nothing else', () => {
     const source = read(path.join(API, route));
     // A listing's portal publishing is marketing, not lead work.
     if (route.includes('/portals/')) expect(source).not.toContain('LEAD_MODULES');
+    // A seller's own unaudited tally stays Sales-only: nothing calls it, and the work itself counts progress.
+    else if (route === PROGRESS_TALLY) expect(source).toContain("productModule: 'SALES'");
     else expect(source).toContain('productModule: LEAD_MODULES');
   });
 
@@ -112,5 +125,25 @@ describe('a /sales/ link reaches a Lead-Eagle-only workspace', () => {
 
   it('lead-eagle is a module root for module-relative links', () => {
     expect(read(path.join(web, 'src', 'components', 'workspace', 'SalesLink.tsx'))).toContain("'lead-eagle'");
+  });
+});
+
+describe('the Administration screens every lead module shares', () => {
+  const admin = path.join(APP, 'admin');
+
+  it.each(['lead-stages', 'lead-sources'])('admin/%s admits Lead Eagle, with its API', (screen) => {
+    expect(read(path.join(admin, screen, 'page.tsx'))).toContain('module: LEAD_MODULES');
+  });
+
+  it('the source catalogue API admits Lead Eagle', () => {
+    expect(read(path.join(API, 'lead-sources', 'route.ts'))).toContain('productModule: LEAD_MODULES');
+  });
+
+  it('a Lead-Eagle-only administrator is offered Lead Stages and Sources under Settings', () => {
+    const tabs = buildNavigation({ slug: 'eagle', modules: ['LEAD_EAGLE'], permitted: ['settings'] })
+      .flatMap((section) => section.areas)
+      .flatMap((area) => area.tabs)
+      .map((tab) => tab.href);
+    expect(tabs).toEqual(expect.arrayContaining(['/eagle/admin/lead-stages', '/eagle/admin/lead-sources']));
   });
 });

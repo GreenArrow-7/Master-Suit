@@ -126,3 +126,25 @@ the exits apart from the ladder. Part 4B of the Lead Eagle M4/M5/M6 build.
 - Seen, not changed: a hydration mismatch on the lead page's "Another number"
   field; the social enquiry and Meta routing drawers (`.lf-drawer` inside the
   page) may sit under the desktop top bar, as this dialog's first version did.
+
+**Merge-up with main (round 1), 13 Oct.** Main brought #169 (lead record
+fields), #171 (cold data, targets) and #170 (forms, embed, referral).
+Conflicts: `updateLead.ts` keeps #169's duplicate check on edit and this
+change's stage requirements and bookings, in that order (the scope, then the
+409, then the stage); both helpers stay (`refuseDuplicate`, `bookableProjects`
+and `book`). `provisioning.ts` merged without a marker and keeps both seeds:
+#169's source catalogue, then this change's pipeline. `LeadDetail.tsx` keeps
+#169's second-owner menu and this change's `moveTo` with the mini-form's move;
+`leads/[id]/page.tsx` imports both `bookableProjects` and the source helpers;
+`provision-lead-work.spec.ts` keeps both helpers (`pipeline`, `sourceKeys`) and
+every case; `changes/README.md` keeps all four rows, newest first; `PROJECT.md`
+keeps #171's Cold Data masking sentence and this change's Pipeline stages
+paragraph (screen counts unchanged: Sales 75, Real Estate 40, Lead Eagle 29,
+HRMS 32). On the merged tree (104 migrations): `tsc --noEmit` clean; this
+change's specs with `lead-record-fields`, `lead-source-intake`, `cold-data`,
+`lead-eagle-routes` and `module-entitlement` 7 files, 263/263; `tests/`
+permission, sales, tenant, unit 162 files, 2919 passed, 21 skipped, with
+`record-attach-scope` and one `field-security` case failing on "Unable to
+start a transaction in the given time" and passing alone (60/60); E2E
+`lead-stage-mini-form.spec.ts`, `crm-lifecycle.spec.ts` and
+`lead-eagle-workspace.spec.ts` 9/9 on a fresh `.next`.

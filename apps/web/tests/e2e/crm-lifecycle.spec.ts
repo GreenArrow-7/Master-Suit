@@ -42,6 +42,10 @@ const workspace = {
 };
 const LEAD_NAME = `E2E Lifecycle ${run}`;
 const COMPANY = `Northwind ${run}`;
+const SUB_SOURCE = `Marina ${run}`;
+const TAG = `tag${run}`;
+// Leads are unique by phone per workspace: derive it from the clock.
+const PHONE = `+97150${String(Date.now()).slice(-7)}`;
 
 const at = (path: string) => `/${workspace.slug}/sales${path}`;
 
@@ -63,6 +67,12 @@ test.describe('CRM lifecycle', () => {
 
   test('a lead is created through the form and appears in the list', async ({ page }) => {
     await login(page, workspace.adminEmail, workspace.adminPassword);
+    // The record fields of 12 Oct (M4-02, M4-03, M4-07, M4-10): a sub-source the
+    // administrator adds is offered under its source on the form, beside a
+    // campaign, nationality, tags and the main number's WhatsApp flag.
+    const catalogue = (await (await page.request.get('/api/v1/lead-sources')).json()) as { id: string; key: string }[];
+    const website = catalogue.find((source) => source.key === 'website')!;
+    await post(page.request, 'lead-sources', { name: SUB_SOURCE, parentId: website.id });
     await page.goto(at('/leads/new'));
 
     // 'Full name', not 'Full name *'. The asterisk used to be literal text in
@@ -72,6 +82,13 @@ test.describe('CRM lifecycle', () => {
     await page.getByLabel('Full name').fill(LEAD_NAME);
     await page.getByLabel('Email').fill(`lifecycle.${run}@example.test`);
     await page.getByLabel('Company').fill(COMPANY);
+    await page.getByLabel('Phone').fill(PHONE);
+    await page.getByLabel('On WhatsApp').check();
+    await page.getByLabel('Source', { exact: true }).selectOption({ label: 'Website' });
+    await page.getByLabel('Sub-source').selectOption({ label: SUB_SOURCE });
+    await page.getByLabel('Campaign').fill(`Spring ${run}`);
+    await page.getByLabel('Nationality').fill('Emirati');
+    await page.getByLabel('Tags').fill(`vip, ${TAG}`);
     await page.getByRole('button', { name: 'Create lead' }).click();
 
     // The id, not merely "some last path segment": `/sales/leads/[^/]+$` also
@@ -81,10 +98,65 @@ test.describe('CRM lifecycle', () => {
     leadId = page.url().split('/').pop()!;
     expect(leadId, 'lead id should be a cuid').toMatch(/^c[a-z0-9]{20,}$/);
     await expect(page.getByText(LEAD_NAME).first()).toBeVisible();
+    // The Overview shows what the form took; WhatsApp is offered because the flag was set.
+    await expect(page.getByText(`Website · ${SUB_SOURCE}`)).toBeVisible();
+    await expect(page.getByText(`Spring ${run}`)).toBeVisible();
+    await expect(page.getByText('Emirati')).toBeVisible();
+    await expect(page.getByText(TAG, { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'WhatsApp' })).toBeVisible();
 
     // And it is findable by the search the list offers, not merely present.
     await page.goto(at(`/leads?q=${encodeURIComponent(LEAD_NAME)}`));
     await expect(page.getByText(LEAD_NAME).first()).toBeVisible({ timeout: 30_000 });
+  });
+
+  test('a tag added on the lead page shows as a badge after a refresh', async ({ page }) => {
+    await login(page, workspace.adminEmail, workspace.adminPassword);
+    await page.goto(at(`/leads/${leadId}`));
+    await page.getByRole('button', { name: /More/ }).click();
+    await page.getByRole('button', { name: 'Edit details' }).click();
+    await page.getByLabel('Tags, comma-separated').fill(`vip, ${TAG}, ${TAG}-later`);
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByText(`${TAG}-later`, { exact: true })).toBeVisible({ timeout: 30_000 });
+    await page.reload();
+    await expect(page.getByText(`${TAG}-later`, { exact: true })).toBeVisible();
+  });
+
+  test('WhatsApp follows the main number’s flag, and another lead’s number is refused as on create', async ({
+    page,
+  }) => {
+    await login(page, workspace.adminEmail, workspace.adminPassword);
+    const theirPhone = `+97152${String(Date.now()).slice(-7)}`;
+    const holder = await post(page.request, 'leads', { fullName: `E2E Holder ${run}`, phone: theirPhone });
+    await page.goto(at(`/leads/${leadId}`));
+    const edit = async () => {
+      await page.getByRole('button', { name: /More/ }).click();
+      await page.getByRole('button', { name: 'Edit details' }).click();
+    };
+    const save = page.getByRole('button', { name: 'Save', exact: true });
+    const whatsapp = page.getByRole('button', { name: 'WhatsApp', exact: true });
+    await expect(whatsapp).toBeVisible();
+
+    // The main number's checkbox comes first; the second is the other-number form's.
+    await edit();
+    await page.getByLabel('On WhatsApp').first().uncheck();
+    await save.click();
+    await expect(whatsapp).toHaveCount(0, { timeout: 30_000 });
+    await page.reload();
+    await expect(page.getByText(LEAD_NAME).first()).toBeVisible();
+    await expect(whatsapp).toHaveCount(0);
+    await edit();
+    await page.getByLabel('On WhatsApp').first().check();
+    await save.click();
+    await expect(whatsapp).toBeVisible({ timeout: 30_000 });
+
+    // Create's sentence, above the details, and the editor stays open with the value.
+    await edit();
+    await page.getByLabel('Phone', { exact: true }).fill(theirPhone);
+    await save.click();
+    await expect(page.getByText(`already exists (${holder.reference}).`)).toBeVisible({ timeout: 30_000 });
+    await expect(save).toBeVisible();
+    await expect(page.getByLabel('Phone', { exact: true })).toHaveValue(theirPhone);
   });
 
   test('an activity, a task and a follow-up attach to the lead', async ({ page }) => {

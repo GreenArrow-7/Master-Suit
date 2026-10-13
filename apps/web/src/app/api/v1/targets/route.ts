@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
+import { assertTargetAssignee } from '@/lib/security/record-scope';
+import { visibilityWhere } from '@/lib/security/visibility';
 
 const createBody = z
   .object({
@@ -25,9 +27,22 @@ const createBody = z
   })
   .strict();
 
+/**
+ * Targets are lead work (every lead module, M5-06): a target is set for
+ * someone the caller may hand work to (`leads:ASSIGN` scope; below
+ * ORGANIZATION not themselves, `assertTargetAssignee`), and listed for whoever
+ * the caller's `leads:VIEW` scope covers. A team lead named anyone.
+ */
 export const POST = route(
-  { module: 'leads', productModule: 'SALES', action: 'ASSIGN', body: createBody, auditEvent: 'TARGET_CREATED' },
+  {
+    module: 'leads',
+    productModule: LEAD_MODULES,
+    action: 'ASSIGN',
+    body: createBody,
+    auditEvent: 'TARGET_CREATED',
+  },
   async ({ ctx, body }) => {
+    await assertTargetAssignee(ctx, body.userId);
     return prisma.employeeTarget.create({
       data: { tenantId: ctx.tenantId, createdById: ctx.actor.id, ...body },
     });
@@ -44,18 +59,12 @@ const listQuery = z
   .strict();
 
 export const GET = route(
-  { module: 'leads', productModule: 'SALES', action: 'VIEW', query: listQuery },
+  { module: 'leads', productModule: LEAD_MODULES, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     const now = new Date();
-    const scope = scopeFor(ctx, 'leads', 'VIEW');
-    const where: Record<string, unknown> = { tenantId: ctx.tenantId };
+    const where: Record<string, unknown> = await visibilityWhere(ctx, 'leads', 'VIEW', { ownerField: 'userId' });
 
-    if (SCOPE_RANK[scope] < SCOPE_RANK.ORGANIZATION) {
-      where.userId = query.userId ?? ctx.actor.id;
-    } else if (query.userId) {
-      where.userId = query.userId;
-    }
-
+    if (query.userId) where.userId = query.userId;
     if (query.campaignId) where.campaignId = query.campaignId;
     if (query.period) where.period = query.period;
     if (query.active === 'true') {

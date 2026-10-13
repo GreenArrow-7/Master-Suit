@@ -17,7 +17,12 @@ async function send(url: string, body?: unknown, method = 'POST') {
   return data;
 }
 
-/** What the call found, and — when there is something there — the lead. */
+/**
+ * What the call found, and — when there is something there — the lead. Each
+ * outcome picked is a logged call (M5-06); a redial that finds the same again
+ * (still not reachable) is logged with Called again, since a select fires nothing
+ * when its own value is picked.
+ */
 export function RecordActions({
   id,
   status,
@@ -38,9 +43,11 @@ export function RecordActions({
   // Held here, so the pick shows at once rather than snapping back until the refresh lands.
   const [outcome, setOutcome] = useState<string>(status);
   const [attached, setAttached] = useState(false);
+  const [logged, setLogged] = useState(false);
   const run = async (write: () => Promise<void>) => {
     setBusy(true);
     setError(null);
+    setLogged(false);
     try {
       await write();
     } catch (err) {
@@ -48,6 +55,18 @@ export function RecordActions({
     }
     setBusy(false);
   };
+  const log = (next: string) =>
+    run(async () => {
+      try {
+        await send(`/api/v1/cold-data/${id}`, { status: next }, 'PATCH');
+      } catch (err) {
+        setOutcome(status);
+        throw err;
+      }
+      // Not contacted is the reset, not a call.
+      setLogged(next !== 'NOT_CONTACTED');
+      router.refresh();
+    });
 
   if (convertedLeadId) return <SalesLink href={`/leads/${convertedLeadId}`}>Converted — open the lead</SalesLink>;
   // The page passes no id when the viewer cannot open the lead.
@@ -68,17 +87,8 @@ export function RecordActions({
         disabled={!canEdit || busy}
         style={{ fontSize: 'var(--lf-text-sm)', minWidth: 0 }}
         onChange={(e) => {
-          const next = e.target.value;
-          setOutcome(next);
-          void run(async () => {
-            try {
-              await send(`/api/v1/cold-data/${id}`, { status: next }, 'PATCH');
-            } catch (err) {
-              setOutcome(status);
-              throw err;
-            }
-            router.refresh();
-          });
+          setOutcome(e.target.value);
+          void log(e.target.value);
         }}
       >
         {Object.entries(STATUS_LABEL)
@@ -89,6 +99,11 @@ export function RecordActions({
             </option>
           ))}
       </select>
+      {canEdit && outcome !== 'NOT_CONTACTED' && (
+        <button className="lf-btn lf-btn--sm" disabled={busy} onClick={() => log(outcome)}>
+          Called again
+        </button>
+      )}
       {canConvert && (
         <button
           className="lf-btn lf-btn--sm"
@@ -103,6 +118,11 @@ export function RecordActions({
         >
           Make lead
         </button>
+      )}
+      {logged && (
+        <span className="lf-hint" role="status">
+          Call logged.
+        </span>
       )}
       {error && (
         <span className="lf-hint lf-hint--error" role="alert">

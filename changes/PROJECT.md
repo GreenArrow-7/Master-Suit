@@ -13,8 +13,8 @@ Paths below are under `apps/web/`.
 |---|---|---|---|
 | Sales | `sales/` | 75 | leads (spreadsheet import, close-out), contacts, accounts, opportunities, tasks, follow-ups; calls with AI coaching, analysis and audits; campaigns, inbox, forms, landing pages, social leads; dashboards, leadership (productivity, value, daily target); projects, listings, bookings, collections, commissions, proposals, portals |
 | HRMS | `people/` | 32 | employees, users, roles, departments; face check-in, attendance, shifts, roster, leave, overtime; payroll, payslips, WPS; recruitment, performance, documents, compliance |
-| Real Estate | `realty/` | 37 | the Sales property screens as a brokerage works them, plus Properties, allocation (data pool), events with QR passes, lead recycling |
-| Lead Eagle | `lead-eagle/` | 26 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads, follow-ups, tasks, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle and Google Ads lead forms (Admin → Integrations → Lead sources; any lead module). Every lead module also has QR Capture and Cold Data, and Lead Stages under Administration → Settings |
+| Real Estate | `realty/` | 40 | the Sales property screens as a brokerage works them, plus Properties, allocation (data pool), events with QR passes, lead recycling, website forms and landing pages |
+| Lead Eagle | `lead-eagle/` | 29 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads, follow-ups, tasks, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle and Google Ads lead forms (Admin → Integrations → Lead sources; any lead module), and a lead can be recorded as a Referral with its referrer. Every lead module also has QR Capture, Cold Data, Targets, website forms and landing pages (public `/f/{ws}/{key}` and `/l/{ws}/{slug}`; `/embed.js` frames a form on the brokerage's own site), and Lead Stages and Sources (the source and sub-source catalogue) under Administration → Settings |
 
 Outside the modules: `check-in` and `attendance` (every workspace), `admin/`
 (users, roles, work locations, settings, audit), `profile/`, and the platform
@@ -67,13 +67,24 @@ Node 22 or newer (CI uses 24).
   `atLeast(ctx, module, action, scope)` (`src/lib/security/rbac.ts`). A record
   loaded by id is checked with `assertRecordInScope`
   (`src/lib/security/record-scope.ts`): out of scope answers 404, like a
-  missing id. HR's predicates are in `src/services/hr/access.ts`. A manager's authority over
+  missing id. A lead's second owner (`secondaryOwnerId`) reaches it as its
+  owner does: lead reads go through `leadScope` (placing a waiting lead from
+  the Allocation queue excepted). HR's predicates are in `src/services/hr/access.ts`. A manager's authority over
   people stops at their reporting line (`reportingLine`, `src/services/hr/leave.ts`).
   A task is read under `tasks` wherever it shows, a lead's page included, and
   a follow-up under `leads` (`src/services/leads/nextFollowUp.ts`); a task is
   changed only where `tasks:VIEW` and `leads:EDIT` both reach its owner. The
   Follow-ups and Tasks lists and their APIs show everyone that scope covers, and
-  the caller's own under Mine (`?view=mine`; `workListScope`). A
+  the caller's own under Mine (`?view=mine`; `workListScope`). Cold data
+  follows the same rule (`coldDataScope(ctx, action)`), and working a cold
+  record logs a call on it (`Activity.dataRecordId`) that the daily target
+  and the check-out gate count (`services/targets/dailyBoard.ts`); making it a
+  lead moves those calls onto the lead. Targets (`api/v1/targets/**` but the
+  Sales-only manual tally `targets/progress`, the Targets page under Sales,
+  Real Estate and Lead Eagle) are every lead module's and follow the caller's
+  `leads` scope; below ORGANIZATION nobody sets, changes or deletes their own
+  (`targetReach`, `targetAssignees`). The daily board shows check-in times
+  only under the viewer's `attendanceScope`. A
   record loaded by id outside the caller's scope answers 404, as a missing id
   does (`src/lib/security/record-scope.ts`). TEAM, BRANCH and REGION mean the
   caller's resolved owners (`resolveOwnerIds`), never the whole workspace, in a
@@ -105,8 +116,10 @@ Node 22 or newer (CI uses 24).
   number it holds serialises it through `applyFieldSecurity`, `asLeadPhone` or
   `maskCallNumbers` (a call's lead side), and builds `tel:` and `wa.me` links
   with `dialable()`, which refuses a mask. A notification names the lead, not
-  its number. Still outside it: the campaign dialer, event invitees, cold data
-  and the inbox (`changes/2026-10-11-lead-contact-masking.md`).
+  its number. Cold Data shows a record's number as stored to its own agent and
+  as a lead's phone reads to the role otherwise. Still outside it: the
+  campaign dialer, event invitees and the inbox
+  (`changes/2026-10-11-lead-contact-masking.md`).
 - **Pipeline stages.** A workspace's stages are its own (Admin → Lead Stages).
   A new one gets Lead Eagle's twelve when it has Lead Eagle, else New,
   Qualified, Won, Lost (`provisionLeadWork`); a pipeline is never reseeded. A

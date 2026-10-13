@@ -127,6 +127,17 @@ describe('every tool declares what it reads', () => {
       expect(modelsRead(name!), `ALLOWED says ${key}, but ${name} no longer reads prisma.${model}`).toContain(model);
     }
   });
+
+  it('no search writes over its scope: filters are merged under AND (mergeWhere)', () => {
+    // visibilityWhere's OWN, TEAM, BRANCH and REGION scope is a top-level `OR`.
+    // `where.OR = …` for a search, or Object.assign of a filter that carries an
+    // OR, replaced it and left only `tenantId`: the whole workspace, to an agent.
+    expect(source).not.toMatch(/where\.OR\s*=/);
+    expect(source).not.toMatch(/Object\.assign\(where/);
+    for (const name of ['searchLeads', 'searchAccounts', 'searchContacts', 'searchOpportunities']) {
+      expect(bodyOf(name), name).toMatch(/mergeWhere\(scope/);
+    }
+  });
 });
 
 describe('the gate is AND, and it is declared rather than written out', () => {

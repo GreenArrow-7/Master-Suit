@@ -1,6 +1,7 @@
 import type { PermissionAction, StageCategory, VisibilityScope } from '@prisma/client';
 import type { TxClient } from '@/lib/db';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
+import { ensureLeadSources } from '@/services/leads/leadSources';
 
 type Grants = Record<string, PermissionAction[]>;
 
@@ -240,6 +241,8 @@ export async function provisionLeadWork(
 ): Promise<void> {
   if (!modules.some((module) => (LEAD_MODULES as readonly string[]).includes(module))) return;
   if (modules.includes('LEAD_EAGLE') && !before.includes('LEAD_EAGLE')) await provisionStarterRoles(tx, tenantId);
+  // The source catalogue (M4-03); workspaces from before it got it from the migration's backfill.
+  await ensureLeadSources(tx, tenantId);
   if ((await tx.leadStage.count({ where: { tenantId } })) === 0) {
     const stages = modules.includes('LEAD_EAGLE') ? LEAD_EAGLE_STAGES : GENERAL_STAGES;
     await tx.leadStage.createMany({ data: stages.map((stage, i) => ({ tenantId, position: i + 1, ...stage })) });

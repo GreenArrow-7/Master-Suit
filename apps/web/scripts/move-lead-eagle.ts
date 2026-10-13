@@ -59,12 +59,14 @@ export async function readCompany(db: Client, slug: string): Promise<LeadEagleCo
 
   const leads = await rows<LeadEagleCompany['leads'][number] & { otherPhones: unknown }>(
     `select l.id, l.reference, l."fullName", l.email, l."primaryPhone", l."statusId",
-            sub.name as "subStatus", l."lostReason", l."ownerId",
+            sub.name as "subStatus", l."lostReason", l."ownerId", l."secondaryOwnerId", l.nationality,
             nullif(concat_ws(' / ', src.name, subsrc.name), '') as source, l.campaign, l.tags, l.notes, l.score,
             l.purpose::text as purpose, l."propertyTypes"::text[] as "propertyTypes", l."bedroomsMin", l."bedroomsMax",
             l."budgetMin", l."budgetMax", l."preferredLocations", l."createdAt", l."lastActivityAt", l."nextFollowUpAt",
             coalesce((select array_agg(p.name order by p.name) from "LeadProject" lp join "Project" p on p.id = lp."projectId"
                        where lp."leadId" = l.id), '{}') as projects,
+            coalesce((select bool_or(p."isWhatsapp") from "LeadPhone" p where p."leadId" = l.id and p."isPrimary"), false)
+              as "primaryIsWhatsapp",
             coalesce((select json_agg(json_build_object('raw', p.raw, 'label', p.label, 'isWhatsapp', p."isWhatsapp"))
                         from "LeadPhone" p
                        where p."leadId" = l.id and not p."isPrimary"

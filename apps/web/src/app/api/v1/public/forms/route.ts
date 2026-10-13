@@ -1,21 +1,22 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
-import { prisma, withTx } from '@/lib/db';
+import { prisma } from '@/lib/db';
 import { NotFound, Conflict } from '@/lib/errors';
-import { enqueue } from '@/lib/queue';
-import { nextReference } from '@/services/shared/reference';
-import { normalizePhone } from '@/services/leads/normalizePhone';
-import { findDuplicates } from '@/services/leads/findDuplicates';
+import { assertAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitlements';
+import { takeEnquiry } from '@/services/leads/intake';
+import { leadSourceIdFor } from '@/services/leads/leadSources';
 import { utmFrom } from '@/services/leads/utm';
 
 /**
  * The public face of a lead-capture form. Unauthenticated by design: the
- * workspace slug + form key only reach forms that are PUBLISHED and public, so
- * a guessed key exposes nothing that was not put on the internet on purpose.
+ * workspace slug + form key only reach forms that are PUBLISHED and public, of
+ * a workspace that still owns a lead module, so a guessed key exposes nothing
+ * that was not put on the internet on purpose.
  *
- * A submission writes two rows — the FormSubmission as evidence, and the Lead
- * the sales team actually works — then hands the lead to the same distribution
- * and automation queues a manually created lead goes through.
+ * A submission becomes a lead through the same intake the portals and QR codes
+ * use (`takeEnquiry`): attached to the lead that already holds the number or
+ * email, audited, on the first-contact clock, handed to distribution and the
+ * automations. The FormSubmission row is kept beside it as evidence.
  */
 const query = z.object({
   workspace: z.string().min(2).max(64),
@@ -28,6 +29,11 @@ async function publicForm(workspaceSlug: string, formKey: string) {
     select: { id: true },
   });
   if (!tenant) throw NotFound('Form');
+  // A workspace whose lead module has lapsed has no public form: nobody there
+  // could open the lead it would make.
+  await assertAnyModuleEntitlement(tenant.id, LEAD_MODULES).catch(() => {
+    throw NotFound('Form');
+  });
   const form = await prisma.form.findFirst({
     where: { tenantId: tenant.id, key: formKey, state: 'PUBLISHED', isPublic: true, deletedAt: null },
     include: { fields: { orderBy: { position: 'asc' } } },
@@ -61,6 +67,8 @@ const submitBody = z
     workspace: z.string().min(2).max(64),
     form: z.string().min(2).max(60),
     answers: z.record(z.string(), z.string().max(2000)).refine((a) => Object.keys(a).length <= 40),
+    /** The landing page the form was filled in on, when it was one. */
+    page: z.string().min(2).max(60).optional(),
   })
   .strict();
 
@@ -74,106 +82,74 @@ export const POST = route(
       throw Conflict(`Please fill in: ${missing.map((field) => field.label).join(', ')}.`);
     }
 
-    // Mapped answers become the lead's own columns; everything else rides in
-    // the submission payload.
+    // Mapped answers become the lead's own columns; the rest go on the timeline
+    // note, as a portal enquiry's details do. All of them stay in the submission.
+    // Contact details never go on the note, which nobody masks: another number
+    // joins the lead's numbers, another address stays in the submission.
     const mapped: Record<string, string> = {};
+    const phones: string[] = [];
+    const details: string[] = [];
     for (const field of form.fields) {
       const answer = body.answers[field.key]?.trim();
-      if (field.mapsToField && answer) mapped[field.mapsToField] = answer;
+      if (!answer) continue;
+      if (field.mapsToField) mapped[field.mapsToField] = answer;
+      else if (field.type === 'PHONE') phones.push(answer);
+      else if (field.type !== 'EMAIL') details.push(`${field.label}: ${answer}`);
     }
     if (!mapped.fullName) throw Conflict('Please tell us your name.');
 
-    const stage = await prisma.leadStage.findFirst({
-      where: { tenantId: tenant.id, isDefault: true },
+    // Filled in on one of the workspace's landing pages: that page's lead, and
+    // its conversion. A page the form is not on is a plain form submission.
+    const page = body.page
+      ? await prisma.landingPage.findFirst({
+          where: { tenantId: tenant.id, slug: body.page, formId: form.id, state: 'PUBLISHED', deletedAt: null },
+          select: { id: true, slug: true, name: true },
+        })
+      : null;
+
+    // Form and landing-page leads both count under the workspace's Website entry (M4-03).
+    const sourceId = await leadSourceIdFor(prisma, tenant.id, 'website');
+    const result = await takeEnquiry(
+      tenant.id,
+      {
+        fullName: mapped.fullName,
+        email: mapped.email?.toLowerCase() ?? null,
+        phones: mapped.phone ? [mapped.phone, ...phones] : phones,
+        company: mapped.company ?? null,
+        message: null,
+        reference: null,
+        details,
+      },
+      page
+        ? {
+            label: `Landing page: ${page.name}`,
+            source: 'LANDING_PAGE',
+            sourceDetail: `landing:${page.slug}`,
+            sourceId,
+          }
+        : { label: `Website form: ${form.name}`, source: 'PUBLIC_FORM', sourceDetail: form.key, sourceId },
+    );
+    if ('skipped' in result) throw Conflict('Please tell us your name.');
+
+    await prisma.formSubmission.create({
+      data: {
+        tenantId: tenant.id,
+        formId: form.id,
+        leadId: result.leadId,
+        payload: body.answers,
+        ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+        userAgent: req.headers.get('user-agent')?.slice(0, 300) ?? null,
+        referrerUrl: req.headers.get('referer')?.slice(0, 500) ?? null,
+        utm: utmFrom(req.headers.get('referer')),
+      },
       select: { id: true },
     });
-    if (!stage) throw NotFound('Form');
-
-    const phoneNormalized = mapped.phone ? normalizePhone(mapped.phone) : null;
-
-    /**
-     * The same duplicate check every other entry point already runs.
-     *
-     * This endpoint used to call `lead.create` unconditionally, so a customer
-     * who enquired twice became two leads with two owners — and the tenant's
-     * configured DuplicateRule rows, which the in-app lead form obeys, were
-     * simply not consulted on the one channel strangers actually use.
-     *
-     * An existing match attaches the submission to that lead instead of opening
-     * a second one. It deliberately does not answer with a Conflict the way
-     * createLead does: this caller is a member of the public, and "that email is
-     * already known to us" is an enumeration oracle as well as a dead end for
-     * someone simply asking to be contacted.
-     */
-    const duplicates = await findDuplicates(tenant.id, {
-      email: mapped.email ?? null,
-      phoneNormalized,
-      fullName: mapped.fullName ?? null,
-    });
-    const existing = duplicates[0];
-
-    const { lead } = await withTx(tenant.id, async (tx) => {
-      const lead = existing
-        ? { id: existing.id, reference: existing.reference }
-        : await tx.lead.create({
-            data: {
-              tenantId: tenant.id,
-              reference: await nextReference(tx, tenant.id, 'LEAD'),
-              fullName: mapped.fullName!,
-              email: mapped.email ?? null,
-              phone: mapped.phone ?? null,
-              phoneNormalized,
-              company: mapped.company ?? null,
-              stageId: stage.id,
-              source: 'PUBLIC_FORM',
-              sourceDetail: form.key,
-              // They wrote to us asking to be contacted; that is implied consent,
-              // not granted-in-writing.
-              consentStatus: 'IMPLIED',
-            },
-            select: { id: true, reference: true },
-          });
-      const submission = await tx.formSubmission.create({
-        data: {
-          tenantId: tenant.id,
-          formId: form.id,
-          leadId: lead.id,
-          payload: body.answers,
-          ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
-          userAgent: req.headers.get('user-agent')?.slice(0, 300) ?? null,
-          referrerUrl: req.headers.get('referer')?.slice(0, 500) ?? null,
-          utm: utmFrom(req.headers.get('referer')),
-        },
-        select: { id: true },
-      });
-      return { lead, submission };
-    });
-
-    // A submission that arrived through a landing page scores on that page's
-    // conversion column. The referer names the page; anything else is a direct
-    // form link and belongs to no page.
-    const referer = req.headers.get('referer') ?? '';
-    const viaPage = new RegExp(`/l/${body.workspace}/([a-z0-9-]+)`).exec(referer)?.[1];
-    if (viaPage) {
+    if (page) {
+      // A lost increment is not worth a failed submission.
       await prisma.landingPage
-        .updateMany({
-          where: { tenantId: tenant.id, slug: viaPage, formId: form.id },
-          data: { submissionCount: { increment: 1 } },
-        })
+        .update({ where: { tenantId: tenant.id, id: page.id }, data: { submissionCount: { increment: 1 } } })
         .catch(() => {});
     }
-
-    // The same after-commit pipeline a manually created lead gets: an owner via
-    // round-robin, and any published automations on LEAD created.
-    await Promise.all([
-      enqueue('distribution', 'assign-lead', { tenantId: tenant.id, leadId: lead.id }),
-      enqueue('automation', 'trigger', {
-        tenantId: tenant.id,
-        event: 'record.created',
-        object: 'LEAD',
-        recordId: lead.id,
-      }),
-    ]);
 
     return { ok: true, message: form.successMessage ?? 'Thank you — we will be in touch shortly.' };
   },

@@ -84,6 +84,10 @@ Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Resource-Policy: same-origin
 ```
 
+One exception to `frame-ancestors 'none'`: the public lead form,
+`/f/{workspace}/{form key}`, answers `frame-ancestors *`, because `/embed.js`
+frames it on a brokerage's own site. Nothing else may be framed.
+
 `geolocation=(self)` and `camera=(self)` are needed by the field-sales module and are
 requested only on those routes.
 

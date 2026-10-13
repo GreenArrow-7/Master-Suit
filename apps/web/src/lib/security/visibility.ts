@@ -28,6 +28,12 @@ export interface VisibilityOptions {
   ownerField?: string;
   /** Include ownerless records. Requires ASSIGN at TEAM or wider — see docs/01 §2. */
   includeUnassigned?: boolean;
+  /**
+   * Further columns holding a person who works the record as its owner does: a
+   * record is in scope when any of them names one of the resolved owners. A
+   * lead's `secondaryOwnerId` (`leadScope`, lib/security/record-scope.ts).
+   */
+  coOwnerFields?: readonly string[];
   /** Inside `withTx`, its `tx` — see the note on VisibilityDb. */
   db?: VisibilityDb;
 }
@@ -46,7 +52,9 @@ export async function visibilityWhere(
   if (scope === 'NONE') throw Forbidden();
 
   const ownerIds = await resolveOwnerIds(ctx, scope, opts.db);
-  const clauses: Record<string, unknown>[] = [{ [ownerField]: { in: ownerIds } }];
+  const clauses: Record<string, unknown>[] = [ownerField, ...(opts.coOwnerFields ?? [])].map((field) => ({
+    [field]: { in: ownerIds },
+  }));
 
   const mayClaim = ['ASSIGN', 'REASSIGN'].some((a) => {
     const s = scopeFor(ctx, module, a as Action);

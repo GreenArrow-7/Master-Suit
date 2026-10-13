@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
+import { audit } from '@/lib/security/audit';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
-import { visibilityWhere } from '@/lib/security/visibility';
+import { leadScope } from '@/lib/security/record-scope';
 import { coldDataScope } from '@/services/leads/coldData';
 import { takeEnquiry } from '@/services/leads/intake';
 
@@ -23,8 +24,9 @@ export const POST = route(
     // Audited by the intake, as this person, naming the lead it made or touched.
   },
   async ({ ctx, params }) => {
+    // A record the caller may work (the lead rule at EDIT); outside it, not found.
     const record = await prisma.dataRecord.findFirst({
-      where: { ...coldDataScope(ctx), id: params.id, convertedLeadId: null },
+      where: { ...(await coldDataScope(ctx, 'EDIT')), id: params.id, convertedLeadId: null },
     });
     if (!record) throw NotFound('Record');
 
@@ -49,15 +51,36 @@ export const POST = route(
     );
     if (!result || !('leadId' in result)) throw NotFound('Record');
 
-    await prisma.dataRecord.update({
-      where: { tenantId: ctx.tenantId, id: record.id },
-      data: { status: 'CONVERTED', convertedLeadId: result.leadId, convertedAt: new Date() },
+    const { leadId } = result;
+    await withTx(ctx.tenantId, async (tx) => {
+      await tx.dataRecord.update({
+        where: { tenantId: ctx.tenantId, id: record.id },
+        data: { status: 'CONVERTED', convertedLeadId: leadId, convertedAt: new Date() },
+      });
+      // Its calls (M5-06) become the lead's history, re-pointed, not copied; they
+      // were the work, so the lead is not "handed over and untouched" at check-out.
+      const { count } = await tx.activity.updateMany({
+        where: { tenantId: ctx.tenantId, dataRecordId: record.id },
+        data: { leadId },
+      });
+      if (count === 0) return;
+      await tx.lead.updateMany({ where: { tenantId: ctx.tenantId, id: leadId }, data: { lastActivityAt: new Date() } });
+      await audit(
+        ctx,
+        {
+          event: 'RECORD_UPDATED',
+          objectType: 'lead',
+          recordId: leadId,
+          metadata: { action: 'lead.cold_calls_attached', dataRecordId: record.id, calls: count },
+        },
+        tx,
+      );
     });
     // The match may be another agent's lead; the touch and the owner's bell still
     // happen (intake.ts), but the screen must not open a 404. Same rule as the
     // lead page, so the flag can never disagree with it.
     const visible = !!(await prisma.lead.findFirst({
-      where: { ...(await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true })), id: result.leadId },
+      where: { ...(await leadScope(ctx, 'VIEW', { includeUnassigned: true })), id: leadId },
       select: { id: true },
     }));
     return { ...result, visible };

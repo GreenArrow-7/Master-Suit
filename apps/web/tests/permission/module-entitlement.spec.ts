@@ -335,6 +335,25 @@ describe('a screen or route outside the plan says which products carry it', () =
     );
   });
 
+  it('the website forms and landing pages open under whichever lead product the plan has (M6-06, M6-09)', async () => {
+    for (const root of ['forms', 'landing-pages']) {
+      const leadEagle = `/lead-eagle/${root}`;
+      const realty = `/realty/${root}`;
+      const sales = `/sales/${root}`;
+      expect(await sentTo(LeadEagleLayout(open(salesOnly, leadEagle)))).toBe(at(salesOnly, sales));
+      expect(await sentTo(RealtyLayout(open(salesOnly, realty)))).toBe(at(salesOnly, sales));
+      expect(await sentTo(SalesLayout(open(realtyOnly, sales)))).toBe(at(realtyOnly, realty));
+      expect(await sentTo(LeadEagleLayout(open(realtyOnly, leadEagle)))).toBe(at(realtyOnly, realty));
+      expect(await sentTo(SalesLayout(open(leadEagleOnly, sales)))).toBe(at(leadEagleOnly, leadEagle));
+      expect(await sentTo(RealtyLayout(open(leadEagleOnly, realty)))).toBe(at(leadEagleOnly, leadEagle));
+      expect(await RealtyLayout(open(realtyOnly, realty))).toBe('the screen');
+      expect(await LeadEagleLayout(open(leadEagleOnly, leadEagle))).toBe('the screen');
+    }
+    expect(await shown(await LeadEagleLayout(open(hrOnly, '/lead-eagle/forms')))).toContain(
+      'Forms is part of Sales, Real Estate or Lead Eagle.',
+    );
+  });
+
   it('Lead Eagle’s folder, in a workspace with no lead product, names every product that has leads', async () => {
     expect(await shown(await LeadEagleLayout(open(hrOnly, '/lead-eagle/leads')))).toContain(
       'Leads is part of Sales, Real Estate or Lead Eagle.',
@@ -350,7 +369,7 @@ describe('a screen or route outside the plan says which products carry it', () =
     expect(page).not.toContain('platform provider');
   });
 
-  it('every module layout says so: HR, Sales alone, and lead stages, which any lead product carries', async () => {
+  it('every module layout says so: HR, Sales alone, and lead stages and sources, which any lead product carries', async () => {
     expect(await shown(await PeopleLayout(open(salesOnly, '/people/leave')))).toContain('Leave is part of HR.');
     expect(await shown(await SalesLayout(open(realtyOnly, '/sales/opportunities')))).toContain(
       'Opportunities is part of Sales.',
@@ -358,6 +377,10 @@ describe('a screen or route outside the plan says which products carry it', () =
     const { default: LeadStagesLayout } = await import('@/app/(workspace)/[workspaceSlug]/admin/lead-stages/layout');
     expect(await shown(await LeadStagesLayout(open(hrOnly, '/admin/lead-stages')))).toContain(
       'Lead stages is part of Sales, Real Estate or Lead Eagle.',
+    );
+    const { default: LeadSourcesLayout } = await import('@/app/(workspace)/[workspaceSlug]/admin/lead-sources/layout');
+    expect(await shown(await LeadSourcesLayout(open(hrOnly, '/admin/lead-sources')))).toContain(
+      'Lead sources is part of Sales, Real Estate or Lead Eagle.',
     );
   });
 

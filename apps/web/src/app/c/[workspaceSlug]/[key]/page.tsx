@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
+import { assertAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitlements';
 import LeadForm from '../../../f/[workspaceSlug]/[formKey]/LeadForm';
 
 export const metadata = { title: 'Get in touch' };
@@ -24,6 +25,8 @@ export default async function CapturePage({ params }: { params: Promise<{ worksp
     select: { id: true, displayName: true },
   });
   if (!tenant) notFound();
+  // A workspace whose lead modules have lapsed collects no leads: its form is gone, as the API says.
+  await assertAnyModuleEntitlement(tenant.id, LEAD_MODULES).catch(() => notFound());
   const link = await prisma.captureLink.findFirst({
     where: { tenantId: tenant.id, key, isActive: true },
     select: { id: true, headline: true },

@@ -25,13 +25,17 @@ export const REALTY_SHARED_ROOTS = [
   'portals',
   'capture-links',
   'cold-data',
+  'forms',
+  'landing-pages',
+  'targets',
 ] as const;
 
 /**
  * The registers Lead Eagle shares with Sales, under `/{slug}/lead-eagle/`: Real
  * Estate's, without the money and marketing ones (collections, commissions,
- * events, proposals, portals). tests/unit/lead-eagle-routes.spec.ts holds the
- * re-exports true.
+ * events, proposals, portals). The website forms and landing pages are lead
+ * sources, not marketing, so every lead module has them (M6-06, M6-09).
+ * tests/unit/lead-eagle-routes.spec.ts holds the re-exports true.
  */
 export const LEAD_EAGLE_SHARED_ROOTS = [
   'leads',
@@ -46,6 +50,9 @@ export const LEAD_EAGLE_SHARED_ROOTS = [
   'reports',
   'capture-links',
   'cold-data',
+  'forms',
+  'landing-pages',
+  'targets',
 ] as const;
 
 /** Each module folder and its product, in the order a link prefers them: Sales, the fullest, first. */

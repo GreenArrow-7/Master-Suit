@@ -16,6 +16,7 @@ import { csvHeader, csvRow, type CsvColumn } from '@/lib/csv';
 import { conversion, funnel, names, rank, subtree, type Range } from './rollups';
 import type { Ctx } from '@/lib/security/rbac';
 import { LEAD_SOURCES } from '@/lib/integrations/leadSources';
+import { leadSourceLabel } from '@/services/leads/leadSources';
 
 /**
  * Every query in this module goes to `prismaRead` — the replica when
@@ -84,9 +85,22 @@ const SOURCE_DETAIL: Record<string, string> = {
   capture: 'QR capture',
   data: 'Cold data',
 };
-const sourceLabel = (source: string, detail: string | null) =>
-  SOURCE_DETAIL[detail?.split(':')[0] ?? ''] ??
-  (source === 'API' ? source : source.charAt(0) + source.slice(1).toLowerCase().replace(/_/g, ' '));
+const sourceLabel = (source: string, detail: string | null) => {
+  // A referral's detail is whoever referred it, typed by hand: never an intake key.
+  const key = source === 'REFERRAL' ? '' : (detail?.split(':')[0] ?? '');
+  return Object.hasOwn(SOURCE_DETAIL, key)
+    ? SOURCE_DETAIL[key]!
+    : source === 'API'
+      ? source
+      : source.charAt(0) + source.slice(1).toLowerCase().replace(/_/g, ' ');
+};
+/** The workspace's catalogue entry where the lead has one (M4-03), else the label above. */
+const catalogueLabel = (lead: {
+  source: string;
+  sourceDetail: string | null;
+  leadSource: Parameters<typeof leadSourceLabel>[0];
+}) => leadSourceLabel(lead.leadSource, ' / ') ?? sourceLabel(lead.source, lead.sourceDetail);
+const LEAD_SOURCE = { select: { name: true, parent: { select: { name: true } } } };
 
 export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise<Report> {
   const tenantId = ctx.tenantId;
@@ -434,7 +448,7 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
     case 'source-to-booking': {
       const leads = await prismaRead.lead.findMany({
         where: { tenantId, deletedAt: null, createdAt: within, ...owned(userIds) },
-        select: { id: true, source: true, sourceDetail: true },
+        select: { id: true, source: true, sourceDetail: true, leadSource: LEAD_SOURCE },
       });
       // ponytail: the period's lead ids as one IN list; a join in SQL if a range ever holds 100k leads.
       const leadId = { in: leads.map((l) => l.id) };
@@ -449,7 +463,7 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
           select: { leadId: true, saleValue: true },
         }),
       ]);
-      const sourceOf = new Map(leads.map((l) => [l.id, sourceLabel(l.source, l.sourceDetail)]));
+      const sourceOf = new Map(leads.map((l) => [l.id, catalogueLabel(l)]));
       const by = new Map<string, { leads: number; visited: number; bookings: number; value: Prisma.Decimal }>();
       const row = (source: string) => {
         const r = by.get(source) ?? { leads: 0, visited: 0, bookings: 0, value: new Prisma.Decimal(0) };
@@ -490,15 +504,18 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
     }
     case 'source-analysis':
     case 'lead-quality': {
-      const [bySource, converted] = await Promise.all([
+      // Grouped by the catalogue entry where a lead has one, else its enum (M4-03).
+      const [grouped, convertedRows, entries] = await Promise.all([
         prismaRead.lead.groupBy({
-          by: ['source'],
+          by: ['source', 'sourceId'],
           where: { tenantId, deletedAt: null, createdAt: within, ...owned(userIds) },
-          _count: { _all: true },
-          _avg: { score: true, firstResponseMins: true },
+          // Sums and counts, not means: two groups that share a label add up exactly,
+          // and a lead not yet answered (firstResponseMins null) counts in neither.
+          _count: { _all: true, firstResponseMins: true },
+          _sum: { score: true, firstResponseMins: true },
         }),
         prismaRead.lead.groupBy({
-          by: ['source'],
+          by: ['source', 'sourceId'],
           where: {
             tenantId,
             deletedAt: null,
@@ -508,8 +525,33 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
           },
           _count: { _all: true },
         }),
+        prismaRead.leadSource.findMany({ where: { tenantId }, select: { id: true, ...LEAD_SOURCE.select } }),
       ]);
-      const convertedBy = new Map(converted.map((c) => [c.source, c._count._all]));
+      const entry = new Map(entries.map((e) => [e.id, e]));
+      const labelOf = (row: { source: string; sourceId: string | null }) =>
+        leadSourceLabel(row.sourceId ? entry.get(row.sourceId) : null, ' / ') ??
+        row.source.toString().replace(/_/g, ' ').toLowerCase();
+      // Two entries can share a label only when one is the enum's: fold them together.
+      const bySource = new Map<
+        string,
+        { source: string; leads: number; score: number; answered: number; minutes: number }
+      >();
+      for (const row of grouped) {
+        const source = labelOf(row);
+        const prior = bySource.get(source) ?? { source, leads: 0, score: 0, answered: 0, minutes: 0 };
+        bySource.set(source, {
+          source,
+          leads: prior.leads + row._count._all,
+          score: prior.score + (row._sum.score ?? 0),
+          answered: prior.answered + row._count.firstResponseMins,
+          minutes: prior.minutes + (row._sum.firstResponseMins ?? 0),
+        });
+      }
+      const convertedBy = new Map<string, number>();
+      for (const row of convertedRows) {
+        const source = labelOf(row);
+        convertedBy.set(source, (convertedBy.get(source) ?? 0) + row._count._all);
+      }
 
       // Two menu entries, one query. Volume and quality are the same grouping
       // asked two ways, and splitting them would be two chances to disagree
@@ -534,18 +576,18 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
             ],
         // Both shapes carry `leads` so the sort below has one thing to read,
         // and the column list decides which keys are actually shown.
-        rows: bySource
+        rows: [...bySource.values()]
           .map((s): Record<string, Cell> => {
-            const total = s._count._all;
+            const total = s.leads;
             const won = convertedBy.get(s.source) ?? 0;
             const rate = total === 0 ? null : `${Math.round((won / total) * 1000) / 10}%`;
             return {
-              source: s.source.toString().replace(/_/g, ' ').toLowerCase(),
+              source: s.source,
               leads: total,
               converted: won,
               rate,
-              score: s._avg.score === null ? null : Math.round(s._avg.score),
-              response: s._avg.firstResponseMins === null ? null : `${Math.round(s._avg.firstResponseMins)} min`,
+              score: total === 0 ? null : Math.round(s.score / total),
+              response: s.answered === 0 ? null : `${Math.round(s.minutes / s.answered)} min`,
             };
           })
           .sort((a, b) => Number(b.leads ?? 0) - Number(a.leads ?? 0)),

@@ -1,8 +1,7 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { mergeWhere } from '@/lib/api/where';
-import { visibilityWhere } from '@/lib/security/visibility';
-import { assignableUsers } from '@/lib/security/record-scope';
+import { assignableUsers, leadScope } from '@/lib/security/record-scope';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
@@ -71,7 +70,7 @@ export default async function LeadsPage({
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['leads', 'VIEW'] });
   const page = Math.max(1, Number(params.page) || 1);
 
-  const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
+  const scope = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
   const now = new Date();
 
   /**
@@ -132,6 +131,7 @@ export default async function LeadsPage({
         company: true,
         score: true,
         grade: true,
+        tags: true,
         priority: true,
         slaState: true,
         nextFollowUpAt: true,

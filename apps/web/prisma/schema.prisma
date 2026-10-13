@@ -167,6 +167,7 @@ enum RecordSource {
   CHAT
   MARKETPLACE
   AUTOMATION
+  REFERRAL
 }
 
 enum TaskCategory {
@@ -635,6 +636,7 @@ model Tenant {
   proposals           Proposal[]
   proposalItems       ProposalItem[]
   leadPhones          LeadPhone[]
+  leadSources         LeadSource[]
   captureLinks        CaptureLink[]
   dataRecords         DataRecord[]
 
@@ -1204,6 +1206,7 @@ model User {
   teams               UserTeam[]
   passwordResetTokens PasswordResetToken[]
   ownedLeads          Lead[]                @relation("LeadOwner")
+  secondaryLeads      Lead[]                @relation("LeadSecondaryOwner")
   ownedConversations  Conversation[]        @relation("ConversationOwner")
   metaRoutings        MetaLeadFormRouting[] @relation("MetaRoutingOwner")
   socialComments      SocialComment[]       @relation("SocialCommentOwner")
@@ -3335,8 +3338,16 @@ model Lead {
   source                RecordSource  @default(MANUAL)
   sourceDetail          String?
   subSource             String?
+  /// The workspace's own catalogue entry (LeadSource): the sub-source when one was chosen, else the source.
+  sourceId              String?
+  /// Free text: the campaign as the team names it, beside the Sales register's `campaignId`.
+  campaignName          String?
   campaignId            String?
   productInterestId     String?
+  nationality           String?
+  /// The main number is on WhatsApp: on unless someone switches it off (a landline); the
+  /// other numbers carry their own flag (LeadPhone).
+  phoneIsWhatsapp       Boolean       @default(true)
   stageId               String
   /// Why it is in its current stage: the reason or sub-status given on entry.
   stageReason           String?
@@ -3347,6 +3358,8 @@ model Lead {
   priority              Priority      @default(MEDIUM)
   conversionProbability Int?
   ownerId               String?
+  /// A second person who works the lead: reaches it as its owner does.
+  secondaryOwnerId      String?
   teamId                String?
   branchId              String?
   regionId              String?
@@ -3380,6 +3393,8 @@ model Lead {
 
   stage          LeadStage               @relation(fields: [stageId], references: [id])
   owner          User?                   @relation("LeadOwner", fields: [ownerId], references: [id])
+  secondaryOwner User?                   @relation("LeadSecondaryOwner", fields: [secondaryOwnerId], references: [id])
+  leadSource     LeadSource?             @relation(fields: [sourceId], references: [id])
   account        Account?                @relation(fields: [accountId], references: [id])
   campaign       Campaign?               @relation(fields: [campaignId], references: [id])
   customValues   LeadCustomFieldValue[]
@@ -3416,8 +3431,36 @@ model Lead {
   /// The list view: every cursor page orders by (updatedAt DESC, id DESC).
   @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
   @@index([tenantId, ownerId, updatedAt(sort: Desc)])
+  @@index([tenantId, secondaryOwnerId])
   @@index([accountId])
   @@index([campaignId])
+  @@index([sourceId])
+}
+
+/// The workspace's own catalogue of where leads come from: sources, each with
+/// its sub-sources (`parentId`). A lead points at the entry chosen
+/// (`Lead.sourceId`); its `source` enum stays what the pipeline wrote. Seeded
+/// with the portals, ad networks, website, walk-in, referral, cold data and
+/// other on first use (services/leads/leadSources.ts); intake maps a portal
+/// connection to the entry whose key is the connection's kind.
+model LeadSource {
+  id        String   @id @default(cuid())
+  tenantId  String
+  parentId  String?
+  key       String
+  name      String
+  isActive  Boolean  @default(true)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent   LeadSource?  @relation("LeadSourceTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children LeadSource[] @relation("LeadSourceTree")
+  leads    Lead[]
+
+  @@unique([tenantId, key])
+  @@index([tenantId, parentId, position])
 }
 
 /// A lead's numbers beyond `Lead.phone`, which stays the number the screens
@@ -3500,9 +3543,11 @@ model DataRecord {
   updatedAt       DateTime   @updatedAt
   createdById     String?
 
-  tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  owner         User?  @relation("DataRecordOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  convertedLead Lead?  @relation(fields: [convertedLeadId], references: [id], onDelete: SetNull)
+  tenant        Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner         User?      @relation("DataRecordOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  convertedLead Lead?      @relation(fields: [convertedLeadId], references: [id], onDelete: SetNull)
+  /// The calls made on it (M5-06).
+  activities    Activity[]
 
   @@index([tenantId, status, createdAt])
   @@index([tenantId, ownerId, status])
@@ -4062,6 +4107,8 @@ model Activity {
   accountId     String?
   contactId     String?
   ticketId      String?
+  /// The cold record a call was made on (M5-06): a cold call is a logged call.
+  dataRecordId  String?
   ownerId       String?
   occurredAt    DateTime     @default(now())
   outcome       String?
@@ -4086,6 +4133,7 @@ model Activity {
   opportunity Opportunity? @relation(fields: [opportunityId], references: [id])
   account     Account?     @relation(fields: [accountId], references: [id])
   owner       User?        @relation("ActivityOwner", fields: [ownerId], references: [id])
+  dataRecord  DataRecord?  @relation(fields: [dataRecordId], references: [id], onDelete: SetNull)
   documents   Document[]
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -4093,6 +4141,7 @@ model Activity {
   @@index([tenantId, leadId, occurredAt(sort: Desc)])
   @@index([tenantId, ownerId, occurredAt(sort: Desc)])
   @@index([tenantId, typeId, occurredAt(sort: Desc)])
+  @@index([tenantId, dataRecordId, occurredAt(sort: Desc)])
   @@index([tenantId, opportunityId])
   @@index([accountId])
 }
