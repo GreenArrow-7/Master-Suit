@@ -34,11 +34,23 @@ test.describe('Merging two leads, and an import checked before it runs', () => {
   // Leads are unique by number in a workspace: every number here is this run's.
   const digits = String(Date.now()).slice(-7);
 
-  /** No sideways scroll at phone width. */
+  /** No sideways scroll at phone width, in the light theme and in Dark Classic. */
   async function fitsPhone(page: Page) {
     const desktop = page.viewportSize()!;
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    const surface = () => page.evaluate(() => getComputedStyle(document.querySelector('.lf-card')!).backgroundColor);
+    const light = await surface();
+    await page.evaluate(() => {
+      document.documentElement.dataset.theme = 'dark';
+    });
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark');
+    // The cards follow the theme's tokens: no colour of their own.
+    expect(await surface()).not.toBe(light);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await page.evaluate(() => {
+      delete document.documentElement.dataset.theme;
+    });
     await page.setViewportSize(desktop);
   }
 
@@ -79,6 +91,17 @@ test.describe('Merging two leads, and an import checked before it runs', () => {
       expect(res.status(), await res.text()).toBeLessThan(300);
     });
 
+    await test.step('with the two selected on the lead list, Merge opens the compare screen for them', async () => {
+      await page.goto(at('/lead-eagle/leads'));
+      await page.getByRole('checkbox', { name: `Select Merge Kept ${run}` }).check();
+      await expect(page.getByRole('link', { name: 'Merge', exact: true })).toHaveCount(0);
+      await page.getByRole('checkbox', { name: `Select Merge Other ${run}` }).check();
+      await expect(page.getByRole('link', { name: 'Merge', exact: true })).toHaveAttribute(
+        'href',
+        at(`/lead-eagle/leads/${kept.id}/merge?with=${other.id}`),
+      );
+    });
+
     await test.step('the lead page names the duplicate and opens the compare screen', async () => {
       await page.goto(at(`/lead-eagle/leads/${kept.id}`));
       await expect(page.getByText(`May be the same person as ${other.reference}`)).toBeVisible();
@@ -95,7 +118,8 @@ test.describe('Merging two leads, and an import checked before it runs', () => {
 
     await test.step('merging lands on the kept lead, with the other’s note on its timeline', async () => {
       await page.getByRole('button', { name: `Merge into ${kept.reference}` }).click();
-      await expect(page).toHaveURL(new RegExp(`/${eagle.slug}/lead-eagle/leads/${kept.id}$`));
+      // next dev compiles the merge route and the lead page on first use: up to 20 s each.
+      await expect(page).toHaveURL(new RegExp(`/${eagle.slug}/lead-eagle/leads/${kept.id}$`), { timeout: 60_000 });
       await expect(page.getByText('Other Co').first()).toBeVisible();
       await expect(page.getByText(`May be the same person as`)).toHaveCount(0);
       await page.getByRole('tab', { name: 'Timeline' }).click();
@@ -133,7 +157,7 @@ test.describe('Merging two leads, and an import checked before it runs', () => {
 
     await page.getByRole('button', { name: 'Check first' }).click();
     const checked = page.getByRole('status').filter({ hasText: 'Checked, nothing saved' });
-    await expect(checked).toContainText('2 would be created · 1 updated · 1 refused');
+    await expect(checked).toContainText('2 would be created · 1 updated · 1 refused', { timeout: 60_000 });
     await fitsPhone(page);
     const before = await (await page.request.get(`/api/v1/leads?q=${encodeURIComponent(`Import One ${run}`)}`)).json();
     expect((before.items ?? before.data ?? before).length).toBe(0);
