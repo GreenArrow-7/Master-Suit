@@ -410,6 +410,7 @@ export default async function LeadsPage({
             canEdit={can(ctx, 'leads', 'EDIT')}
             canDelete={can(ctx, 'leads', 'DELETE')}
             canMoveToData={mayMoveToData(ctx, rules)}
+            canMessage={can(ctx, 'communications', 'CREATE')}
             emptyLabel={emptyFollowUpLabel(access, view, ctx.actor.id)}
             sort={GRID_SORT[params.sort ?? 'updated']}
             timeZone={timeZone}
