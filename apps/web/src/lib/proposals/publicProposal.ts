@@ -11,7 +11,8 @@
  * record or anything an agent typed about them, because a link forwarded to a
  * colleague — or to the landlord — is the normal case, not the attack.
  */
-import { withTx } from '@/lib/db';
+import type { Prisma } from '@prisma/client';
+import { withTx, type TxClient } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { listingImageLink } from '@/lib/inventory/listingImageLink';
 import { proposalLink } from './proposalLink';
@@ -61,7 +62,79 @@ export interface PublicProposal {
 const IMAGE_LIMIT = 6;
 
 /** What may still be shown to a client. Everything else has gone. */
-const SHOWABLE: string[] = ['ACTIVE', 'UNDER_OFFER'];
+export const SHOWABLE: string[] = ['ACTIVE', 'UNDER_OFFER'];
+
+/**
+ * A listing's public face, shared with the page a lead opens from a shared
+ * link (services/leads/leadShares.ts): what an advert carries, nothing of the
+ * mandate, the landlord or the desk.
+ */
+export const PUBLIC_LISTING = {
+  id: true,
+  title: true,
+  description: true,
+  propertyType: true,
+  listingType: true,
+  status: true,
+  bedrooms: true,
+  bathrooms: true,
+  areaSqft: true,
+  price: true,
+  currency: true,
+  rentFrequency: true,
+  permitNumber: true,
+  deletedAt: true,
+  micromarket: { select: { name: true, city: true } },
+  media: {
+    where: { kind: 'IMAGE' },
+    orderBy: { position: 'asc' },
+    take: IMAGE_LIMIT,
+    select: { id: true },
+  },
+} satisfies Prisma.ListingSelect;
+
+export type PublicListingRow = Prisma.ListingGetPayload<{ select: typeof PUBLIC_LISTING }>;
+
+/** The listing as the client reads it; its photographs through the signed image route. */
+export function publicListing(tenantId: string, listing: PublicListingRow) {
+  return {
+    title: listing.title,
+    description: listing.description,
+    community: listing.micromarket ? `${listing.micromarket.name}, ${listing.micromarket.city}` : null,
+    propertyType: String(listing.propertyType),
+    status: String(listing.status),
+    listingType: String(listing.listingType),
+    bedrooms: listing.bedrooms,
+    bathrooms: listing.bathrooms,
+    areaSqft: listing.areaSqft,
+    price: listing.price.toString(),
+    currency: listing.currency,
+    rentFrequency: listing.rentFrequency ? String(listing.rentFrequency) : null,
+    permitNumber: listing.permitNumber,
+    images: listing.media.map((media) => `/li/${listingImageLink.token(tenantId, media.id)}`),
+  };
+}
+
+/** The workspace as its clients see it: its own name and colours, nothing of ours. */
+export async function agencyOf(tx: TxClient, tenantId: string): Promise<PublicProposal['agency']> {
+  const setting = await tx.organizationSetting.findUnique({
+    where: { tenantId },
+    select: { productName: true, logoUrl: true, primaryColor: true, accentColor: true, reraOrn: true },
+  });
+  const tenant = await tx.tenant.findUniqueOrThrow({
+    where: { id: tenantId },
+    select: { displayName: true, logoUrl: true },
+  });
+  return {
+    // The workspace's own name, not the product's. A client should see
+    // their broker on this page and nothing of ours.
+    name: tenant.displayName || setting?.productName || 'Property shortlist',
+    logoUrl: tenant.logoUrl ?? setting?.logoUrl ?? null,
+    primaryColor: setting?.primaryColor ?? '#2447C7',
+    accentColor: setting?.accentColor ?? '#0E7C66',
+    reraOrn: setting?.reraOrn ?? null,
+  };
+}
 
 /**
  * Throws NotFound for a bad signature, an unknown id, a draft, a withdrawn
@@ -92,31 +165,7 @@ export async function loadProposal(token: string, now = new Date()): Promise<Pub
             note: true,
             reaction: true,
             comment: true,
-            listing: {
-              select: {
-                id: true,
-                title: true,
-                description: true,
-                propertyType: true,
-                listingType: true,
-                status: true,
-                bedrooms: true,
-                bathrooms: true,
-                areaSqft: true,
-                price: true,
-                currency: true,
-                rentFrequency: true,
-                permitNumber: true,
-                deletedAt: true,
-                micromarket: { select: { name: true, city: true } },
-                media: {
-                  where: { kind: 'IMAGE' },
-                  orderBy: { position: 'asc' },
-                  take: IMAGE_LIMIT,
-                  select: { id: true },
-                },
-              },
-            },
+            listing: { select: PUBLIC_LISTING },
           },
         },
       },
@@ -125,30 +174,13 @@ export async function loadProposal(token: string, now = new Date()): Promise<Pub
     if (!proposal) throw NotFound('Proposal');
     if (proposal.expiresAt && proposal.expiresAt <= now) throw NotFound('Proposal');
 
-    const setting = await tx.organizationSetting.findUnique({
-      where: { tenantId: claim.tenantId },
-      select: { productName: true, logoUrl: true, primaryColor: true, accentColor: true, reraOrn: true },
-    });
-    const tenant = await tx.tenant.findUniqueOrThrow({
-      where: { id: claim.tenantId },
-      select: { displayName: true, logoUrl: true },
-    });
-
     return {
       proposalId: proposal.id,
       tenantId: claim.tenantId,
       title: proposal.title,
       message: proposal.message,
       sentAt: proposal.sentAt,
-      agency: {
-        // The workspace's own name, not the product's. A client should see
-        // their broker on this page and nothing of ours.
-        name: tenant.displayName || setting?.productName || 'Property shortlist',
-        logoUrl: tenant.logoUrl ?? setting?.logoUrl ?? null,
-        primaryColor: setting?.primaryColor ?? '#2447C7',
-        accentColor: setting?.accentColor ?? '#0E7C66',
-        reraOrn: setting?.reraOrn ?? null,
-      },
+      agency: await agencyOf(tx, claim.tenantId),
       agent: proposal.owner
         ? {
             name: proposal.owner.displayName || proposal.owner.fullName,
@@ -169,22 +201,7 @@ export async function loadProposal(token: string, now = new Date()): Promise<Pub
         .filter((item) => !item.listing.deletedAt && SHOWABLE.includes(item.listing.status))
         .map((item) => ({
           itemId: item.id,
-          title: item.listing.title,
-          description: item.listing.description,
-          community: item.listing.micromarket
-            ? `${item.listing.micromarket.name}, ${item.listing.micromarket.city}`
-            : null,
-          propertyType: String(item.listing.propertyType),
-          status: String(item.listing.status),
-          listingType: String(item.listing.listingType),
-          bedrooms: item.listing.bedrooms,
-          bathrooms: item.listing.bathrooms,
-          areaSqft: item.listing.areaSqft,
-          price: item.listing.price.toString(),
-          currency: item.listing.currency,
-          rentFrequency: item.listing.rentFrequency ? String(item.listing.rentFrequency) : null,
-          permitNumber: item.listing.permitNumber,
-          images: item.listing.media.map((media) => `/li/${listingImageLink.token(claim.tenantId, media.id)}`),
+          ...publicListing(claim.tenantId, item.listing),
           note: item.note,
           reaction: item.reaction ? String(item.reaction) : null,
           comment: item.comment,

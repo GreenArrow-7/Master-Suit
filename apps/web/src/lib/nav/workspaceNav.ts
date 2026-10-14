@@ -1181,6 +1181,13 @@ function definitions(slug: string): SectionDef[] {
               keywords: 'lead custom field text number date select column',
             },
             {
+              label: 'Email Templates',
+              href: a('/email-templates'),
+              permission: 'settings',
+              module: [S, R, LE],
+              keywords: 'email template message subject send lead',
+            },
+            {
               label: 'Users',
               href: a('/users'),
               permission: 'users',

@@ -312,6 +312,7 @@ export default async function SmartViewsPage({
           canEdit={can(ctx, 'leads', 'EDIT')}
           canDelete={can(ctx, 'leads', 'DELETE')}
           canMoveToData={mayMoveToData(ctx, rules)}
+          canMessage={can(ctx, 'communications', 'CREATE')}
           emptyLabel={emptyFollowUpLabel(access, 'scope', ctx.actor.id)}
           timeZone={timeZone}
         />

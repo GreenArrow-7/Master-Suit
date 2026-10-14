@@ -103,7 +103,7 @@ test.describe('CRM lifecycle', () => {
     await expect(page.getByText(`Spring ${run}`)).toBeVisible();
     await expect(page.getByText('Emirati')).toBeVisible();
     await expect(page.getByText(TAG, { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'WhatsApp' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'WhatsApp', exact: true })).toBeVisible();
 
     // And it is findable by the search the list offers, not merely present.
     await page.goto(at(`/leads?q=${encodeURIComponent(LEAD_NAME)}`));
