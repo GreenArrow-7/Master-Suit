@@ -2,7 +2,7 @@ import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { leadScope } from '@/lib/security/record-scope';
 import { can } from '@/lib/security/rbac';
-import { prisma } from '@/lib/db';
+import { withTx } from '@/lib/db';
 import DashboardCharts from './DashboardCharts';
 import ListHeader from '@/components/workspace/ListHeader';
 
@@ -43,6 +43,8 @@ export default async function DashboardsPage() {
     canSeeActivities ? visibilityWhere(ctx, 'activities', 'VIEW', { ownerField: 'ownerId' }) : null,
   ]);
 
+  // One transaction, one connection: nine reads side by side asked the pool
+  // for nine (runPinned, lib/db.ts; #180). The scopes above read before it.
   const [
     totalLeads,
     newThisMonth,
@@ -53,21 +55,23 @@ export default async function DashboardsPage() {
     leadsBySourceRaw,
     slaRaw,
     stages,
-  ] = await Promise.all([
-    prisma.lead.count({ where: leadWhere }),
-    prisma.lead.count({ where: { ...leadWhere, createdAt: { gte: monthStart } } }),
-    taskScope ? prisma.task.count({ where: { ...taskScope, status: 'OPEN' } }) : null,
-    taskScope ? prisma.task.count({ where: { ...taskScope, status: 'OPEN', dueAt: { lt: now } } }) : null,
-    activityScope ? prisma.activity.count({ where: { ...activityScope, createdAt: { gte: monthStart } } }) : null,
-    prisma.lead.groupBy({ by: ['stageId'], where: leadWhere, _count: { id: true } }),
-    prisma.lead.groupBy({ by: ['source'], where: leadWhere, _count: { id: true } }),
-    prisma.lead.groupBy({ by: ['slaState'], where: leadWhere, _count: { id: true } }),
-    prisma.leadStage.findMany({
-      where: { tenantId: ctx.tenantId },
-      orderBy: { position: 'asc' },
-      select: { id: true, name: true },
-    }),
-  ]);
+  ] = await withTx(ctx.tenantId, (tx) =>
+    Promise.all([
+      tx.lead.count({ where: leadWhere }),
+      tx.lead.count({ where: { ...leadWhere, createdAt: { gte: monthStart } } }),
+      taskScope ? tx.task.count({ where: { ...taskScope, status: 'OPEN' } }) : null,
+      taskScope ? tx.task.count({ where: { ...taskScope, status: 'OPEN', dueAt: { lt: now } } }) : null,
+      activityScope ? tx.activity.count({ where: { ...activityScope, createdAt: { gte: monthStart } } }) : null,
+      tx.lead.groupBy({ by: ['stageId'], where: leadWhere, _count: { id: true } }),
+      tx.lead.groupBy({ by: ['source'], where: leadWhere, _count: { id: true } }),
+      tx.lead.groupBy({ by: ['slaState'], where: leadWhere, _count: { id: true } }),
+      tx.leadStage.findMany({
+        where: { tenantId: ctx.tenantId },
+        orderBy: { position: 'asc' },
+        select: { id: true, name: true },
+      }),
+    ]),
+  );
 
   const leadsByStage = stages
     .map((s) => {

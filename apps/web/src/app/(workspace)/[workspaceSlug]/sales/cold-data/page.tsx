@@ -112,17 +112,19 @@ export default async function ColdDataPage({
                   const converted = byStatus.CONVERTED ?? 0;
                   return (
                     <tr key={list} aria-current={params.list === list ? 'true' : undefined}>
-                      <td>
+                      <td data-priority="primary">
                         <SalesLink href={href({ list })}>{list}</SalesLink>
                       </td>
-                      <td>{total}</td>
-                      <td>{(byStatus.NOT_CONTACTED ?? 0) + (byStatus.NOT_REACHABLE ?? 0)}</td>
-                      <td>{byStatus.INTERESTED ?? 0}</td>
-                      <td>
+                      <td data-label="Contacts">{total}</td>
+                      <td data-label="Still to work">
+                        {(byStatus.NOT_CONTACTED ?? 0) + (byStatus.NOT_REACHABLE ?? 0)}
+                      </td>
+                      <td data-label="Interested">{byStatus.INTERESTED ?? 0}</td>
+                      <td data-label="Converted">
                         {converted} ({Math.round((converted / total) * 100)}%)
                       </td>
                       {canAssign && (
-                        <td>
+                        <td data-label="Assign to">
                           <ListAssign list={list} agents={agents} />
                         </td>
                       )}
@@ -164,7 +166,7 @@ export default async function ColdDataPage({
               <tbody>
                 {records.map((record) => (
                   <tr key={record.id}>
-                    <td>
+                    <td data-priority="primary">
                       {record.fullName}
                       {record.notes && (
                         <details>
@@ -173,16 +175,16 @@ export default async function ColdDataPage({
                         </details>
                       )}
                     </td>
-                    <td>
+                    <td data-label="Phone">
                       {phoneOf(record) === record.phone && record.phone ? (
                         <a href={`tel:${record.phone}`}>{record.phone}</a>
                       ) : (
                         (phoneOf(record) ?? '—')
                       )}
                     </td>
-                    <td>{record.company ?? '—'}</td>
-                    <td>{record.batch}</td>
-                    <td>
+                    <td data-label="Company">{record.company ?? '—'}</td>
+                    <td data-label="List">{record.batch}</td>
+                    <td data-label="Agent">
                       {canAssign && !record.convertedLeadId ? (
                         <RecordAssign
                           id={record.id}
@@ -194,7 +196,7 @@ export default async function ColdDataPage({
                         (record.owner?.fullName ?? 'Unassigned')
                       )}
                     </td>
-                    <td>
+                    <td data-label="Outcome">
                       <RecordActions
                         id={record.id}
                         status={record.status}

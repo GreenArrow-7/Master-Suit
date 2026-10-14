@@ -293,9 +293,12 @@ describe('P2-2: the dashboard batches its queries', () => {
     expect(source).not.toMatch(/const sales = showSales\s*\?\s*await Promise\.all/);
     // Matched as "both groups inside one Promise.all" rather than as an exact
     // string: the dashboard has since grown the self-service and approval-queue
-    // panels, so the array is longer than two. The invariant is one concurrent
-    // round, not a particular number of queries in it.
-    expect(source).toMatch(/await Promise\.all\(\[[^\]]*\bpeopleQuery\b[^\]]*\bsalesQuery\b[^\]]*\]\)/s);
+    // panels, so the array is longer than two. The invariant is one round, not a
+    // particular number of queries in it; since the pool fix it is one round in
+    // one transaction (tests/sales/screen-connections.spec.ts measures it).
+    expect(source).toMatch(
+      /await withTx\(ctx\.tenantId, \(tx\) =>\s*Promise\.all\(\[[^\]]*\bpeopleQuery\(tx\)[^\]]*\bsalesQuery\(tx\)[^\]]*\]\)/s,
+    );
   });
 
   it('does not cache record counts', () => {

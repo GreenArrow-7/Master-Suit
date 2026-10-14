@@ -165,32 +165,36 @@ export default async function LeadershipPage({
     }
   }
 
-  const [stages, rates, board, chasing, compliance, feed, pl, reps, productivityRows, daily, value] = await Promise.all(
-    [
-      funnel(ctx.tenantId, userIds, range),
-      conversion(ctx.tenantId, userIds, range),
-      performerBoard(ctx.tenantId, userIds, range, 'revenue'),
-      chasingQueue(ctx.tenantId, userIds, await obligationAccess(ctx, 'scope'), new Date(), 50),
-      view === 'compliance' ? activityCompliance(ctx.tenantId, userIds, range) : [],
-      view === 'feed' ? interactionFeed(ctx.tenantId, userIds, range, 50) : [],
-      view === 'pl' ? profitAndLoss(ctx.tenantId, userIds, range.from, range.to, 'team') : null,
-      prisma.user.findMany({
-        where: {
-          tenantId: ctx.tenantId,
-          status: 'ACTIVE',
-          ...(allowed.length === 0 ? {} : { id: { in: allowed } }),
-        },
-        select: { id: true, fullName: true },
-        orderBy: { fullName: 'asc' },
-        take: 200,
-      }),
-      view === 'productivity' ? productivity(ctx.tenantId, userIds, range) : [],
-      view === 'daily'
-        ? dailyBoard(ctx, /^\d{4}-\d{2}-\d{2}$/.test(params.date ?? '') ? params.date : undefined)
-        : null,
-      view === 'value' ? workspaceValue(ctx.tenantId, range) : null,
-    ],
-  );
+  /**
+   * Two rounds, not one. Each panel reads on a connection of its own (the
+   * rollups each in one transaction), and all of them at once asked the pool
+   * for 14 to 18 of its 10 (runPinned, lib/db.ts; #180). Four, then three.
+   */
+  const access = await obligationAccess(ctx, 'scope');
+  const [stages, rates, board, reps] = await Promise.all([
+    funnel(ctx.tenantId, userIds, range),
+    conversion(ctx.tenantId, userIds, range),
+    performerBoard(ctx.tenantId, userIds, range, 'revenue'),
+    prisma.user.findMany({
+      where: {
+        tenantId: ctx.tenantId,
+        status: 'ACTIVE',
+        ...(allowed.length === 0 ? {} : { id: { in: allowed } }),
+      },
+      select: { id: true, fullName: true },
+      orderBy: { fullName: 'asc' },
+      take: 200,
+    }),
+  ]);
+  const [chasing, compliance, feed, pl, productivityRows, daily, value] = await Promise.all([
+    chasingQueue(ctx.tenantId, userIds, access, new Date(), 50),
+    view === 'compliance' ? activityCompliance(ctx.tenantId, userIds, range) : [],
+    view === 'feed' ? interactionFeed(ctx.tenantId, userIds, range, 50) : [],
+    view === 'pl' ? profitAndLoss(ctx.tenantId, userIds, range.from, range.to, 'team') : null,
+    view === 'productivity' ? productivity(ctx.tenantId, userIds, range) : [],
+    view === 'daily' ? dailyBoard(ctx, /^\d{4}-\d{2}-\d{2}$/.test(params.date ?? '') ? params.date : undefined) : null,
+    view === 'value' ? workspaceValue(ctx.tenantId, range) : null,
+  ]);
 
   // Set target only on the rows POST /targets accepts: the board follows
   // reports:VIEW, the target the person (`targetAssignees`).

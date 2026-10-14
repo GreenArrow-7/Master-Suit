@@ -320,3 +320,36 @@ describe('lead writes made by a person', () => {
     ]);
   });
 });
+
+describe('the Audit Log screen', () => {
+  it('prints each row on the workspace’s clock, whatever zone the server runs in', async () => {
+    const server = process.env.TZ;
+    // Neither UTC nor a zone a server or this machine runs in: +13:45 (+12:45 in winter).
+    const timeZone = 'Pacific/Chatham';
+    process.env.TZ = 'America/Los_Angeles';
+    await prisma.tenant.update({ where: { id: tenantId }, data: { timezone: timeZone } });
+    try {
+      const { occurredAt } = await prisma.auditLog.create({
+        data: { tenantId, event: 'RECORD_UPDATED', objectType: 'lead', metadata: { action: 'clock.check' } },
+        select: { occurredAt: true },
+      });
+      const at = (zone: string) =>
+        occurredAt.toLocaleString('en-GB', {
+          timeZone: zone,
+          day: '2-digit',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      const text = await pageText(
+        AuditLogPage({ params: Promise.resolve({ workspaceSlug: fixture.a.slug }), searchParams: Promise.resolve({}) }),
+      );
+      expect(text.split('\n')).toContain(at(timeZone));
+      expect(text.split('\n')).not.toContain(at('UTC'));
+    } finally {
+      if (server === undefined) delete process.env.TZ;
+      else process.env.TZ = server;
+      await prisma.tenant.update({ where: { id: tenantId }, data: { timezone: 'Asia/Dubai' } });
+    }
+  });
+});

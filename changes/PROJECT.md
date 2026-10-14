@@ -41,8 +41,10 @@ Node 22 or newer (CI uses 24).
   with `deletedAt` filters it itself. Outside `withTx` each query is its own
   transaction on its own pooled connection, and the pool holds 10, so a page
   reading many independent lists reads them in one
-  `withTx(tenantId, (tx) => Promise.all([...]))`.
-  `tests/sales/lead-page-connections.spec.ts` measures a page's peak.
+  `withTx(tenantId, (tx) => Promise.all([...]))`, or in rounds where a helper
+  reads on the global client; one render asks for half the pool at most.
+  `tests/sales/lead-page-connections.spec.ts` and `screen-connections.spec.ts`
+  measure a screen's peak.
 - **One record, several screens.** Real Estate reuses Sales' rows (`Lead`,
   `Call`, `SiteVisit`, `Booking`, `Project`, `Listing`, `UnitInventory`);
   `realty/` and `lead-eagle/` pages are one-line re-exports of `sales/` pages,
@@ -171,6 +173,8 @@ Node 22 or newer (CI uses 24).
   (`moveLeadToData`, `src/services/leads/coldData.ts`: a cold record on the
   day's "From pipeline" list, the lead archived and its open follow-ups and
   tasks cancelled; `mayMoveToData` also asks for the lead's numbers in full) and Delete with a
+  10-second Undo (`POST /api/v1/leads/{id}/restore`). Delete, restore and Move
+  to Data are audited in the service, on `objectType` `lead`.
   10-second Undo (`POST /api/v1/leads/{id}/restore`).
 - **Workspace clock.** A date or time formatted on the server reads in the
   workspace's zone (`workspaceTimezone`, `src/services/hr/attendance.ts`), and
@@ -247,6 +251,10 @@ the Real Estate module, proposals and portals, attendance in every workspace.
 
 Waiting on the owner:
 
+- **Database pool size** — the pg adapter ignores `connection_limit` in
+  `DATABASE_URL`, so every process holds 10 connections; `max` on `PrismaPg`
+  (`src/lib/db.ts`) is an operations decision
+  (`changes/2026-10-13-fanout-audit-clock-ui.md`).
 - **Lead Eagle inside YOUHAN ONE** — every phase of the plan
   (`changes/2026-10-05-lead-eagle-plan.md`) is live: phase 1 since f89ae61,
   phases 2–6 since c46624f (8 Oct, #134 + #139). What waits on the owner:

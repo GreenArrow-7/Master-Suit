@@ -90,10 +90,10 @@ export const PATCH = route(
 );
 
 export const DELETE = route(
-  { module: 'leads', productModule: LEAD_MODULES, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  // Audited in the service, on the lead, as its restore and a Move to Data are: no route row.
+  { module: 'leads', productModule: LEAD_MODULES, action: 'DELETE', params },
   async ({ ctx, params }) => {
     await deleteLead(ctx, params.id);
-    // The id names the lead on the route's RECORD_DELETED row, beside its restore's.
     return { ok: true, id: params.id };
   },
 );

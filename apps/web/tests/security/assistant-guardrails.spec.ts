@@ -88,7 +88,9 @@ const HELPER_READS: Record<string, readonly string[]> = {
 
 const modelsRead = (name: string) => {
   const body = bodyOf(name);
-  const direct = [...body.matchAll(/prisma\.(\w+)\./g)].map((m) => m[1]!);
+  // Through a transaction too: `getMyDay` reads in one (`withTx`), and a read
+  // through `tx` is the same read.
+  const direct = [...body.matchAll(/\b(?:prisma|tx)\.(\w+)\./g)].map((m) => m[1]!);
   const viaHelpers = Object.entries(HELPER_READS).flatMap(([helper, models]) =>
     body.includes(`${helper}(`) ? models : [],
   );

@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import { mergeWhere, type WhereFragment } from '@/lib/api/where';
 import { can, type Action, type Ctx } from '@/lib/security/rbac';
 import { eventListScope, leadScope } from '@/lib/security/record-scope';
@@ -767,47 +767,65 @@ export const TOOLS: ToolDef[] = [
        * answer instead: no `events:VIEW`, no `upcomingEvents` key.
        */
       const mayReadEvents = can(ctx, 'events', 'VIEW');
-      const [overdueFups, todayFups, overdueTasks, breached, hot, events, todayCalls] = await Promise.all([
-        // As the Follow-ups list its source links (view=mine&due=overdue) reads them.
-        prisma.followUpTask.findMany({
-          where: myFollowUps(ctx, timeZone, 'overdue'),
-          orderBy: { dueAt: 'asc' },
-          take: 5,
-          select: { title: true, dueAt: true, leadId: true },
-        }),
-        prisma.followUpTask.count({ where: myFollowUps(ctx, timeZone, 'today') }),
-        prisma.task.count({
-          where: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, deletedAt: null, status: 'OPEN', dueAt: { lt: now } },
-        }),
-        prisma.lead.findMany({
-          where: { ...leadWhere, slaState: 'BREACHED' },
-          take: 5,
-          select: LEAD_SELECT,
-          orderBy: { updatedAt: 'desc' },
-        }),
-        prisma.lead.findMany({
-          where: { ...leadWhere, score: { gte: 70 } },
-          orderBy: { score: 'desc' },
-          take: 5,
-          select: LEAD_SELECT,
-        }),
-        mayReadEvents
-          ? prisma.event.findMany({
+      const eventScope = mayReadEvents ? await eventListScope(ctx) : null;
+      // One transaction, one connection: seven reads side by side asked the
+      // pool for seven (runPinned, lib/db.ts; #180).
+      const [overdueFups, todayFups, overdueTasks, breached, hot, events, todayCalls] = await withTx(
+        ctx.tenantId,
+        (tx) =>
+          Promise.all([
+            // As the Follow-ups list its source links (view=mine&due=overdue) reads them.
+            tx.followUpTask.findMany({
+              where: myFollowUps(ctx, timeZone, 'overdue'),
+              orderBy: { dueAt: 'asc' },
+              take: 5,
+              select: { title: true, dueAt: true, leadId: true },
+            }),
+            tx.followUpTask.count({ where: myFollowUps(ctx, timeZone, 'today') }),
+            tx.task.count({
               where: {
                 tenantId: ctx.tenantId,
+                ownerId: ctx.actor.id,
                 deletedAt: null,
-                startAt: { gte: todayStart, lte: new Date(now.getTime() + 3 * 864e5) },
-                ...(await eventListScope(ctx)),
+                status: 'OPEN',
+                dueAt: { lt: now },
               },
-              orderBy: { startAt: 'asc' },
-              take: 4,
-              select: { title: true, startAt: true },
-            })
-          : Promise.resolve([]),
-        prisma.call.count({
-          where: { tenantId: ctx.tenantId, callerId: ctx.actor.id, deletedAt: null, createdAt: { gte: todayStart } },
-        }),
-      ]);
+            }),
+            tx.lead.findMany({
+              where: { ...leadWhere, slaState: 'BREACHED' },
+              take: 5,
+              select: LEAD_SELECT,
+              orderBy: { updatedAt: 'desc' },
+            }),
+            tx.lead.findMany({
+              where: { ...leadWhere, score: { gte: 70 } },
+              orderBy: { score: 'desc' },
+              take: 5,
+              select: LEAD_SELECT,
+            }),
+            mayReadEvents
+              ? tx.event.findMany({
+                  where: {
+                    tenantId: ctx.tenantId,
+                    deletedAt: null,
+                    startAt: { gte: todayStart, lte: new Date(now.getTime() + 3 * 864e5) },
+                    ...eventScope,
+                  },
+                  orderBy: { startAt: 'asc' },
+                  take: 4,
+                  select: { title: true, startAt: true },
+                })
+              : Promise.resolve([]),
+            tx.call.count({
+              where: {
+                tenantId: ctx.tenantId,
+                callerId: ctx.actor.id,
+                deletedAt: null,
+                createdAt: { gte: todayStart },
+              },
+            }),
+          ]),
+      );
       const brief = await briefer(ctx, [...breached, ...hot]);
       return {
         data: {

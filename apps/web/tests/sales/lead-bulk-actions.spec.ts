@@ -363,6 +363,35 @@ describe('bulk delete and its Undo (M4-36)', () => {
     expect(res.body.detail).toMatch(/^A lead with this phone(Normalized)? was added since \(BULK-/);
     expect(await deletedAt(id)).not.toBeNull();
   });
+
+  it('a delete, its restore and a Move to Data each leave one row on the lead, the delete at the instant it stored', async () => {
+    const [restore, move] = [await restoreRoute(), await moveRoute()];
+    const phone = `+97156${String(Date.now()).slice(-7)}`;
+    const id = await lead({ phone, phoneNormalized: phone });
+    /** The lead's rows for one action, read as the Audit Log reads them: by object and record. */
+    const rows = async (event: string, action?: string) =>
+      (await trail(id)).filter((row) => row.event === event && (row.metadata as { action?: string }).action === action);
+
+    expect((await del(deleteLead, url(id), fixture.a.cookie)).status).toBe(200);
+    const stored = (await deletedAt(id))!.toISOString();
+    expect(await rows('RECORD_DELETED')).toEqual([
+      expect.objectContaining({ objectType: 'lead', fieldKey: 'deletedAt', previousValue: null, newValue: stored }),
+    ]);
+    // One row for the delete: no second one naming the same field.
+    expect((await trail(id)).filter((row) => row.fieldKey === 'deletedAt')).toHaveLength(1);
+
+    expect((await post(restore, url(id, '/restore'), {}, fixture.a.cookie, { id })).status).toBe(200);
+    expect(await rows('RECORD_RESTORED')).toEqual([
+      expect.objectContaining({ objectType: 'lead', fieldKey: 'deletedAt', previousValue: stored, newValue: null }),
+    ]);
+
+    expect((await post(move, url(id, '/move-to-data'), {}, fixture.a.cookie, { id })).status).toBe(200);
+    expect(await rows('RECORD_UPDATED', 'lead.moved_to_data')).toEqual([
+      expect.objectContaining({ objectType: 'lead' }),
+    ]);
+    // Every row of the three names the lead the same way.
+    expect(new Set((await trail(id)).map((row) => row.objectType))).toEqual(new Set(['lead']));
+  });
 });
 
 describe('bulk Move to Data (M4-39)', () => {

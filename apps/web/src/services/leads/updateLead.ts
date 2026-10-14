@@ -260,15 +260,32 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput, o
   return updated;
 }
 
-/** Soft delete: sets deletedAt rather than removing the row — every list query filters it out. */
+/**
+ * Soft delete: sets deletedAt rather than removing the row — every list query
+ * filters it out. One instant, stored and audited. Audited as RECORD_DELETED on
+ * the lead (objectType `lead`), as its restore (RECORD_RESTORED) and a Move to
+ * Data are, in the same transaction; the route writes no row of its own.
+ */
 export async function deleteLead(ctx: Ctx, id: string) {
   await withTx(ctx.tenantId, async (tx) => {
-    const before = await assertLeadInScope(ctx, id, tx, 'DELETE');
+    await assertLeadInScope(ctx, id, tx, 'DELETE');
+    const deletedAt = new Date();
     await tx.lead.update({
       where: { tenantId: ctx.tenantId, id },
-      data: { deletedAt: new Date(), updatedById: ctx.actor.id },
+      data: { deletedAt, updatedById: ctx.actor.id },
     });
-    await auditDiff(ctx, 'lead', id, before, { ...before, deletedAt: new Date() }, tx);
+    await audit(
+      ctx,
+      {
+        event: 'RECORD_DELETED',
+        objectType: 'lead',
+        recordId: id,
+        fieldKey: 'deletedAt',
+        previousValue: null,
+        newValue: deletedAt,
+      },
+      tx,
+    );
   });
 }
 

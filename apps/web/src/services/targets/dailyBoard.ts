@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import { resolveOwnerIds } from '@/lib/security/visibility';
 import { scopeFor, SCOPE_RANK, type Ctx } from '@/lib/security/rbac';
 import { attendanceScope, startOfLocalDay, workspaceTimezone } from '@/services/hr/attendance';
@@ -136,6 +136,8 @@ export async function dailyBoard(ctx: Ctx, date?: string): Promise<DailyBoard> {
   const ids = userIds.length === 0 ? {} : { id: { in: userIds } };
   const attendanceReach = await attendanceScope(ctx);
 
+  // One transaction, one connection: eleven reads side by side asked the pool
+  // for eleven (runPinned, lib/db.ts; #180).
   const [
     users,
     targets,
@@ -148,84 +150,86 @@ export async function dailyBoard(ctx: Ctx, date?: string): Promise<DailyBoard> {
     opportunities,
     deals,
     attendance,
-  ] = await Promise.all([
-    prisma.user.findMany({ where: { tenantId, deletedAt: null, ...ids }, select: { id: true, fullName: true } }),
-    prisma.employeeTarget.findMany({
-      where: {
-        tenantId,
-        metric: 'LEADS_CALLED',
-        periodStart: { lte: to },
-        periodEnd: { gte: from },
-        ...(userIds.length === 0 ? {} : { userId: { in: userIds } }),
-      },
-      select: { id: true, userId: true, targetValue: true, period: true, periodStart: true },
-      orderBy: { periodStart: 'desc' },
-    }),
-    prisma.lead.groupBy({
-      by: ['ownerId'],
-      where: { tenantId, deletedAt: null, status: null, ...owner },
-      _count: { _all: true },
-    }),
-    prisma.call.findMany({
-      where: { tenantId, deletedAt: null, status: { in: ['COMPLETED', 'MISSED'] }, createdAt: within, ...caller },
-      select: { callerId: true, outcome: true, status: true, durationSecs: true },
-    }),
-    prisma.call.findMany({
-      where: {
-        tenantId,
-        deletedAt: null,
-        status: { in: ['COMPLETED', 'MISSED', 'FAILED'] },
-        createdAt: within,
-        leadId: { not: null },
-        ...caller,
-      },
-      select: { callerId: true, leadId: true },
-      distinct: ['callerId', 'leadId'],
-    }),
-    // A cold call is a logged call: one row per (caller, record) today, by when it
-    // was logged — `occurredAt` is editable, `createdAt` is not, as a call's is.
-    prisma.activity.findMany({
-      where: { tenantId, deletedAt: null, dataRecordId: { not: null }, createdAt: within, ...owner },
-      select: { ownerId: true, dataRecordId: true, leadId: true },
-      distinct: ['ownerId', 'dataRecordId'],
-    }),
-    prisma.followUpTask.groupBy({
-      by: ['ownerId'],
-      where: { tenantId, createdAt: within, ...owner },
-      _count: { _all: true },
-    }),
-    prisma.task.groupBy({
-      by: ['ownerId'],
-      where: { tenantId, createdAt: within, type: { key: 'meeting' }, ...owner },
-      _count: { _all: true },
-    }),
-    prisma.opportunity.groupBy({
-      by: ['ownerId'],
-      where: { tenantId, deletedAt: null, createdAt: within, ...owner },
-      _count: { _all: true },
-    }),
-    prisma.opportunity.groupBy({
-      by: ['ownerId'],
-      where: { tenantId, deletedAt: null, status: 'WON', updatedAt: within, ...owner },
-      _count: { _all: true },
-    }),
-    prisma.hrAttendanceRecord.findMany({
-      where: {
-        tenantId,
-        workDate: within,
-        ...attendanceReach,
-        employee: {
-          deletedAt: null,
-          membership: userIds.length === 0 ? { salesUserId: { not: null } } : { salesUserId: { in: userIds } },
+  ] = await withTx(tenantId, (tx) =>
+    Promise.all([
+      tx.user.findMany({ where: { tenantId, deletedAt: null, ...ids }, select: { id: true, fullName: true } }),
+      tx.employeeTarget.findMany({
+        where: {
+          tenantId,
+          metric: 'LEADS_CALLED',
+          periodStart: { lte: to },
+          periodEnd: { gte: from },
+          ...(userIds.length === 0 ? {} : { userId: { in: userIds } }),
         },
-      },
-      select: {
-        checkInAt: true,
-        checkOutAt: true,
-        employee: { select: { membership: { select: { salesUserId: true } } } },
-      },
-    }),
-  ]);
+        select: { id: true, userId: true, targetValue: true, period: true, periodStart: true },
+        orderBy: { periodStart: 'desc' },
+      }),
+      tx.lead.groupBy({
+        by: ['ownerId'],
+        where: { tenantId, deletedAt: null, status: null, ...owner },
+        _count: { _all: true },
+      }),
+      tx.call.findMany({
+        where: { tenantId, deletedAt: null, status: { in: ['COMPLETED', 'MISSED'] }, createdAt: within, ...caller },
+        select: { callerId: true, outcome: true, status: true, durationSecs: true },
+      }),
+      tx.call.findMany({
+        where: {
+          tenantId,
+          deletedAt: null,
+          status: { in: ['COMPLETED', 'MISSED', 'FAILED'] },
+          createdAt: within,
+          leadId: { not: null },
+          ...caller,
+        },
+        select: { callerId: true, leadId: true },
+        distinct: ['callerId', 'leadId'],
+      }),
+      // A cold call is a logged call: one row per (caller, record) today, by when it
+      // was logged — `occurredAt` is editable, `createdAt` is not, as a call's is.
+      tx.activity.findMany({
+        where: { tenantId, deletedAt: null, dataRecordId: { not: null }, createdAt: within, ...owner },
+        select: { ownerId: true, dataRecordId: true, leadId: true },
+        distinct: ['ownerId', 'dataRecordId'],
+      }),
+      tx.followUpTask.groupBy({
+        by: ['ownerId'],
+        where: { tenantId, createdAt: within, ...owner },
+        _count: { _all: true },
+      }),
+      tx.task.groupBy({
+        by: ['ownerId'],
+        where: { tenantId, createdAt: within, type: { key: 'meeting' }, ...owner },
+        _count: { _all: true },
+      }),
+      tx.opportunity.groupBy({
+        by: ['ownerId'],
+        where: { tenantId, deletedAt: null, createdAt: within, ...owner },
+        _count: { _all: true },
+      }),
+      tx.opportunity.groupBy({
+        by: ['ownerId'],
+        where: { tenantId, deletedAt: null, status: 'WON', updatedAt: within, ...owner },
+        _count: { _all: true },
+      }),
+      tx.hrAttendanceRecord.findMany({
+        where: {
+          tenantId,
+          workDate: within,
+          ...attendanceReach,
+          employee: {
+            deletedAt: null,
+            membership: userIds.length === 0 ? { salesUserId: { not: null } } : { salesUserId: { in: userIds } },
+          },
+        },
+        select: {
+          checkInAt: true,
+          checkOutAt: true,
+          employee: { select: { membership: { select: { salesUserId: true } } } },
+        },
+      }),
+    ]),
+  );
 
   const rows = new Map<string, DailyBoardRow>();
   const row = (userId: string) => {
