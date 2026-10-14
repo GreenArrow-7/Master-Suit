@@ -655,9 +655,10 @@ describe('deadlines, escalation and re-entry', () => {
       where: { tenantId: fixture.a.tenantId, id: leadId },
       data: { ownerId: other, assignedAt: new Date() },
     });
-    const result = await sweepStaleTriage(new Date(), fixture.a.tenantId);
-
-    expect(result.resolved).toBeGreaterThanOrEqual(1);
+    // Closed at commit by the lead_close_triage_on_owner trigger; the sweep
+    // finds nothing left and must not reopen or double-resolve it.
+    expect(await openEntry(leadId)).toBeNull();
+    await sweepStaleTriage(new Date(), fixture.a.tenantId);
     expect(await openEntry(leadId)).toBeNull();
   });
 

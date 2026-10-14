@@ -214,6 +214,21 @@ describe('existing unassigned leads', () => {
     expect(offending).toEqual([]);
   });
 
+  it('an owner written by any path closes the WAITING episode in the same transaction', async () => {
+    // The race above: a write that queued behind importBacklog's row lock lands
+    // after the episode commits, so no app-side check can see it. The database closes it.
+    await setRule([]);
+    const leadId = await makeLead();
+    await importBacklog(T(), { apply: true });
+    expect(await openEntry(leadId)).not.toBeNull();
+
+    await prisma.lead.update({ where: { tenantId: T(), id: leadId }, data: { ownerId: managerUserId } });
+
+    expect(await openEntry(leadId)).toBeNull();
+    const closed = await prisma.leadTriageEntry.findFirst({ where: { tenantId: T(), leadId } });
+    expect(closed?.status).toBe('ASSIGNED');
+  });
+
   it('the stale sweep closes any episode a race did leave behind', async () => {
     // The second line of that defence: whatever slips through concurrently is
     // reconciled rather than left to mislead a manager.
