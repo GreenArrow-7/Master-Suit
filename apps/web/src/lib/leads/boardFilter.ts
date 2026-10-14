@@ -2,7 +2,7 @@ import { mergeWhere } from '@/lib/api/where';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { CONNECTED_CALL_OUTCOMES, CONNECTED_LOG_OUTCOMES } from '@/lib/leads/callLog';
 import { isDayKey, shiftDay } from '@/lib/leads/followUpDue';
-import type { Ctx } from '@/lib/security/rbac';
+import { can, type Ctx } from '@/lib/security/rbac';
 import { ownerReach } from '@/lib/security/record-scope';
 import { dayBounds, todayKey } from '@/services/targets/dailyBoard';
 
@@ -94,7 +94,8 @@ export async function scopeBoardFilter(ctx: Ctx, filter: BoardFilter, db: TxClie
   }
   if (
     out.project &&
-    !(await db.project.findFirst({ where: { tenantId, id: out.project, deletedAt: null }, select: { id: true } }))
+    (!can(ctx, 'projects', 'VIEW') ||
+      !(await db.project.findFirst({ where: { tenantId, id: out.project, deletedAt: null }, select: { id: true } })))
   ) {
     delete out.project;
   }
@@ -109,6 +110,7 @@ const REGISTERS = {
   log: { owner: 'ownerId', date: 'occurredAt' },
   task: { owner: 'ownerId', date: 'createdAt' },
   visit: { owner: 'ownerId', date: 'scheduledAt' },
+  booking: { owner: 'ownerId', date: 'bookingDate' },
 } as const;
 export type BoardRegister = keyof typeof REGISTERS;
 
@@ -143,20 +145,24 @@ export async function resolveBoardFilter(
 
 /**
  * The `where` a register's list adds for the filter: owner, lead (source,
- * project) and, with `dated`, the period on the register's date.
+ * project) and, with `dated`, the period on the register's date. It only
+ * narrows: always merge it with the viewer's own scope (a team's `people` can
+ * name members outside that scope).
  */
 export function boardWhere(resolved: ResolvedBoardFilter, register: BoardRegister, dated = true) {
   const { filter, people, span } = resolved;
   const { owner, date } = REGISTERS[register];
   const lead = mergeWhere(
     filter.source ? { OR: [{ sourceId: filter.source }, { leadSource: { is: { parentId: filter.source } } }] } : null,
-    filter.project && register !== 'visit' ? { projectInterests: { some: { projectId: filter.project } } } : null,
+    filter.project && register !== 'visit' && register !== 'booking'
+      ? { projectInterests: { some: { projectId: filter.project } } }
+      : null,
   );
   const onLead = Object.keys(lead).length > 0;
   return mergeWhere(
     people && { [owner]: { in: people } },
     onLead ? (register === 'lead' ? lead : { lead: { is: lead } }) : null,
-    register === 'visit' && filter.project ? { projectId: filter.project } : null,
+    (register === 'visit' || register === 'booking') && filter.project ? { projectId: filter.project } : null,
     dated && date && span ? { [date]: span } : null,
   );
 }

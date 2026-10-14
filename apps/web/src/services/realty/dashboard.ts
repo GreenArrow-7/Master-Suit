@@ -235,6 +235,7 @@ export async function realtyDashboard(
   const pipelineLeads = mergeWhere(leads, chosenSpan && { createdAt: chosenSpan });
   const followUps = mergeWhere(followUpsListed, OPEN_FOLLOW_UP, narrow('followUp'));
   const visits = visitScope && mergeWhere(visitScope, narrow('visit'));
+  const deals = dealScope && mergeWhere(dealScope, narrow('booking'));
   const trendSpan = span(trendDays[0]!, period.to);
 
   const read = await withTx(tenantId, async (tx) => {
@@ -279,20 +280,24 @@ export async function realtyDashboard(
           where: mergeWhere(visits, live, { status: 'COMPLETED' }, chosenSpan && { scheduledAt: chosenSpan }),
         }),
       ],
-      deals: dealScope && {
-        bookings: await tx.booking.count({ where: mergeWhere(dealScope, live, { status: { not: 'CANCELLED' } }) }),
-        confirmed: await tx.booking.count({ where: mergeWhere(dealScope, live, confirmed) }),
+      deals: deals && {
+        bookings: await tx.booking.count({
+          where: mergeWhere(deals, live, { status: { not: 'CANCELLED' } }, chosenSpan && { bookingDate: chosenSpan }),
+        }),
+        confirmed: await tx.booking.count({
+          where: mergeWhere(deals, live, confirmed, chosenSpan && { bookingDate: chosenSpan }),
+        }),
         revenueToday: await tx.booking.aggregate({
-          where: mergeWhere(dealScope, live, confirmed, { bookingDate: today }),
+          where: mergeWhere(deals, live, confirmed, { bookingDate: today }),
           _sum: { saleValue: true },
         }),
         revenue7Days: await tx.booking.aggregate({
-          where: mergeWhere(dealScope, live, confirmed, { bookingDate: inPeriod }),
+          where: mergeWhere(deals, live, confirmed, { bookingDate: inPeriod }),
           _sum: { saleValue: true },
         }),
         topAgents: await tx.booking.groupBy({
           by: ['ownerId'],
-          where: mergeWhere(dealScope, live, confirmed),
+          where: mergeWhere(deals, live, confirmed, chosenSpan && { bookingDate: chosenSpan }),
           _count: { _all: true },
           orderBy: { _count: { ownerId: 'desc' } },
           take: 5,

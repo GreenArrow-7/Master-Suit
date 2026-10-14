@@ -92,7 +92,7 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
     }),
   ]);
 
-  const [logged, placedCount] = loggedWhere
+  const [logged, placedCount, loggedCount] = loggedWhere
     ? await Promise.all([
         prisma.activity.findMany({
           where: loggedWhere,
@@ -108,8 +108,9 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
           },
         }),
         prisma.call.count({ where }),
+        prisma.activity.count({ where: loggedWhere }),
       ])
-    : [null, null];
+    : [null, null, null];
   const loggedLeads = await leadsInScope(ctx, logged?.map((row) => row.leadId) ?? []);
 
   const hasMore = rows.length > PAGE_SIZE;
@@ -210,7 +211,8 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
 
       {logged && (
         <p className="lf-hint" style={{ marginBottom: 'var(--lf-space-3)' }}>
-          {placedCount} placed and {logged.length} logged
+          {placedCount} placed and {loggedCount} logged
+          {(loggedCount ?? 0) > logged.length && ` (the latest ${logged.length} listed)`}
           {params.from && params.to ? ` · ${onDay(params.from)} – ${onDay(params.to)}` : ''}
         </p>
       )}

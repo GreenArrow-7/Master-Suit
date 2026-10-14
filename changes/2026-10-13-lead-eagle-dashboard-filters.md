@@ -12,8 +12,9 @@ rows M3-16, M3-17, M3-18 and M3-19.
   row), no rollup needed.
 
 Branch `feat/lead-eagle-dashboard-filters`, from `origin/main` 10c585cc
-(#185). **Two additive migrations, `20261016120000_call_visit_lead` and
-`20261016120100_call_visit_lead_index` (110 in all).**
+(#185). **Three additive migrations, `20261016120000_call_visit_lead`,
+`20261016120100_call_visit_lead_index` and `20261016120200_booking_lead`
+(111 in all).**
 
 **Why.** The owner added M3 as round 5 on 12 Oct. Before this change:
 
@@ -33,9 +34,11 @@ Branch `feat/lead-eagle-dashboard-filters`, from `origin/main` 10c585cc
     `team`, `source`, `project` from a URL.
   - `scopeBoardFilter` drops a person outside the viewer's `leads` reach
     (`ownerReach`), a team with no one in it, and a source or project the
-    workspace does not hold.
+    workspace does not hold, or a project when the viewer may not read
+    projects.
   - `boardWhere` is one register's `where` for the filter (lead, follow-up,
-    call, logged call, task, visit); `boardListWhere` the same from a list's
+    call, logged call, task, visit, booking). It only narrows, so callers
+    merge it with the viewer's scope; `boardListWhere` the same from a list's
     URL.
   - `CALL_TABS`: the Calls list's tabs, each with the logged calls it counts.
   - `rememberedBoardFilter`: the per-user memory.
@@ -51,7 +54,8 @@ Branch `feat/lead-eagle-dashboard-filters`, from `origin/main` 10c585cc
 - Lists that now read the board's parameters:
   - `sales/calls/page.tsx`: Placed and Completed tabs (reached from the board)
     and `from`, `to`, `owner`, `team`, `source`, `project`. With `logged=1`,
-    a Logged calls table and an "N placed and M logged" line.
+    a Logged calls table (the latest 100) and an "N placed and M logged"
+    line whose M is the full count.
   - `sales/tasks/page.tsx`: `type` and the board's filters.
   - `sales/site-visits/page.tsx`: `status` and the board's filters.
   - `sales/follow-ups/page.tsx`: person, team, source, project.
@@ -65,7 +69,9 @@ Branch `feat/lead-eagle-dashboard-filters`, from `origin/main` 10c585cc
   the lead to null if it is deleted (`ON DELETE SET NULL`). An index on
   each `leadId` serves that lookup: without one, deleting the test
   workspace of 100,000 leads in one statement ran 25 minutes and was rolled
-  back.
+  back. `20261016120200_booking_lead` gives `Booking.lead` the same way
+  (its `leadId` index already existed), so bookings follow their lead's
+  source.
 - `src/services/targets/dailyBoard.ts`: `todayKey` keeps one
   `Intl.DateTimeFormat` per time zone (M3-19, below).
 - `src/app/globals.css`: `.lf-boardfilter*`, and links in `.lf-callfigures`
@@ -95,6 +101,10 @@ Branch `feat/lead-eagle-dashboard-filters`, from `origin/main` 10c585cc
   - The visit tiles open the register filtered: today's, approved or
     completed.
   - An agent at OWN scope sees Period, Source and Project only.
+  - Real Estate board only: Bookings, Confirmed Bookings and Top agents
+    narrow by person, team, source, project (the booking's) and period
+    (booking date); Revenue 7 Days reads the period; Revenue Today stays
+    today. Their tiles still open the unfiltered Collections screen.
 - **Calls list.** The Placed and Completed tabs exist (not on the tab bar).
   A filtered list keeps its filters across tabs and pages.
 - **Lead list.** Team, Project and Won-in-period chips when a board link
@@ -129,13 +139,17 @@ Design choices (mine, not the owner's):
 
 **Verified.**
 
-- `tests/sales/lead-eagle-dashboard-filters.spec.ts` (new), 7 cases:
+- `tests/sales/lead-eagle-dashboard-filters.spec.ts` (new), 9 cases:
   - A period with a team, and one person, narrow every figure.
   - A source, and a project, narrow every figure.
+  - The booking and revenue figures narrow under each filter (review fix).
+  - A project is dropped for a viewer who may not read projects (review
+    fix).
   - A person or team out of reach, or unknown, is ignored.
   - For a manager and a team lead, under four filter sets, every figure (lead
     tiles, funnel, follow-ups, Calls made and connected, visit tiles, each
-    leaderboard cell) equals the rows its linked page renders.
+    leaderboard cell) equals the rows its linked page renders, and each
+    filter set counts something (no 0 = 0 pass).
   - The choice is remembered per user, put in the URL, and cleared.
   - The board fits the connection pool (#180's measure).
 - Fail-before, on the base's source: 6 of 7 fail. Examples:
@@ -145,6 +159,12 @@ Design choices (mine, not the owner's):
   - "expected null to be '/filters-…/lead-eagle/dashboard?range=7d&team=…'"
     (nothing remembered).
   - The connections case passes on both: it is a guard.
+  - The two review-fix cases fail on the first commit's source: "expected
+    [ 3, 2, 100, 2 ] to deeply equal [ 1, 1, 100, 1 ]" and "expected
+    '…' to be undefined".
+- `tests/unit/today-key-formatter.spec.ts` (new): `todayKey` builds one
+  formatter per time zone; on the base it built 1,001 ("expected 1001 to be
+  less than or equal to 1").
 - `tests/sales/lead-eagle-dashboard.spec.ts` updated for the new shapes
   (`links`, `connectedHref`, the calls links). It passes with
   `tests/tenant/realty-dashboard.spec.ts` (unchanged) and
@@ -173,6 +193,9 @@ Design choices (mine, not the owner's):
 
   - A run two minutes earlier, during a load spike, had a manager's board
     alone at p95 1,668 ms. The page measures in that run stayed under 800.
+  - The harness is not in the repo: `C:/ymw/m456/scratch/3b/perf-board.spec.ts`
+    and `dbtime.mjs`, results in `perf-board-results.json` (the M4-20
+    method). The unit check above guards the formatter fix.
   - Every p95 is under 1 s, so M3-19 is met by measurement and no rollup was
     built.
   - When to add one: a manager's unfiltered page grows with the workspace's
@@ -187,6 +210,12 @@ Design choices (mine, not the owner's):
 - No screen makes teams yet (the E2E seeds one). The Team filter lists the
   teams that exist.
 - The Calls list's own tiles (Today's Calls, Total Calls) stay unfiltered.
-  The logged-calls table shows up to 100 rows.
+  The logged-calls table lists the latest 100 (its count is the full
+  number); it has no paging.
+- The booking and revenue tiles (Real Estate board) narrow but open the
+  unfiltered Collections screen: Collections has no filters to receive.
+- Saving the remembered choice happens when the board opens with filters in
+  its URL, so a shared link replaces the opener's remembered choice (it
+  only ever narrows what they see).
 - A site visit's project, not its lead's interest, decides the project
   filter for visits.

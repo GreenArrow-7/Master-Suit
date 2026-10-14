@@ -11,6 +11,7 @@ vi.mock('next/headers', () => ({
 }));
 
 import { randomBytes } from 'node:crypto';
+import { fixtureUnit } from '../helpers/inventory';
 import pg from 'pg';
 import type { ReactElement } from 'react';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -56,6 +57,7 @@ const MANAGER: [string, PermissionAction][] = [
   ['leads', 'CREATE'],
   ['leads', 'ASSIGN'],
   ['projects', 'VIEW'],
+  ['collections', 'VIEW'],
 ];
 
 const elements = (node: unknown): ReactElement<Record<string, unknown>>[] => {
@@ -174,6 +176,32 @@ describe('the board under its filters', () => {
     await prisma.leadStageHistory.create({
       data: { tenantId, leadId: l1.id, toStageId: booked.id, changedById: agentA.id, createdAt: ago(1) },
     });
+    // Bookings (the Real Estate board's deal figures): Amal's on L1, Bilal's
+    // older one on L3, and Bilal's draft on L4 to the project.
+    const booking = async (
+      ownerId: string,
+      leadId: string,
+      status: 'CONFIRMED' | 'DRAFT',
+      at: Date,
+      saleValue: number,
+      project = false,
+    ) =>
+      prisma.booking.create({
+        data: {
+          tenantId,
+          reference: `BK-${tag()}`,
+          unitInventoryId: (await fixtureUnit(tenantId, projectId)).id,
+          ownerId,
+          leadId,
+          status,
+          saleValue,
+          bookingDate: at,
+          ...(project ? { projectId } : {}),
+        },
+      });
+    await booking(agentA.id, l1.id, 'CONFIRMED', ago(1), 100, true);
+    await booking(agentB.id, l3.id, 'CONFIRMED', ago(20), 200);
+    await booking(agentB.id, l4.id, 'DRAFT', ago(1), 300, true);
 
     const now = Date.now();
     const followUp = (ownerId: string, leadId: string, dueAt: Date) =>
@@ -301,6 +329,23 @@ describe('the board under its filters', () => {
     ]);
   });
 
+  it('the booking and revenue figures narrow under every filter too (M3-16, M3-17)', async () => {
+    const deals = async (filter: Record<string, string>) => {
+      const b = await board(manager.cookie, filter);
+      return [b.pipeline.bookings, b.pipeline.confirmedBookings, b.business.revenue7Days, b.business.topAgents?.length];
+    };
+    expect(await deals({})).toEqual([3, 2, 100, 2]);
+    expect(await deals({ range: '7d', team: teamA })).toEqual([1, 1, 100, 1]);
+    expect(await deals({ owner: agentB.id })).toEqual([2, 1, 0, 1]);
+    expect(await deals({ source: src.bayut! })).toEqual([2, 2, 100, 2]);
+    expect(await deals({ project: projectId })).toEqual([2, 1, 100, 1]);
+  });
+
+  it('a project is dropped for a viewer who may not read projects', async () => {
+    const b = await board(agentA.cookie, { project: projectId });
+    expect(b.filter.project).toBeUndefined();
+  });
+
   it('a person or team outside the viewer’s reach is ignored, never widening (M3-16)', async () => {
     const own = await board(teamLead.cookie);
     const outside = await board(teamLead.cookie, { owner: agentB.id });
@@ -342,6 +387,11 @@ describe('the board under its filters', () => {
             { value: row.booked, href: row.links.booked },
           ]),
         ];
+        // Not a vacuous 0 = 0: every filter set counts something.
+        expect(
+          figures.some((figure) => figure.value > 0),
+          JSON.stringify(filter),
+        ).toBe(true);
         for (const figure of figures) {
           expect(await listed(cookie, figure.href), `${JSON.stringify(filter)} ${figure.href}`).toBe(figure.value);
         }

@@ -3421,6 +3421,7 @@ model Lead {
   projectInterests LeadProject[]
   calls            Call[]
   siteVisits       SiteVisit[]
+  bookings         Booking[]       @relation("BookingLead")
   listingInterests LeadListing[]
   dataRecords      DataRecord[]
 
@@ -7594,6 +7595,7 @@ model Booking {
   /// ever hard-deleted, and by the time a booking exists one usually is.
   deletedAt   DateTime?
 
+  lead        Lead?                    @relation("BookingLead", fields: [leadId], references: [id], onDelete: SetNull)
   project     Project?                 @relation(fields: [projectId], references: [id], onDelete: SetNull)
   unit        UnitInventory?           @relation(fields: [unitInventoryId], references: [id], onDelete: SetNull)
   listing     Listing?                 @relation(fields: [listingId], references: [id], onDelete: SetNull)
