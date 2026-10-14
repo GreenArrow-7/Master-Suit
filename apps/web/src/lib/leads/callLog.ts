@@ -1,3 +1,5 @@
+import type { CallOutcome } from '@prisma/client';
+
 /**
  * The one-step call log (PROP-02.2, M4-27): what a call found, as the dialog
  * offers it and the API accepts it. Stored as written on the call's Activity,
@@ -14,8 +16,33 @@ export const CALL_LOG_OUTCOMES = [
   'Wrong number',
 ] as const;
 
+/** A call that reached someone, as the Calls list's Connected tab reads a call's outcome. */
+export const CONNECTED_CALL_OUTCOMES: readonly CallOutcome[] = [
+  'CONNECTED',
+  'CALLBACK_REQUESTED',
+  'INTERESTED',
+  'QUALIFIED',
+  'CONVERTED',
+];
+
+/** The same, in this dialog's words: a logged call's outcome. */
+export const CONNECTED_LOG_OUTCOMES: readonly string[] = ['Connected', 'Interested', 'Call back later'];
+
 /** The follow-up the dialog books: what the Follow-ups list shows for it. */
 export const FOLLOW_UP_TITLE = 'Follow-up call';
+
+/**
+ * What a follow-up is for (`FollowUpTask.kind`, M3-04): a call unless it was
+ * booked as something else. The Lead Eagle board's Callbacks are the calls.
+ */
+export const FOLLOW_UP_KINDS = ['CALL', 'MEETING', 'SITE_VISIT', 'OTHER'] as const;
+export type FollowUpKind = (typeof FOLLOW_UP_KINDS)[number];
+export const FOLLOW_UP_KIND_LABELS: Record<FollowUpKind, string> = {
+  CALL: 'Call',
+  MEETING: 'Meeting',
+  SITE_VISIT: 'Site visit',
+  OTHER: 'Other',
+};
 
 /** "YYYY-MM-DDT10:00" for tomorrow on the workspace's clock: the dialog's default follow-up. */
 export function tomorrowAtTen(timeZone: string, now = new Date()): string {

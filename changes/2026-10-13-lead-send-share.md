@@ -33,7 +33,7 @@ timeline (#178, on `main`).
   "Shared link opened" goes on the lead's timeline once per visitor per day,
   at most three a day per link. A link works 30 days and can be revoked.
 
-**One migration (108 in all):** `20261014090000_lead_shares`. Additive: the
+**One migration (109 in all):** `20261016090000_lead_shares`. Additive: the
 `LeadShare` table, row-level security forced. No row is written.
 
 **Why.** The Lead Eagle gap audit of 11 Oct, part of the owner's brief "Build

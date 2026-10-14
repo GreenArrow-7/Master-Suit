@@ -32,6 +32,10 @@ export const SIMPLE_NAMED_LEAD_FILTERS: Record<string, (now: Date, actorId: stri
   high_score: () => ({ score: { gte: 70 } }),
   mine: (_now, actorId) => ({ ownerId: actorId }),
   closed_out: () => CLOSED_OUT_WHERE,
+  // The Lead Eagle board's tiles (M3-02, M3-09): handed to someone and never
+  // contacted while still on the ladder; and converted (a won stage).
+  untouched: () => ({ ownerId: { not: null }, firstContactedAt: null, stage: { is: { category: 'OPEN' } } }),
+  won: () => ({ stage: { is: { category: 'CONVERSION' } } }),
 };
 
 /** Every name the product uses, including the ones built by a service. */

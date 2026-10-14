@@ -479,6 +479,10 @@ describe('making a lead of a called record', () => {
     expect(calls).toHaveLength(2);
     expect(calls.map((c) => c.leadId)).toEqual([leadId, leadId]);
     expect(await prisma.activity.count({ where: { tenantId, leadId, type: { key: 'call_out' } } })).toBe(2);
+    // First contacted at the first of those calls (the Lead Eagle board's Untouched and Worked).
+    const first = Math.min(...calls.map((c) => c.occurredAt.getTime()));
+    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, id: leadId } });
+    expect(lead.firstContactedAt?.getTime()).toBe(first);
     const audited = await prisma.auditLog.findFirst({
       where: { tenantId, event: 'RECORD_UPDATED', objectType: 'lead', recordId: leadId },
     });
