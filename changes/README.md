@@ -30,6 +30,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 | Date | Entry | PR | Area |
 |---|---|---|---|
 | 2026-10-13 | [The dashboards read in one transaction; the Audit Log keeps the workspace's clock; a lead's delete is one row on the lead; the Undo toast and Cold Data on a phone](2026-10-13-fanout-audit-clock-ui.md) | #187 | Lead Eagle, performance, audit, cold data, UI |
+| 2026-10-13 | [Send a WhatsApp or email template from the lead and to many leads; share a listing or project as a page that tells the agent when it is opened](2026-10-13-lead-send-share.md) | #182 | Lead Eagle, leads |
 | 2026-10-13 | [The Lead Eagle board counts what its lists show: callbacks apart from other follow-ups, untouched and unassigned leads, meetings, conversion, sources, the funnel, calls and a leaderboard](2026-10-13-lead-eagle-dashboard-tiles.md) | #185 | Lead Eagle, dashboard |
 | 2026-10-13 | [Two leads merge into one; a lead import can update the leads it matches, be checked first, and hand back its refused rows](2026-10-13-lead-merge-import.md) | #181 | Lead Eagle, leads, import |
 | 2026-10-13 | [A listing with a live mandate can be published again; three more reads inside a transaction found nothing](2026-10-13-listing-mandate-tenant-read.md) | #184 | fix, Real Estate, HR, collections |

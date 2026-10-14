@@ -19,6 +19,7 @@ export interface SentMail {
   to: string;
   subject: string;
   body: string;
+  replyTo?: string;
   at: Date;
 }
 
@@ -44,16 +45,17 @@ function smtpTransport(): Transporter {
   return transport;
 }
 
-export async function sendMail(to: string, subject: string, body: string) {
+/** `replyTo`: where an answer goes, when not to the platform's own address (a lead answering its agent). */
+export async function sendMail(to: string, subject: string, body: string, { replyTo }: { replyTo?: string } = {}) {
   if (env.EMAIL_PROVIDER === 'mock') {
-    outbox.push({ to, subject, body, at: new Date() });
+    outbox.push({ to, subject, body, ...(replyTo && { replyTo }), at: new Date() });
     if (outbox.length > OUTBOX_LIMIT) outbox.shift();
     logger.info({ to, subject, provider: 'mock' }, 'email captured (not sent)');
     return;
   }
 
   if (env.EMAIL_PROVIDER === 'smtp') {
-    await smtpTransport().sendMail({ from: env.EMAIL_FROM, to, subject, text: body });
+    await smtpTransport().sendMail({ from: env.EMAIL_FROM, to, subject, text: body, ...(replyTo && { replyTo }) });
     logger.info({ to, subject, provider: 'smtp' }, 'email sent');
     return;
   }

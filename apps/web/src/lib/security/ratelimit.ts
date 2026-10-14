@@ -123,6 +123,15 @@ export const limits = {
   platformService: (id: string, max: number) => ({ key: `svc:${id}`, max, windowSeconds: 60 }),
   sessionUser: (id: string) => ({ key: `user:${id}`, max: 1200, windowSeconds: 60 }),
   publicForm: (ip: string) => ({ key: `form:${ip}`, max: 5, windowSeconds: 60 }),
+  /** A shared listing or project page (M4-30), per client: as many as the public form's own read allows. */
+  publicShare: (ip: string) => ({ key: `share:${ip}`, max: 60, windowSeconds: 60 }),
+  /**
+   * Email a workspace sends its leads from the lead page and Send template
+   * (M4-28, M4-38), per UTC day. It goes out through the platform's own mail
+   * server, the one password resets use, so one workspace cannot spend its name.
+   */
+  // ponytail: one figure for every workspace; per plan (lower on a trial) once the owner sets one.
+  leadEmailDay: (tenantId: string) => ({ key: `lead-email:${tenantId}`, max: 300, windowSeconds: 86_400 }),
   exportCreate: (id: string) => ({ key: `export:${id}`, max: 10, windowSeconds: 3600 }),
   /** Confirming an authenticator code: brute-forcing six digits must not be free. */
   mfaConfirm: (userId: string) => ({ key: `mfa:confirm:${userId}`, max: 10, windowSeconds: 300 }),

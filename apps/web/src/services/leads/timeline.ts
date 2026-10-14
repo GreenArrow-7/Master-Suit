@@ -16,7 +16,8 @@ import { leadSourceLabel } from './leadSources';
  * and its messages, in one feed, newest first, paged by a cursor. Each entry
  * is typed and dated on the workspace's clock, and carries only what the
  * viewer may see: a masked field reads masked, and a call or a message outside
- * the viewer's `calls` or inbox (`communications`) reach is left out. A user
+ * the viewer's `calls` or inbox (`communications`) reach is left out (a role
+ * with no inbox reads the messages it sent). A user
  * id is shown as the person's name, never as the id.
  */
 export type TimelineKind = 'activity' | 'assignment' | 'call' | 'field' | 'message' | 'stage';
@@ -111,13 +112,14 @@ const CHANNEL: Readonly<Record<string, string>> = { WHATSAPP: 'WhatsApp', EMAIL:
 const reason = (value: string | null) => (value && /^[A-Z_]+$/.test(value) ? sentence(value) : value);
 
 /**
- * The messages the inbox shows this viewer, as a `where` on Communication; null
- * without the inbox. A threaded message goes by its conversation's owner, as
+ * The messages this viewer reads, as a `where` on Communication: the ones the
+ * inbox shows them. A threaded message goes by its conversation's owner, as
  * the inbox lists and opens threads (api/v1/conversations); one outside any
- * thread by its own.
+ * thread by its own. A role with no inbox, which still sends from the lead
+ * (the Telecaller), reads the messages it sent itself, and nothing else.
  */
-async function inboxReach(ctx: Ctx): Promise<Prisma.CommunicationWhereInput | null> {
-  if (!can(ctx, 'communications', 'VIEW')) return null;
+async function inboxReach(ctx: Ctx): Promise<Prisma.CommunicationWhereInput> {
+  if (!can(ctx, 'communications', 'VIEW')) return { createdById: ctx.actor.id };
   const visible = await visibilityWhere(ctx, 'communications', 'VIEW', { includeUnassigned: true });
   return {
     OR: [
@@ -216,29 +218,27 @@ export async function leadTimeline(
           callerId: true,
         },
       }),
-      inbox
-        ? tx.communication.findMany({
-            where: {
-              tenantId,
-              // A thread's earlier messages carry no lead: it was linked after them.
-              OR: [{ leadId }, { conversation: { is: { leadId } } }],
-              AND: [inbox, after<Prisma.CommunicationWhereInput>(cursor, 'message', 'createdAt')],
-            },
-            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-            take,
-            // Never the addresses, as for calls.
-            select: {
-              id: true,
-              createdAt: true,
-              channel: true,
-              direction: true,
-              status: true,
-              subject: true,
-              body: true,
-              createdById: true,
-            },
-          })
-        : [],
+      tx.communication.findMany({
+        where: {
+          tenantId,
+          // A thread's earlier messages carry no lead: it was linked after them.
+          OR: [{ leadId }, { conversation: { is: { leadId } } }],
+          AND: [inbox, after<Prisma.CommunicationWhereInput>(cursor, 'message', 'createdAt')],
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take,
+        // Never the addresses, as for calls.
+        select: {
+          id: true,
+          createdAt: true,
+          channel: true,
+          direction: true,
+          status: true,
+          subject: true,
+          body: true,
+          createdById: true,
+        },
+      }),
     ]),
   );
 

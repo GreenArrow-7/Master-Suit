@@ -8,6 +8,7 @@ import { assignLead } from '@/services/distribution/assignLead';
 import { analyseCall, runCallAudit, transcribeCall } from '@/services/shared/callIntelligence';
 import { ingestRecording } from '@/services/shared/ingestRecording';
 import { scorePracticeSession } from '@/services/shared/practiceScoring';
+import { runQueuedLeadMessage } from '@/services/leads/leadMessages';
 import { checkLeadFirstContact } from '@/services/sla/checkLeadFirstContact';
 import { escalateSocialSla } from '@/services/social/escalateSocialSla';
 import { AI_CONCURRENCY, fairShare } from './ai';
@@ -37,8 +38,12 @@ export const JOBS: Record<QueueName, Jobs> = {
     'social-enquiry-response': (d) => escalateSocialSla(d.tenantId, d.socialCommentId),
   },
   media: { 'recording.ingest': ingestRecording },
-  // The once-a-minute lifecycle sweep: starts due SCHEDULED campaigns, completes RUNNING ones past their end.
-  campaign: { sweep: () => sweepDueCampaigns() },
+  campaign: {
+    // The once-a-minute lifecycle sweep: starts due SCHEDULED campaigns, completes RUNNING ones past their end.
+    sweep: () => sweepDueCampaigns(),
+    // One lead's message from Send template on the lead grid (M4-38), at its turn.
+    'lead-message': runQueuedLeadMessage,
+  },
   ai: { transcribe: transcribeCall, analyse: analyseCall, audit: runCallAudit, 'practice-score': scorePracticeSession },
   notifications: {
     'record-push': pushRecord,
