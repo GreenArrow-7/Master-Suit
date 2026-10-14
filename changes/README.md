@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-13 | [The dashboards read in one transaction; the Audit Log keeps the workspace's clock; a lead's delete is one row on the lead; the Undo toast and Cold Data on a phone](2026-10-13-fanout-audit-clock-ui.md) | - | Lead Eagle, performance, audit, cold data, UI |
 | 2026-10-13 | [A listing with a live mandate can be published again; three more reads inside a transaction found nothing](2026-10-13-listing-mandate-tenant-read.md) | #184 | fix, Real Estate, HR, collections |
 | 2026-10-13 | [The lead grid tags, deletes with Undo and moves leads to Cold Data in bulk; it pages by keyset, measured at 100,000 leads](2026-10-13-lead-bulk-tag-delete-move.md) | #183 | Lead Eagle, leads, cold data, performance |
 | 2026-10-13 | [The lead page no longer asks for more database connections than the pool holds](2026-10-13-lead-page-transaction-pressure.md) | #180 | Lead Eagle, leads, fix |
