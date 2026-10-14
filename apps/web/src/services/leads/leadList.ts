@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { mergeWhere } from '@/lib/api/where';
+import { boardWhere, resolveBoardFilter } from '@/lib/leads/boardFilter';
 import { prisma } from '@/lib/db';
 import { simpleNamedLeadFilterWhere, wantsClosedOut } from '@/lib/leads/namedFilters';
 import type { FieldRule } from '@/lib/security/fieldSecurity';
@@ -22,7 +23,8 @@ const day = z
  * What the lead grid, its board and its CSV export read from the URL (M4-19,
  * M4-21), in the order a link writes them: a named filter, the search, the
  * chips (stage, owner — a user id or `none` — source, and a created, updated
- * or first-contacted date range on the workspace's clock), the sort, a saved view's
+ * or first-contacted date range on the workspace's clock), the Lead Eagle
+ * board's team and project and its won-in-the-period (`date=won`), the sort, a saved view's
  * columns (`cols`, comma-separated) and the layout.
  */
 export const leadListParams = z
@@ -32,7 +34,9 @@ export const leadListParams = z
     stage: z.string().max(40),
     owner: z.string().max(40),
     source: z.string().max(40),
-    date: z.enum(['created', 'updated', 'contacted']),
+    team: z.string().max(40),
+    project: z.string().max(40),
+    date: z.enum(['created', 'updated', 'contacted', 'won']),
     from: day,
     to: day,
     sort: z.enum(['updated', 'created', 'score', 'name']),
@@ -47,6 +51,16 @@ const KEYS = Object.keys(leadListParams.shape) as (keyof LeadListParams)[];
 
 /** The column a date range reads; `contacted` is the Lead Eagle board's "worked" days (M3-14). */
 const DATE_FIELD = { created: 'createdAt', updated: 'updatedAt', contacted: 'firstContactedAt' } as const;
+
+/** `date=won`: moved into a won stage in the range (the board's leaderboard Booked). */
+async function wonIn(ctx: Ctx, range: Record<string, Date>) {
+  const won = await prisma.leadStage.findMany({
+    where: { tenantId: ctx.tenantId, deletedAt: null, category: 'CONVERSION' },
+    select: { id: true },
+  });
+  const ids = won.map((stage) => stage.id);
+  return { stageId: { in: ids }, stageHistory: { some: { toStageId: { in: ids }, createdAt: range } } };
+}
 
 /** What a param means when absent: the filter form sends these, and no link needs to repeat them. */
 const DEFAULTS: Partial<LeadListParams> = { date: 'created', sort: 'updated', layout: 'list' };
@@ -159,6 +173,10 @@ export async function leadListQuery(ctx: Ctx, params: LeadListParams, rules: Map
   const view = followUp?.view ?? 'scope';
   const access = await obligationAccess(ctx, view);
   const timeZone = params.from || params.to ? await workspaceTimezone(ctx) : null;
+  const range = timeZone && {
+    ...(params.from ? { gte: dayBounds(params.from, timeZone).from } : {}),
+    ...(params.to ? { lte: dayBounds(params.to, timeZone).to } : {}),
+  };
   const where = mergeWhere(
     await leadScope(ctx, 'VIEW', { includeUnassigned: true }),
     followUp
@@ -169,13 +187,18 @@ export async function leadListQuery(ctx: Ctx, params: LeadListParams, rules: Map
     params.owner ? { ownerId: params.owner === 'none' ? null : params.owner } : null,
     // A source takes its sub-sources with it.
     params.source ? { OR: [{ sourceId: params.source }, { leadSource: { is: { parentId: params.source } } }] } : null,
-    timeZone
-      ? {
-          [DATE_FIELD[params.date ?? 'created']]: {
-            ...(params.from ? { gte: dayBounds(params.from, timeZone).from } : {}),
-            ...(params.to ? { lte: dayBounds(params.to, timeZone).to } : {}),
-          },
-        }
+    range
+      ? params.date === 'won'
+        ? await wonIn(ctx, range)
+        : { [DATE_FIELD[params.date ?? 'created']]: range }
+      : null,
+    // The board's team and project, read as the board reads them.
+    params.team || params.project
+      ? boardWhere(
+          await resolveBoardFilter(ctx, { team: params.team, project: params.project }, timeZone ?? 'UTC'),
+          'lead',
+          false,
+        )
       : null,
     // Closed-out leads (invalid, duplicate, archived) leave every working list
     // and are reached only through their own filter.

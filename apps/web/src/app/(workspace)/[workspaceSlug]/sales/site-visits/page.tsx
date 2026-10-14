@@ -7,6 +7,7 @@ import { can } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { leaderQueues } from '@/services/visits/lifecycle';
+import { boardListWhere } from '@/lib/leads/boardFilter';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -34,7 +35,7 @@ const TONE: Record<string, 'viridian' | 'brass' | 'vermillion' | 'slate'> = {
 export default async function SiteVisitsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ queue?: string; status?: string }>;
+  searchParams: Promise<{ queue?: string; status?: string } & Record<string, string | undefined>>;
 }) {
   const params = await searchParams;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['visits', 'VIEW'] });
@@ -51,9 +52,17 @@ export default async function SiteVisitsPage({
           ? { locationSuspect: true }
           : {};
 
-  const [rows, queues, timeZone] = await Promise.all([
+  // The Lead Eagle board's visit tiles: a status, and its person, period, team, source and project.
+  const timeZone = await workspaceTimezone(ctx);
+  const STATUSES = ['REQUESTED', 'APPROVED', 'CHECKED_IN', 'COMPLETED', 'REJECTED', 'CANCELLED', 'NO_SHOW'];
+  const boardWhere = mergeWhere(
+    STATUSES.includes(params.status ?? '') ? { status: params.status as 'APPROVED' } : null,
+    await boardListWhere(ctx, params, 'visit', timeZone),
+  );
+
+  const [rows, queues] = await Promise.all([
     prisma.siteVisit.findMany({
-      where: mergeWhere(scope, { deletedAt: null }, queueWhere),
+      where: mergeWhere(scope, { deletedAt: null }, queueWhere, boardWhere),
       orderBy: { scheduledAt: 'desc' },
       take: 100,
       select: {
@@ -75,7 +84,6 @@ export default async function SiteVisitsPage({
       },
     }),
     isLeader ? leaderQueues(ctx) : null,
-    workspaceTimezone(ctx),
   ]);
 
   return (
@@ -162,7 +170,7 @@ export default async function SiteVisitsPage({
             </thead>
             <tbody>
               {rows.map((v) => (
-                <tr key={v.id}>
+                <tr key={v.id} data-visit={v.id}>
                   <td style={{ fontWeight: 500 }}>
                     {v.scheduledAt.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone })}
                   </td>
