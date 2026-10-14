@@ -145,27 +145,41 @@ describe('a /sales/ link reaches a Lead-Eagle-only workspace', () => {
 describe('the Administration screens every lead module shares', () => {
   const admin = path.join(APP, 'admin');
 
-  it.each(['lead-stages', 'lead-sources', 'custom-fields'])('admin/%s admits Lead Eagle, with its API', (screen) => {
-    expect(read(path.join(admin, screen, 'page.tsx'))).toContain('module: LEAD_MODULES');
-  });
+  it.each(['lead-stages', 'lead-sources', 'custom-fields', 'email-templates'])(
+    'admin/%s admits Lead Eagle, with its API',
+    (screen) => {
+      expect(read(path.join(admin, screen, 'page.tsx'))).toContain('module: LEAD_MODULES');
+    },
+  );
 
-  it.each(['lead-sources', 'custom-fields', 'lead-scoring'])('the %s API admits Lead Eagle', (api) => {
-    expect(read(path.join(API, api, 'route.ts'))).toContain('productModule: LEAD_MODULES');
-  });
+  it.each(['lead-sources', 'custom-fields', 'lead-scoring', 'email-templates'])(
+    'the %s API admits Lead Eagle',
+    (api) => {
+      expect(read(path.join(API, api, 'route.ts'))).toContain('productModule: LEAD_MODULES');
+    },
+  );
 
-  it.each(['lead-sources', 'custom-fields'])('admin/%s shows NotInPlan outside a lead product', (screen) => {
-    const layout = read(path.join(admin, screen, 'layout.tsx'));
-    expect(layout).toContain('workspaceOwns(workspaceSlug, LEAD_MODULES)');
-    expect(layout).toContain('<NotInPlan slug={workspaceSlug} module={LEAD_MODULES} />');
-  });
+  it.each(['lead-sources', 'custom-fields', 'email-templates'])(
+    'admin/%s shows NotInPlan outside a lead product',
+    (screen) => {
+      const layout = read(path.join(admin, screen, 'layout.tsx'));
+      expect(layout).toContain('workspaceOwns(workspaceSlug, LEAD_MODULES)');
+      expect(layout).toContain('<NotInPlan slug={workspaceSlug} module={LEAD_MODULES} />');
+    },
+  );
 
-  it('a Lead-Eagle-only administrator is offered Lead Stages, Sources and Custom Fields under Settings', () => {
+  it('a Lead-Eagle-only administrator is offered Lead Stages, Sources, Custom Fields and Email Templates under Settings', () => {
     const tabs = buildNavigation({ slug: 'eagle', modules: ['LEAD_EAGLE'], permitted: ['settings'] })
       .flatMap((section) => section.areas)
       .flatMap((area) => area.tabs)
       .map((tab) => tab.href);
     expect(tabs).toEqual(
-      expect.arrayContaining(['/eagle/admin/lead-stages', '/eagle/admin/lead-sources', '/eagle/admin/custom-fields']),
+      expect.arrayContaining([
+        '/eagle/admin/lead-stages',
+        '/eagle/admin/lead-sources',
+        '/eagle/admin/custom-fields',
+        '/eagle/admin/email-templates',
+      ]),
     );
   });
 });

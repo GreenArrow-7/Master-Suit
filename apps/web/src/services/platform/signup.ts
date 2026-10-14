@@ -31,6 +31,7 @@ const RESERVED = new Set([
   'p',
   'privacy',
   'rsvp',
+  's',
   'support',
   'testimonial',
   'no-platform-access',

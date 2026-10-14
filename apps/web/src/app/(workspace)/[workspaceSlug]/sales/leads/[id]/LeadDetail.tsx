@@ -17,6 +17,8 @@ import type { TimelineEntry, TimelinePage } from '@/services/leads/timeline';
 import TaskComposer from '../../tasks/TaskComposer';
 import RequirementCard from './RequirementCard';
 import InterestsCard from './InterestsCard';
+import MessageCard, { type LeadMessaging } from './MessageCard';
+import ShareCard, { type LeadShareRow } from './ShareCard';
 import CallLogDialog, { useAfterDial } from '../CallLogDialog';
 import StageReason, { asksBeforeMove, type StageMove } from '@/components/workspace/StageReason';
 import { sendOrQueue } from '@/lib/offline';
@@ -170,6 +172,10 @@ interface Props {
   canLog: boolean;
   /** An assisted call can be placed: `calls:CREATE`, which /calls/new asks for. */
   canCall: boolean;
+  /** Send WhatsApp and Send email (M4-28): null without `communications:CREATE` or the lead's `leads:EDIT`. */
+  messaging: LeadMessaging | null;
+  /** Share a property (M4-30): its links, and wa.me where the lead's WhatsApp number is visible; null where `leads:EDIT` does not reach it. */
+  sharing: { firstName: string; whatsapp: string | null; shares: LeadShareRow[] } | null;
   canDeleteDocuments: boolean;
   canAssign: boolean;
   canDelete: boolean;
@@ -222,6 +228,8 @@ export default function LeadDetail({
   canEdit,
   canLog,
   canCall,
+  messaging,
+  sharing,
   canDeleteDocuments,
   canAssign,
   canDelete,
@@ -408,6 +416,17 @@ export default function LeadDetail({
                 listingOptions={listingOptions}
                 canEdit={canEdit}
               />
+              {messaging && <MessageCard lead={lead} messaging={messaging} />}
+              {sharing && (
+                <ShareCard
+                  leadId={lead.id}
+                  firstName={sharing.firstName}
+                  whatsapp={sharing.whatsapp}
+                  projectOptions={projectOptions}
+                  listingOptions={listingOptions}
+                  shares={sharing.shares}
+                />
+              )}
             </div>
           )}
           {tab === 'Timeline' && (

@@ -412,6 +412,12 @@ describe('a screen or route outside the plan says which products carry it', () =
     expect(await shown(await CustomFieldsLayout(open(hrOnly, '/admin/custom-fields')))).toContain(
       'Custom fields is part of Sales, Real Estate or Lead Eagle.',
     );
+    const { default: EmailTemplatesLayout } =
+      await import('@/app/(workspace)/[workspaceSlug]/admin/email-templates/layout');
+    expect(await shown(await EmailTemplatesLayout(open(hrOnly, '/admin/email-templates')))).toContain(
+      'Email templates is part of Sales, Real Estate or Lead Eagle.',
+    );
+    expect(await EmailTemplatesLayout(open(leadEagleOnly, '/admin/email-templates'))).toBe('the screen');
   });
 
   it('a lead source’s deliveries and field map are for any lead product (M6-20, M6-21)', async () => {
