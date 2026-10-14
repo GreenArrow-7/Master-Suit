@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import CallLink, { dialable } from '@/components/workspace/CallLink';
+import { callNumber } from '@/lib/leads/callLog';
 import FollowUpRowActions from '@/app/(workspace)/[workspaceSlug]/sales/follow-ups/FollowUpRowActions';
 import type { GridObject } from '@/lib/grid/columns';
 
@@ -37,9 +38,6 @@ function onClock(value: unknown, timeZone?: string): ReactNode {
     timeZone,
   });
 }
-
-/** The person on the other end: who rang in on an inbound call, not the workspace's line it reached. */
-const otherParty = (row: GridRow) => (row.direction === 'INBOUND' ? row.callerNumber : row.recipientNumber);
 
 function duration(seconds: unknown): ReactNode {
   const total = Number(seconds ?? 0);
@@ -106,6 +104,9 @@ const leadCell = (row: GridRow) => (row.lead ? link(`/leads/${row.lead.id}`, row
 export function renderCell(object: GridObject, key: string, row: GridRow, timeZone?: string): ReactNode {
   const date = (value: unknown) => onDay(value, timeZone);
   const dateTime = (value: unknown) => onClock(value, timeZone);
+  // A day picked in a date input is stored as that day's UTC midnight: read on
+  // UTC's clock, or a workspace west of UTC sees the day before.
+  const pickedDay = (value: unknown) => onDay(value, 'UTC');
   switch (object) {
     case 'ACCOUNT':
       switch (key) {
@@ -172,7 +173,7 @@ export function renderCell(object: GridObject, key: string, row: GridRow, timeZo
         case 'expectedCloseDate':
           // A closed deal's real close date beats the forecast that may never
           // have been entered; open deals keep showing the forecast.
-          return date(row.actualCloseDate ?? row.expectedCloseDate);
+          return row.actualCloseDate ? date(row.actualCloseDate) : pickedDay(row.expectedCloseDate);
         case 'owner':
           return row.owner?.fullName ?? dash;
         case 'updatedAt':
@@ -208,7 +209,7 @@ export function renderCell(object: GridObject, key: string, row: GridRow, timeZo
         case 'caller':
           return row.caller?.fullName ?? dash;
         case 'recipientNumber':
-          return <span style={{ fontFamily: 'var(--lf-font-mono)' }}>{otherParty(row) ?? '—'}</span>;
+          return <span style={{ fontFamily: 'var(--lf-font-mono)' }}>{callNumber(row) ?? '—'}</span>;
         case 'direction':
           return <Badge value={row.direction} />;
         case 'durationSecs':
@@ -236,7 +237,7 @@ export function renderCell(object: GridObject, key: string, row: GridRow, timeZo
            * or failed row may never have recorded one and dialling the lead is
            * still what the user wants.
            */
-          return dialLink(otherParty(row) ?? row.lead?.phone);
+          return dialLink(callNumber(row) ?? row.lead?.phone);
         default:
           return dash;
       }
@@ -252,9 +253,9 @@ export function renderCell(object: GridObject, key: string, row: GridRow, timeZo
         case 'status':
           return <Badge value={row.status} />;
         case 'startDate':
-          return date(row.startDate);
+          return pickedDay(row.startDate);
         case 'endDate':
-          return date(row.endDate);
+          return pickedDay(row.endDate);
         case 'budget':
           return row.budget == null ? dash : money(row.budget, row.currency ?? 'AED');
         default:
@@ -498,7 +499,7 @@ export function renderCell(object: GridObject, key: string, row: GridRow, timeZo
               <Badge value={row.mandateType} tone={row.mandateType === 'EXCLUSIVE' ? 'viridian' : 'slate'} />
               {row.mandateExpires ? (
                 <span style={{ fontSize: 'var(--lf-text-xs)', color: overdue(row.mandateExpires) }}>
-                  {date(row.mandateExpires)}
+                  {pickedDay(row.mandateExpires)}
                 </span>
               ) : null}
             </span>

@@ -1507,28 +1507,38 @@ a:hover {
 .lf-grid tbody tr {
   transition: background 90ms ease;
 }
-/* Sticky first column: the name stays put while you scroll 14 columns right. */
+/* Sticky first column: the name stays put while you scroll 14 columns right.
+   On the surface, as the pinned Call cell is: inherited from a row with no
+   ground of its own it was clear, and the columns passing under it showed
+   through its reference. */
 .lf-grid .lf-sticky {
   position: sticky;
   left: 0;
   z-index: 1;
-  background: inherit;
+  background: var(--lf-surface);
   box-shadow: 1px 0 0 var(--lf-line);
 }
-/* And the row's own actions (Call, Log call) at the right edge, in reach however far it scrolls. */
+/* And the row's own actions (Call, Log call) at the right edge, in reach however far it scrolls.
+   While the columns are wider than the frame (all the defaults at 1280-1440) they
+   pass under it, so it carries a shadow edge: a hairline alone read as the end
+   of the table, and a column cut there ('No actio…') as the whole of it. */
 .lf-grid td.lf-grid__actions {
   position: sticky;
   right: 0;
   z-index: 1;
   background: var(--lf-surface);
-  box-shadow: -1px 0 0 var(--lf-line);
+  box-shadow:
+    -1px 0 0 var(--lf-line),
+    -4px 0 6px var(--lf-shadow-edge);
 }
 /* Its header pinned with it. Left to scroll, the header row ran on past the
    pinned cells, so a column's name stood over the buttons hiding its values. */
 .lf-grid th.lf-grid__actions {
   position: sticky;
   right: 0;
-  box-shadow: -1px 0 0 var(--lf-line);
+  box-shadow:
+    -1px 0 0 var(--lf-line),
+    -4px 0 6px var(--lf-shadow-edge);
 }
 /* A pinned header paints over the headers scrolling under it (they sit at 2),
    on the header's own ground: at 1, Reference went under Name. */
@@ -1779,6 +1789,7 @@ a:hover {
     position: static;
     box-shadow: none;
   }
+  .lf-grid .lf-sticky,
   .lf-grid td.lf-grid__actions {
     background: none;
   }

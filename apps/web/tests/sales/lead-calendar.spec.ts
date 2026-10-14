@@ -87,6 +87,7 @@ beforeAll(async () => {
     ['leads', 'VIEW'],
     ['visits', 'VIEW'],
     ['events', 'VIEW'],
+    ['contacts', 'VIEW'],
   ];
   people.admin = await member('admin', grants, 'ORGANIZATION');
   people.agent = await member('agent', grants, 'OWN');
@@ -182,6 +183,21 @@ beforeAll(async () => {
       },
     })
   ).id;
+  // Real Estate takes a client who is a contact, not a lead.
+  const contact = await prisma.contact.create({
+    data: { tenantId, reference: `CC-${suffix}`, fullName: 'Calendar contact', ownerId: people.admin.id },
+  });
+  ids['visit-contact'] = (
+    await prisma.siteVisit.create({
+      data: {
+        tenantId,
+        ownerId: people.admin.id,
+        contactId: contact.id,
+        projectId: project.id,
+        scheduledAt: new Date('2026-12-16T08:00:00Z'),
+      },
+    })
+  ).id;
   ids.event = (
     await prisma.event.create({
       data: {
@@ -248,9 +264,10 @@ describe('the calendar in a Lead-Eagle-only workspace', () => {
     );
   });
 
-  it('names a visit’s lead as the lead list reads the name: masked where the role masks it', async () => {
+  /** A reader of every visit, with `leads` as given and an optional rule on the lead's name. */
+  async function visitReader(label: string, leads: 'ORGANIZATION' | 'OWN' | null, nameRule?: string | null) {
     const role = await prisma.role.create({
-      data: { tenantId, key: `masked-${suffix}`, name: 'masked', rank: 50, defaultScope: 'ORGANIZATION' },
+      data: { tenantId, key: `${label}-${suffix}`, name: label, rank: 50, defaultScope: 'ORGANIZATION' },
     });
     await grantPermissions(
       tenantId,
@@ -261,26 +278,43 @@ describe('the calendar in a Lead-Eagle-only workspace', () => {
       ],
       'ORGANIZATION',
     );
-    await prisma.fieldPermission.create({
-      data: {
-        tenantId,
-        roleId: role.id,
-        objectType: 'LEAD',
-        fieldKey: 'fullName',
-        canView: false,
-        maskStrategy: 'MASK_ALL',
-      },
-    });
+    if (leads) await grantPermissions(tenantId, role.id, [['leads', 'VIEW']], leads);
+    if (nameRule !== undefined) {
+      await prisma.fieldPermission.create({
+        data: {
+          tenantId,
+          roleId: role.id,
+          objectType: 'LEAD',
+          fieldKey: 'fullName',
+          canView: false,
+          maskStrategy: nameRule,
+        },
+      });
+    }
     const user = await createWorkspaceUser({
       tenantId,
       roleId: role.id,
-      email: `masked-${suffix}@calendar.test`,
-      fullName: `masked ${suffix}`,
+      email: `${label}-${suffix}@calendar.test`,
+      fullName: `${label} ${suffix}`,
     });
     const items = await drawn(await createSessionToken(tenantId, user.id), '2026-12');
-    expect(items.find((item) => item.id === `visit-${ids['visit-admin']}`)?.label).toBe(
-      `Site visit · Marina ${suffix} · •••••••••`,
-    );
+    return items.find((item) => item.id === `visit-${ids['visit-admin']}`)?.label;
+  }
+
+  it('names a visit’s lead as the lead list reads the name: masked or left out where a rule says so', async () => {
+    expect(await visitReader('masked', 'ORGANIZATION', 'MASK_ALL')).toBe(`Site visit · Marina ${suffix} · •••••••••`);
+    expect(await visitReader('hidden', 'ORGANIZATION', null)).toBe(`Site visit · Marina ${suffix}`);
+  });
+
+  it('names only a lead the reader’s lead scope reaches', async () => {
+    // The visit is the admin's; the lead is the agent's, outside an OWN scope.
+    expect(await visitReader('own-leads', 'OWN')).toBe(`Site visit · Marina ${suffix}`);
+    expect(await visitReader('no-leads', null)).toBe(`Site visit · Marina ${suffix}`);
+  });
+
+  it('names a contact’s visit by the contact, for a reader of contacts', async () => {
+    const label = (items: Item[]) => items.find((item) => item.id === `visit-${ids['visit-contact']}`)?.label;
+    expect(label(await drawn(people.admin.cookie, '2026-12'))).toBe(`Site visit · Marina ${suffix} · Calendar contact`);
   });
 
   it('without leads:VIEW, the follow-ups are the caller’s own', async () => {

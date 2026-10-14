@@ -83,20 +83,37 @@ export function leadSearch(ctx: Ctx, rules: Map<string, FieldRule>, q: string) {
 }
 
 /**
- * Calls on their way out. A call with a lead holds the lead's number — the one
- * dialled, or on an inbound call the one that rang in (`callerNumber`) — and it
- * reads as the lead's phone does. The other side is the workspace's own line.
+ * Calls on their way out. A call with a lead or a contact holds that person's
+ * number — the one dialled, or on an inbound call the one that rang in
+ * (`callerNumber`) — and it reads as their phone does: the lead's field rules
+ * and sensitive fields, or the contact's field rules. The other side is the
+ * workspace's own line.
  */
 export async function maskCallNumbers<
-  T extends { leadId: string | null; recipientNumber: string | null; direction?: string; callerNumber?: string | null },
+  T extends {
+    leadId: string | null;
+    contactId?: string | null;
+    recipientNumber: string | null;
+    direction?: string;
+    callerNumber?: string | null;
+  },
 >(ctx: Ctx, calls: T[]): Promise<T[]> {
-  if (!calls.some((call) => call.leadId)) return calls;
-  const rules = await loadFieldRules(ctx, 'LEAD');
+  const toLead = calls.some((call) => call.leadId);
+  const toContact = calls.some((call) => !call.leadId && call.contactId);
+  if (!toLead && !toContact) return calls;
+  const [leadRules, contactRules] = await Promise.all([
+    toLead ? loadFieldRules(ctx, 'LEAD') : new Map<string, FieldRule>(),
+    toContact ? loadFieldRules(ctx, 'CONTACT') : new Map<string, FieldRule>(),
+  ]);
+  const asPhone = (call: T, value: string | null) =>
+    call.leadId
+      ? asLeadPhone(ctx, leadRules, value)
+      : ((applyFieldSecurity(ctx, 'CONTACT', contactRules, { phone: value }).phone as string | null) ?? null);
   return calls.map((call) => {
-    if (!call.leadId) return call;
+    if (!call.leadId && !call.contactId) return call;
     return call.direction === 'INBOUND'
-      ? { ...call, callerNumber: asLeadPhone(ctx, rules, call.callerNumber ?? null) }
-      : { ...call, recipientNumber: asLeadPhone(ctx, rules, call.recipientNumber) };
+      ? { ...call, callerNumber: asPhone(call, call.callerNumber ?? null) }
+      : { ...call, recipientNumber: asPhone(call, call.recipientNumber) };
   });
 }
 

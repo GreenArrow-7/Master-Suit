@@ -11,8 +11,9 @@
  *   under a name that reopens them, and Delete view removes it; four chips in
  *   force at 390 px leave the page 390 px wide;
  * - at 1280 and 1440 px the grid's pinned Call cell has its header pinned with
- *   it, and scrolled to the end the last column stands whole beside it;
- * - the shortcut reads Ctrl K off a Mac and ⌘K on one;
+ *   it and a shadow edge over the columns passing under it at rest, and
+ *   scrolled to the end the last column stands whole beside it;
+ * - the shortcut reads Ctrl K off a Mac and ⌘K on one, with no hydration warning;
  * - ⌘K (Ctrl+K) on any screen searches the leads by a number typed in any
  *   format, found through one of the lead's other numbers;
  * - the calendar opens under /lead-eagle/ and shows the meeting the move booked.
@@ -231,6 +232,17 @@ test.describe('Lead Eagle lead views', () => {
       const edge = await box(frame);
       expect(Math.abs(head.x - cell.x), `${width}: header at ${head.x}, cell at ${cell.x}`).toBeLessThanOrEqual(1);
       expect(head.x + head.width).toBeLessThanOrEqual(edge.x + edge.width + 1);
+      // And the columns running on past the frame pass under it, so both carry a
+      // shadow edge (a blurred shadow, not the hairline alone): the cut column
+      // reads as running under the pinned one, not as the table's end. Its colour
+      // is the theme's.
+      const shadow = (locator: Locator) => locator.evaluate((el) => getComputedStyle(el).boxShadow);
+      for (const pinned of [heads.last(), row.locator('td.lf-grid__actions')]) {
+        expect(await shadow(pinned), `${width}: no shadow edge`).toMatch(/rgba\(17, 24, 39, 0\.16\) -\d+px 0px [1-9]/);
+      }
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+      expect(await shadow(heads.last()), `${width}: dark`).toMatch(/rgba\(0, 0, 0, 0\.6\) -\d+px 0px [1-9]/);
+      await page.evaluate(() => document.documentElement.removeAttribute('data-theme'));
       // Scrolled to the end, the last column's header is whole, beside the pinned one and not under it.
       await frame.evaluate((el) => el.scrollTo({ left: el.scrollWidth }));
       const last = await box(heads.nth((await heads.count()) - 2));
@@ -246,6 +258,9 @@ test.describe('Lead Eagle lead views', () => {
         });
       expect(await onTop(heads.nth(1)), `${width}: the Reference header is under another`).toBe(true);
       expect(await onTop(heads.last()), `${width}: the Call header is under another`).toBe(true);
+      // And the pinned Reference cell has a ground: the columns passing under it do not show through.
+      const ground = await row.locator('td.lf-sticky').evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(ground, `${width}: the Reference cell is clear`).not.toBe('rgba(0, 0, 0, 0)');
       await context.close();
     }
   });
@@ -259,9 +274,15 @@ test.describe('Lead Eagle lead views', () => {
     for (const [key, userAgent] of Object.entries(agents)) {
       const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, userAgent });
       const page = await context.newPage();
+      // The server renders one label for every platform; a mismatch on hydration would say so here.
+      const hydration: string[] = [];
+      page.on('console', (message) => {
+        if (/hydrat/i.test(message.text())) hydration.push(message.text());
+      });
       await signIn(page);
       await page.goto(at('/lead-eagle/dashboard'));
       await expect(page.locator('.lf-cmdk-trigger kbd')).toHaveText(key, { timeout: 60_000 });
+      expect(hydration, `${key}: hydration`).toEqual([]);
       const palette = page.getByRole('dialog', { name: 'Search and commands' });
       await expect(async () => {
         if (!(await palette.isVisible())) await page.locator('.lf-cmdk-trigger').click();

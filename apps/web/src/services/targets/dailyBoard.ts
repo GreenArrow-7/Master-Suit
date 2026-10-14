@@ -4,6 +4,7 @@ import { scopeFor, SCOPE_RANK, type Ctx } from '@/lib/security/rbac';
 import { attendanceScope, startOfLocalDay, workspaceTimezone } from '@/services/hr/attendance';
 import type { CallOutcome } from '@prisma/client';
 import { maskCallNumbers } from '@/services/leads/createLead';
+import { callNumber } from '@/lib/leads/callLog';
 
 /**
  * The daily lead-target board: what each seller was asked to do today, what
@@ -309,6 +310,7 @@ export interface DailyCallRow {
   at: Date;
   leadId: string | null;
   leadName: string | null;
+  /** The other party's number: an inbound call's caller, not the workspace's line. */
   recipientNumber: string | null;
   status: string;
   outcome: CallOutcome | null;
@@ -326,8 +328,8 @@ export async function dailyCalls(
   const board = await dailyBoard(ctx, date);
   const visible = board.rows.some((r) => r.userId === userId);
   if (!visible) return { board: { ...board, rows: [] }, calls: [] };
-  // A seller reads their own day here, so a call to a lead shows the lead's
-  // number as its phone reads to them.
+  // A seller reads their own day here, so a call shows the lead's or contact's
+  // number (an inbound call's caller) as its phone reads to them.
   const calls = await maskCallNumbers(
     ctx,
     await prisma.call.findMany({
@@ -343,6 +345,9 @@ export async function dailyCalls(
         id: true,
         createdAt: true,
         leadId: true,
+        contactId: true,
+        direction: true,
+        callerNumber: true,
         recipientNumber: true,
         status: true,
         outcome: true,
@@ -367,7 +372,7 @@ export async function dailyCalls(
       at: c.createdAt,
       leadId: c.leadId,
       leadName: (c.leadId && names.get(c.leadId)) ?? null,
-      recipientNumber: c.recipientNumber,
+      recipientNumber: callNumber(c),
       status: c.status,
       outcome: c.outcome,
       kind: c.status === 'MISSED' ? 'notAnswered' : classify(c.outcome),

@@ -4,7 +4,11 @@
  *
  * - Calls printed its times on the server's clock; "Today's Calls" counted the
  *   server's day and completed calls only, so two missed calls that day read 0;
- *   an inbound call's Number was the workspace's own line, not the caller's.
+ *   an inbound call's Number was the workspace's own line, not the caller's (on
+ *   the call's own page and a seller's day too), and a contact's number skipped
+ *   the contact's field rules.
+ * - A time zone typed in settings that Intl does not know broke every screen
+ *   formatting a date with it.
  * - "Call with AI assistance" was offered to a role that may only view calls,
  *   and /calls/new (calls:CREATE) refuses it.
  * - A busy calendar day drew a dot per entry, a tall block on a phone.
@@ -38,6 +42,7 @@ vi.mock('next/navigation', async (original) => ({
 
 import { prisma } from '@/lib/db';
 import CallsPage from '@/app/(workspace)/[workspaceSlug]/sales/calls/page';
+import CallDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/calls/[id]/page';
 import NewCallPage from '@/app/(workspace)/[workspaceSlug]/sales/calls/new/page';
 import LeadPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
 import LeadDetail from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/LeadDetail';
@@ -45,7 +50,10 @@ import CalendarView from '@/app/(workspace)/[workspaceSlug]/sales/calendar/Calen
 import MetricCard from '@/components/ui/MetricCard';
 import ConfigurableGrid from '@/components/workspace/ConfigurableGrid';
 import * as TopBar from '@/components/nav/TopBar';
-import { dayBounds, todayKey } from '@/services/targets/dailyBoard';
+import CallLink from '@/components/workspace/CallLink';
+import { workspaceTimezone } from '@/services/hr/attendance';
+import { dailyCalls, dayBounds, todayKey } from '@/services/targets/dailyBoard';
+import { buildActor, buildCtx } from '../helpers/ctx';
 import { createWorkspaceUser, grantPermissions, type Grants } from '../helpers/fixtures';
 import { createSessionToken } from '../helpers/session';
 
@@ -54,9 +62,10 @@ const ZONE = 'Asia/Dubai';
 const serverZone = process.env.TZ;
 let tenantId = '';
 let leadId = '';
-const people: Record<'admin' | 'viewer', { id: string; cookie: string }> = {
-  admin: { id: '', cookie: '' },
-  viewer: { id: '', cookie: '' },
+let badZoneTenantId = '';
+const people: Record<'admin' | 'viewer', { id: string; cookie: string; roleId: string }> = {
+  admin: { id: '', cookie: '', roleId: '' },
+  viewer: { id: '', cookie: '', roleId: '' },
 };
 const calls: Record<string, string> = {};
 
@@ -87,7 +96,7 @@ async function member(label: string, grants: Grants) {
     email: `${label}-${suffix}@evidence.test`,
     fullName: `${label} ${suffix}`,
   });
-  return { id: user.id, cookie: await createSessionToken(tenantId, user.id) };
+  return { id: user.id, roleId: role.id, cookie: await createSessionToken(tenantId, user.id) };
 }
 
 /** The Calls page as `who` reads it: its figures, and each row's cells by column. */
@@ -179,16 +188,53 @@ beforeAll(async () => {
     createdAt: new Date(),
   });
   calls.failed = await call({ status: 'FAILED', createdAt: new Date() });
+  // Missed, whatever outcome was put on it: a call made, never a connected one.
+  calls.missedConnected = await call({ status: 'MISSED', outcome: 'CONNECTED', createdAt: new Date() });
   // Booked, not made.
   calls.scheduled = await call({ status: 'SCHEDULED', createdAt: new Date() });
   // 16:30 in Dubai; 08:30 in New York. A day long past, outside today's figures.
   calls.clock = await call({ status: 'COMPLETED', createdAt: new Date('2026-03-10T12:30:00Z') });
+  // A contact rang in, on a day long past; the viewer's role masks contacts' phones.
+  const contact = await prisma.contact.create({
+    data: { tenantId, reference: `EC-${suffix}`, fullName: 'Evidence contact', phone: '+971509876543' },
+  });
+  await prisma.fieldPermission.create({
+    data: {
+      tenantId,
+      roleId: people.viewer.roleId,
+      objectType: 'CONTACT',
+      fieldKey: 'phone',
+      canView: false,
+      maskStrategy: 'MASK_PARTIAL',
+    },
+  });
+  calls.contactInbound = await call({
+    contactId: contact.id,
+    direction: 'INBOUND',
+    status: 'COMPLETED',
+    callerNumber: '+971509876543',
+    recipientNumber: '+97144000000',
+    createdAt: new Date('2026-03-09T10:00:00Z'),
+  });
+  // A zone typed as a city name, which Intl does not know.
+  badZoneTenantId = (
+    await prisma.tenant.create({
+      data: {
+        slug: `ev-zone-${suffix}`,
+        legalName: 'Zone LLC',
+        displayName: 'Zone',
+        status: 'ACTIVE',
+        timezone: 'Dubai',
+      },
+    })
+  ).id;
 }, 60_000);
 
 afterAll(async () => {
   if (serverZone === undefined) delete process.env.TZ;
   else process.env.TZ = serverZone;
   await prisma.tenant.delete({ where: { id: tenantId } }).catch(() => {});
+  await prisma.tenant.delete({ where: { id: badZoneTenantId } }).catch(() => {});
 });
 
 describe('Lead Eagle > Calls', () => {
@@ -200,10 +246,11 @@ describe('Lead Eagle > Calls', () => {
 
   it('counts Today’s Calls over the workspace’s day: every call that rang, missed and failed too, not one only booked', async () => {
     const { figures } = await callsPage(people.admin);
-    // earlyToday, interested, missed, failed; not lastNight (yesterday in Dubai), not scheduled.
-    expect(figures["Today's Calls"]).toBe(4);
+    // earlyToday, interested, missed, failed, missedConnected; not lastNight
+    // (yesterday in Dubai), not scheduled. Connected: earlyToday and interested.
+    expect(figures["Today's Calls"]).toBe(5);
     expect(figures.Connected).toBe(2);
-    expect(figures['Connect Rate']).toBe('50%');
+    expect(figures['Connect Rate']).toBe('40%');
   });
 
   it('numbers an inbound call by the caller, read as the lead’s phone reads, and dials the caller back', async () => {
@@ -213,6 +260,34 @@ describe('Lead Eagle > Calls', () => {
     // Without the lead's sensitive fields, the caller's number is masked, never the workspace's line.
     const viewer = (await callsPage(people.viewer)).rows.find((r) => r.id === calls.missed)!;
     expect(texts(viewer.cells.recipientNumber!.props.children)).toEqual(['+971•••••••67']);
+    // A masked number is not dialable: the cell has nothing to call.
+    expect(elements(viewer.cells.call!.props.children).some((el) => el.type === CallLink)).toBe(false);
+  });
+
+  it('reads a contact’s number as the contact’s phone reads: masked by the role’s field rule', async () => {
+    const admin = (await callsPage(people.admin)).rows.find((r) => r.id === calls.contactInbound)!;
+    expect(texts(admin.cells.recipientNumber!.props.children)).toEqual(['+971509876543']);
+    const viewer = (await callsPage(people.viewer)).rows.find((r) => r.id === calls.contactInbound)!;
+    expect(texts(viewer.cells.recipientNumber!.props.children)).toEqual(['+971•••••••43']);
+  });
+
+  it('the call’s own page shows and dials an inbound call’s caller, not the workspace’s line', async () => {
+    const page = async (who: { cookie: string }) => {
+      cookieJar.value = who.cookie;
+      cookieJar.path = `/ev-${suffix}/lead-eagle/calls/${calls.missed}`;
+      return elements(await CallDetailPage({ params: Promise.resolve({ id: calls.missed! }) }));
+    };
+    const dialled = (tree: El[]) => tree.filter((el) => el.type === CallLink).map((el) => el.props.number);
+    const admin = await page(people.admin);
+    expect(dialled(admin)).toEqual(['+971501234567']);
+    expect(texts(admin)).not.toContain('+97144000000');
+    expect(dialled(await page(people.viewer))).toEqual(['+971•••••••67']);
+  });
+
+  it('a seller’s day lists an inbound call under the caller’s number', async () => {
+    const ctx = buildCtx(buildActor({ id: people.admin.id, tenantId, grants: [['leads', 'VIEW_SENSITIVE_FIELDS']] }));
+    const { calls: day } = await dailyCalls(ctx, people.admin.id);
+    expect(day.find((c) => c.id === calls.missed)?.recipientNumber).toBe('+971501234567');
   });
 });
 
@@ -235,8 +310,12 @@ describe('Call with AI assistance on the lead page', () => {
   });
 
   it('/calls/new refuses the view-only role, and the Calls list offers it no New Call', async () => {
+    cookieJar.value = people.admin.cookie;
+    await expect(NewCallPage()).resolves.toBeTruthy();
     cookieJar.value = people.viewer.cookie;
-    await expect(NewCallPage()).rejects.toThrow();
+    // Next's forbidden() interrupt, a 403 page (outside Next it throws naming
+    // itself): not a crash, an entitlement refusal or a sign-in redirect.
+    await expect(NewCallPage()).rejects.toThrow(/`forbidden\(\)`/);
     const offered = async (who: { cookie: string }) => {
       cookieJar.value = who.cookie;
       return texts(await CallsPage({ searchParams: Promise.resolve({}) })).includes('New Call');
@@ -283,5 +362,14 @@ describe('the phone’s top bar', () => {
     // Anything else is still read from the path.
     expect(pageTitle(`/ev-${suffix}/admin/lead-sources`)).toBe('Lead sources');
     expect(pageTitle(`/ev-${suffix}/lead-eagle/site-visits`)).toBe('Site visits');
+  });
+});
+
+describe('the workspace’s time zone', () => {
+  it('reads a zone Intl does not know as the default, and a real one as it is', async () => {
+    expect(await workspaceTimezone(buildCtx(buildActor({ id: people.admin.id, tenantId: badZoneTenantId })))).toBe(
+      'Asia/Dubai',
+    );
+    expect(await workspaceTimezone(buildCtx(buildActor({ id: people.admin.id, tenantId })))).toBe(ZONE);
   });
 });

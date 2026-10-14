@@ -65,6 +65,7 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
         startedAt: true,
         createdAt: true,
         leadId: true,
+        contactId: true,
         notes: true,
         campaignId: true,
         caller: { select: { fullName: true } },
@@ -84,9 +85,10 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
   ]);
 
   const hasMore = rows.length > PAGE_SIZE;
-  // A call to a lead holds the lead's number (the one dialled, or an inbound
-  // caller's), which reads as the lead's phone does for this role: masked without
-  // leads:VIEW_SENSITIVE_FIELDS, and then the row's Call button has nothing to dial.
+  // A call to a lead or contact holds their number (the one dialled, or an
+  // inbound caller's), which reads as their phone does for this role: masked
+  // without leads:VIEW_SENSITIVE_FIELDS or by a field rule, and then the row's
+  // Call button has nothing to dial.
   const calls = await maskCallNumbers(ctx, hasMore ? rows.slice(0, PAGE_SIZE) : rows);
 
   // Resolve lead names so the grid can show who was called, not a bare id.
