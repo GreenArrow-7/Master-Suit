@@ -102,9 +102,20 @@ async function loadAssignments(ctx: Ctx, employeeId: string) {
   });
 }
 
+/**
+ * The workspace's IANA zone. Settings take it as free text, and a name Intl
+ * does not know ("Dubai", "GMT+4") throws a RangeError in every screen that
+ * formats a date with it, so one reads as the default.
+ */
 export async function workspaceTimezone(ctx: Ctx) {
   const tenant = await prisma.tenant.findFirst({ where: { id: ctx.tenantId }, select: { timezone: true } });
-  return tenant?.timezone || 'Asia/Dubai';
+  const zone = tenant?.timezone || 'Asia/Dubai';
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: zone });
+    return zone;
+  } catch {
+    return 'Asia/Dubai';
+  }
 }
 
 const withinDates = (from: Date | null, to: Date | null, today: Date) =>

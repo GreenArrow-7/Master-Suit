@@ -442,6 +442,37 @@ describe('the write path recomputes, through the real routes', () => {
     await prisma.employeeTarget.delete({ where: { tenantId: T(), id: target.id } });
   });
 
+  // The reopen reads the row before a completion commits, then writes after it.
+  it('a reopen racing a completion leaves no OPEN row with completedAt set', async () => {
+    const leadId = await makeLead('reopen-race');
+    const created = await post(
+      createFollowUp,
+      '/api/v1/follow-ups',
+      { leadId, title: 'Reopened', dueAt: '2026-10-10T09:00:00Z' },
+      h.repA1.cookie,
+    );
+    const id = created.body.data?.id ?? created.body.id;
+
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const completion = withTx(T(), async (tx) => {
+      await tx.followUpTask.update({
+        where: { tenantId: T(), id },
+        data: { status: 'COMPLETED', completedAt: new Date() },
+      });
+      await held;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const reopen = patch(patchFollowUp, at(id).path, { status: 'OPEN' }, h.repA1.cookie, at(id).params);
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    release();
+    await completion;
+    expect((await reopen).status).toBe(200);
+
+    const row = await prisma.followUpTask.findFirst({ where: { tenantId: T(), id } });
+    expect(row).toMatchObject({ status: 'OPEN', completedAt: null });
+  });
+
   it('completing one of two falls back to the other', async () => {
     const leadId = await makeLead('complete-one');
     const first = await post(

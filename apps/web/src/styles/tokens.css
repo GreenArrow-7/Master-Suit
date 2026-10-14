@@ -245,6 +245,8 @@
   --lf-shadow-1: 0 1px 2px rgb(17 24 39 / 0.05);
   --lf-shadow-2: 0 4px 12px rgb(17 24 39 / 0.08), 0 1px 3px rgb(17 24 39 / 0.05);
   --lf-shadow-3: 0 16px 40px rgb(17 24 39 / 0.14);
+  /* The edge of a pinned column, over the columns that scroll under it. */
+  --lf-shadow-edge: rgb(17 24 39 / 0.16);
 
   --lf-focus: 0 0 0 2px var(--lf-surface), 0 0 0 4px var(--yh-azure);
 
@@ -327,6 +329,7 @@
   --lf-shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
   --lf-shadow-2: 0 4px 14px rgb(0 0 0 / 0.45);
   --lf-shadow-3: 0 18px 44px rgb(0 0 0 / 0.55);
+  --lf-shadow-edge: rgb(0 0 0 / 0.6);
 }
 
 /* ── Glassy (opt-in) ──────────────────────────────────────────────────────
