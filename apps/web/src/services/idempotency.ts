@@ -86,10 +86,15 @@ export interface Replay<T> {
  * Returns the recorded result on a hit, `null` when the key is unknown, and
  * throws `Conflict` when the key is known but was used for something else.
  *
- * Called **after** the operation has asserted its permissions.
+ * Called **after** the operation has asserted its permissions. Inside a withTx,
+ * pass its `tx`: the global client does not pin the tenant there, and forced RLS
+ * would hide the recorded key, turning every retry into a 409.
  */
-export async function findReplay<T>(req: IdempotencyRequest): Promise<Replay<T> | null> {
-  const existing = await prisma.idempotentRequest.findFirst({
+export async function findReplay<T>(
+  req: IdempotencyRequest,
+  db: TxClient | typeof prisma = prisma,
+): Promise<Replay<T> | null> {
+  const existing = await db.idempotentRequest.findFirst({
     where: { tenantId: req.tenantId, operation: req.operation, requestKey: req.requestKey },
     select: { fingerprint: true, actorUserId: true, scopeRef: true, result: true, expiresAt: true },
   });

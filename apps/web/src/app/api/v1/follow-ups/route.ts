@@ -4,6 +4,9 @@ import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
 import { assertCallInScope, assertLeadInScope, workListScope } from '@/lib/security/record-scope';
 import { withRecompute } from '@/services/leads/nextFollowUp';
+import { workspaceTimezone } from '@/services/hr/attendance';
+import { mergeWhere } from '@/lib/api/where';
+import { FOLLOW_UP_KINDS, OPEN_FOLLOW_UP, followUpDueWhere, isDayKey } from '@/lib/leads/followUpDue';
 
 const createBody = z
   .object({
@@ -13,6 +16,8 @@ const createBody = z
     title: z.string().min(1).max(200),
     description: z.string().max(2000).optional(),
     dueAt: z.coerce.date(),
+    // A call unless booked as something else (the column's default).
+    kind: z.enum(FOLLOW_UP_KINDS).optional(),
     priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).default('MEDIUM'),
   })
   .strict();
@@ -40,6 +45,9 @@ const listQuery = z
   .object({
     status: z.enum(['OPEN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'RESCHEDULED']).optional(),
     due: z.enum(['overdue', 'today', 'upcoming']).optional(),
+    // One day on the workspace's clock, and what the follow-up is for: the Lead Eagle board's links.
+    date: z.string().refine(isDayKey, 'A day as YYYY-MM-DD').optional(),
+    kind: z.enum(FOLLOW_UP_KINDS).optional(),
     // The caller's own; by default, everyone their leads scope covers (the page's Mine).
     view: z.enum(['mine']).optional(),
   })
@@ -48,19 +56,13 @@ const listQuery = z
 export const GET = route(
   { module: 'leads', productModule: LEAD_MODULES, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
-    const now = new Date();
-    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-    const where: Record<string, unknown> = {
-      ...(await workListScope(ctx, 'leads', query.view === 'mine')),
-      deletedAt: null,
-    };
-
-    if (query.status) where.status = query.status;
-    else where.status = { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] };
-
-    if (query.due === 'overdue') where.dueAt = { lt: now };
-    else if (query.due === 'today') where.dueAt = { gte: now, lte: todayEnd };
-    else if (query.due === 'upcoming') where.dueAt = { gt: todayEnd };
+    // The Follow-ups page's reading of due, date and kind, on the workspace's clock.
+    const where = mergeWhere(
+      await workListScope(ctx, 'leads', query.view === 'mine'),
+      { deletedAt: null },
+      query.status ? { status: query.status } : OPEN_FOLLOW_UP,
+      followUpDueWhere(query, await workspaceTimezone(ctx)),
+    );
 
     const data = await prisma.followUpTask.findMany({
       where,

@@ -77,6 +77,20 @@ export const POST = route(
       });
       if (count === 0) return;
       await tx.lead.updateMany({ where: { tenantId: ctx.tenantId, id: leadId }, data: { lastActivityAt: new Date() } });
+      // The first of those calls is when the lead was first contacted, as touchLead keeps it.
+      const { _min } = await tx.activity.aggregate({
+        where: { tenantId: ctx.tenantId, dataRecordId: record.id },
+        _min: { occurredAt: true },
+      });
+      const first = _min.occurredAt!;
+      await tx.lead.updateMany({
+        where: {
+          tenantId: ctx.tenantId,
+          id: leadId,
+          OR: [{ firstContactedAt: null }, { firstContactedAt: { gt: first } }],
+        },
+        data: { firstContactedAt: first },
+      });
       await audit(
         ctx,
         {

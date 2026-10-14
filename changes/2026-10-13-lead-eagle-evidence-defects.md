@@ -1,6 +1,6 @@
 # Lead Eagle evidence fixes: chips at 390 px, the Calls clock and Today count, the pinned Call cell, Ctrl K, the calendar
 
-**What.** Seven defects the owner's evidence passes found on Lead Eagle
+**What.** Eight defects the owner's evidence passes found on Lead Eagle
 screens, each fixed where its screens share the code. Branch
 `fix/lead-eagle-evidence-defects`, from main at 6ced63d9.
 
@@ -19,6 +19,8 @@ screens, each fixed where its screens share the code. Branch
    and Linux.
 7. **Calendar.** A site visit read only "Site visit · project". A busy day drew
    one dot per entry. On `/lead-eagle/calendar` the menu marked Leads.
+8. **Follow-up reopen.** A reopen racing a completion could leave a row OPEN
+   with `completedAt` set.
 
 **Why.** The owner's evidence passes over the tracker rows on a local rig at
 main. M4-19 stays Partial until its defect is fixed. The others are defects in
@@ -65,6 +67,17 @@ screens the brief's rows touch.
   a site visit or meeting names its lead. The name reads as the lead list shows
   it to the role (`applyFieldSecurity`: masked, or left out). A day's cell draws
   at most three dots of a kind, then "+N" for the rest.
+- `app/api/v1/follow-ups/[id]/route.ts`: moving a follow-up off COMPLETED
+  clears `completedAt` in the write itself, not only when the unlocked read
+  saw it set. A completion committing between the read and the write no longer
+  survives the reopen.
+- Review follow-ups: a contact's visit is named by the contact (Contacts
+  scope and field rules); a contact's call number is masked by the contact's
+  field rules; the call's own page and a seller's day show an inbound call's
+  caller (`callNumber`, `lib/leads/callLog.ts`); a day picked in a date input
+  (close date, campaign dates, mandate expiry) reads as picked west of UTC; a
+  time zone Intl does not know falls back to Asia/Dubai; both pinned grid
+  columns have a ground and a shadow edge (`--lf-shadow-edge`).
 - `lib/nav/workspaceNav.ts`: Calendar is its own menu entry in Lead Eagle
   (`le-calendar`) and Real Estate (`realty-calendar`), next after Leads.
 
@@ -104,9 +117,7 @@ screens the brief's rows touch.
   - The dot cap is three per kind, with one "+N" for everything not drawn.
   - The Reference header's z-order is fixed with the Call header's. Both are
     the same defect: a pinned body cell whose header did not stay with it.
-- Item 8 of the brief (a reopen racing a completion) is not built. When this
-  branch started, #184 (`fix/listing-mandate-tenant-read`) was not on main
-  (main was 6ced63d9). It merged afterwards as bab4f408.
+- Item 8 was built after merging main, which by then had #184 (bab4f408).
 
 **Verified.** Every new or changed case below fails on the branch's base
 (the source files swapped back to 6ced63d9) and passes on the branch.
@@ -152,16 +163,15 @@ screens the brief's rows touch.
   visits and "+37", and names both visits' leads; the menu marks Calendar. No
   hydration warnings.
 
+- `tests/sales/next-follow-up.spec.ts`, new case "a reopen racing a
+  completion": a held transaction completes the row while the reopen PATCH
+  waits on it. With the old line it fails (_completedAt 2026-10-14T06:57…,
+  expected null_); 50/50 with the fix.
+
 **Left open.**
 
-- Item 8: a follow-up reopen that races a completion still reads `completedAt`
-  outside a lock. #184 is on main now (bab4f408), so it can follow the same
-  pattern (a conditional update inside the transaction).
-- The calendar names a visit's lead, not a contact (`contactId`).
-- A date stored as midnight UTC (a date-only value typed into a form) reads a
-  day earlier in a workspace west of UTC. No such workspace exists today.
 - Other screens that print dates on the server without a zone stay as they
   were: call audits, coaching, an event's meetings.
 - While the grid scrolls, the pinned columns cover the columns scrolling
-  under them, marked by a 1 px edge. Scrolled to the end, every column is
+  under them, marked by a shadow edge. Scrolled to the end, every column is
   whole.

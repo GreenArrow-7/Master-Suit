@@ -17,12 +17,12 @@ import { loadFieldRules } from '@/lib/security/fieldSecurity';
 import { asLeadPhone, maskCallNumbers } from '@/services/leads/createLead';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { dayBounds, todayKey } from '@/services/targets/dailyBoard';
+// Shared with the Lead Eagle board's Calls figures.
+import { CONNECTED_CALL_OUTCOMES as CONNECTED_OUTCOMES } from '@/lib/leads/callLog';
 
 export const metadata = { title: 'Calls' };
 
 const PAGE_SIZE = 50;
-
-const CONNECTED_OUTCOMES = ['CONNECTED', 'CALLBACK_REQUESTED', 'INTERESTED', 'QUALIFIED', 'CONVERTED'];
 
 const TABS: [string, string, Record<string, unknown>][] = [
   ['All', '', {}],

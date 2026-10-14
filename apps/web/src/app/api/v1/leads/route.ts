@@ -158,7 +158,7 @@ const createBody = z
     tags: z.array(z.string().max(40)).max(20).default([]),
     custom: z.record(z.unknown()).default({}),
     /** WARN lets the caller proceed past a duplicate match; BLOCK is the default. */
-    onDuplicate: z.enum(['BLOCK', 'WARN', 'MERGE']).default('BLOCK'),
+    onDuplicate: z.enum(['BLOCK', 'WARN']).default('BLOCK'),
   })
   .strict()
   // A referral attributed to nobody is not one.

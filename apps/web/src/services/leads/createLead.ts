@@ -1,4 +1,5 @@
-import { withTx, prisma } from '@/lib/db';
+import { randomUUID } from 'node:crypto';
+import { withTx, prisma, type TxClient } from '@/lib/db';
 import { Conflict, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
@@ -124,7 +125,7 @@ export interface CreateLeadInput {
   stageId?: string;
   ownerId?: string;
   custom?: Record<string, unknown>;
-  onDuplicate?: 'BLOCK' | 'WARN' | 'MERGE';
+  onDuplicate?: 'BLOCK' | 'WARN';
   [k: string]: unknown;
 }
 
@@ -136,38 +137,46 @@ export interface CreateLeadInput {
  * Everything that can be deferred is deferred: the record is committed fast, and
  * assignment, scoring and notification run on queues. That keeps a form POST under
  * 100 ms even when five automations are listening.
+ *
+ * `dryRun`: run inside that transaction, which the caller rolls back (the
+ * import's dry run, M4-42). Every check and write is the same, except that the
+ * lead takes a stand-in reference rather than the next number, whose counter
+ * row would stay locked against every other new lead until the rollback, and
+ * nothing runs after commit, since nothing commits.
  */
-export async function createLead(ctx: Ctx, input: CreateLeadInput) {
+export async function createLead(ctx: Ctx, input: CreateLeadInput, opts: { dryRun?: TxClient } = {}) {
+  const db = opts.dryRun ?? prisma;
   const phoneNormalized = input.phone ? normalizePhone(input.phone) : null;
 
   // 1. Duplicate check ───────────────────────────────────────────────────────
-  const duplicates = await findDuplicates(ctx.tenantId, {
-    email: input.email,
-    phoneNormalized,
-    fullName: input.fullName,
-  });
+  const duplicates = await findDuplicates(
+    ctx.tenantId,
+    { email: input.email, phoneNormalized, fullName: input.fullName },
+    db,
+  );
   if (duplicates.length && (input.onDuplicate ?? 'BLOCK') === 'BLOCK') {
     throw Conflict(`A lead with this ${duplicates[0]!.matchedOn} already exists (${duplicates[0]!.reference}).`);
   }
 
   // 2. Stage: explicit, or the tenant's configured default ───────────────────
   const stage = input.stageId
-    ? await prisma.leadStage.findFirst({ where: { tenantId: ctx.tenantId, id: input.stageId } })
-    : await prisma.leadStage.findFirst({ where: { tenantId: ctx.tenantId, isDefault: true } });
+    ? await db.leadStage.findFirst({ where: { tenantId: ctx.tenantId, id: input.stageId } })
+    : await db.leadStage.findFirst({ where: { tenantId: ctx.tenantId, isDefault: true } });
   if (!stage) throw NotFound('Lead stage');
 
   // A user without ASSIGN cannot hand the lead to someone else; it stays theirs.
   // With it, only to someone their ASSIGN scope reaches (404 otherwise).
   const ownerId = input.ownerId && can(ctx, 'leads', 'ASSIGN') ? input.ownerId : ctx.actor.id;
-  if (ownerId !== ctx.actor.id) await assertAssignableUser(ctx, prisma, 'leads', 'ASSIGN', ownerId);
+  if (ownerId !== ctx.actor.id) await assertAssignableUser(ctx, db, 'leads', 'ASSIGN', ownerId);
   // The catalogue entry it is attributed to: this workspace's, or not found.
   const sourceId = (input.sourceId as string | undefined) ?? null;
-  if (sourceId) await assertLeadSource(prisma, ctx.tenantId, sourceId);
+  if (sourceId) await assertLeadSource(db, ctx.tenantId, sourceId);
   // The workspace's own fields checked by type (M4-13): a wrong one is a 422, not a failed insert.
-  const custom = await customForCreate(prisma, ctx.tenantId, input.custom ?? {});
+  const custom = await customForCreate(db, ctx.tenantId, input.custom ?? {});
 
-  const lead = await withTx(ctx.tenantId, async (tx) => {
-    const reference = await nextReference(tx, ctx.tenantId, 'LEAD');
+  const inTx = <T>(fn: (tx: TxClient) => Promise<T>) => (opts.dryRun ? fn(opts.dryRun) : withTx(ctx.tenantId, fn));
+  const lead = await inTx(async (tx) => {
+    const reference = opts.dryRun ? `DRY-RUN-${randomUUID()}` : await nextReference(tx, ctx.tenantId, 'LEAD');
 
     const created = await tx.lead.create({
       data: {
@@ -232,6 +241,7 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
     );
     return created;
   });
+  if (opts.dryRun) return lead;
 
   // 3. Everything downstream runs off the transaction, after commit. An automation
   //    must never observe a state that was rolled back.

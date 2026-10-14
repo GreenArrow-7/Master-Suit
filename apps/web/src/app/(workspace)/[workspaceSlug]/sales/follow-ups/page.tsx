@@ -12,6 +12,16 @@ import { columnsFor } from '@/lib/grid/resolve';
 import { can, scopeFor } from '@/lib/security/rbac';
 import { leadsInScope, ownerReach, workListScope } from '@/lib/security/record-scope';
 import { names } from '@/services/leadership/rollups';
+import { workspaceTimezone } from '@/services/hr/attendance';
+import { mergeWhere } from '@/lib/api/where';
+import {
+  FOLLOW_UP_KIND_LABELS,
+  OPEN_FOLLOW_UP,
+  followUpDueWhere,
+  isDayKey,
+  isFollowUpKind,
+  onDay,
+} from '@/lib/leads/followUpDue';
 
 export const metadata = { title: 'Follow-ups' };
 
@@ -26,12 +36,11 @@ const TABS = [
 export default async function FollowUpsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ due?: string; view?: string }>;
+  searchParams: Promise<{ due?: string; view?: string; date?: string; kind?: string }>;
 }) {
   const params = await searchParams;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['leads', 'VIEW'] });
-  const now = new Date();
-  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  const timeZone = await workspaceTimezone(ctx);
 
   /**
    * Whose follow-ups this page lists: everyone the viewer's `leads` scope
@@ -43,16 +52,18 @@ export default async function FollowUpsPage({
    * ORGANIZATION scope now gives it.
    */
   const view = whoseWork(scopeFor(ctx, 'leads', 'VIEW'), params.view);
-  const where: Record<string, unknown> = {
-    ...(await workListScope(ctx, 'leads', view.mine)),
-    status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] },
-    deletedAt: null,
-  };
-
-  if (params.due === 'overdue') where.dueAt = { lt: now };
-  else if (params.due === 'today') where.dueAt = { gte: now, lte: todayEnd };
-  else if (params.due === 'upcoming') where.dueAt = { gt: todayEnd };
-  else if (params.due === 'completed') where.status = { in: ['COMPLETED', 'CANCELLED'] };
+  // Due, one day (the board's week strip) and a kind (its Callbacks), on the
+  // workspace's clock as the board counts them (lib/leads/followUpDue.ts).
+  const where = mergeWhere(
+    await workListScope(ctx, 'leads', view.mine),
+    params.due === 'completed' ? { status: { in: ['COMPLETED', 'CANCELLED'] } } : OPEN_FOLLOW_UP,
+    followUpDueWhere(params, timeZone),
+    { deletedAt: null },
+  );
+  const narrowed = [
+    isDayKey(params.date) && `due ${onDay(params.date)}`,
+    isFollowUpKind(params.kind) && `${FOLLOW_UP_KIND_LABELS[params.kind].toLowerCase()}s only`,
+  ].filter(Boolean);
 
   const rows = await prisma.followUpTask.findMany({ where, orderBy: { dueAt: 'asc' }, take: 100 });
 
@@ -130,6 +141,13 @@ export default async function FollowUpsPage({
           </SalesLink>
         ))}
       </nav>
+
+      {narrowed.length > 0 && (
+        <p className="lf-hint" style={{ margin: '0 0 var(--lf-space-3)' }}>
+          Follow-ups {narrowed.join(', ')}.{' '}
+          <SalesLink href={href(params.due ?? '', params.view === 'mine')}>Show all</SalesLink>
+        </p>
+      )}
 
       {rows.length === 0 ? (
         <div className="lf-card">

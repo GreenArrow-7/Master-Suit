@@ -568,6 +568,14 @@ describe('moving a Lead Eagle company', () => {
       notes: 'Prefers mornings',
     });
     expect(aisha!.phones.map((p) => p.normalized)).toEqual(['+971521110002']);
+    // The catalogue entry its source names (the board names the portal; the lead list filters on it).
+    const entry = async (key: string) =>
+      (await prisma.leadSource.findFirstOrThrow({ where: { tenantId, key }, select: { id: true } })).id;
+    expect(aisha!.sourceId).toBe(await entry('bayut'));
+    expect(omar!.sourceId).toBe(await entry('walk_in'));
+    // First contacted at its inbound call, not at the earlier note; no contact moved for Omar.
+    expect(aisha!.firstContactedAt?.toISOString()).toBe('2026-08-04T09:00:00.000Z');
+    expect(omar!.firstContactedAt).toBeNull();
     // The secondary owner moves like the owner; a number with no flag stays off WhatsApp.
     expect(omar).toMatchObject({
       ownerId: null,
@@ -598,7 +606,11 @@ describe('moving a Lead Eagle company', () => {
     // A note, an inbound call and the enquiry — once, though Lead Eagle wrote it twice.
     expect(await prisma.activity.count({ where: { tenantId, leadId: aisha!.id } })).toBe(3);
     const followUp = await prisma.followUpTask.findFirstOrThrow({ where: { tenantId, leadId: omar!.id } });
-    expect(followUp).toMatchObject({ ownerId: fixture.a.userId, status: 'COMPLETED' });
+    expect(followUp).toMatchObject({ ownerId: fixture.a.userId, status: 'COMPLETED', kind: 'SITE_VISIT' });
+    // A call reminder stays a call: the board counts it among the callbacks.
+    expect(await prisma.followUpTask.findFirstOrThrow({ where: { tenantId, leadId: aisha!.id } })).toMatchObject({
+      kind: 'CALL',
+    });
 
     const records = await prisma.dataRecord.findMany({ where: { tenantId }, orderBy: { fullName: 'asc' } });
     expect(records.map((r) => [r.fullName, r.status, r.batch])).toEqual([
@@ -650,10 +662,11 @@ describe('moving a Lead Eagle company', () => {
     expect(text).toContain('Cancelled');
   });
 
-  it("shows a moved lead's source detail and stage history on its page", async () => {
+  it("shows a moved lead's source and stage history on its page", async () => {
     const [aisha, omar] = await moved();
     const a = await pageText(LeadDetailPage({ params: Promise.resolve({ id: aisha!.id }) }));
-    expect(a).toContain('Portal / Bayut · Marina launch');
+    // Its catalogue entry ("Portal / Bayut" is Bayut), as an intake lead's reads, and its campaign.
+    expect(a.split('\n')).toEqual(expect.arrayContaining(['Bayut', 'Marina launch']));
     // Omar has no activities: the instant is the moved status change's, and
     // reaches the page only through its stage history, with its stored time.
     const o = await pageText(LeadDetailPage({ params: Promise.resolve({ id: omar!.id }) }));

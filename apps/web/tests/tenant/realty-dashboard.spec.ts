@@ -33,24 +33,24 @@ describe('scope decides what the dashboard counts', () => {
 
   it('an OWN-scope agent sees only their own lead', async () => {
     const board = await realtyDashboard(await ctxFrom(org.repA1.cookie));
-    expect(board.pipeline.totalLeads).toBe(1);
+    expect(board.pipeline.totalLeads.value).toBe(1);
   });
 
   it('an ORGANIZATION-scope director sees the whole workspace', async () => {
     const board = await realtyDashboard(await ctxFrom(org.director.cookie));
-    expect(board.pipeline.totalLeads).toBe(org.totalLeads);
+    expect(board.pipeline.totalLeads.value).toBe(org.totalLeads);
   });
 
   it('a TEAM-scope manager sees more than one agent and less than the workspace', async () => {
     const board = await realtyDashboard(await ctxFrom(org.teamManagerA.cookie));
-    expect(board.pipeline.totalLeads).toBeGreaterThan(1);
-    expect(board.pipeline.totalLeads).toBeLessThan(org.totalLeads);
+    expect(board.pipeline.totalLeads.value).toBeGreaterThan(1);
+    expect(board.pipeline.totalLeads.value).toBeLessThan(org.totalLeads);
   });
 
   it('widens monotonically from agent to director', async () => {
     const [rep, team, branch, region, director] = await Promise.all(
       [org.repA1, org.teamManagerA, org.branchManager, org.regionalManager, org.director].map(
-        async (member) => (await realtyDashboard(await ctxFrom(member.cookie))).pipeline.totalLeads,
+        async (member) => (await realtyDashboard(await ctxFrom(member.cookie))).pipeline.totalLeads.value,
       ),
     );
     expect(rep).toBeLessThanOrEqual(team!);
@@ -80,8 +80,8 @@ describe('scope decides what the dashboard counts', () => {
     const board = await realtyDashboard(await ctxFrom(org.director.cookie));
 
     // Authorised: real, correct figures.
-    expect(board.pipeline.totalLeads).toBe(org.totalLeads);
-    expect(typeof board.today.newLeads).toBe('number');
+    expect(board.pipeline.totalLeads.value).toBe(org.totalLeads);
+    expect(typeof board.today.newLeads.value).toBe('number');
     expect(Array.isArray(board.business.leadsBySource)).toBe(true);
 
     // Unauthorised: withheld, and specifically not zero.
@@ -104,7 +104,7 @@ describe('scope decides what the dashboard counts', () => {
   it('an agent with leads but no visit access still gets a usable board', async () => {
     const board = await realtyDashboard(await ctxFrom(org.repA1.cookie));
     // The board loaded rather than refusing, and the half they may see is right.
-    expect(board.pipeline.totalLeads).toBe(1);
+    expect(board.pipeline.totalLeads.value).toBe(1);
     expect(board.pipeline.visitsApproved).toBeNull();
   });
 });
@@ -124,12 +124,12 @@ describe('tenant isolation', () => {
     const [aBoard, bBoard] = await Promise.all([ctxFrom(pair.a.cookie), ctxFrom(pair.b.cookie)]).then((ctxs) =>
       Promise.all(ctxs.map((ctx) => realtyDashboard(ctx))),
     );
-    expect(aBoard.pipeline.totalLeads).toBe(pair.a.leadCount);
-    expect(bBoard.pipeline.totalLeads).toBe(pair.b.leadCount);
+    expect(aBoard.pipeline.totalLeads.value).toBe(pair.a.leadCount);
+    expect(bBoard.pipeline.totalLeads.value).toBe(pair.b.leadCount);
   });
 
   it("a workspace's figures do not move when the other gains a lead", async () => {
-    const before = (await realtyDashboard(await ctxFrom(pair.a.cookie))).pipeline.totalLeads;
+    const before = (await realtyDashboard(await ctxFrom(pair.a.cookie))).pipeline.totalLeads.value;
     const extra = await prisma.lead.create({
       data: {
         tenantId: pair.b.tenantId,
@@ -140,10 +140,10 @@ describe('tenant isolation', () => {
       },
     });
     try {
-      const after = (await realtyDashboard(await ctxFrom(pair.a.cookie))).pipeline.totalLeads;
+      const after = (await realtyDashboard(await ctxFrom(pair.a.cookie))).pipeline.totalLeads.value;
       expect(after).toBe(before);
       const bBoard = await realtyDashboard(await ctxFrom(pair.b.cookie));
-      expect(bBoard.pipeline.totalLeads).toBe(pair.b.leadCount + 1);
+      expect(bBoard.pipeline.totalLeads.value).toBe(pair.b.leadCount + 1);
     } finally {
       // deleteMany with the tenant term: the client's tenant guard refuses a
       // bare `delete` by id, which is the protection working and not worth

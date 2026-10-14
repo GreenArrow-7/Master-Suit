@@ -375,6 +375,104 @@ describe('the write path recomputes, through the real routes', () => {
     expect(await storedValue(leadId)).toBeNull();
   });
 
+  // Counted after the commit: inside the transaction the global client had no
+  // tenant pinned, RLS hid the target, and nothing was ever counted.
+  it('completing counts once toward the owner follow-up target', async () => {
+    const target = await prisma.employeeTarget.create({
+      data: {
+        tenantId: T(),
+        userId: h.repA1.id,
+        metric: 'FOLLOWUPS_COMPLETED',
+        period: 'DAILY',
+        targetValue: 5,
+        periodStart: new Date(Date.now() - 3_600_000),
+        periodEnd: new Date(Date.now() + 3_600_000),
+      },
+    });
+    const leadId = await makeLead('complete-target');
+    const created = await post(
+      createFollowUp,
+      '/api/v1/follow-ups',
+      { leadId, title: 'Counted', dueAt: '2026-10-10T09:00:00Z' },
+      h.repA1.cookie,
+    );
+    const id = created.body.data?.id ?? created.body.id;
+
+    await patch(patchFollowUp, at(id).path, { status: 'COMPLETED' }, h.repA1.cookie, at(id).params);
+    await patch(patchFollowUp, at(id).path, { status: 'COMPLETED' }, h.repA1.cookie, at(id).params);
+    const progress = await prisma.targetProgress.findMany({ where: { tenantId: T(), targetId: target.id } });
+    expect(progress.reduce((sum, row) => sum + row.achieved, 0)).toBe(1);
+
+    await prisma.targetProgress.deleteMany({ where: { tenantId: T(), targetId: target.id } });
+    await prisma.employeeTarget.delete({ where: { tenantId: T(), id: target.id } });
+  });
+
+  // Both requests read completedAt null before either commits; only the one
+  // whose conditional update claims the completion counts.
+  it('two concurrent completions count once', async () => {
+    const target = await prisma.employeeTarget.create({
+      data: {
+        tenantId: T(),
+        userId: h.repA1.id,
+        metric: 'FOLLOWUPS_COMPLETED',
+        period: 'DAILY',
+        targetValue: 5,
+        periodStart: new Date(Date.now() - 3_600_000),
+        periodEnd: new Date(Date.now() + 3_600_000),
+      },
+    });
+    const leadId = await makeLead('complete-race');
+    const created = await post(
+      createFollowUp,
+      '/api/v1/follow-ups',
+      { leadId, title: 'Raced', dueAt: '2026-10-10T09:00:00Z' },
+      h.repA1.cookie,
+    );
+    const id = created.body.data?.id ?? created.body.id;
+
+    const answers = await Promise.all([
+      patch(patchFollowUp, at(id).path, { status: 'COMPLETED' }, h.repA1.cookie, at(id).params),
+      patch(patchFollowUp, at(id).path, { status: 'COMPLETED' }, h.repA1.cookie, at(id).params),
+    ]);
+    expect(answers.map((a) => a.status)).toEqual([200, 200]);
+    const progress = await prisma.targetProgress.findMany({ where: { tenantId: T(), targetId: target.id } });
+    expect(progress.reduce((sum, row) => sum + row.achieved, 0)).toBe(1);
+
+    await prisma.targetProgress.deleteMany({ where: { tenantId: T(), targetId: target.id } });
+    await prisma.employeeTarget.delete({ where: { tenantId: T(), id: target.id } });
+  });
+
+  // The reopen reads the row before a completion commits, then writes after it.
+  it('a reopen racing a completion leaves no OPEN row with completedAt set', async () => {
+    const leadId = await makeLead('reopen-race');
+    const created = await post(
+      createFollowUp,
+      '/api/v1/follow-ups',
+      { leadId, title: 'Reopened', dueAt: '2026-10-10T09:00:00Z' },
+      h.repA1.cookie,
+    );
+    const id = created.body.data?.id ?? created.body.id;
+
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const completion = withTx(T(), async (tx) => {
+      await tx.followUpTask.update({
+        where: { tenantId: T(), id },
+        data: { status: 'COMPLETED', completedAt: new Date() },
+      });
+      await held;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const reopen = patch(patchFollowUp, at(id).path, { status: 'OPEN' }, h.repA1.cookie, at(id).params);
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    release();
+    await completion;
+    expect((await reopen).status).toBe(200);
+
+    const row = await prisma.followUpTask.findFirst({ where: { tenantId: T(), id } });
+    expect(row).toMatchObject({ status: 'OPEN', completedAt: null });
+  });
+
   it('completing one of two falls back to the other', async () => {
     const leadId = await makeLead('complete-one');
     const first = await post(

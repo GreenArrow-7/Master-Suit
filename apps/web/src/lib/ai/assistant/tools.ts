@@ -4,6 +4,8 @@ import { can, type Action, type Ctx } from '@/lib/security/rbac';
 import { eventListScope, leadScope } from '@/lib/security/record-scope';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { obligationAccess, obligationWhere, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
+import { OPEN_FOLLOW_UP, followUpDueWhere } from '@/lib/leads/followUpDue';
+import { workspaceTimezone } from '@/services/hr/attendance';
 import type { EntityType } from '@/lib/nav/entityRoute';
 import { redact } from '../redact';
 import { applyFieldSecurity, loadFieldRules } from '@/lib/security/fieldSecurity';
@@ -104,6 +106,14 @@ const str = { type: 'string' as const };
 const num = { type: 'number' as const };
 
 const fmtDate = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 16).replace('T', ' ') : null);
+
+/** The actor's open follow-ups, `due` read on the workspace's clock as the Follow-ups list reads it. */
+const myFollowUps = (ctx: Ctx, timeZone: string, due: unknown) =>
+  mergeWhere(
+    { tenantId: ctx.tenantId, ownerId: ctx.actor.id, deletedAt: null },
+    OPEN_FOLLOW_UP,
+    followUpDueWhere({ due: typeof due === 'string' ? due : undefined }, timeZone),
+  );
 
 /**
  * `due` is the viewer's scoped follow-up map; without it no date is emitted.
@@ -665,18 +675,7 @@ export const TOOLS: ToolDef[] = [
     parameters: { type: 'object', properties: { due: str, limit: num } },
     requires: [['leads', 'VIEW']],
     execute: async (ctx, args) => {
-      const now = new Date();
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-      const where: Record<string, unknown> = {
-        tenantId: ctx.tenantId,
-        ownerId: ctx.actor.id,
-        deletedAt: null,
-        status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] },
-      };
-      if (args.due === 'today') where.dueAt = { gte: todayStart, lte: todayEnd };
-      else if (args.due === 'overdue') where.dueAt = { lt: now };
-      else if (args.due === 'upcoming') where.dueAt = { gt: todayEnd };
+      const where = myFollowUps(ctx, await workspaceTimezone(ctx), args.due);
       const rows = await prisma.followUpTask.findMany({
         where,
         orderBy: { dueAt: 'asc' },
@@ -754,7 +753,7 @@ export const TOOLS: ToolDef[] = [
     execute: async (ctx) => {
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      const timeZone = await workspaceTimezone(ctx);
       const leadWhere = await leadScope(ctx, 'VIEW', { includeUnassigned: true });
       /**
        * Events are the one part of this snapshot that is not the actor's own
@@ -769,27 +768,14 @@ export const TOOLS: ToolDef[] = [
        */
       const mayReadEvents = can(ctx, 'events', 'VIEW');
       const [overdueFups, todayFups, overdueTasks, breached, hot, events, todayCalls] = await Promise.all([
+        // As the Follow-ups list its source links (view=mine&due=overdue) reads them.
         prisma.followUpTask.findMany({
-          where: {
-            tenantId: ctx.tenantId,
-            ownerId: ctx.actor.id,
-            deletedAt: null,
-            status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] },
-            dueAt: { lt: now },
-          },
+          where: myFollowUps(ctx, timeZone, 'overdue'),
           orderBy: { dueAt: 'asc' },
           take: 5,
           select: { title: true, dueAt: true, leadId: true },
         }),
-        prisma.followUpTask.count({
-          where: {
-            tenantId: ctx.tenantId,
-            ownerId: ctx.actor.id,
-            deletedAt: null,
-            status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] },
-            dueAt: { gte: todayStart, lte: todayEnd },
-          },
-        }),
+        prisma.followUpTask.count({ where: myFollowUps(ctx, timeZone, 'today') }),
         prisma.task.count({
           where: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, deletedAt: null, status: 'OPEN', dueAt: { lt: now } },
         }),
