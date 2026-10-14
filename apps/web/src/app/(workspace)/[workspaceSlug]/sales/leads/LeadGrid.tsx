@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useHydrated } from '@/lib/useHydrated';
 import Badge from '@/components/ui/Badge';
 import { DateTimeInput } from '@/components/forms/DateInput';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -89,6 +90,8 @@ export default function LeadGrid({
   /** The chosen stage, while its mini-form is open. */
   const [reasonFor, setReasonFor] = useState<ReasonedStage | null>(null);
   const [busy, setBusy] = useState(false);
+  // Before React attaches, a tick shows but sets no selection, so no bulk bar: disabled until it can act.
+  const hydrated = useHydrated();
   const [failure, setFailure] = useState<BulkOutcome | null>(null);
   /** The leads the last bulk delete removed, while their Undo stands; then what the Undo did. */
   const [deleted, setDeleted] = useState<string[]>([]);
@@ -628,6 +631,7 @@ export default function LeadGrid({
                   <input
                     type="checkbox"
                     checked={allSelected}
+                    disabled={!hydrated}
                     aria-label="Select all rows"
                     onChange={() => setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)))}
                   />
@@ -645,6 +649,7 @@ export default function LeadGrid({
                     <input
                       type="checkbox"
                       checked={selected.has(row.id)}
+                      disabled={!hydrated}
                       onChange={() => toggle(row.id)}
                       aria-label={`Select ${row.fullName}`}
                     />

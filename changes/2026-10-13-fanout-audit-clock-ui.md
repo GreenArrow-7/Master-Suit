@@ -162,3 +162,10 @@ the full run under load (fixture timeouts) and passed alone (17, 8, 6). E2E
   collections (three files), the lead import preview, portals, proposals.
 - Not measured: other screens with five or fewer parallel reads (the Sales
   home of a seller reads five).
+
+## CI fix: lead row ticks before hydration
+
+- The lead grid's select checkboxes (row and select-all) are disabled until
+  React has attached (`useHydrated`). Before, a tick on the server's markup
+  showed checked but set no selection, so no bulk bar and no Delete: CI's
+  390 px Delete-then-Undo case ticked both rows in that window and timed out.
