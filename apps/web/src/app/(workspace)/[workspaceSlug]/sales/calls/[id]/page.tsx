@@ -7,6 +7,7 @@ import { notFound } from 'next/navigation';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import CallLink from '@/components/workspace/CallLink';
+import { callNumber } from '@/lib/leads/callLog';
 import CallActions from './CallActions';
 import EntityDelete from '@/components/sales/EntityDelete';
 import AnalysisPanel from './AnalysisPanel';
@@ -104,9 +105,9 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
   ]);
 
   if (!call) notFound();
-  // A call to a lead went to the lead's number: masked as the lead's phone is for
-  // this role, and then CallLink has nothing to dial.
-  const [{ recipientNumber: number }] = await maskCallNumbers(ctx, [call]);
+  // The other party's number (an inbound call's caller), masked as that lead's or
+  // contact's phone is for this role, and then CallLink has nothing to dial.
+  const number = callNumber((await maskCallNumbers(ctx, [call]))[0]!);
 
   // The Call row stores leadId without a Prisma relation; one scoped lookup
   // names the customer, which is what a call detail is about.

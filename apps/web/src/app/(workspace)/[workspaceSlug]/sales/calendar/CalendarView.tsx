@@ -36,6 +36,9 @@ const KIND_LABEL: Record<CalendarItem['kind'], string> = {
   visit: 'Site visit',
 };
 
+/** Dots a day's cell draws of one kind; past it, one "+N" for the rest (the day's list has them all). */
+const DOTS_PER_KIND = 3;
+
 function dotColor(item: CalendarItem): string {
   if (item.completed) return 'var(--lf-viridian)';
   return KIND_COLOR[item.kind];
@@ -143,6 +146,12 @@ export default function CalendarView({
         ))}
         {cells.map((day, i) => {
           const dayItems = day ? (byDay.get(day) ?? []) : [];
+          const drawn = new Map<string, number>();
+          const dots = dayItems.filter((item) => {
+            drawn.set(item.kind, (drawn.get(item.kind) ?? 0) + 1);
+            return drawn.get(item.kind)! <= DOTS_PER_KIND;
+          });
+          const more = dayItems.length - dots.length;
           const isToday = day === todayKey;
           const isSelected = day != null && String(day) === selectedDay;
 
@@ -186,13 +195,21 @@ export default function CalendarView({
                     {day}
                   </div>
                   <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginTop: 2 }}>
-                    {dayItems.map((item) => (
+                    {dots.map((item) => (
                       <span
                         key={item.id}
                         title={item.label}
                         style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor(item) }}
                       />
                     ))}
+                    {more > 0 && (
+                      <span
+                        title={`${more} more`}
+                        style={{ fontSize: 'var(--lf-text-2xs)', lineHeight: '6px', color: 'var(--lf-ink-3)' }}
+                      >
+                        {`+${more}`}
+                      </span>
+                    )}
                   </div>
                 </>
               )}

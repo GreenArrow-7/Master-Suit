@@ -1,13 +1,16 @@
 import { columnPriority, type ColumnDef, type GridObject } from '@/lib/grid/columns';
 import { renderCell, type GridRow } from './gridCells';
 import RowDetails from './RowDetails';
+import { requestCtx } from '@/lib/workspace-page';
+import { workspaceTimezone } from '@/services/hr/attendance';
 
 /**
  * A list grid whose columns come from the workspace's configuration rather than
  * from the page. Server-rendered: these grids are read-only, so none of them needs
- * the selection and sorting machinery that LeadGrid carries.
+ * the selection and sorting machinery that LeadGrid carries. Its dates and times
+ * read on the workspace's clock: formatted here, they otherwise read the server's.
  */
-export default function ConfigurableGrid({
+export default async function ConfigurableGrid({
   object,
   columns,
   rows,
@@ -19,6 +22,7 @@ export default function ConfigurableGrid({
   /** Placeholder for an empty *cell*. */
   emptyLabel?: string;
 }) {
+  const timeZone = await workspaceTimezone(await requestCtx());
   // No no-rows branch here on purpose: every page that renders this grid already
   // checks `length === 0` and shows an EmptyState with copy specific to what the
   // list is. A second, generic one underneath would be unreachable.
@@ -45,7 +49,7 @@ export default function ConfigurableGrid({
                   data-priority={columnPriority(column, index, columns)}
                   style={{ textAlign: column.align ?? 'left' }}
                 >
-                  {renderCell(object, column.key, row) ?? emptyLabel}
+                  {renderCell(object, column.key, row, timeZone) ?? emptyLabel}
                 </td>
               ))}
               <RowDetails />

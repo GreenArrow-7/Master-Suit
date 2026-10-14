@@ -434,6 +434,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         timeZone={timeZone}
         canEdit={can(ctx, 'leads', 'EDIT')}
         canLog={works}
+        canCall={can(ctx, 'calls', 'CREATE')}
         messaging={messaging}
         sharing={
           works

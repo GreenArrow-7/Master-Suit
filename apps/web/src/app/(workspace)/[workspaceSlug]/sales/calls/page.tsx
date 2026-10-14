@@ -15,11 +15,12 @@ import { columnsFor } from '@/lib/grid/resolve';
 import { can } from '@/lib/security/rbac';
 import { loadFieldRules } from '@/lib/security/fieldSecurity';
 import { leadsInScope } from '@/lib/security/record-scope';
-import { asLeadPhone } from '@/services/leads/createLead';
+import { asLeadPhone, maskCallNumbers } from '@/services/leads/createLead';
+import { workspaceTimezone } from '@/services/hr/attendance';
+import { dayBounds, todayKey } from '@/services/targets/dailyBoard';
 // Shared with the Lead Eagle board's Calls figures.
 import { CONNECTED_CALL_OUTCOMES as CONNECTED_OUTCOMES } from '@/lib/leads/callLog';
 import { CALL_TABS, LOGGED_CALL, boardListWhere, callTab } from '@/lib/leads/boardFilter';
-import { workspaceTimezone } from '@/services/hr/attendance';
 import { onDay } from '@/lib/leads/followUpDue';
 
 export const metadata = { title: 'Calls' };
@@ -62,7 +63,9 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
     return query.size ? `/calls?${query}` : '/calls';
   };
 
-  const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
+  // Today is the workspace's day, and a call made is one that rang, answered or
+  // not, as the daily board counts it: a missed call is a call, a booked one is not.
+  const today = dayBounds(todayKey(timeZone), timeZone);
   const [rows, total, stats] = await Promise.all([
     prisma.call.findMany({
       where,
@@ -75,10 +78,12 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
         outcome: true,
         direction: true,
         recipientNumber: true,
+        callerNumber: true,
         durationSecs: true,
         startedAt: true,
         createdAt: true,
         leadId: true,
+        contactId: true,
         notes: true,
         campaignId: true,
         caller: { select: { fullName: true } },
@@ -86,8 +91,13 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
     }),
     prisma.call.count({ where: { ...scope, deletedAt: null } }),
     prisma.call.groupBy({
-      by: ['outcome'],
-      where: { ...scope, deletedAt: null, status: 'COMPLETED', createdAt: { gte: todayStart } },
+      by: ['status', 'outcome'],
+      where: {
+        ...scope,
+        deletedAt: null,
+        status: { in: ['COMPLETED', 'MISSED', 'FAILED'] },
+        createdAt: { gte: today.from, lte: today.to },
+      },
       _count: true,
     }),
   ]);
@@ -114,7 +124,11 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
   const loggedLeads = await leadsInScope(ctx, logged?.map((row) => row.leadId) ?? []);
 
   const hasMore = rows.length > PAGE_SIZE;
-  const calls = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
+  // A call to a lead or contact holds their number (the one dialled, or an
+  // inbound caller's), which reads as their phone does for this role: masked
+  // without leads:VIEW_SENSITIVE_FIELDS or by a field rule, and then the row's
+  // Call button has nothing to dial.
+  const calls = await maskCallNumbers(ctx, hasMore ? rows.slice(0, PAGE_SIZE) : rows);
 
   // Resolve lead names so the grid can show who was called, not a bare id.
   const leadIds = [...new Set(calls.map((c) => c.leadId).filter((id): id is string => Boolean(id)))];
@@ -132,23 +146,20 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
   // Notes are free text about the conversation; a monitoring grant without
   // sensitive scope gets the call without them (they are otherwise in the payload).
   const sensitive = await hasSensitiveAccess(ctx);
-  // A call to a lead went to the lead's number, so it reads as the lead's phone
-  // does for this role — masked without leads:VIEW_SENSITIVE_FIELDS, and then
-  // the row's Call button has nothing to dial (CallLink refuses a masked number).
+  // The lead's own number, the Call button's fallback, reads the same way.
   const leadRules = await loadFieldRules(ctx, 'LEAD');
   const gridRows = calls.map((call) => {
     const lead = call.leadId ? (leadById.get(call.leadId) ?? null) : null;
     return {
       ...call,
       notes: sensitive ? call.notes : null,
-      recipientNumber: call.leadId ? asLeadPhone(ctx, leadRules, call.recipientNumber) : call.recipientNumber,
       lead: lead && { ...lead, phone: asLeadPhone(ctx, leadRules, lead.phone) },
     };
   });
 
   const todayTotal = stats.reduce((s, r) => s + r._count, 0);
   const todayConnected = stats
-    .filter((r) => r.outcome && CONNECTED_OUTCOMES.includes(r.outcome))
+    .filter((r) => r.status === 'COMPLETED' && r.outcome && CONNECTED_OUTCOMES.includes(r.outcome))
     .reduce((s, r) => s + r._count, 0);
 
   const configured = await columnsFor(ctx.tenantId, 'CALL');
@@ -176,9 +187,12 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
             {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
               <ColumnEditor object="CALL" current={columns.map((c) => c.key)} />
             )}
-            <SalesLink href="/calls/new" className="lf-btn" style={{ textDecoration: 'none' }}>
-              New Call
-            </SalesLink>
+            {/* Where /calls/new opens: it asks for calls:CREATE. */}
+            {can(ctx, 'calls', 'CREATE') && (
+              <SalesLink href="/calls/new" className="lf-btn" style={{ textDecoration: 'none' }}>
+                New Call
+              </SalesLink>
+            )}
           </>
         }
       />

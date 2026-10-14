@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import CallLink, { dialable } from '@/components/workspace/CallLink';
+import { callNumber } from '@/lib/leads/callLog';
 import FollowUpRowActions from '@/app/(workspace)/[workspaceSlug]/sales/follow-ups/FollowUpRowActions';
 import type { GridObject } from '@/lib/grid/columns';
 
@@ -16,18 +17,25 @@ function dialLink(raw: unknown): ReactNode {
   return dialable(raw) ? <CallLink number={raw} /> : dash;
 }
 
-function date(value: unknown): ReactNode {
+/** On `timeZone`'s clock, the workspace's: formatted on the server, these otherwise read the server's. */
+function onDay(value: unknown, timeZone?: string): ReactNode {
   if (!value) return dash;
-  return new Date(value as string).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date(value as string).toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone,
+  });
 }
 
-function dateTime(value: unknown): ReactNode {
+function onClock(value: unknown, timeZone?: string): ReactNode {
   if (!value) return dash;
   return new Date(value as string).toLocaleString('en-GB', {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone,
   });
 }
 
@@ -93,7 +101,12 @@ const leadCell = (row: GridRow) => (row.lead ? link(`/leads/${row.lead.id}`, row
  * rather than in thirteen page files is what makes a column reorderable at all —
  * the page no longer decides what sits in which position.
  */
-export function renderCell(object: GridObject, key: string, row: GridRow): ReactNode {
+export function renderCell(object: GridObject, key: string, row: GridRow, timeZone?: string): ReactNode {
+  const date = (value: unknown) => onDay(value, timeZone);
+  const dateTime = (value: unknown) => onClock(value, timeZone);
+  // A day picked in a date input is stored as that day's UTC midnight: read on
+  // UTC's clock, or a workspace west of UTC sees the day before.
+  const pickedDay = (value: unknown) => onDay(value, 'UTC');
   switch (object) {
     case 'ACCOUNT':
       switch (key) {
@@ -160,7 +173,7 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
         case 'expectedCloseDate':
           // A closed deal's real close date beats the forecast that may never
           // have been entered; open deals keep showing the forecast.
-          return date(row.actualCloseDate ?? row.expectedCloseDate);
+          return row.actualCloseDate ? date(row.actualCloseDate) : pickedDay(row.expectedCloseDate);
         case 'owner':
           return row.owner?.fullName ?? dash;
         case 'updatedAt':
@@ -196,7 +209,7 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
         case 'caller':
           return row.caller?.fullName ?? dash;
         case 'recipientNumber':
-          return <span style={{ fontFamily: 'var(--lf-font-mono)' }}>{row.recipientNumber ?? '—'}</span>;
+          return <span style={{ fontFamily: 'var(--lf-font-mono)' }}>{callNumber(row) ?? '—'}</span>;
         case 'direction':
           return <Badge value={row.direction} />;
         case 'durationSecs':
@@ -219,11 +232,12 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
            * component with no JavaScript and behaves like a link — long-press to
            * copy on mobile, right-click to copy on desktop.
            *
-           * The number the call actually used comes first; the lead's own number
-           * is the fallback, because a scheduled or failed row may never have
-           * recorded one and dialling the lead is still what the user wants.
+           * The other party's number on the call comes first (an inbound call's
+           * caller); the lead's own number is the fallback, because a scheduled
+           * or failed row may never have recorded one and dialling the lead is
+           * still what the user wants.
            */
-          return dialLink(row.recipientNumber ?? row.lead?.phone);
+          return dialLink(callNumber(row) ?? row.lead?.phone);
         default:
           return dash;
       }
@@ -239,9 +253,9 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
         case 'status':
           return <Badge value={row.status} />;
         case 'startDate':
-          return date(row.startDate);
+          return pickedDay(row.startDate);
         case 'endDate':
-          return date(row.endDate);
+          return pickedDay(row.endDate);
         case 'budget':
           return row.budget == null ? dash : money(row.budget, row.currency ?? 'AED');
         default:
@@ -485,7 +499,7 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
               <Badge value={row.mandateType} tone={row.mandateType === 'EXCLUSIVE' ? 'viridian' : 'slate'} />
               {row.mandateExpires ? (
                 <span style={{ fontSize: 'var(--lf-text-xs)', color: overdue(row.mandateExpires) }}>
-                  {date(row.mandateExpires)}
+                  {pickedDay(row.mandateExpires)}
                 </span>
               ) : null}
             </span>

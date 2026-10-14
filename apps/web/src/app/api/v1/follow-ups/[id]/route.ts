@@ -51,7 +51,10 @@ export const PATCH = route(
       if (body.dueAt && !body.status && ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'].includes(followUp.status)) {
         data.status = 'RESCHEDULED';
       }
-      if (body.status && body.status !== 'COMPLETED' && followUp.completedAt) data.completedAt = null;
+      // Moved off COMPLETED, the write itself clears completedAt, not the read
+      // above: a completion committing between that read and this write left a
+      // reopened row OPEN with completedAt set.
+      if (body.status && body.status !== 'COMPLETED') data.completedAt = null;
 
       if (body.leadId) await assertLeadInScope(ctx, body.leadId, tx, 'EDIT');
 

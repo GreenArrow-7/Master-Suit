@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { buildNavigation, searchTargets, type NavInput } from '@/lib/nav/workspaceNav';
+import { usePaletteKey } from '@/lib/usePaletteKey';
 
 /**
  * ⌘K. Jump to any page you may open, or search a list by name.
@@ -37,6 +38,7 @@ export default function CommandPalette({
   platformStaff = false,
 }: NavInput) {
   const router = useRouter();
+  const paletteKey = usePaletteKey();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [cursor, setCursor] = useState(0);
@@ -212,7 +214,7 @@ export default function CommandPalette({
             <kbd>↵</kbd> open
           </span>
           <span>
-            <kbd>⌘K</kbd> toggle
+            <kbd>{paletteKey}</kbd> toggle
           </span>
         </div>
       </div>
