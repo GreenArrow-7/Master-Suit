@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-13 | [The Lead Eagle board filters by period, person, team, source and project, and every figure opens its list](2026-10-13-lead-eagle-dashboard-filters.md) | #188 | Lead Eagle, dashboard |
 | 2026-10-13 | [Lead Eagle evidence fixes: chips at 390 px, the Calls clock and Today count, the pinned Call cell, Ctrl K, the calendar](2026-10-13-lead-eagle-evidence-defects.md) | #186 | Lead Eagle, leads, calls, calendar, fix |
 | 2026-10-13 | [Send a WhatsApp or email template from the lead and to many leads; share a listing or project as a page that tells the agent when it is opened](2026-10-13-lead-send-share.md) | #182 | Lead Eagle, leads |
 | 2026-10-13 | [The Lead Eagle board counts what its lists show: callbacks apart from other follow-ups, untouched and unassigned leads, meetings, conversion, sources, the funnel, calls and a leaderboard](2026-10-13-lead-eagle-dashboard-tiles.md) | #185 | Lead Eagle, dashboard |

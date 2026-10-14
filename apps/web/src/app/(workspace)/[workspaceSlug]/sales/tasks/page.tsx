@@ -12,6 +12,8 @@ import { assignableUsers, leadsInScope, ownerReach, workListScope } from '@/lib/
 import RowDetails from '@/components/workspace/RowDetails';
 import TaskComposer from './TaskComposer';
 import TaskRowActions from './TaskRowActions';
+import { boardListWhere } from '@/lib/leads/boardFilter';
+import { workspaceTimezone } from '@/services/hr/attendance';
 
 export const metadata = { title: 'Tasks' };
 
@@ -41,6 +43,9 @@ function tabWhere(tab: string | undefined, now: Date): Record<string, unknown> {
       return { status: 'COMPLETED' };
     case 'cancelled':
       return { status: 'CANCELLED' };
+    // Not a tab: the board's meetings booked, which leave out the cancelled.
+    case 'live':
+      return { status: { not: 'CANCELLED' } };
     default:
       return {};
   }
@@ -60,7 +65,9 @@ function tabHref(tab: string, mine: boolean): string {
 const fmt = (d: Date | null) =>
   d ? new Date(d).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
-export default async function TasksPage({ searchParams }: { searchParams: Promise<{ tab?: string; view?: string }> }) {
+type TaskParams = { tab?: string; view?: string; type?: string } & Record<string, string | undefined>;
+
+export default async function TasksPage({ searchParams }: { searchParams: Promise<TaskParams> }) {
   const params = await searchParams;
   // Lead work, so every product that works leads: a Lead-Eagle-only workspace had
   // no list of its team's tasks, only each lead's Tasks tab.
@@ -75,7 +82,14 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
 
   const [rows, taskTypes, assignees, editable, deletable] = await Promise.all([
     prisma.task.findMany({
-      where: mergeWhere(scope, { deletedAt: null }, tabWhere(params.tab, now)),
+      where: mergeWhere(
+        scope,
+        { deletedAt: null },
+        tabWhere(params.tab, now),
+        // The Lead Eagle board's leaderboard: a type, and its person, period, team, source and project.
+        params.type ? { type: { is: { key: params.type } } } : null,
+        await boardListWhere(ctx, params, 'task', await workspaceTimezone(ctx)),
+      ),
       orderBy: tabOrder(params.tab),
       take: 100,
       select: {

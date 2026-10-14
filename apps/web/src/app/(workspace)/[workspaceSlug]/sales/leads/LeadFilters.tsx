@@ -10,7 +10,7 @@ const SORTS = [
   ['name', 'Name A–Z'],
 ] as const;
 
-const DATE_LABEL = { created: 'Created', updated: 'Updated', contacted: 'First contacted' } as const;
+const DATE_LABEL = { created: 'Created', updated: 'Updated', contacted: 'First contacted', won: 'Won' } as const;
 
 /**
  * The lead grid's filter chips (M4-19): stage, owner, source and a created or
@@ -48,6 +48,9 @@ export default function LeadFilters({
     chips.push([`Owner: ${owner ?? 'Someone else'}`, ['owner']]);
   }
   if (params.source) chips.push([`Source: ${sourceName(params.source)}`, ['source']]);
+  // The Lead Eagle board's team and project, carried by its links.
+  if (params.team) chips.push(['Team', ['team']]);
+  if (params.project) chips.push(['Project', ['project']]);
   if (params.from || params.to)
     chips.push([`${DATE_LABEL[params.date ?? 'created']}: ${range}`, ['date', 'from', 'to']]);
   const without = (keys: (keyof LeadListParams)[]) =>

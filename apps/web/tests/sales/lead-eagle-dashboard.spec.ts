@@ -398,6 +398,7 @@ describe('the board at 12:00 on 15 Oct 2026 in Dubai', () => {
         visits: 1,
         booked: 1,
         href: `/leads?owner=${agentB.id}`,
+        links: expect.any(Object),
       },
       {
         userId: agentA.id,
@@ -407,6 +408,7 @@ describe('the board at 12:00 on 15 Oct 2026 in Dubai', () => {
         visits: 0,
         booked: 0,
         href: `/leads?owner=${agentA.id}`,
+        links: expect.any(Object),
       },
     ]);
     // An agent at OWN scope would rank only themselves: no board.
@@ -422,15 +424,22 @@ describe('the board at 12:00 on 15 Oct 2026 in Dubai', () => {
         visits: null,
         booked: 1,
         href: `/leads?owner=${agentB.id}`,
+        links: expect.any(Object),
       },
     ]);
     expect(blind.calls).toBeNull();
   });
 
   it('counts calls made, connected and talk time, provider calls with logged ones (M3-13)', async () => {
-    expect((await board(manager.cookie)).calls).toEqual({ made: 7, connected: 3, seconds: 220, href: '/calls' });
-    expect((await board(agentA.cookie)).calls).toEqual({ made: 3, connected: 1, seconds: 90, href: '/calls' });
-    expect((await board(agentB.cookie)).calls).toEqual({ made: 4, connected: 2, seconds: 130, href: '/calls' });
+    expect((await board(manager.cookie)).calls).toEqual({
+      made: 7,
+      connected: 3,
+      seconds: 220,
+      href: '/calls?tab=placed&logged=1&from=2026-10-09&to=2026-10-15',
+      connectedHref: '/calls?tab=connected&logged=1&from=2026-10-09&to=2026-10-15',
+    });
+    expect((await board(agentA.cookie)).calls).toMatchObject({ made: 3, connected: 1, seconds: 90 });
+    expect((await board(agentB.cookie)).calls).toMatchObject({ made: 4, connected: 2, seconds: 130 });
   });
 
   it('puts received and worked leads on Dubai’s days for 14 days (M3-14)', async () => {
@@ -477,7 +486,7 @@ describe('the board at 12:00 on 15 Oct 2026 in Dubai', () => {
     jar.cookie = manager.cookie;
     jar.path = `/${ws.slug}/lead-eagle/dashboard`;
     try {
-      const tree = await BoardPage();
+      const tree = await BoardPage({ searchParams: Promise.resolve({}) });
       const text = await pageText(tree);
       for (const label of [
         'New Leads',

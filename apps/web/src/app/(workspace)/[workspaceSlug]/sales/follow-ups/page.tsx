@@ -22,6 +22,7 @@ import {
   isFollowUpKind,
   onDay,
 } from '@/lib/leads/followUpDue';
+import { boardListWhere } from '@/lib/leads/boardFilter';
 
 export const metadata = { title: 'Follow-ups' };
 
@@ -36,7 +37,16 @@ const TABS = [
 export default async function FollowUpsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ due?: string; view?: string; date?: string; kind?: string }>;
+  searchParams: Promise<{
+    due?: string;
+    view?: string;
+    date?: string;
+    kind?: string;
+    owner?: string;
+    team?: string;
+    source?: string;
+    project?: string;
+  }>;
 }) {
   const params = await searchParams;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['leads', 'VIEW'] });
@@ -58,6 +68,13 @@ export default async function FollowUpsPage({
     await workListScope(ctx, 'leads', view.mine),
     params.due === 'completed' ? { status: { in: ['COMPLETED', 'CANCELLED'] } } : OPEN_FOLLOW_UP,
     followUpDueWhere(params, timeZone),
+    // The Lead Eagle board's person, team, source and project.
+    await boardListWhere(
+      ctx,
+      { owner: params.owner, team: params.team, source: params.source, project: params.project },
+      'followUp',
+      timeZone,
+    ),
     { deletedAt: null },
   );
   const narrowed = [

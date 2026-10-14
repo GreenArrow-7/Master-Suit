@@ -14,26 +14,27 @@ import Pager from '@/components/workspace/Pager';
 import { columnsFor } from '@/lib/grid/resolve';
 import { can } from '@/lib/security/rbac';
 import { loadFieldRules } from '@/lib/security/fieldSecurity';
+import { leadsInScope } from '@/lib/security/record-scope';
 import { asLeadPhone, maskCallNumbers } from '@/services/leads/createLead';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { dayBounds, todayKey } from '@/services/targets/dailyBoard';
 // Shared with the Lead Eagle board's Calls figures.
 import { CONNECTED_CALL_OUTCOMES as CONNECTED_OUTCOMES } from '@/lib/leads/callLog';
+import { CALL_TABS, LOGGED_CALL, boardListWhere, callTab } from '@/lib/leads/boardFilter';
+import { onDay } from '@/lib/leads/followUpDue';
 
 export const metadata = { title: 'Calls' };
 
 const PAGE_SIZE = 50;
 
-const TABS: [string, string, Record<string, unknown>][] = [
-  ['All', '', {}],
-  ['Connected', 'connected', { status: 'COMPLETED', outcome: { in: CONNECTED_OUTCOMES } }],
-  ['Missed', 'missed', { status: 'MISSED' }],
-  ['Voicemail', 'voicemail', { outcome: 'VOICEMAIL' }],
-  ['Failed', 'failed', { status: 'FAILED' }],
-  ['Scheduled', 'scheduled', { status: 'SCHEDULED' }],
-];
+/** The tabs on the bar; Placed and Completed are reached from the Lead Eagle board. */
+const SHOWN_TABS = CALL_TABS.filter((tab) => !['placed', 'completed'].includes(tab.key));
+/** The board's filters a tab keeps. */
+const KEPT = ['logged', 'from', 'to', 'owner', 'team', 'source', 'project'] as const;
 
-export default async function CallsPage({ searchParams }: { searchParams: Promise<{ tab?: string; page?: string }> }) {
+type CallParams = { tab?: string; page?: string; logged?: string } & Record<string, string | undefined>;
+
+export default async function CallsPage({ searchParams }: { searchParams: Promise<CallParams> }) {
   const params = await searchParams;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['calls', 'VIEW'] });
   const page = Math.max(1, Number(params.page) || 1);
@@ -41,12 +42,29 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
   // Role scope, not just own calls: a manager sees the team's history here the
   // same way the audits page already does.
   const scope = await visibilityWhere(ctx, 'calls', 'VIEW', { ownerField: 'callerId' });
-  const tab = TABS.find(([, key]) => key === (params.tab ?? '')) ?? TABS[0];
-  const where = mergeWhere(scope, tab[2], { deletedAt: null });
+  const tab = callTab(params.tab);
+  // The Lead Eagle board's calls: a period, person, team, source and project,
+  // and (`logged=1`) the calls logged by hand beside the provider's (M3-18).
+  const timeZone = await workspaceTimezone(ctx);
+  const where = mergeWhere(scope, tab.where, { deletedAt: null }, await boardListWhere(ctx, params, 'call', timeZone));
+  const loggedWhere =
+    params.logged === '1' && tab.logged
+      ? mergeWhere(
+          await visibilityWhere(ctx, 'calls', 'VIEW', { ownerField: 'ownerId' }),
+          LOGGED_CALL,
+          tab.logged,
+          await boardListWhere(ctx, params, 'log', timeZone),
+        )
+      : null;
+  const kept = new URLSearchParams(KEPT.filter((key) => params[key]).map((key) => [key, params[key]!]));
+  const tabHref = (key: string) => {
+    const query = new URLSearchParams(kept);
+    if (key) query.set('tab', key);
+    return query.size ? `/calls?${query}` : '/calls';
+  };
 
   // Today is the workspace's day, and a call made is one that rang, answered or
   // not, as the daily board counts it: a missed call is a call, a booked one is not.
-  const timeZone = await workspaceTimezone(ctx);
   const today = dayBounds(todayKey(timeZone), timeZone);
   const [rows, total, stats] = await Promise.all([
     prisma.call.findMany({
@@ -83,6 +101,27 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
       _count: true,
     }),
   ]);
+
+  const [logged, placedCount, loggedCount] = loggedWhere
+    ? await Promise.all([
+        prisma.activity.findMany({
+          where: loggedWhere,
+          orderBy: { occurredAt: 'desc' },
+          take: 100,
+          select: {
+            id: true,
+            occurredAt: true,
+            outcome: true,
+            durationSecs: true,
+            owner: { select: { fullName: true } },
+            leadId: true,
+          },
+        }),
+        prisma.call.count({ where }),
+        prisma.activity.count({ where: loggedWhere }),
+      ])
+    : [null, null, null];
+  const loggedLeads = await leadsInScope(ctx, logged?.map((row) => row.leadId) ?? []);
 
   const hasMore = rows.length > PAGE_SIZE;
   // A call to a lead or contact holds their number (the one dialled, or an
@@ -177,18 +216,20 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
       </div>
 
       <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="Call filter">
-        {TABS.map(([label, key]) => (
-          <SalesLink
-            key={label}
-            className="lf-tab"
-            href={key ? `/calls?tab=${key}` : '/calls'}
-            aria-selected={(params.tab ?? '') === key}
-            role="tab"
-          >
+        {SHOWN_TABS.map(({ label, key }) => (
+          <SalesLink key={label} className="lf-tab" href={tabHref(key)} aria-selected={tab.key === key} role="tab">
             {label}
           </SalesLink>
         ))}
       </nav>
+
+      {logged && (
+        <p className="lf-hint" style={{ marginBottom: 'var(--lf-space-3)' }}>
+          {placedCount} placed and {loggedCount} logged
+          {(loggedCount ?? 0) > logged.length && ` (the latest ${logged.length} listed)`}
+          {params.from && params.to ? ` · ${onDay(params.from)} – ${onDay(params.to)}` : ''}
+        </p>
+      )}
 
       {calls.length === 0 ? (
         <div className="lf-card">
@@ -198,7 +239,51 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
         <ConfigurableGrid object="CALL" columns={columns} rows={gridRows as any} />
       )}
 
-      <Pager page={page} hasMore={hasMore} basePath="/calls" params={{ tab: params.tab }} />
+      <Pager
+        page={page}
+        hasMore={hasMore}
+        basePath="/calls"
+        params={{ tab: params.tab, ...Object.fromEntries(kept) }}
+      />
+
+      {logged && logged.length > 0 && (
+        <section style={{ marginTop: 'var(--lf-space-5)' }} aria-labelledby="logged-calls">
+          <h2 id="logged-calls" className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-2)' }}>
+            Logged calls
+          </h2>
+          <div className="lf-grid-wrap" style={{ overflowX: 'auto' }}>
+            <table className="lf-grid">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Lead</th>
+                  <th>By</th>
+                  <th>Outcome</th>
+                  <th style={{ textAlign: 'right' }}>Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {logged.map((row) => {
+                  const lead = row.leadId ? loggedLeads.get(row.leadId) : undefined;
+                  return (
+                    <tr key={row.id} data-logged-call={row.id}>
+                      <td>
+                        {row.occurredAt.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone })}
+                      </td>
+                      <td>{lead ? <SalesLink href={`/leads/${lead.id}`}>{lead.fullName}</SalesLink> : '—'}</td>
+                      <td>{row.owner?.fullName ?? '—'}</td>
+                      <td>{row.outcome ?? '—'}</td>
+                      <td className="lf-num" style={{ textAlign: 'right' }}>
+                        {row.durationSecs == null ? '—' : `${row.durationSecs}s`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </>
   );
 }

@@ -4,6 +4,17 @@ import { mergeWhere } from '@/lib/api/where';
 import { mayClaim, visibilityWhere } from '@/lib/security/visibility';
 import { leadScope, workListScope } from '@/lib/security/record-scope';
 import { can, scopeFor, type Ctx } from '@/lib/security/rbac';
+import {
+  BOARD_FILTER_KEYS,
+  LOGGED_CALL,
+  boardPeriod,
+  boardWhere,
+  callTab,
+  cleanBoardFilter,
+  resolveBoardFilter,
+  scopeBoardFilter,
+  type BoardFilter,
+} from '@/lib/leads/boardFilter';
 import { CONNECTED_CALL_OUTCOMES, CONNECTED_LOG_OUTCOMES } from '@/lib/leads/callLog';
 import { OPEN_FOLLOW_UP, followUpDueWhere, shiftDay } from '@/lib/leads/followUpDue';
 import { SIMPLE_NAMED_LEAD_FILTERS } from '@/lib/leads/namedFilters';
@@ -104,13 +115,17 @@ export interface LeaderboardRow {
   /** Leads moved into a won stage. */
   booked: number;
   href: string;
+  /** Each cell's list: the calls, meetings, visits and won leads it counted. */
+  links: { calls: string; meetings: string; visits: string; booked: string };
 }
 
 export interface RealtyDashboard {
   /** Today, and the activity period (today and the six days before), as YYYY-MM-DD on the workspace's clock. */
   day: string;
   period: { from: string; to: string };
-  today: { newLeads: Tile; overdue: Tile; dueToday: Tile; callbacks: Tile; siteVisits: Figure };
+  /** The filters applied (M3-16, M3-17): what was asked, less what the viewer may not filter on. */
+  filter: BoardFilter;
+  today: { newLeads: Tile; overdue: Tile; dueToday: Tile; callbacks: Tile; siteVisits: Tile | null };
   pipeline: {
     totalLeads: Tile;
     /** Only for a viewer who may claim a lead. */
@@ -120,8 +135,8 @@ export interface RealtyDashboard {
     meetingsScheduled: Tile | null;
     meetingsDone: Tile | null;
     conversion: { won: number; total: number; percent: number | null; href: string };
-    visitsApproved: Figure;
-    visitsCompleted: Figure;
+    visitsApproved: Tile | null;
+    visitsCompleted: Tile | null;
     bookings: Figure;
     confirmedBookings: Figure;
   };
@@ -138,13 +153,12 @@ export interface RealtyDashboard {
   trend: { date: string; received: number; worked: number; href: string; workedHref: string }[];
   /** Today and the six days after: follow-ups due. */
   followUpDays: { date: string; count: number; href: string }[];
-  calls: { made: number; connected: number; seconds: number; href: string } | null;
+  /** `href` lists the calls made (provider and logged), `connectedHref` the connected ones. */
+  calls: { made: number; connected: number; seconds: number; href: string; connectedHref: string } | null;
   /** Top six by calls; null for a viewer who would rank only themselves. */
   leaderboard: LeaderboardRow[] | null;
 }
 
-/** Logged calls (#178's Log call, cold calls, moved history): an Activity of these types. */
-const CALL_TYPES = ['call_out', 'call_in'];
 /** Lead Eagle's meeting stages, by the keys its pipeline seeds (provisioning.ts). */
 const MEETING_STAGES = { meetingsScheduled: 'meeting_scheduled', meetingsDone: 'meeting_done' } as const;
 const SOURCE_ROWS = 8;
@@ -156,17 +170,46 @@ const sourceKind = (source: string) =>
 
 const tally = <K>(map: Map<K, number>, key: K, by = 1) => map.set(key, (map.get(key) ?? 0) + by);
 
-export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<RealtyDashboard> {
+export async function realtyDashboard(
+  ctx: Ctx,
+  now = new Date(),
+  requested: BoardFilter = {},
+): Promise<RealtyDashboard> {
   const { tenantId } = ctx;
   const timeZone = await workspaceTimezone(ctx);
   const day = todayKey(timeZone, now);
   const onClock = (at: Date) => todayKey(timeZone, at);
   const span = (from: string, to: string) => ({ gte: dayBounds(from, timeZone).from, lte: dayBounds(to, timeZone).to });
   const today = span(day, day);
-  const period = { from: shiftDay(day, -6), to: day };
+
+  // The filters (M3-16, M3-17). A chosen period narrows the pipeline (leads
+  // received in it), the visit tiles and the activity figures; without one
+  // the activity figures cover the last seven days. Today's tiles and the
+  // follow-up week keep their own days.
+  const filter = await scopeBoardFilter(ctx, cleanBoardFilter({ ...requested }));
+  const chosen = boardPeriod(filter, timeZone, now);
+  const resolved = await resolveBoardFilter(ctx, filter, timeZone, now);
+  const narrow = (register: Parameters<typeof boardWhere>[1]) => boardWhere(resolved, register, false);
+  const chosenSpan = chosen && span(chosen.from, chosen.to);
+  const period = chosen ?? { from: shiftDay(day, -6), to: day };
   const inPeriod = span(period.from, period.to);
-  const trendDays = Array.from({ length: 14 }, (_, i) => shiftDay(day, i - 13));
+  // The 14 days up to the period's end, or the period itself when shorter.
+  const trendStart = chosen && chosen.from > shiftDay(chosen.to, -13) ? chosen.from : shiftDay(period.to, -13);
+  const trendDays: string[] = [];
+  for (let date = trendStart; date <= period.to; date = shiftDay(date, 1)) trendDays.push(date);
   const stripDays = Array.from({ length: 7 }, (_, i) => shiftDay(day, i));
+
+  /** A list's link with the filters on: the person, team, source and project, and the period where `dated`. */
+  const link = (path: string, query: Record<string, string | undefined> = {}, dated = false) => {
+    const search = new URLSearchParams(Object.entries(query).filter((pair): pair is [string, string] => !!pair[1]));
+    if (dated && chosen) {
+      search.set('from', chosen.from);
+      search.set('to', chosen.to);
+    }
+    for (const key of BOARD_FILTER_KEYS.slice(3)) if (filter[key] && !search.has(key)) search.set(key, filter[key]!);
+    return search.size ? `${path}?${search}` : path;
+  };
+  const inPeriodQuery = { from: period.from, to: period.to };
 
   const live = { deletedAt: null };
   const confirmed = { status: 'CONFIRMED' as const };
@@ -186,10 +229,14 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
     may('calls') ? visibilityWhere(ctx, 'calls', 'VIEW', { ownerField: 'ownerId' }) : null,
     may('tasks') && ranks ? workListScope(ctx, 'tasks', false) : null,
   ]);
-  // What /leads and /follow-ups show this viewer.
-  const leads = mergeWhere(leadsListed, OPEN_LEADS_WHERE);
-  const followUps = mergeWhere(followUpsListed, OPEN_FOLLOW_UP);
-  const trendSpan = span(trendDays[0]!, day);
+  // What /leads and /follow-ups show this viewer, under the filters; the
+  // pipeline's leads are those received in the chosen period.
+  const leads = mergeWhere(leadsListed, OPEN_LEADS_WHERE, narrow('lead'));
+  const pipelineLeads = mergeWhere(leads, chosenSpan && { createdAt: chosenSpan });
+  const followUps = mergeWhere(followUpsListed, OPEN_FOLLOW_UP, narrow('followUp'));
+  const visits = visitScope && mergeWhere(visitScope, narrow('visit'));
+  const deals = dealScope && mergeWhere(dealScope, narrow('booking'));
+  const trendSpan = span(trendDays[0]!, period.to);
 
   const read = await withTx(tenantId, async (tx) => {
     const stages = await tx.leadStage.findMany({
@@ -198,15 +245,16 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
       select: { id: true, key: true, name: true, category: true },
     });
     const won = stages.filter((stage) => stage.category === 'CONVERSION').map((stage) => stage.id);
-    const leadCount = (extra: Record<string, unknown> | null) => tx.lead.count({ where: mergeWhere(leads, extra) });
+    const leadCount = (extra: Record<string, unknown> | null, where = pipelineLeads) =>
+      tx.lead.count({ where: mergeWhere(where, extra) });
     return {
       stages,
       totalLeads: await leadCount(null),
-      newLeads: await leadCount({ createdAt: today }),
+      newLeads: await leadCount({ createdAt: today }, leads),
       unassigned: mayClaim(ctx, 'leads') ? await leadCount({ ownerId: null }) : null,
       untouched: await leadCount(SIMPLE_NAMED_LEAD_FILTERS.untouched!(now, ctx.actor.id)),
-      byStage: await tx.lead.groupBy({ by: ['stageId'], where: leads, _count: { _all: true } }),
-      bySource: await tx.lead.groupBy({ by: ['source', 'sourceId'], where: leads, _count: { _all: true } }),
+      byStage: await tx.lead.groupBy({ by: ['stageId'], where: pipelineLeads, _count: { _all: true } }),
+      bySource: await tx.lead.groupBy({ by: ['source', 'sourceId'], where: pipelineLeads, _count: { _all: true } }),
       catalogue: await tx.leadSource.findMany({
         where: { tenantId },
         select: { id: true, name: true, parentId: true },
@@ -223,25 +271,33 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
         where: mergeWhere(followUps, { dueAt: span(day, stripDays[6]!) }),
         select: { dueAt: true, kind: true },
       }),
-      visits: visitScope && [
-        await tx.siteVisit.count({ where: mergeWhere(visitScope, live, { scheduledAt: today }) }),
-        await tx.siteVisit.count({ where: mergeWhere(visitScope, live, { status: 'APPROVED' }) }),
-        await tx.siteVisit.count({ where: mergeWhere(visitScope, live, { status: 'COMPLETED' }) }),
+      visits: visits && [
+        await tx.siteVisit.count({ where: mergeWhere(visits, live, { scheduledAt: today }) }),
+        await tx.siteVisit.count({
+          where: mergeWhere(visits, live, { status: 'APPROVED' }, chosenSpan && { scheduledAt: chosenSpan }),
+        }),
+        await tx.siteVisit.count({
+          where: mergeWhere(visits, live, { status: 'COMPLETED' }, chosenSpan && { scheduledAt: chosenSpan }),
+        }),
       ],
-      deals: dealScope && {
-        bookings: await tx.booking.count({ where: mergeWhere(dealScope, live, { status: { not: 'CANCELLED' } }) }),
-        confirmed: await tx.booking.count({ where: mergeWhere(dealScope, live, confirmed) }),
+      deals: deals && {
+        bookings: await tx.booking.count({
+          where: mergeWhere(deals, live, { status: { not: 'CANCELLED' } }, chosenSpan && { bookingDate: chosenSpan }),
+        }),
+        confirmed: await tx.booking.count({
+          where: mergeWhere(deals, live, confirmed, chosenSpan && { bookingDate: chosenSpan }),
+        }),
         revenueToday: await tx.booking.aggregate({
-          where: mergeWhere(dealScope, live, confirmed, { bookingDate: today }),
+          where: mergeWhere(deals, live, confirmed, { bookingDate: today }),
           _sum: { saleValue: true },
         }),
         revenue7Days: await tx.booking.aggregate({
-          where: mergeWhere(dealScope, live, confirmed, { bookingDate: inPeriod }),
+          where: mergeWhere(deals, live, confirmed, { bookingDate: inPeriod }),
           _sum: { saleValue: true },
         }),
         topAgents: await tx.booking.groupBy({
           by: ['ownerId'],
-          where: mergeWhere(dealScope, live, confirmed),
+          where: mergeWhere(deals, live, confirmed, chosenSpan && { bookingDate: chosenSpan }),
           _count: { _all: true },
           orderBy: { _count: { ownerId: 'desc' } },
           take: 5,
@@ -254,7 +310,7 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
       placed: callScope
         ? await tx.call.groupBy({
             by: ['callerId', 'status', 'outcome'],
-            where: mergeWhere(callScope, live, { createdAt: inPeriod, status: { notIn: ['SCHEDULED', 'CANCELLED'] } }),
+            where: mergeWhere(callScope, live, narrow('call'), callTab('placed').where, { createdAt: inPeriod }),
             _count: { _all: true },
             _sum: { durationSecs: true },
           })
@@ -262,7 +318,7 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
       logged: callLogScope
         ? await tx.activity.groupBy({
             by: ['ownerId', 'outcome'],
-            where: mergeWhere(callLogScope, live, { occurredAt: inPeriod, type: { is: { key: { in: CALL_TYPES } } } }),
+            where: mergeWhere(callLogScope, LOGGED_CALL, narrow('log'), { occurredAt: inPeriod }),
             _count: { _all: true },
             _sum: { durationSecs: true },
           })
@@ -270,7 +326,7 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
       meetings: taskScope
         ? await tx.task.groupBy({
             by: ['ownerId'],
-            where: mergeWhere(taskScope, live, {
+            where: mergeWhere(taskScope, live, narrow('task'), {
               createdAt: inPeriod,
               status: { not: 'CANCELLED' },
               type: { is: { key: 'meeting' } },
@@ -279,10 +335,10 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
           })
         : null,
       visited:
-        visitScope && ranks
+        visits && ranks
           ? await tx.siteVisit.groupBy({
               by: ['ownerId'],
-              where: mergeWhere(visitScope, live, { status: 'COMPLETED', scheduledAt: inPeriod }),
+              where: mergeWhere(visits, live, { status: 'COMPLETED', scheduledAt: inPeriod }),
               _count: { _all: true },
             })
           : null,
@@ -306,11 +362,11 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
     name: stage.name,
     category: stage.category,
     count: inStage.get(stage.id) ?? 0,
-    href: `/leads?stage=${stage.id}`,
+    href: link('/leads', { stage: stage.id }, true),
   }));
   const stageTile = (key: string) => {
     const stage = read.stages.find((row) => row.key === key);
-    return stage ? { value: inStage.get(stage.id) ?? 0, href: `/leads?stage=${stage.id}` } : null;
+    return stage ? { value: inStage.get(stage.id) ?? 0, href: link('/leads', { stage: stage.id }, true) } : null;
   };
   const won = funnel.filter((row) => row.category === 'CONVERSION').reduce((sum, row) => sum + row.count, 0);
 
@@ -327,7 +383,7 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
   for (const row of read.bySource) {
     const top = row.sourceId ? topOf(row.sourceId) : undefined;
     const label = top?.name ?? sourceKind(row.source);
-    const href = top ? `/leads?source=${top.id}` : null;
+    const href = top ? link('/leads', { source: top.id }, true) : null;
     const prior = bySource.get(label);
     // Two rows sharing a label (an entry named like a kind) fold, and no one list shows both.
     bySource.set(label, {
@@ -375,7 +431,8 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
               .filter((row) => row.outcome && CONNECTED_LOG_OUTCOMES.includes(row.outcome))
               .reduce((sum, row) => sum + row._count._all, 0),
           seconds: [...read.placed, ...read.logged].reduce((sum, row) => sum + (row._sum.durationSecs ?? 0), 0),
-          href: '/calls',
+          href: link('/calls', { tab: 'placed', logged: '1', ...inPeriodQuery }),
+          connectedHref: link('/calls', { tab: 'connected', logged: '1', ...inPeriodQuery }),
         }
       : null;
 
@@ -409,7 +466,13 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
           meetings: read.meetings ? (perPerson.meetings.get(userId) ?? 0) : null,
           visits: read.visited ? (perPerson.visits.get(userId) ?? 0) : null,
           booked: perPerson.booked.get(userId) ?? 0,
-          href: `/leads?owner=${userId}`,
+          href: link('/leads', { owner: userId }),
+          links: {
+            calls: link('/calls', { tab: 'completed', logged: '1', owner: userId, ...inPeriodQuery }),
+            meetings: link('/tasks', { type: 'meeting', tab: 'live', owner: userId, ...inPeriodQuery }),
+            visits: link('/site-visits', { status: 'COMPLETED', owner: userId, ...inPeriodQuery }),
+            booked: link('/leads', { filter: 'won', date: 'won', owner: userId, ...inPeriodQuery }),
+          },
         }))
         .sort(
           (a, b) =>
@@ -422,33 +485,39 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
         .slice(0, LEADERBOARD_ROWS)
     : null;
 
-  const followUpTile = (due: string, value: number) => ({ value, href: `/follow-ups?due=${due}` });
-  const dayList = (date: string) => `/leads?from=${date}&to=${date}`;
+  const followUpTile = (due: string, value: number) => ({ value, href: link('/follow-ups', { due }) });
+  const dayList = (date: string) => link('/leads', { from: date, to: date });
+  const visitTile = (value: number | undefined, query: Record<string, string>, dated: boolean) =>
+    value === undefined ? null : { value, href: link('/site-visits', query, dated) };
 
   return {
     day,
     period,
+    filter,
     today: {
       newLeads: { value: read.newLeads, href: dayList(day) },
       overdue: followUpTile('overdue', read.overdue),
       dueToday: followUpTile('today', due.get(day) ?? 0),
-      callbacks: { value: callbacks, href: '/follow-ups?due=today&kind=CALL' },
-      siteVisits: read.visits ? read.visits[0]! : null,
+      callbacks: { value: callbacks, href: link('/follow-ups', { due: 'today', kind: 'CALL' }) },
+      siteVisits: visitTile(read.visits?.[0], { from: day, to: day }, false),
     },
     pipeline: {
-      totalLeads: { value: read.totalLeads, href: '/leads' },
-      unassigned: read.unassigned === null ? null : { value: read.unassigned, href: '/leads?filter=unassigned' },
-      untouched: { value: read.untouched, href: '/leads?filter=untouched' },
+      totalLeads: { value: read.totalLeads, href: link('/leads', {}, true) },
+      unassigned:
+        read.unassigned === null
+          ? null
+          : { value: read.unassigned, href: link('/leads', { filter: 'unassigned' }, true) },
+      untouched: { value: read.untouched, href: link('/leads', { filter: 'untouched' }, true) },
       meetingsScheduled: stageTile(MEETING_STAGES.meetingsScheduled),
       meetingsDone: stageTile(MEETING_STAGES.meetingsDone),
       conversion: {
         won,
         total: read.totalLeads,
         percent: read.totalLeads ? Math.round((won / read.totalLeads) * 100) : null,
-        href: '/leads?filter=won',
+        href: link('/leads', { filter: 'won' }, true),
       },
-      visitsApproved: read.visits ? read.visits[1]! : null,
-      visitsCompleted: read.visits ? read.visits[2]! : null,
+      visitsApproved: visitTile(read.visits?.[1], { status: 'APPROVED' }, true),
+      visitsCompleted: visitTile(read.visits?.[2], { status: 'COMPLETED' }, true),
       bookings: read.deals ? read.deals.bookings : null,
       confirmedBookings: read.deals ? read.deals.confirmed : null,
     },
@@ -469,9 +538,9 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
       received: received.get(date) ?? 0,
       worked: worked.get(date) ?? 0,
       href: dayList(date),
-      workedHref: `/leads?date=contacted&from=${date}&to=${date}`,
+      workedHref: link('/leads', { date: 'contacted', from: date, to: date }),
     })),
-    followUpDays: stripDays.map((date) => ({ date, count: due.get(date) ?? 0, href: `/follow-ups?date=${date}` })),
+    followUpDays: stripDays.map((date) => ({ date, count: due.get(date) ?? 0, href: link('/follow-ups', { date }) })),
     calls,
     leaderboard,
   };
