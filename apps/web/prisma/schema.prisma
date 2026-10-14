@@ -3419,6 +3419,8 @@ model Lead {
   phones           LeadPhone[]
   /// The projects and listings it asked about (M4-06).
   projectInterests LeadProject[]
+  calls            Call[]
+  siteVisits       SiteVisit[]
   listingInterests LeadListing[]
   dataRecords      DataRecord[]
 
@@ -6009,6 +6011,8 @@ model Call {
   eventId         String?
   callerId        String
   caller          User                   @relation("CallerUser", fields: [callerId], references: [id])
+  /// The lead called (M3-17: the board filters calls by their lead's source and project).
+  lead            Lead?                  @relation(fields: [leadId], references: [id], onDelete: SetNull)
   direction       CommunicationDirection @default(OUTBOUND)
   status          CallStatus             @default(SCHEDULED)
   outcome         CallOutcome?
@@ -6041,6 +6045,8 @@ model Call {
   @@unique([tenantId, providerName, externalCallId])
   @@index([tenantId, callerId, createdAt(sort: Desc)])
   @@index([tenantId, leadId, createdAt(sort: Desc)])
+  /// The lead key looks calls up by lead alone when a lead is deleted.
+  @@index([leadId])
   @@index([tenantId, campaignId, createdAt(sort: Desc)])
   @@index([tenantId, eventId, createdAt(sort: Desc)])
   @@index([tenantId, status])
@@ -7410,6 +7416,7 @@ model SiteVisit {
 
   project Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
   unit    UnitInventory? @relation(fields: [unitInventoryId], references: [id], onDelete: SetNull)
+  lead    Lead?          @relation(fields: [leadId], references: [id], onDelete: SetNull)
   listing Listing?       @relation(fields: [listingId], references: [id], onDelete: SetNull)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -7421,6 +7428,7 @@ model SiteVisit {
   @@index([tenantId, status, verification])
   @@index([tenantId, projectId, scheduledAt])
   @@index([tenantId, leadId])
+  @@index([leadId])
   /// The plausibility check reads a user's punches in time order.
   @@index([tenantId, ownerId, checkInAt])
   @@index([listingId])

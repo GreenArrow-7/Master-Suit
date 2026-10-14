@@ -92,9 +92,22 @@ export function dayBounds(date: string, timeZone: string): { from: Date; to: Dat
   return { from, to, dateKey: date };
 }
 
+/**
+ * One formatter per time zone. Building an `Intl.DateTimeFormat` costs far more
+ * than formatting with one: the Lead Eagle board puts thousands of rows on the
+ * workspace's days, and a formatter per row took about 3 s of a 4 s board at
+ * 100,000 leads (M3-19).
+ */
+const dayFormats = new Map<string, Intl.DateTimeFormat>();
+
 /** Today's date key in the workspace's time zone. */
 export function todayKey(timeZone: string, now = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  let format = dayFormats.get(timeZone);
+  if (!format) {
+    format = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
+    dayFormats.set(timeZone, format);
+  }
+  return format.format(now);
 }
 
 /**

@@ -6614,6 +6614,51 @@ a.lf-bars__row:focus-visible .lf-bars__label {
   color: var(--lf-ink);
   font-size: var(--lf-text-xl);
 }
+.lf-callfigures a {
+  color: inherit;
+  text-decoration: none;
+}
+.lf-leaderboard td a {
+  color: inherit;
+}
+/* The board's filter bar (M3-16): one summary line, the fields a click away. */
+.lf-boardfilter {
+  margin-bottom: var(--lf-space-4);
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius-lg);
+  background: var(--lf-surface);
+}
+.lf-boardfilter > summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lf-space-2);
+  align-items: baseline;
+  padding: var(--lf-space-2) var(--lf-space-3);
+  cursor: pointer;
+  font-weight: 600;
+}
+.lf-boardfilter__body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--lf-space-3);
+  align-items: end;
+  padding: 0 var(--lf-space-3) var(--lf-space-3);
+}
+.lf-boardfilter__field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--lf-ink-2);
+  font-size: var(--lf-text-xs);
+}
+.lf-boardfilter__field .lf-input {
+  width: 100%;
+  min-width: 0;
+}
+.lf-boardfilter__actions {
+  display: flex;
+  gap: var(--lf-space-2);
+}
 .lf-leaderboard {
   width: 100%;
   border-collapse: collapse;
