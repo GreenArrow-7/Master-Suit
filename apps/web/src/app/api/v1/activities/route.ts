@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { withTx } from '@/lib/db';
 import { assertLeadInScope } from '@/lib/security/record-scope';
-import { touchLead } from '@/services/leads/touch';
+import { NOTE_ACTIVITY, touchLead } from '@/services/leads/touch';
 import { scoreActivity } from '@/services/leads/scoring';
 import { findReplay, recordOutcome } from '@/services/idempotency';
 
@@ -54,7 +54,8 @@ export const POST = route(
       if (key) await recordOutcome(tx, key, created);
       return created;
     });
-    await touchLead(ctx.tenantId, body.leadId, activity.occurredAt);
+    // A note is work on the lead, not contact with it.
+    await touchLead(ctx.tenantId, body.leadId, activity.occurredAt, activity.type.key !== NOTE_ACTIVITY);
     return activity;
   },
 );

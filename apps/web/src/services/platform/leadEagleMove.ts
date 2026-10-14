@@ -34,7 +34,10 @@ import type {
 import { prisma, withPlatformTx } from '@/lib/db';
 import { platformAudit } from '@/lib/security/audit';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
+import { isFollowUpKind } from '@/lib/leads/followUpDue';
+import { ensureLeadSources } from '@/services/leads/leadSources';
 import { normalizePhone } from '@/services/leads/normalizePhone';
+import { NOTE_ACTIVITY } from '@/services/leads/touch';
 import { nextReference } from '@/services/shared/reference';
 import { dayBounds } from '@/services/targets/dailyBoard';
 
@@ -394,6 +397,14 @@ export async function moveCompany(
         // ── Leads, their numbers and requirements ────────────────────────────
         // ponytail: row at a time in one transaction; batch with createManyAndReturn past ~100k leads.
         const leadMap = new Map<Id, Id>();
+        // The catalogue entry a standalone source names ("Portal / Bayut" is Bayut), the
+        // longest name first, so the board and the lead list's source filter find it.
+        await ensureLeadSources(tx, tenantId);
+        const entries = (
+          await tx.leadSource.findMany({ where: { tenantId, parentId: null }, select: { id: true, name: true } })
+        ).sort((a, b) => b.name.length - a.name.length);
+        const sourceIdOf = (source: string | null) =>
+          (source && entries.find((entry) => source.toLowerCase().includes(entry.name.toLowerCase()))?.id) ?? null;
         let phones = 0;
         let requirements = 0;
         for (const lead of snap.leads) {
@@ -415,6 +426,7 @@ export async function moveCompany(
               assignedAt: ownerId ? date(lead.createdAt) : null,
               source: recordSource(lead.source),
               sourceDetail: [lead.source, lead.campaign].filter(Boolean).join(' · ') || null,
+              sourceId: sourceIdOf(lead.source),
               campaignName: lead.campaign,
               nationality: lead.nationality ?? null,
               phoneIsWhatsapp: Boolean(lead.primaryPhone && lead.primaryIsWhatsapp),
@@ -508,6 +520,8 @@ export async function moveCompany(
         let lostStageChanges = 0;
         const recordIds = new Set(snap.dataRecords.map((r) => r.id));
         const recordNotes = new Map<Id, string[]>();
+        // Each lead's earliest contact (a call, an email, a meeting; not a note), as touchLead stamps it.
+        const firstContact = new Map<Id, Date>();
         for (const a of snap.activities) {
           const text = [a.summary, a.body].filter(Boolean).join('\n');
           if (a.dataRecordId && recordIds.has(a.dataRecordId)) {
@@ -559,6 +573,15 @@ export async function moveCompany(
             },
           });
           activities += 1;
+          // An unknown kind moves as a note (typeId above): not contact.
+          const at = date(a.occurredAt)!;
+          const first = firstContact.get(leadId);
+          if ((ACTIVITY_TYPE[kind]?.[0] ?? NOTE_ACTIVITY) !== NOTE_ACTIVITY && (!first || at < first)) {
+            firstContact.set(leadId, at);
+          }
+        }
+        for (const [leadId, at] of firstContact) {
+          await tx.lead.update({ where: { tenantId, id: leadId }, data: { firstContactedAt: at } });
         }
         for (const e of snap.enquiries) {
           const leadId = leadMap.get(e.leadId);
@@ -614,6 +637,8 @@ export async function moveCompany(
               leadId,
               ownerId: ownerId ?? fallback.id,
               title: f.type.charAt(0) + f.type.slice(1).toLowerCase().replace(/_/g, ' '),
+              // A call, meeting or site visit keeps its kind (the board's Callbacks are the calls).
+              kind: isFollowUpKind(f.type) ? f.type : 'OTHER',
               description: f.note,
               dueAt: date(f.dueAt)!,
               status,

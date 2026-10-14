@@ -6247,6 +6247,8 @@ model FollowUpTask {
   title       String
   description String?
   dueAt       DateTime
+  /// What it is for (FOLLOW_UP_KINDS, lib/leads/followUpDue.ts): a call unless booked as something else.
+  kind        String     @default("CALL")
   priority    Priority   @default(MEDIUM)
   status      TaskStatus @default(OPEN)
   completedAt DateTime?

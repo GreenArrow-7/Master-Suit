@@ -21,8 +21,8 @@ const day = z
 /**
  * What the lead grid, its board and its CSV export read from the URL (M4-19,
  * M4-21), in the order a link writes them: a named filter, the search, the
- * chips (stage, owner — a user id or `none` — source, and a created or
- * updated date range on the workspace's clock), the sort, a saved view's
+ * chips (stage, owner — a user id or `none` — source, and a created, updated
+ * or first-contacted date range on the workspace's clock), the sort, a saved view's
  * columns (`cols`, comma-separated) and the layout.
  */
 export const leadListParams = z
@@ -32,7 +32,7 @@ export const leadListParams = z
     stage: z.string().max(40),
     owner: z.string().max(40),
     source: z.string().max(40),
-    date: z.enum(['created', 'updated']),
+    date: z.enum(['created', 'updated', 'contacted']),
     from: day,
     to: day,
     sort: z.enum(['updated', 'created', 'score', 'name']),
@@ -44,6 +44,9 @@ export const leadListParams = z
 
 export type LeadListParams = z.infer<typeof leadListParams>;
 const KEYS = Object.keys(leadListParams.shape) as (keyof LeadListParams)[];
+
+/** The column a date range reads; `contacted` is the Lead Eagle board's "worked" days (M3-14). */
+const DATE_FIELD = { created: 'createdAt', updated: 'updatedAt', contacted: 'firstContactedAt' } as const;
 
 /** What a param means when absent: the filter form sends these, and no link needs to repeat them. */
 const DEFAULTS: Partial<LeadListParams> = { date: 'created', sort: 'updated', layout: 'list' };
@@ -168,7 +171,7 @@ export async function leadListQuery(ctx: Ctx, params: LeadListParams, rules: Map
     params.source ? { OR: [{ sourceId: params.source }, { leadSource: { is: { parentId: params.source } } }] } : null,
     timeZone
       ? {
-          [params.date === 'updated' ? 'updatedAt' : 'createdAt']: {
+          [DATE_FIELD[params.date ?? 'created']]: {
             ...(params.from ? { gte: dayBounds(params.from, timeZone).from } : {}),
             ...(params.to ? { lte: dayBounds(params.to, timeZone).to } : {}),
           },

@@ -10,6 +10,8 @@ const SORTS = [
   ['name', 'Name A–Z'],
 ] as const;
 
+const DATE_LABEL = { created: 'Created', updated: 'Updated', contacted: 'First contacted' } as const;
+
 /**
  * The lead grid's filter chips (M4-19): stage, owner, source and a created or
  * updated date range, and the sort. A plain GET form, so the choice is the URL
@@ -47,7 +49,7 @@ export default function LeadFilters({
   }
   if (params.source) chips.push([`Source: ${sourceName(params.source)}`, ['source']]);
   if (params.from || params.to)
-    chips.push([`${params.date === 'updated' ? 'Updated' : 'Created'}: ${range}`, ['date', 'from', 'to']]);
+    chips.push([`${DATE_LABEL[params.date ?? 'created']}: ${range}`, ['date', 'from', 'to']]);
   const without = (keys: (keyof LeadListParams)[]) =>
     leadListHref({ ...params, ...Object.fromEntries(keys.map((key) => [key, undefined])) });
 
@@ -96,6 +98,7 @@ export default function LeadFilters({
             <select id="lf-filter-date" name="date" className="lf-input" defaultValue={params.date ?? 'created'}>
               <option value="created">Created</option>
               <option value="updated">Updated</option>
+              <option value="contacted">First contacted</option>
             </select>
           </Field>
           <Field label="From" htmlFor="lf-filter-from">

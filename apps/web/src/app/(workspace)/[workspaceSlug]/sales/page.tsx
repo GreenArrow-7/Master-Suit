@@ -3,6 +3,9 @@ import { leadScope } from '@/lib/security/record-scope';
 import { obligationAccess, obligationWhere } from '@/services/leads/nextFollowUp';
 import { atLeast } from '@/lib/security/rbac';
 import { prisma, withTx } from '@/lib/db';
+import { mergeWhere } from '@/lib/api/where';
+import { OPEN_FOLLOW_UP, followUpDueWhere } from '@/lib/leads/followUpDue';
+import { workspaceTimezone } from '@/services/hr/attendance';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -206,7 +209,15 @@ export default async function HomePage() {
 
 async function EmployeeHome({ ctx }: { ctx: any }) {
   const now = new Date();
-  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  // Counted as the Follow-ups list it links (view=mine) lists them: overdue is
+  // before today began, today is all of today, on the workspace's clock.
+  const timeZone = await workspaceTimezone(ctx);
+  const myFollowUps = (due: string) =>
+    mergeWhere(
+      { tenantId: ctx.tenantId, ownerId: ctx.actor.id, deletedAt: null },
+      OPEN_FOLLOW_UP,
+      followUpDueWhere({ due }, timeZone, now),
+    );
 
   const [targets, assignedLeads, overdueFollowUps, todayFollowUps, recentLeads] = await Promise.all([
     prisma.employeeTarget.findMany({
@@ -220,24 +231,8 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
     prisma.lead.count({
       where: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, deletedAt: null, stage: { category: 'OPEN' } },
     }),
-    prisma.followUpTask.count({
-      where: {
-        tenantId: ctx.tenantId,
-        ownerId: ctx.actor.id,
-        status: { in: ['OPEN', 'IN_PROGRESS'] },
-        dueAt: { lt: now },
-        deletedAt: null,
-      },
-    }),
-    prisma.followUpTask.count({
-      where: {
-        tenantId: ctx.tenantId,
-        ownerId: ctx.actor.id,
-        status: { in: ['OPEN', 'IN_PROGRESS'] },
-        dueAt: { gte: now, lte: todayEnd },
-        deletedAt: null,
-      },
-    }),
+    prisma.followUpTask.count({ where: myFollowUps('overdue') }),
+    prisma.followUpTask.count({ where: myFollowUps('today') }),
     prisma.lead.findMany({
       where: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, deletedAt: null },
       orderBy: { updatedAt: 'desc' },

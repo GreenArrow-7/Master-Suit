@@ -4,9 +4,10 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Field from '@/components/forms/Field';
 import { DateTimeInput } from '@/components/forms/DateInput';
+import { FOLLOW_UP_KINDS, FOLLOW_UP_KIND_LABELS } from '@/lib/leads/callLog';
 
 /** Create a follow-up from the Follow-ups page, against POST /api/v1/follow-ups. */
-const EMPTY = { title: '', dueAt: '', priority: 'MEDIUM', description: '' };
+const EMPTY = { title: '', dueAt: '', kind: 'CALL', priority: 'MEDIUM', description: '' };
 
 export default function FollowUpComposer() {
   const router = useRouter();
@@ -34,6 +35,7 @@ export default function FollowUpComposer() {
         body: JSON.stringify({
           title: form.title,
           dueAt: new Date(form.dueAt).toISOString(),
+          kind: form.kind,
           priority: form.priority,
           ...(form.description ? { description: form.description } : {}),
         }),
@@ -109,6 +111,16 @@ export default function FollowUpComposer() {
             onChange={(dueAt) => setForm((f) => ({ ...f, dueAt }))}
             required
           />
+        </Field>
+
+        <Field label="Type" htmlFor="f-kind">
+          <select id="f-kind" className="lf-input" value={form.kind} onChange={set('kind')}>
+            {FOLLOW_UP_KINDS.map((kind) => (
+              <option key={kind} value={kind}>
+                {FOLLOW_UP_KIND_LABELS[kind]}
+              </option>
+            ))}
+          </select>
         </Field>
 
         <Field label="Priority" htmlFor="f-priority">
