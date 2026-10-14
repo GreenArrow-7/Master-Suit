@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-13 | [The Lead Eagle board filters by period, person, team, source and project, and every figure opens its list](2026-10-13-lead-eagle-dashboard-filters.md) | - | Lead Eagle, dashboard |
 | 2026-10-13 | [The Lead Eagle board counts what its lists show: callbacks apart from other follow-ups, untouched and unassigned leads, meetings, conversion, sources, the funnel, calls and a leaderboard](2026-10-13-lead-eagle-dashboard-tiles.md) | #185 | Lead Eagle, dashboard |
 | 2026-10-13 | [Two leads merge into one; a lead import can update the leads it matches, be checked first, and hand back its refused rows](2026-10-13-lead-merge-import.md) | #181 | Lead Eagle, leads, import |
 | 2026-10-13 | [A listing with a live mandate can be published again; three more reads inside a transaction found nothing](2026-10-13-listing-mandate-tenant-read.md) | #184 | fix, Real Estate, HR, collections |
