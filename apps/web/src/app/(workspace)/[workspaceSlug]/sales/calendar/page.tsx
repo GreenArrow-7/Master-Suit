@@ -2,10 +2,12 @@ import { headers } from 'next/headers';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { mergeWhere } from '@/lib/api/where';
 import { visibilityWhere } from '@/lib/security/visibility';
-import { can } from '@/lib/security/rbac';
-import { eventListScope, workListScope } from '@/lib/security/record-scope';
+import { can, scopeFor } from '@/lib/security/rbac';
+import { eventListScope, leadsInScope, workListScope } from '@/lib/security/record-scope';
 import { hasAnyModuleEntitlement, LEAD_MODULES, SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
+import { applyFieldSecurity, loadFieldRules } from '@/lib/security/fieldSecurity';
+import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { dayBounds, todayKey } from '@/services/targets/dailyBoard';
 import CalendarView from './CalendarView';
@@ -133,10 +135,51 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           }),
           orderBy: [{ scheduledAt: 'asc' }, { id: 'asc' }],
           take: CAP,
-          select: { id: true, kind: true, scheduledAt: true, status: true, project: { select: { name: true } } },
+          select: {
+            id: true,
+            kind: true,
+            scheduledAt: true,
+            status: true,
+            leadId: true,
+            contactId: true,
+            project: { select: { name: true } },
+          },
         })
       : [],
   ]);
+
+  // Who each visit is with, so two visits to one project read apart: the lead's
+  // or contact's name as their own list shows it to this role. Named only when
+  // in the role's scope there (leadsInScope; the Contacts list's scope), and
+  // masked or left out by a field rule.
+  const contactIds = visits.flatMap((v) => (!v.leadId && v.contactId ? [v.contactId] : []));
+  const seesContacts = contactIds.length > 0 && scopeFor(ctx, 'contacts', 'VIEW') !== 'NONE';
+  const [visitLeads, leadRules, visitContacts, contactRules] = await Promise.all([
+    leadsInScope(
+      ctx,
+      visits.map((v) => v.leadId),
+    ),
+    loadFieldRules(ctx, 'LEAD'),
+    seesContacts
+      ? prisma.contact.findMany({
+          where: {
+            ...(await visibilityWhere(ctx, 'contacts', 'VIEW', { includeUnassigned: true })),
+            id: { in: [...new Set(contactIds)] },
+          },
+          select: { id: true, fullName: true },
+        })
+      : [],
+    seesContacts ? loadFieldRules(ctx, 'CONTACT') : null,
+  ]);
+  const leadName = new Map(
+    [...visitLeads.values()].map((l) => [
+      l.id,
+      applyFieldSecurity(ctx, 'LEAD', leadRules, l, LEAD_SENSITIVE_FIELDS).fullName,
+    ]),
+  );
+  const contactName = new Map(
+    visitContacts.map((c) => [c.id, applyFieldSecurity(ctx, 'CONTACT', contactRules!, c).fullName]),
+  );
 
   const at = (date: Date) => ({ date: date.toISOString(), day: todayKey(timeZone, date) });
   const items = [
@@ -181,7 +224,13 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     ...visits.map((v) => ({
       id: `visit-${v.id}`,
       ...at(v.scheduledAt),
-      label: v.kind === 'CLIENT_MEETING' ? 'Meeting' : v.project ? `Site visit · ${v.project.name}` : 'Site visit',
+      label: [
+        v.kind === 'CLIENT_MEETING' ? 'Meeting' : 'Site visit',
+        v.kind === 'CLIENT_MEETING' ? null : v.project?.name,
+        v.leadId ? leadName.get(v.leadId) : v.contactId && contactName.get(v.contactId),
+      ]
+        .filter(Boolean)
+        .join(' · '),
       kind: 'visit' as const,
       completed: v.status === 'COMPLETED',
       href: `/site-visits/${v.id}`,

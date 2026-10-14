@@ -5,6 +5,8 @@
  * missing data rather than missing code. These assertions catch that at build time.
  */
 import { describe, expect, it } from 'vitest';
+import { createElement, Fragment, type ReactNode } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { GRID_COLUMNS, GRID_OBJECTS, type GridObject } from '@/lib/grid/columns';
 import { renderCell } from '@/components/workspace/gridCells';
 
@@ -114,5 +116,31 @@ describe('renderCell', () => {
     for (const column of GRID_COLUMNS[object]) {
       expect(() => renderCell(object, column.key, { id: 'x' })).not.toThrow();
     }
+  });
+});
+
+describe('dates on the workspace’s clock', () => {
+  // New York is behind UTC: a day picked in a date input is stored as that day's
+  // UTC midnight, which is the evening before there.
+  const west = 'America/New_York';
+  const text = (node: ReactNode) => renderToStaticMarkup(createElement(Fragment, null, node)).replace(/<[^>]+>/g, '');
+
+  it('reads a picked day as picked, west of UTC too', () => {
+    const picked = new Date('2026-05-20T00:00:00Z');
+    expect(text(renderCell('OPPORTUNITY', 'expectedCloseDate', { expectedCloseDate: picked }, west))).toBe(
+      '20 May 2026',
+    );
+    expect(text(renderCell('CAMPAIGN', 'startDate', { startDate: picked }, west))).toBe('20 May 2026');
+    expect(text(renderCell('CAMPAIGN', 'endDate', { endDate: picked }, west))).toBe('20 May 2026');
+    expect(
+      text(renderCell('LISTING', 'mandate', { mandateType: 'EXCLUSIVE', mandateExpires: picked }, west)),
+    ).toContain('20 May 2026');
+  });
+
+  it('reads a moment on the workspace’s clock', () => {
+    // 22:00 on 20 May in New York.
+    const moment = new Date('2026-05-21T02:00:00Z');
+    expect(text(renderCell('OPPORTUNITY', 'expectedCloseDate', { actualCloseDate: moment }, west))).toBe('20 May 2026');
+    expect(text(renderCell('ACCOUNT', 'updatedAt', { updatedAt: moment }, west))).toBe('20 May 2026');
   });
 });

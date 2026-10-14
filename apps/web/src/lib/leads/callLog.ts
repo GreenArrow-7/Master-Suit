@@ -50,3 +50,14 @@ export function tomorrowAtTen(timeZone: string, now = new Date()): string {
   const [y, m, d] = today.split('-').map(Number);
   return `${new Date(Date.UTC(y!, m! - 1, d! + 1)).toISOString().slice(0, 10)}T10:00`;
 }
+
+/**
+ * The other party's number on a call: who rang in on an inbound call, not the
+ * workspace's line it reached. The Calls list, the call's own page and a
+ * seller's day all show and dial it through here.
+ */
+export const callNumber = (call: {
+  direction?: string | null;
+  callerNumber?: string | null;
+  recipientNumber?: string | null;
+}) => (call.direction === 'INBOUND' ? call.callerNumber : call.recipientNumber) ?? null;

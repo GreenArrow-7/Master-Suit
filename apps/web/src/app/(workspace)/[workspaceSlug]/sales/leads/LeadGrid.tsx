@@ -633,7 +633,7 @@ export default function LeadGrid({
                   />
                 </th>
                 {columns.map(header)}
-                <th>
+                <th className="lf-grid__actions">
                   <span className="lf-visually-hidden">Call</span>
                 </th>
               </tr>

@@ -356,20 +356,22 @@ describe('Lead Eagle: its own menu only where it is the whole CRM', () => {
 
   it('a Lead-Eagle-only workspace gets the Lead Eagle section and no Sales or Real Estate one', () => {
     const nav = leadEagle(['LEAD_EAGLE']);
-    expect(areas(nav)).toEqual(expect.arrayContaining(['le-overview', 'le-leads', 'le-inventory', 'le-reports']));
+    expect(areas(nav)).toEqual(
+      expect.arrayContaining(['le-overview', 'le-leads', 'le-calendar', 'le-inventory', 'le-reports']),
+    );
     expect(tabsOf(nav, 'le-leads')).toEqual([
       'Leads',
       'Follow-ups',
       'Tasks',
       'Calls',
       'Site Visits',
-      'Calendar',
       'Requirements',
       'Allocation',
       'QR Capture',
       'Cold Data',
     ]);
-    expect(at(nav, `/${SLUG}/lead-eagle/calendar`)).toBe('le-leads / Calendar');
+    // The calendar is its own menu entry: on it the menu marks Calendar, not Leads.
+    expect(at(nav, `/${SLUG}/lead-eagle/calendar`)).toBe('le-calendar / Calendar');
     expect(tabsOf(nav, 'le-reports')).toEqual(['Reports', 'Targets']);
     expect(areas(nav)).not.toContain('realty-clients');
     expect(at(nav, `/${SLUG}/lead-eagle/leads/42`)).toBe('le-leads / Leads');
@@ -398,6 +400,11 @@ describe('Lead Eagle: its own menu only where it is the whole CRM', () => {
     // Targets too: Real Estate carries the screen, as Lead Eagle and Sales do.
     expect(at(leadEagle(['REAL_ESTATE']), `/${SLUG}/realty/targets`)).toBe('realty-deals / Targets');
     expect(at(leadEagle(['LEAD_EAGLE', 'REAL_ESTATE']), `/${SLUG}/lead-eagle/targets`)).toBe('realty-deals / Targets');
+    // And the calendar is Real Estate's own menu entry, as it is Lead Eagle's.
+    expect(at(leadEagle(['REAL_ESTATE']), `/${SLUG}/realty/calendar`)).toBe('realty-calendar / Calendar');
+    expect(at(leadEagle(['LEAD_EAGLE', 'REAL_ESTATE']), `/${SLUG}/lead-eagle/calendar`)).toBe(
+      'realty-calendar / Calendar',
+    );
   });
 
   it('gives way on its website forms and landing pages too: Real Estate and Sales carry them (M6-06, M6-09)', () => {

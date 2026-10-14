@@ -169,6 +169,11 @@ Node 22 or newer (CI uses 24).
   day's "From pipeline" list, the lead archived and its open follow-ups and
   tasks cancelled; `mayMoveToData` also asks for the lead's numbers in full) and Delete with a
   10-second Undo (`POST /api/v1/leads/{id}/restore`).
+- **Workspace clock.** A date or time formatted on the server reads in the
+  workspace's zone (`workspaceTimezone`, `src/services/hr/attendance.ts`), and
+  "today" is the workspace's day (`dayBounds`, `todayKey`,
+  `src/services/targets/dailyBoard.ts`). Every configurable list gets this from
+  `ConfigurableGrid`.
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
   P2002 answers 409 and P2025 404, a zod failure 422 — let the database say
   "already exists" or "not found" instead of reading first. `route()` honours
