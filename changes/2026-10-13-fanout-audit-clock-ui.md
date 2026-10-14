@@ -133,7 +133,15 @@ described under Behaviour.
   - The toast's edge is the theme's strong line token on every toast: in the
     light theme it is the canvas's colour and does not show.
 
-**Verified.** VERIFIED_PLACEHOLDER
+**Verified.** On the rig (master_suite_pt), after merging origin/main (#180, #181, #183,
+#184, #185): migrations applied; `tsc` clean; eslint (0 errors) and prettier
+on the changed files. `screen-connections`, `lead-bulk-actions`,
+`lead-audit-trail`, `assistant-guardrails`, `p2-regressions`: 81 passed. On
+the base's code the leadership tabs peaked at 20, 10 and 19 of a pool of 10
+(the test fails there). `tests/sales` and `tests/permission`: 1777 passed,
+23 skipped; `cold-data`, `lead-calendar` and `screen-connections` failed in
+the full run under load (fixture timeouts) and passed alone (17, 8, 6). E2E
+`tests/e2e/lead-bulk-actions.spec.ts` alone: 10 passed.
 
 **Left open**
 
