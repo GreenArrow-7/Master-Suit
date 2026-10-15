@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-15 | [Phone app 1.2.0 (Android version code 11)](2026-10-15-mobile-1-2-0.md) | — | Mobile, build |
 | 2026-10-15 | [Nothing in the iOS app sells, prices or points at buying the service](2026-10-15-ios-no-purchase-paths.md) | — | Mobile, App Store, fix |
 | 2026-10-14 | [An assigned lead never commits with a WAITING triage episode, whatever path wrote the owner](2026-10-14-triage-episode-on-assign.md) | #189 | Sales, triage queue, fix |
 | 2026-10-13 | [The dashboards read in one transaction; the Audit Log keeps the workspace's clock; a lead's delete is one row on the lead; the Undo toast and Cold Data on a phone](2026-10-13-fanout-audit-clock-ui.md) | #187 | Lead Eagle, performance, audit, cold data, UI |
