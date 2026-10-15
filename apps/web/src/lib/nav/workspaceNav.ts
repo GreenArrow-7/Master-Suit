@@ -1180,7 +1180,12 @@ function definitions(slug: string): SectionDef[] {
             { label: 'Modules', href: a('/modules'), permission: 'settings' },
             // `settings:VIEW` (same check as `settings`) is its own token so the layout
             // can drop this one entry inside the iOS app (App Store 3.1.1).
-            { label: 'Subscription', href: a('/subscription'), permission: SUBSCRIPTION_TOKEN, keywords: 'plan billing' },
+            {
+              label: 'Subscription',
+              href: a('/subscription'),
+              permission: SUBSCRIPTION_TOKEN,
+              keywords: 'plan billing',
+            },
             { label: 'Security Policy', href: a('/security'), permission: 'settings', keywords: 'mfa password policy' },
             {
               label: 'Lead Stages',
