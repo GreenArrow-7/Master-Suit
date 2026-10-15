@@ -3,7 +3,8 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { requestCtx, requestWorkspace } from '@/lib/workspace-page';
 import { can, type Action, atLeast } from '@/lib/security/rbac';
-import { NAV_PERMISSIONS, parsePermission } from '@/lib/nav/workspaceNav';
+import { NAV_PERMISSIONS, parsePermission, SUBSCRIPTION_TOKEN } from '@/lib/nav/workspaceNav';
+import { isIosAppUserAgent } from '@/lib/mobile/iosApp';
 import { passwordPolicy } from '@/services/identity/accounts';
 import { passwordExpired } from '@/services/identity/passwordHistory';
 import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar';
@@ -178,6 +179,7 @@ async function loadShell(workspaceSlug: string) {
     // the banner must say so; the server enforces it either way.
     const supportReadOnly = ctx.actor.platformMode !== 'break-glass';
 
+    const iosApp = isIosAppUserAgent((await headers()).get('user-agent'));
     return {
       workspaceId: workspace.id,
       supportMode,
@@ -216,7 +218,8 @@ async function loadShell(workspaceSlug: string) {
         ctx.passwordChangedAt !== undefined
           ? passwordExpired(ctx.passwordChangedAt, await passwordPolicy(workspace.id))
           : false,
-      plan: workspace.subscription?.plan.name ?? workspace.planCode,
+      // No plan, subscription or pricing inside the iOS app (App Store 3.1.1).
+      plan: iosApp ? undefined : (workspace.subscription?.plan.name ?? workspace.planCode),
       modules,
       availableWorkspaces:
         memberships.length > 0
@@ -228,6 +231,7 @@ async function loadShell(workspaceSlug: string) {
       // drifted: Collections, Commissions, Projects, Payroll and a dozen more were
       // never checked and so never shown to anyone.
       permitted: NAV_PERMISSIONS.filter((token) => {
+        if (iosApp && token === SUBSCRIPTION_TOKEN) return false;
         const [module, action] = parsePermission(token);
         return can(ctx, module, action as Action);
       }),

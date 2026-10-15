@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import AuthShell from '@/components/auth/AuthShell';
 import { signupOffer } from '@/services/platform/signup';
+import { inIosApp } from '@/lib/mobile/iosApp';
 import LoginForm from './LoginForm';
 
 export const metadata = { title: 'Sign in' };
@@ -17,7 +18,8 @@ export const metadata = { title: 'Sign in' };
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string | string[] }> }) {
   const { next } = await searchParams;
   // Offered only while the platform owner keeps self-serve sign-up open.
-  const trialDays = (await signupOffer())?.days ?? 0;
+  // Never inside the iOS app (App Store 3.1.1, see lib/mobile/iosApp.ts).
+  const trialDays = (await inIosApp()) ? 0 : ((await signupOffer())?.days ?? 0);
   return (
     <AuthShell>
       <LoginForm next={typeof next === 'string' ? next : null} />

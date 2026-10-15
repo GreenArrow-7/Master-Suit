@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import AuthShell from '@/components/auth/AuthShell';
 import { signupOffer } from '@/services/platform/signup';
+import { inIosApp } from '@/lib/mobile/iosApp';
 import SignupForm from './SignupForm';
 
 export const metadata = { title: 'Start a free trial' };
@@ -11,6 +12,7 @@ export const dynamic = 'force-dynamic';
 
 /** Self-serve sign-up: a 404 until the platform owner opens it in the console. */
 export default async function SignupPage() {
+  if (await inIosApp()) notFound();
   const offer = await signupOffer();
   if (!offer) notFound();
   const { days } = offer;
