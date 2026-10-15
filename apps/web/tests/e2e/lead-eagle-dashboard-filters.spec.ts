@@ -141,7 +141,11 @@ test.describe('The Lead Eagle board’s filters', () => {
     });
 
     await test.step('Clear forgets the choice', async () => {
-      await page.getByRole('link', { name: 'Clear' }).click();
+      // Let the ?clear=1 request finish first; a goto racing it aborts (ERR_ABORTED).
+      await Promise.all([
+        page.waitForResponse((response) => response.url().includes('clear=1')),
+        page.getByRole('link', { name: 'Clear' }).click(),
+      ]);
       await page.goto(at('/lead-eagle/dashboard'));
       await expect(page).toHaveURL(new RegExp(`${at('/lead-eagle/dashboard')}$`));
       await expect(callFigure(page, 'made').locator('strong')).toHaveText('2');

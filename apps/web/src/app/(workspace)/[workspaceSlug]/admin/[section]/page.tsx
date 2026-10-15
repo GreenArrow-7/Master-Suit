@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
 import { can, type Action } from '@/lib/security/rbac';
+import { inIosApp } from '@/lib/mobile/iosApp';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import SettingsForm, { type SettingsField } from './SettingsForm';
 
@@ -30,6 +31,8 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
 
   const permission = SECTION_PERMISSION[section];
   if (!permission) notFound();
+  // Plan, trial and renewal are never shown inside the iOS app (App Store 3.1.1).
+  if (section === 'subscription' && (await inIosApp())) notFound();
 
   const { ctx, workspace } = await resolveWorkspacePage(workspaceSlug, { permission });
   const canConfigure = can(ctx, 'settings', 'MANAGE_CONFIGURATION');

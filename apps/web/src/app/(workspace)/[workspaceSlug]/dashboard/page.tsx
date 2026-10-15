@@ -10,6 +10,7 @@ import { myEmployee } from '@/services/hr/leave';
 import AiInsight from '@/components/ui/AiInsight';
 import { names } from '@/services/leadership/rollups';
 import { isEntitlementUsable } from '@/lib/security/entitlements';
+import { inIosApp } from '@/lib/mobile/iosApp';
 
 /**
  * The workspace landing page. Reachable by every member — which is why each
@@ -39,6 +40,8 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
   const showPeople = modules.has('HRMS') && can(ctx, 'employee', 'VIEW');
   const showSales = modules.has('SALES') && can(ctx, 'leads', 'VIEW');
   const showSubscription = can(ctx, 'settings', 'VIEW');
+  // The plan card is never shown inside the iOS app (App Store 3.1.1).
+  const showPlanCard = showSubscription && !(await inIosApp());
 
   /**
    * One transaction for every panel, not one connection per count.
@@ -710,7 +713,7 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
         )}
         {!workerView && myDayPanel}
 
-        {showSubscription && (
+        {showPlanCard && (
           <Summary
             title="Subscription"
             values={[

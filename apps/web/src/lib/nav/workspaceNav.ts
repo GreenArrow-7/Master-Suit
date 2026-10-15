@@ -19,6 +19,9 @@ import type { ProductModuleKey } from '@/lib/modules/catalogue';
  * Pure: no React, no hooks, no ambient URL. Same inputs, same result.
  */
 
+/** The Subscription entry's permission token; see the layout's iOS-app filter. */
+export const SUBSCRIPTION_TOKEN = 'settings:VIEW';
+
 export type IconName =
   | 'home'
   | 'bell'
@@ -1175,7 +1178,14 @@ function definitions(slug: string): SectionDef[] {
             { label: 'Workspace', href: a('/settings'), permission: 'settings' },
             { label: 'Company', href: a('/company'), permission: 'settings', keywords: 'profile branding' },
             { label: 'Modules', href: a('/modules'), permission: 'settings' },
-            { label: 'Subscription', href: a('/subscription'), permission: 'settings', keywords: 'plan billing' },
+            // `settings:VIEW` (same check as `settings`) is its own token so the layout
+            // can drop this one entry inside the iOS app (App Store 3.1.1).
+            {
+              label: 'Subscription',
+              href: a('/subscription'),
+              permission: SUBSCRIPTION_TOKEN,
+              keywords: 'plan billing',
+            },
             { label: 'Security Policy', href: a('/security'), permission: 'settings', keywords: 'mfa password policy' },
             {
               label: 'Lead Stages',
