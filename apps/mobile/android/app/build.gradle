@@ -14,10 +14,10 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // A versionCode cannot be reused, and one code means exactly one
         // artefact: 8 was the last com.youhan.one bundle, 9 the first
-        // com.youhan.one1 one, 10 its closed-testing build (10 Oct). The shell
-        // is unchanged since 9, so the versionName stays.
-        versionCode 10
-        versionName "1.1.0"
+        // com.youhan.one1 one, 10 its closed-testing build (10 Oct), 11 the
+        // 1.2.0 build (15 Oct, Lead Eagle 1.2).
+        versionCode 11
+        versionName "1.2.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
