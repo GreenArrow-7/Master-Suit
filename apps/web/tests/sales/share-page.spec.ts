@@ -21,6 +21,8 @@ import SharePage from '@/app/s/[token]/page';
 import { POST as viewed } from '@/app/api/v1/public/share-view/route';
 import { LOGGED_PER_DAY, loadShare, recordShareView } from '@/services/leads/leadShares';
 import LeadDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
+import ListingDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/listings/[id]/page';
+import ProjectDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/projects/[id]/page';
 import { createWorkspaceUser, grantPermissions, seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { createSessionToken } from '../helpers/session';
 import { pageText } from '../helpers/render';
@@ -471,5 +473,80 @@ describe('a listing or a project shared with a lead (M4-30)', () => {
     expect(text).toContain('Too many requests');
     expect(text).not.toContain('Marina view two-bed');
     await clear(limit);
+  });
+
+  it('a share is on the lead’s timeline, as the sharer’s, the moment it is made (M10-09)', async () => {
+    const res = await share(admin, leadId, { projectId });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const sharer = await prisma.user.findFirstOrThrow({ where: { tenantId, id: fixture.a.userId } });
+    const timeline = await get(readTimeline, `/api/v1/leads/${leadId}/timeline`, admin, { id: leadId });
+    expect(timeline.body.entries[0]).toMatchObject({
+      kind: 'activity',
+      title: 'Property shared',
+      notes: 'Project: Marina Vista',
+      by: sharer.fullName,
+    });
+    // Nobody logs one by hand from the lead page.
+    expect(
+      (await prisma.activityType.findUniqueOrThrow({ where: { tenantId_key: { tenantId, key: 'link_shared' } } }))
+        .isActive,
+    ).toBe(false);
+  });
+
+  it('answers WhatsApp with the link written, to a number the sharer reads, never to an opted-out lead (M10-09)', async () => {
+    const res = await share(admin, leadId, { listingId });
+    const text = `Hi Sara, here are the details of Marina view two-bed: ${res.body.url}`;
+    expect(res.body.whatsapp).toBe(`https://wa.me/971501234567?text=${encodeURIComponent(text)}`);
+    expect((await share(masked, leadId, { listingId })).body.whatsapp).toBeNull();
+    await prisma.lead.update({ where: { tenantId, id: leadId }, data: { whatsappOptOut: true } });
+    try {
+      expect((await share(admin, leadId, { listingId })).body.whatsapp).toBeNull();
+    } finally {
+      await prisma.lead.update({ where: { tenantId, id: leadId }, data: { whatsappOptOut: false } });
+    }
+  });
+
+  it('the listing and the project pages offer Share with a lead, for stock on the market and a sharer who may (M10-09)', async () => {
+    const offered = async (as: string, page: () => Promise<unknown>) => {
+      request.cookie = as;
+      try {
+        return propsWith(await page(), 'shareTarget')?.shareTarget;
+      } finally {
+        request.cookie = admin;
+      }
+    };
+    const listingPage = () => ListingDetailPage({ params: Promise.resolve({ id: listingId, workspaceSlug: 'a' }) });
+    const projectPage = () => ProjectDetailPage({ params: Promise.resolve({ id: projectId }) });
+    expect(await offered(admin, listingPage)).toEqual({ listingId });
+    expect(await offered(admin, projectPage)).toEqual({ projectId });
+
+    // A role that reads the stock and the leads but does not work them: no Share.
+    const suffix = randomBytes(4).toString('hex');
+    const role = await prisma.role.create({ data: { tenantId, key: `looker-${suffix}`, name: 'Looker', rank: 80 } });
+    await grantPermissions(tenantId, role.id, [
+      ['leads', 'VIEW'],
+      ['listings', 'VIEW'],
+      ['projects', 'VIEW'],
+    ]);
+    const looker = await createWorkspaceUser({
+      tenantId,
+      roleId: role.id,
+      email: `looker-${suffix}@a.test`,
+      fullName: 'Stock Looker',
+    });
+    const lookerCookie = await createSessionToken(tenantId, looker.id);
+    expect(await offered(lookerCookie, listingPage)).toBeUndefined();
+    expect(await offered(lookerCookie, projectPage)).toBeUndefined();
+
+    // Off the market: nothing to share.
+    await prisma.listing.update({ where: { tenantId, id: listingId }, data: { status: 'SOLD' } });
+    await prisma.project.update({ where: { tenantId, id: projectId }, data: { isPitchable: false } });
+    try {
+      expect(await offered(admin, listingPage)).toBeUndefined();
+      expect(await offered(admin, projectPage)).toBeUndefined();
+    } finally {
+      await prisma.listing.update({ where: { tenantId, id: listingId }, data: { status: 'ACTIVE' } });
+      await prisma.project.update({ where: { tenantId, id: projectId }, data: { isPitchable: true } });
+    }
   });
 });

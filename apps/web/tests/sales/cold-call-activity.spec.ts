@@ -251,6 +251,23 @@ describe('targets in a Lead-Eagle-only workspace', () => {
     expect(await achievedToday(agent.cookie)).toBe(`0/${QUOTA}`);
     expect(await dailyTargetShortfall(agentCtx(), agent.id)).toBe(QUOTA);
   });
+
+  it('refuses a target that is not a whole number above zero (OWN-06.2)', async () => {
+    const midnight = new Date();
+    midnight.setUTCHours(0, 0, 0, 0);
+    const day = {
+      userId: agent.id,
+      metric: 'LEADS_CALLED',
+      period: 'DAILY',
+      periodStart: midnight.toISOString(),
+      periodEnd: new Date(midnight.getTime() + 24 * 60 * 60 * 1000 - 1).toISOString(),
+    };
+    for (const targetValue of [0, 2.5, -5]) {
+      const res = await post(createTarget, '/api/v1/targets', { ...day, targetValue }, admin.cookie);
+      expect(res.status, `${targetValue}: ${JSON.stringify(res.body)}`).toBe(422);
+    }
+    expect(await prisma.employeeTarget.count({ where: { tenantId, userId: agent.id } })).toBe(1);
+  });
 });
 
 describe('a cold call is a logged call', () => {

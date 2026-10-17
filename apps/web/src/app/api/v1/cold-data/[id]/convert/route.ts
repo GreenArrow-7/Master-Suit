@@ -7,6 +7,7 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { leadScope } from '@/lib/security/record-scope';
 import { coldDataScope } from '@/services/leads/coldData';
 import { takeEnquiry } from '@/services/leads/intake';
+import { leadSourceIdFor } from '@/services/leads/leadSources';
 
 /**
  * A worked cold record becomes a lead, through the same intake as an enquiry:
@@ -44,6 +45,8 @@ export const POST = route(
         label: `cold data, ${record.batch}`,
         source: 'IMPORT',
         sourceDetail: `data:${record.batch}`.slice(0, 200),
+        // The catalogue's Cold data entry, so its source filter finds the lead its report row counts (M16-02).
+        sourceId: await leadSourceIdFor(prisma, ctx.tenantId, 'cold_data'),
         // The agent who worked it keeps it.
         ownerId: record.ownerId ?? ctx.actor.id,
         actor: ctx,

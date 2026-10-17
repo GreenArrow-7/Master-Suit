@@ -51,4 +51,10 @@ describe('signInLanding', () => {
   ])('never skips %s', (_name, destination) => {
     expect(signInLanding('/manath-homes/sales/leads/abc', destination, MINE)).toBe(destination);
   });
+
+  it('treats a Lead-Eagle-only workspace’s board as an ordinary landing', () => {
+    const board = '/manath-homes/lead-eagle/dashboard';
+    expect(signInLanding('/manath-homes/lead-eagle/leads/abc', board, MINE)).toBe('/manath-homes/lead-eagle/leads/abc');
+    expect(signInLanding(null, board, MINE)).toBe(board);
+  });
 });

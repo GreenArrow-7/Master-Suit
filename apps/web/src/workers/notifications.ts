@@ -46,13 +46,15 @@ interface RecordPushJob {
  * better one than nothing.
  */
 export async function pushRecord(data: RecordPushJob) {
-  // Each person's choices (M17-11): push unless turned off, email only if turned on.
+  // Each person's choices (M17-11): push unless turned off, email only if turned on
+  // and not gathered into the morning summary instead (M17-04).
   const people = await prisma.user.findMany({
     where: { tenantId: data.tenantId, id: { in: data.userIds }, status: 'ACTIVE', deletedAt: null },
     select: { id: true, email: true, notificationPrefs: true },
   });
-  const pushTo = people.filter((p) => readPrefs(p.notificationPrefs).push).map((p) => p.id);
-  const emailTo = people.filter((p) => readPrefs(p.notificationPrefs).email).map((p) => p.email);
+  const chose = people.map((p) => ({ ...p, prefs: readPrefs(p.notificationPrefs) }));
+  const pushTo = chose.filter((p) => p.prefs.push).map((p) => p.id);
+  const emailTo = chose.filter((p) => p.prefs.email && !p.prefs.digest).map((p) => p.email);
 
   let emailed = 0;
   if (emailTo.length) {

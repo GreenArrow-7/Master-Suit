@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { prisma, withTx } from '@/lib/db';
+import { assertPlaybookEditor } from '@/lib/security/record-scope';
 
 /**
  * Buyer-type playbooks: how the workspace sells to one kind of customer.
@@ -22,7 +24,7 @@ const fields = {
   complianceNotes: z.string().max(4000).optional(),
 };
 
-export const GET = route({ module: 'calls', productModule: 'SALES', action: 'VIEW' }, async ({ ctx }) => {
+export const GET = route({ module: 'calls', productModule: LEAD_MODULES, action: 'VIEW' }, async ({ ctx }) => {
   const data = await prisma.salesPlaybook.findMany({
     where: { tenantId: ctx.tenantId, deletedAt: null },
     orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
@@ -34,13 +36,14 @@ export const GET = route({ module: 'calls', productModule: 'SALES', action: 'VIE
 export const POST = route(
   {
     module: 'calls',
-    productModule: 'SALES',
+    productModule: LEAD_MODULES,
     action: 'CREATE',
     body: z.object(fields).strict(),
     auditEvent: 'RECORD_CREATED',
   },
-  async ({ ctx, body }) =>
-    withTx(ctx.tenantId, async (tx) => {
+  async ({ ctx, body }) => {
+    assertPlaybookEditor(ctx, 'CREATE');
+    return withTx(ctx.tenantId, async (tx) => {
       // One default at a time: making this one the fallback demotes the rest,
       // in the same transaction, so there is never a moment with two.
       if (body.isDefault) {
@@ -53,5 +56,6 @@ export const POST = route(
       return tx.salesPlaybook.create({
         data: { tenantId: ctx.tenantId, createdById: ctx.actor.id, updatedById: ctx.actor.id, ...body },
       });
-    }),
+    });
+  },
 );

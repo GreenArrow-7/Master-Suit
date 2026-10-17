@@ -9,6 +9,7 @@ import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity
 import { audit } from '@/lib/security/audit';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
+import { customCells, customColumns } from '@/services/leads/customFields';
 import { route } from '@/lib/api/handler';
 
 /**
@@ -45,9 +46,11 @@ function csvCell(value: unknown): string {
 export const GET = route(
   { module: 'leads', action: 'EXPORT', productModule: LEAD_MODULES, sessionOnly: true, query },
   async ({ ctx, query: params }) => {
-    const [setting, rules] = await Promise.all([
+    const [setting, rules, extra] = await Promise.all([
       prismaRead.organizationSetting.findUnique({ where: { tenantId: ctx.tenantId }, select: { gridColumns: true } }),
       loadFieldRules(ctx, 'LEAD'),
+      // The workspace's custom fields, as the grid offers them (`cf:<key>`, M18-03).
+      customColumns(ctx.tenantId),
     ]);
     /**
      * An export is an egress path, so it gets the same treatment as the screen.
@@ -59,8 +62,13 @@ export const GET = route(
      */
     const { where, access } = await leadListQuery(ctx, params, rules);
 
-    const columns = resolveColumns('LEAD', params.cols?.split(',') ?? storedColumnsFor(setting?.gridColumns, 'LEAD'));
+    const columns = resolveColumns(
+      'LEAD',
+      params.cols?.split(',') ?? storedColumnsFor(setting?.gridColumns, 'LEAD'),
+      extra,
+    );
     const value = (row: Record<string, any>, key: string) => {
+      if (key.startsWith('cf:')) return customCells(columns, row.customData)[key];
       switch (key) {
         case 'stage':
           return row.stage?.name;
@@ -117,6 +125,7 @@ export const GET = route(
             ownerId: true,
             stage: { select: { key: true, name: true, color: true } },
             owner: { select: { fullName: true } },
+            customData: true,
           },
         });
 

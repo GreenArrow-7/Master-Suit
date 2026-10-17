@@ -94,7 +94,7 @@ export function route<
   Q = unknown extends z.infer<QS> ? unknown : z.infer<QS>,
   B = unknown extends z.infer<BS> ? unknown : z.infer<BS>,
 >(spec: RouteSpec<PS, QS, BS>, handler: (args: HandlerArgs<P, Q, B>) => Promise<unknown>) {
-  return async (req: Request, context: { params: Promise<Record<string, string>> }) => {
+  const handle = async (req: Request, context: { params: Promise<Record<string, string>> }) => {
     const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
     const started = Date.now();
     let ctx: Ctx | null = null;
@@ -305,6 +305,9 @@ export function route<
       return response;
     }
   };
+  // The spec rides on the handler, so the OpenAPI document is read off the
+  // routes themselves (src/lib/api/openapi.ts) rather than written twice.
+  return Object.assign(handle, { spec });
 }
 
 /**

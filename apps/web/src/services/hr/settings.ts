@@ -20,7 +20,7 @@ import { env } from '@/lib/env';
 import { Forbidden, Invalid } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import { isHrAdmin } from './access';
-import type { Ctx } from '@/lib/security/rbac';
+import { atLeast, type Ctx } from '@/lib/security/rbac';
 
 export type SettingGroup =
   'face' | 'liveness' | 'attendance' | 'leave' | 'overtime' | 'roster' | 'payroll' | 'gratuity' | 'lifecycle';
@@ -248,6 +248,17 @@ export const HR_SETTINGS: Definition[] = [
     default: false,
     label: "Check-out waits for today's lead-calling target",
     help: 'A seller with a daily target of leads to call cannot check out while it is short. The shortfall counts as pending work on the check-in screen; an approved attendance exception (reason work_pending) lets a manager override for that day.',
+  },
+  {
+    key: 'assignmentCheckInBy',
+    group: 'attendance',
+    type: 'text',
+    default: '',
+    maxLength: 5,
+    pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$',
+    patternMessage: 'must be a time of day such as 10:00, or blank',
+    label: 'Automatic assignment passes over anyone not checked in by',
+    help: 'A time of day on the workspace clock, such as 10:00. After it, an employee with no check-in today is treated as absent and automatic lead distribution passes them over ("not checked in"); before it, and when blank, a missing check-in is not an absence. Applies to assignment rules that respect working hours. Changing it needs permission to configure lead distribution.',
   },
   {
     key: 'checkoutRequiresLeadWork',
@@ -677,8 +688,12 @@ export const HR_SETTINGS: Definition[] = [
   },
 ];
 
-/** The check-out rules, which a workspace without HRMS may also set: check-in is not an HR product. */
+/**
+ * The check-in and check-out rules, which a workspace without HRMS may also set:
+ * check-in is not an HR product, and its cut-off feeds lead assignment (M15-05).
+ */
 export const CHECKOUT_RULE_KEYS = [
+  'assignmentCheckInBy',
   'checkoutRequiresDailyTarget',
   'checkoutRequiresLeadWork',
   'checkoutWorkGateMaxHours',
@@ -700,6 +715,7 @@ export type HrPolicy = {
   minPunchIntervalSeconds: number;
   maxOfflineSyncHours: number;
   captureRetentionDays: number;
+  assignmentCheckInBy: string;
   checkoutRequiresLeadWork: boolean;
   checkoutRequiresDailyTarget: boolean;
   checkoutWorkGateMaxHours: number;
@@ -869,6 +885,15 @@ export async function updateHrPolicy(ctx: Ctx, patch: Record<string, unknown>) {
   }
 
   if (errors.length) throw Invalid(errors);
+  // The check-in cut-off decides who automatic lead distribution passes over,
+  // so moving it is distribution configuration, not HR's alone. Checked on a
+  // change only: the HR form posts every field, an unchanged cut-off included.
+  if (
+    changed.includes('assignmentCheckInBy') &&
+    !atLeast(ctx, 'distribution', 'MANAGE_CONFIGURATION', 'ORGANIZATION')
+  ) {
+    throw Forbidden('Changing the assignment check-in cut-off needs permission to configure lead distribution.');
+  }
 
   await prisma.organizationSetting.upsert({
     where: { tenantId: ctx.tenantId },

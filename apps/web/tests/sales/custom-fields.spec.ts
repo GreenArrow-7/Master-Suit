@@ -23,6 +23,11 @@ import { GET as readColumns, PUT as saveColumns } from '@/app/api/v1/admin/grid-
 import LeadDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
 import LeadsPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/page';
 import CustomFieldsPage from '@/app/(workspace)/[workspaceSlug]/admin/custom-fields/page';
+import NewLeadPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/new/page';
+import { GET as exportLeads } from '@/app/api/v1/leads/export/route';
+import { issueApiKey } from '@/lib/auth/apiKey';
+import { PUT as saveLayout } from '@/app/api/v1/lead-form-layout/route';
+import { leadFormLayout } from '@/lib/leads/formLayout';
 import { createWorkspaceUser, grantPermissions, seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { createSessionToken } from '../helpers/session';
 import { pageText } from '../helpers/render';
@@ -386,6 +391,150 @@ describe('the fields on a lead (M4-13)', () => {
     const data = { visa_status: 'Golden', visa_expiry: '2027-06-30', family_size: 4, metaLeadgen: { formId: 'f-1' } };
     expect(customCells(columns, data)).toEqual({ 'cf:visa_status': 'Golden', 'cf:visa_expiry': '30/06/2027' });
     expect(customCells(columns, null)).toEqual({ 'cf:visa_status': null, 'cf:visa_expiry': null });
+  });
+});
+
+describe('required on create, the Add lead form and the CSV export (M18-03)', () => {
+  it('a person creating a lead without a required field gets 422; an API key still lands its lead', async () => {
+    const added = await post(addField, API, { label: 'Passport ref', type: 'TEXT', isRequired: true }, admin);
+    expect(added.status, JSON.stringify(added.body)).toBe(200);
+    try {
+      const missing = await post(createLead, '/api/v1/leads', { fullName: 'No Passport' }, admin);
+      expect(missing.status, JSON.stringify(missing.body)).toBe(422);
+      expect(missing.body.errors).toEqual([expect.objectContaining({ field: 'custom.passport_ref' })]);
+      expect(
+        (await post(createLead, '/api/v1/leads', { fullName: 'Blank Passport', custom: { passport_ref: ' ' } }, admin))
+          .status,
+      ).toBe(422);
+
+      // An integration that leaves the field out still lands its lead, as intake does.
+      const { roleId } = await prisma.user.findFirstOrThrow({
+        where: { tenantId, id: fixture.a.userId },
+        select: { roleId: true },
+      });
+      const { key } = await issueApiKey(tenantId, 'cf-required', roleId, [], fixture.a.userId);
+      const machine = await post(createLead, '/api/v1/leads', { fullName: 'Machine Passport' }, { apiKey: key });
+      expect(machine.status, JSON.stringify(machine.body)).toBe(200);
+
+      const ok = await post(
+        createLead,
+        '/api/v1/leads',
+        { fullName: 'Has Passport', custom: { passport_ref: 'P-778' } },
+        admin,
+      );
+      expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+
+      // The Add lead form offers the workspace's active fields, the required one starred.
+      cookieJar.value = admin;
+      const form = await pageText(NewLeadPage());
+      expect(form).toContain('Passport ref');
+      expect(form).toContain('passport_ref');
+
+      // The value goes out in the CSV when its column is chosen.
+      const res = await exportLeads(
+        new Request('http://localhost/api/v1/leads/export?cols=fullName,cf:passport_ref&q=Has%20Passport', {
+          headers: { cookie: admin },
+        }),
+        { params: Promise.resolve({}) },
+      );
+      expect(res.status).toBe(200);
+      const csv = await res.text();
+      expect(csv).toContain('"Passport ref"');
+      expect(csv).toContain('"Has Passport","P-778"');
+    } finally {
+      await patch(editField, `${API}?id=${added.body.id}`, { isRequired: false, isActive: false }, admin);
+    }
+  });
+});
+
+describe('the lead form layout (M18-04)', () => {
+  /** The props of the first element in a rendered tree that carries `prop`. */
+  const propsWith = (node: any, prop: string): any => {
+    if (!node || typeof node !== 'object') return null;
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        const found = propsWith(child, prop);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (node.props?.[prop] !== undefined) return node.props;
+    return propsWith(node.props?.children, prop);
+  };
+  const LAYOUT = '/api/v1/lead-form-layout';
+
+  it('fills in what was not stored, keeps stored order, never hides a fixed field', () => {
+    const layout = leadFormLayout([
+      { key: 'priority', hidden: false },
+      { key: 'phone', hidden: true },
+      { key: 'secondaryPhone', hidden: true },
+      { key: 'company', hidden: true },
+    ]);
+    expect(layout.slice(0, 3).map((f) => [f.key, f.hidden])).toEqual([
+      ['priority', false],
+      ['phone', false],
+      ['company', true],
+    ]);
+    expect(layout.map((f) => f.key)).toHaveLength(12);
+    expect(leadFormLayout(null).every((f) => !f.hidden)).toBe(true);
+  });
+
+  it('an administrator hides and reorders fields; the Add lead form and the lead page follow', async () => {
+    const saved = await put(
+      saveLayout,
+      LAYOUT,
+      {
+        fields: [
+          { key: 'priority', hidden: false },
+          { key: 'company', hidden: true },
+          { key: 'otherNumbers', hidden: true },
+          { key: 'phone', hidden: true },
+        ],
+      },
+      admin,
+    );
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    try {
+      expect(saved.body.fields.find((f: { key: string }) => f.key === 'phone').hidden).toBe(false);
+      expect(
+        await prisma.auditLog.findFirst({ where: { tenantId, objectType: 'settings', event: 'RECORD_UPDATED' } }),
+      ).not.toBeNull();
+
+      cookieJar.value = admin;
+      const form = propsWith(await NewLeadPage(), 'layout');
+      const keys = form.layout.map((f: { key: string }) => f.key);
+      expect(keys[0]).toBe('priority');
+      expect(keys).not.toContain('company');
+      expect(keys).toContain('phone');
+
+      const detail = propsWith(await LeadDetailPage({ params: Promise.resolve({ id: agentLeadId }) }), 'hiddenFields');
+      expect(detail.hiddenFields.sort()).toEqual(['company', 'otherNumbers']);
+
+      // The editor shows the stored layout.
+      expect(propsWith(await CustomFieldsPage(), 'fields').fields).toBeTruthy();
+    } finally {
+      await put(saveLayout, LAYOUT, { fields: [] }, admin);
+    }
+  });
+
+  it('refuses an unknown field, a field twice, and a role that may not configure settings', async () => {
+    expect((await put(saveLayout, LAYOUT, { fields: [{ key: 'salary', hidden: true }] }, admin)).status).toBe(422);
+    expect(
+      (
+        await put(
+          saveLayout,
+          LAYOUT,
+          {
+            fields: [
+              { key: 'email', hidden: true },
+              { key: 'email', hidden: false },
+            ],
+          },
+          admin,
+        )
+      ).status,
+    ).toBe(422);
+    expect((await put(saveLayout, LAYOUT, { fields: [{ key: 'email', hidden: true }] }, agent)).status).toBe(403);
   });
 });
 

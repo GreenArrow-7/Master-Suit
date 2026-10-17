@@ -6,6 +6,7 @@ import { NotFound } from '@/lib/errors';
 import { serviceWindowOpen } from '@/lib/integrations/whatsapp';
 import { draftFollowUpWhatsApp } from '@/lib/ai/followUpEmail';
 import { assertCallInScope } from '@/lib/security/record-scope';
+import { whatsAppTemplateBlock } from '@/services/leads/leadMessages';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -17,7 +18,9 @@ const params = z.object({ id: z.string().cuid() });
  * window, template enforcement, Communication logging and thread ownership —
  * duplicating any of that here would be a second copy that drifts. This route
  * answers the two questions the composer needs: what to say, and whether a
- * free-form send is currently possible for this call's lead.
+ * free-form send is currently possible for this call's lead. Where it is not,
+ * `template` names the lead when this viewer may send it an approved template
+ * (the lead's own send, `/api/v1/leads/[id]/messages`), which starts the thread.
  */
 export const POST = route(
   { module: 'calls', productModule: LEAD_MODULES, action: 'EDIT', params },
@@ -47,7 +50,7 @@ export const POST = route(
       ? await prisma.conversation.findFirst({
           where: { tenantId: ctx.tenantId, leadId: lead.id, channel: 'WHATSAPP' },
           orderBy: { lastMessageAt: 'desc' },
-          select: { id: true },
+          select: { id: true, externalId: true },
         })
       : null;
     const lastInbound = conversation
@@ -58,6 +61,9 @@ export const POST = route(
         })
       : null;
     const windowOpen = Boolean(conversation) && serviceWindowOpen(lastInbound?.createdAt);
+    // Where no free-form message can go, the lead's own template send starts (or reopens) the
+    // thread (M10-01): offered only where that send would take it, to the thread's own number.
+    const offer = lead && !windowOpen ? await whatsAppTemplateBlock(ctx, lead.id, conversation?.externalId) : null;
 
     const draft = await draftFollowUpWhatsApp({
       tenantId: ctx.tenantId,
@@ -76,13 +82,15 @@ export const POST = route(
       optedOut: lead?.whatsappOptOut ?? false,
       conversationId: conversation?.id ?? null,
       windowOpen,
+      template: lead && offer && !offer.blocked ? { leadId: lead.id, fullName: lead.fullName, to: offer.to } : null,
       reason: !lead
         ? 'This call has no linked lead.'
-        : !conversation
-          ? 'No WhatsApp conversation with this lead yet — they must message first, or you can start one with an approved template from the Inbox.'
-          : !windowOpen
-            ? 'The 24-hour service window has closed. Send an approved template from the Inbox to reopen it, or copy the draft.'
-            : null,
+        : windowOpen
+          ? null
+          : (offer?.blocked ??
+            (!conversation
+              ? 'No WhatsApp conversation with this lead yet: it starts with an approved template.'
+              : 'The 24-hour service window has closed: an approved template reopens it. Or copy the draft.')),
     };
   },
 );

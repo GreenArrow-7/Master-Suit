@@ -1,6 +1,9 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { prisma } from '@/lib/db';
+import * as queue from '@/lib/queue';
 import { POST as assign } from '@/app/api/v1/leads/assign/route';
+import { POST as createLeadRoute } from '@/app/api/v1/leads/route';
+import { POST as convertEnquiry } from '@/app/api/v1/social-leads/[id]/convert/route';
 import { seedHierarchy, type Hierarchy } from '../helpers/fixtures';
 import { post } from '../helpers/request';
 
@@ -46,6 +49,52 @@ describe('bulk assignment', () => {
     });
     expect(history).toHaveLength(1);
     expect(history[0]).toMatchObject({ toOwnerId: h.repA1.id, reason: 'bulk_assignment' });
+    // Audit M17-05, M17-07: the new owner and the previous one each hear of it, once.
+    const told = await prisma.notification.findMany({
+      where: { tenantId: h.tenantId, recordId: h.repA2.leadId, kind: 'lead.assigned' },
+      select: { userId: true, priority: true, readAt: true },
+    });
+    expect(told).toHaveLength(2);
+    expect(told).toEqual(
+      expect.arrayContaining([
+        { userId: h.repA1.id, priority: 'HIGH', readAt: null },
+        { userId: h.repA2.id, priority: 'MEDIUM', readAt: null },
+      ]),
+    );
+  });
+
+  // Audit M17-05: one push for the batch, counting only the leads that changed hands.
+  it('rings the new owner once, for the leads that were not already theirs', async () => {
+    const { stageId } = await prisma.lead.findFirstOrThrow({ where: { tenantId: h.tenantId, id: h.repA1.leadId } });
+    const pool = await Promise.all(
+      ['RING-1', 'RING-2'].map((reference) =>
+        prisma.lead.create({ data: { tenantId: h.tenantId, reference, fullName: reference, stageId } }),
+      ),
+    );
+    const spy = vi.spyOn(queue, 'enqueue').mockResolvedValue(null as never);
+    try {
+      const res = await send([h.repA1.leadId, ...pool.map((lead) => lead.id)], h.teamManagerA.cookie);
+      expect(res.body).toEqual({ assigned: 2 });
+      const pushes = spy.mock.calls.filter(([, job]) => job === 'record-push').map(([, , data]) => data);
+      expect(pushes).toEqual([
+        expect.objectContaining({
+          userIds: [h.repA1.id],
+          title: '2 leads were assigned to you',
+          objectType: 'leads_mine',
+          recordId: null,
+        }),
+      ]);
+    } finally {
+      spy.mockRestore();
+    }
+    // Already theirs: no hand-over recorded, no bell row.
+    const unmoved = { tenantId: h.tenantId, leadId: h.repA1.leadId };
+    expect(await prisma.leadAssignmentHistory.count({ where: unmoved })).toBe(0);
+    expect(
+      await prisma.notification.count({
+        where: { tenantId: h.tenantId, recordId: h.repA1.leadId, kind: 'lead.assigned' },
+      }),
+    ).toBe(0);
   });
 
   it('moves an unassigned lead for a manager who may claim it', async () => {
@@ -107,5 +156,54 @@ describe('bulk assignment', () => {
     } finally {
       await prisma.workspaceMembership.updateMany({ where: membership, data: { status: 'ACTIVE' } });
     }
+  });
+});
+
+describe('a lead created for a colleague (audit M17-05)', () => {
+  it('tells them it is theirs, in the bell and on the phone', async () => {
+    const res = await post(
+      createLeadRoute,
+      '/api/v1/leads',
+      { fullName: 'Made for a colleague', ownerId: h.repA1.id, onDuplicate: 'WARN' },
+      h.teamManagerA.cookie,
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const told = await prisma.notification.findFirstOrThrow({
+      where: { tenantId: h.tenantId, userId: h.repA1.id, recordId: res.body.id, kind: 'lead.assigned' },
+    });
+    expect(told).toMatchObject({ priority: 'HIGH', readAt: null });
+    expect(told.channels).toContain('push');
+  });
+
+  it('tells the owner of a social enquiry a manager converts, and dates the hand-over', async () => {
+    const enquiry = await prisma.socialComment.create({
+      data: {
+        tenantId: h.tenantId,
+        provider: 'instagram',
+        providerCommentId: `ring-${Date.now()}`,
+        authorName: 'commenter',
+        commentText: 'Price for the 2-bed?',
+        commentCreatedAt: new Date(),
+        ownerId: h.repA1.id,
+      },
+    });
+    const res = await post(
+      convertEnquiry,
+      `/api/v1/social-leads/${enquiry.id}/convert`,
+      { fullName: 'Converted for a colleague' },
+      h.teamManagerA.cookie,
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId: h.tenantId, id: res.body.leadId } });
+    expect(lead.ownerId).toBe(h.repA1.id);
+    expect(lead.assignedAt).not.toBeNull();
+    const history = await prisma.leadAssignmentHistory.findFirstOrThrow({
+      where: { tenantId: h.tenantId, leadId: lead.id },
+    });
+    expect(history).toMatchObject({ toOwnerId: h.repA1.id, assignedById: h.teamManagerA.id });
+    const told = await prisma.notification.findFirstOrThrow({
+      where: { tenantId: h.tenantId, userId: h.repA1.id, recordId: lead.id, kind: 'lead.assigned' },
+    });
+    expect(told).toMatchObject({ title: 'Lead assigned: Converted for a colleague', priority: 'HIGH' });
   });
 });

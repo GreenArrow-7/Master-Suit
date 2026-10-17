@@ -206,6 +206,19 @@ export { haversineM, insideGeofence } from '@/lib/geo';
  *
  * `weekday` uses the JavaScript convention: Sunday 0 … Saturday 6.
  */
+/**
+ * The workspace's zone, or Dubai when Intl does not know it: settings take it
+ * as free text, and "GST" or "UTC+4" throws a RangeError wherever it is used.
+ */
+export function knownTimeZone(zone: string | null | undefined): string {
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: zone || 'Asia/Dubai' });
+    return zone || 'Asia/Dubai';
+  } catch {
+    return 'Asia/Dubai';
+  }
+}
+
 export function zonedParts(at: Date, timeZone: string): { weekday: number; minutes: number } {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone,

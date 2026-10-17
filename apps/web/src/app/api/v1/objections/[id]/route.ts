@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
+import { assertPlaybookEditor } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -17,7 +19,7 @@ const patchBody = z
   .strict();
 
 export const GET = route(
-  { module: 'calls', productModule: 'SALES', action: 'VIEW', params },
+  { module: 'calls', productModule: LEAD_MODULES, action: 'VIEW', params },
   async ({ ctx, params }) => {
     const objection = await prisma.objection.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
@@ -29,8 +31,16 @@ export const GET = route(
 );
 
 export const PATCH = route(
-  { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: patchBody, auditEvent: 'RECORD_UPDATED' },
+  {
+    module: 'calls',
+    productModule: LEAD_MODULES,
+    action: 'EDIT',
+    params,
+    body: patchBody,
+    auditEvent: 'RECORD_UPDATED',
+  },
   async ({ ctx, params, body }) => {
+    assertPlaybookEditor(ctx, 'EDIT');
     const existing = await prisma.objection.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
       select: { id: true },
@@ -59,8 +69,9 @@ export const PATCH = route(
  * filters on `deletedAt: null`.
  */
 export const DELETE = route(
-  { module: 'calls', productModule: 'SALES', action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  { module: 'calls', productModule: LEAD_MODULES, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) => {
+    assertPlaybookEditor(ctx, 'DELETE');
     const existing = await prisma.objection.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
       select: { id: true },

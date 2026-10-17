@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { myEmployee } from '@/services/hr/leave';
 import { faceStatus, myPunches, openCheckIn } from '@/services/hr/attendance';
+import { dailyTargetProgress } from '@/services/targets/dailyBoard';
 import CheckInConsole, { type RecentPunch } from './CheckInConsole';
 
 export const metadata = { title: 'Check in' };
@@ -52,7 +53,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
     );
   }
 
-  const [status, punches, open, assignments] = await Promise.all([
+  const [status, punches, open, assignments, target] = await Promise.all([
     faceStatus(ctx),
     myPunches(ctx, 8),
     openCheckIn(ctx, employee.id),
@@ -60,6 +61,8 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       where: { tenantId: ctx.tenantId, employeeId: employee.id, status: 'ACTIVE' },
       include: { location: { select: { name: true, radiusMeters: true } } },
     }),
+    // Today's calling quota and its recorded progress, on the phone before check-out (OWN-05).
+    dailyTargetProgress(ctx, ctx.actor.id),
   ]);
 
   const recent: RecentPunch[] = punches.map((row) => ({
@@ -86,6 +89,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
         engineReady={status.engineReady}
         openCheckIn={!!open}
         initialRecent={recent}
+        initialTarget={target}
       />
     </div>
   );

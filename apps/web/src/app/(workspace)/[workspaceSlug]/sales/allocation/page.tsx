@@ -63,7 +63,14 @@ export default async function AllocationPage({ searchParams }: { searchParams: P
         prisma.distributionRule.findMany({
           where: { tenantId: ctx.tenantId, objectType: 'LEAD', deletedAt: null },
           orderBy: { position: 'asc' },
-          select: { id: true, name: true, isActive: true, candidatePool: true, conditions: true },
+          select: {
+            id: true,
+            name: true,
+            isActive: true,
+            candidatePool: true,
+            conditions: true,
+            respectWorkingHours: true,
+          },
         }),
         assignableUsers(ctx, 'leads', 'ASSIGN'),
         prisma.leadSource.findMany({
@@ -115,6 +122,7 @@ export default async function AllocationPage({ searchParams }: { searchParams: P
                 everyone: !!pool.everyone,
                 people: (pool.userIds ?? []).map((id) => nameBy.get(id) ?? 'A former member'),
                 routes: routes ? `only ${routes}` : null,
+                workingHours: rule.respectWorkingHours,
               };
             })}
           />

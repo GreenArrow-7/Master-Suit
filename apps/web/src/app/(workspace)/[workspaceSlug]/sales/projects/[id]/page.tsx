@@ -10,6 +10,7 @@ import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import FavouriteButton, { ProjectFlags } from './FavouriteButton';
 import UnitBoard from './UnitBoard';
+import ShareWithLead from '../../leads/ShareWithLead';
 import { Metric } from '@/components/ui/MetricCard';
 
 export const metadata = { title: 'Project' };
@@ -168,6 +169,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           }
         />
       </section>
+
+      {/* Share it with a lead (M10-09): the lead's own share, so a sharer who works leads, for a project offered to clients. */}
+      {can(ctx, 'leads', 'VIEW') && can(ctx, 'leads', 'EDIT') && project.isPitchable && (
+        <ShareWithLead shareTarget={{ projectId: project.id }} />
+      )}
 
       {project.description && (
         <section className="lf-card" style={{ padding: 18 }}>

@@ -14,7 +14,7 @@ Paths below are under `apps/web/`.
 | Sales | `sales/` | 76 | leads (spreadsheet import with a dry run, close-out, merge), contacts, accounts, opportunities, tasks, follow-ups; calls with AI coaching, analysis and audits; campaigns, inbox, forms, landing pages, social leads; dashboards, leadership (productivity, value, daily target); projects, listings, bookings, collections, commissions, proposals, portals |
 | HRMS | `people/` | 32 | employees, users, roles, departments; face check-in, attendance, shifts, roster, leave, overtime; payroll, payslips, WPS; recruitment, performance, documents, compliance |
 | Real Estate | `realty/` | 42 | the Sales property screens as a brokerage works them, plus Properties, allocation (data pool), events with QR passes, lead recycling, website forms and landing pages |
-| Lead Eagle | `lead-eagle/` | 31 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads (a grid or a board by stage, filter chips, each person's saved views), follow-ups, tasks, calendar, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle, Google Ads lead forms, any other sender through a signed Custom webhook, and the portals’ lead emails through Portal emails, posted by a mail service the workspace runs (Admin → Integrations → Lead sources; any lead module), each with a Deliveries tab (outcome, Replay) and a field mapping (`/admin/lead-sources/{source}`), and a lead can be recorded as a Referral with its referrer. A WhatsApp message from a number no lead, contact or user holds, and a call from such a number, become leads for distribution (switches on the WhatsApp Business and telephony cards: on by default in Lead Eagle, and for callers in every lead module). Every lead module also has the Calendar, QR Capture, Cold Data, Targets, website forms and landing pages (public `/f/{ws}/{key}` and `/l/{ws}/{slug}`; `/embed.js` frames a form on the brokerage's own site), and Lead Stages, Sources (the source and sub-source catalogue, each entry's starting score, and the score decay) and Custom Fields under Administration → Settings; and on the lead page a requirement, interest links to projects and listings, and the workspace's custom fields. Every lead-list row and the lead page log a call in one step (outcome, note, the next follow-up); the lead page has a paged timeline of activity, stage moves, field edits, assignments, calls and messages, its done follow-ups, and the stock its requirement matches. Two leads merge into one from a compare screen (`/leads/{id}/merge?with={other}`, from the lead page's duplicate notice or Merge with two selected); the merged-away lead's page names the lead it went into. The spreadsheet import can update the leads it matches, be checked first without saving (a dry run) and hand back its refused rows as a CSV. The board (Real Estate's, re-exported) counts, under the viewer's scope and on the workspace's clock, new, unassigned and untouched leads, overdue and due follow-ups and today's callbacks, leads in the meeting stages, conversion, leads by source and by stage, received against worked over 14 days, the week's follow-ups, the last 7 days' calls and an agent leaderboard; each tile, bar, day, Calls figure and leaderboard cell opens the list of what it counted (the Calls list with the logged calls beside the provider's, Tasks, Site visits). Filters at the top (a period, a person or team, a source, a project) narrow every figure and its list (on the Real Estate board the booking and revenue figures narrow, but their tiles open the unfiltered Collections), are kept in the URL and remembered per user (`User.uiPreferences`); a person or team outside the viewer's reach is ignored. From the lead page a role holding `communications:CREATE` (in a new Lead Eagle workspace every starter role but the Viewer; in an existing one, once its administrator grants it) sends an approved WhatsApp template or an email template (Administration → Settings → Email Templates), and a role that works the lead shares a listing or project as a public page (`/s/{token}`) whose opening shows on the timeline; the lead grid's Send template queues one to many leads |
+| Lead Eagle | `lead-eagle/` | 31 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads (a grid or a board by stage, filter chips, each person's saved views), follow-ups, tasks, calendar, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle, Google Ads lead forms, any other sender through a signed Custom webhook, and the portals’ lead emails through Portal emails, posted by a mail service the workspace runs (Admin → Integrations → Lead sources; any lead module), each with a Deliveries tab (outcome, Replay) and a field mapping (`/admin/lead-sources/{source}`), and a lead can be recorded as a Referral with its referrer. A WhatsApp message from a number no lead, contact or user holds, and a call from such a number, become leads for distribution (switches on the WhatsApp Business and telephony cards: on by default in Lead Eagle, and for callers in every lead module). Every lead module also has the Calendar, QR Capture, Cold Data, Targets, website forms and landing pages (public `/f/{ws}/{key}` and `/l/{ws}/{slug}`; `/embed.js` frames a form on the brokerage's own site), and Lead Stages, Sources (the source and sub-source catalogue, each entry's starting score, and the score decay) and Custom Fields under Administration → Settings; and on the lead page a requirement, interest links to projects and listings, and the workspace's custom fields. Every lead-list row and the lead page log a call in one step (outcome, note, the next follow-up); the lead page has a paged timeline of activity, stage moves, field edits, assignments, calls and messages, its done follow-ups, and the stock its requirement matches. Two leads merge into one from a compare screen (`/leads/{id}/merge?with={other}`, from the lead page's duplicate notice or Merge with two selected); the merged-away lead's page names the lead it went into. The spreadsheet import can update the leads it matches, be checked first without saving (a dry run) and hand back its refused rows as a CSV. The board (Real Estate's, re-exported) counts, under the viewer's scope and on the workspace's clock, new, unassigned and untouched leads, overdue and due follow-ups and today's callbacks, leads in the meeting stages, conversion, leads by source and by stage, received against worked over 14 days, the week's follow-ups, the last 7 days' calls and an agent leaderboard; each tile, bar, day, Calls figure and leaderboard cell opens the list of what it counted (the Calls list with the logged calls beside the provider's, Tasks, Site visits). Filters at the top (a period, a person or team, a source, a project) narrow every figure and its list (on the Real Estate board the booking and revenue figures narrow, but their tiles open the unfiltered Collections), are kept in the URL and remembered per user (`User.uiPreferences`); a person or team outside the viewer's reach is ignored. From the lead page a role holding `communications:CREATE` (in a new Lead Eagle workspace every starter role but the Viewer; in an existing one, once its administrator grants it) sends an approved WhatsApp template or an email template (Administration → Settings → Email Templates), and a role that works the lead shares a listing or project as a public page (`/s/{token}`), from the lead page or with Share with a lead on the listing's or project's page, the share and each opening on the lead's timeline; the lead grid's Send template queues one to many leads, and a call's WhatsApp follow-up starts or reopens the lead's thread with a template where no free-form message can go in an existing one, once its administrator grants it) sends an approved WhatsApp template or an email template (Administration → Settings → Email Templates), and a role that works the lead shares a listing or project as a public page (`/s/{token}`) whose opening shows on the timeline; the lead grid's Send template queues one to many leads. Reports (Sales' page, re-exported) read the board's filters (a period, a person or team, a source, a project) on the workspace's clock and hand the same query to their CSV; a Lead-Eagle-only workspace is not offered Revenue Forecast, Team Performance or Campaign Performance (404 by URL); its Pipeline Summary has no opportunity columns, its Source to Booking no booking columns and its Lead conversion no opportunity or booking steps Every lead module also has the Calendar, QR Capture, Cold Data, Targets, the objection Playbook (cards the live call's coach cites, "Your playbook"; written only with `calls` at ORGANIZATION), website forms and landing pages (public `/f/{ws}/{key}` and `/l/{ws}/{slug}`; `/embed.js` frames a form on the brokerage's own site), and Lead Stages, Sources (the source and sub-source catalogue, each entry's starting score, and the score decay) and Custom Fields (with the Add lead form's order and hidden fields; a required field is asked of a person creating a lead, not of an API key) under Administration → Settings; |
 
 Outside the modules: `check-in` and `attendance` (every workspace), `admin/`
 (users, roles, work locations, settings, audit), `profile/`, and the platform
@@ -64,7 +64,10 @@ Node 22 or newer (CI uses 24).
   API's refusal names every module of the set ("Sales or Real Estate is not
   enabled for this company."). Next still renders the page beneath `NotInPlan`,
   so every page in a module folder asserts its module itself
-  (`tests/permission/page-access.spec.ts`).
+  (`tests/permission/page-access.spec.ts`). A workspace whose only usable
+  product is Lead Eagle opens on `/{slug}/lead-eagle/dashboard` after sign-in
+  and from `/` (`workspaceLanding`, `src/lib/security/entitlements.ts`); every
+  other workspace on its summary, `/{slug}/dashboard`.
 - **Permissions.** Roles live in the database. A new workspace gets one role,
   Company Admin, holding every permission; the admin builds the others in the
   role editor. Lead Eagle's arrival adds five editable starter roles (Manager,
@@ -92,7 +95,11 @@ Node 22 or newer (CI uses 24).
   something else) on the workspace's clock (`followUpDueWhere`,
   `src/lib/leads/followUpDue.ts`). A lead's first contact (a call placed or
   answered, an activity that is not a note) stamps `firstContactedAt`
-  (`touchLead`). Cold data
+  (`touchLead`); a lead its owner leaves uncontacted past its stage's minutes,
+  counted from when they got it, tells their manager and is re-assigned when
+  the rule says so, once per hand-over (`src/services/sla/checkLeadFirstContact.ts`:
+  the delayed check at arrival and the five-minutely `first-contact` sweep,
+  `Lead.slaEscalatedAt`). Cold data
   follows the same rule (`coldDataScope(ctx, action)`), and working a cold
   record logs a call on it (`Activity.dataRecordId`) that the daily target
   and the check-out gate count (`services/targets/dailyBoard.ts`); making it a
@@ -160,7 +167,8 @@ Node 22 or newer (CI uses 24).
   closed-out exclusion; the board's team, project and won-in-the-period
   (`date=won`) come through `boardWhere` (`src/lib/leads/boardFilter.ts`),
   which the board and the Follow-ups, Calls, Tasks and Site visits lists also
-  read, so each figure and its list narrow alike. Every lead search is `leadSearch`
+  read, so each figure and its list narrow alike; the reports read the same
+  parameters (`reportParams`, `src/services/leadership/reports.ts`). Every lead search is `leadSearch`
   (`src/services/leads/createLead.ts`): a typed number is normalised and matched
   against the main number and every LeadPhone, whole numbers only for a role
   that sees them masked. A saved lead view is a personal `SmartView`
@@ -186,7 +194,11 @@ Node 22 or newer (CI uses 24).
   "already exists" or "not found" instead of reading first. `route()` honours
   `Idempotency-Key` on JSON POST and PATCH (24 h, `IdempotentRequest`, swept
   nightly); a route that answers with a credential declares `idempotent: false`
-  (`selfService` routes are out already).
+  (`selfService` routes are out already). `route()` keeps its spec on the
+  handler; `GET /api/v1/openapi.json` serves the OpenAPI 3.1 document built from
+  them (`src/lib/api/openapi.ts`), generated into `public/openapi.json` and kept
+  equal to the routes by `tests/unit/openapi.spec.ts` — after changing a
+  route's schemas (or adding a route), run it with `OPENAPI_WRITE=1`.
 - **Audit.** The rule for new code: every write should leave an AuditLog row,
   through the route's `auditEvent`, or `audit(ctx, …)`
   (`src/lib/security/audit.ts`) where the route cannot say enough. A write no
@@ -195,8 +207,33 @@ Node 22 or newer (CI uses 24).
   existing writes do yet; the known gaps are listed in
   `changes/2026-10-11-report-export-audit.md`. A file out of the building needs
   EXPORT, not VIEW, and writes `EXPORT_REQUESTED`.
+- **Attendance is not HR.** Check-in, the attendance record, attendance
+  requests and the attendance summary with its CSV (on the Attendance screen;
+  `EVERY_WORKSPACE_REPORT`, `src/services/hr/reports.ts`) work in every
+  workspace; everything else in HR needs HRMS. Every attendance read, the
+  attendance reports included, covers whom `attendanceScope` covers: everyone
+  for an organisation-wide reader, a line manager's reporting line, else
+  oneself.
+  requests and Face Activity (refused and flagged punches,
+  `/{slug}/attendance/face-activity`) work in every workspace, as do work
+  locations and the check-in and check-out rules (`CHECKOUT_RULE_KEYS`);
+  everything else in HR needs HRMS. A location with people actively assigned
+  is not retired (409). The check-in screen shows today's calling target and
+  the leads called towards it (`dailyTargetProgress`). Automatic assignment,
+  on a rule that respects working hours, passes over someone checked out for
+  the day, outside today's roster entry or, without one, their standing shift
+  (`HrEmployeeShift`; an overnight shift counts on the day it starts), or not
+  checked in since midnight on the workspace's clock once its cut-off
+  (`assignmentCheckInBy`; changing it needs `distribution:MANAGE_CONFIGURATION`
+  at ORGANIZATION) has passed (`src/services/distribution/eligibility.ts`).
+  EXPORT, not VIEW, and writes `EXPORT_REQUESTED`. The Audit Log pages by
+  keyset (`before=<ISO>|<id>`, across both logs) and narrows to a range of the
+  workspace's days.
 - **Attendance is not HR.** Check-in, the attendance record and attendance
-  requests work in every workspace; everything else in HR needs HRMS.
+  requests work in every workspace, and so do work locations and the holiday
+  register (Administration → Work Locations, → Holidays); everything else in HR
+  needs HRMS. Automatic assignment passes over everyone on a confirmed holiday
+  where its rule respects working hours (`services/distribution/eligibility.ts`).
 - **Lead scores** move by event, each a LeadScoreHistory row and an audit row
   (`src/services/leads/scoring.ts`): a new lead starts at its source's
   `weight`, a logged activity adds its type's `scoreDelta` (taken back if the
@@ -206,6 +243,19 @@ Node 22 or newer (CI uses 24).
 - **Background jobs.** One `JOBS` table in `src/workers/jobs.ts`, keyed by queue;
   `src/workers/index.ts` starts a worker per queue. CI's observability gate reads
   that table, so keep it a literal.
+- **Notifications.** Every notice is a bell row; its phone and email copies
+  follow the recipient's `User.notificationPrefs` (`readPrefs`,
+  `src/workers/notifications.ts`): a push unless turned off, an email per
+  notice, or one summary each morning at 08:00 on the workspace's clock
+  (`src/services/notifications/digest.ts`, the hourly maintenance job
+  `digest`; workspaces with a lead product only, naming only leads the reader
+  may open). Hand-overs tell the new owner: automatic assignment, a lead
+  created or converted (intake, social enquiry) for someone, and the SLA
+  take-back through `notifyCrm` `lead.assigned` after the commit; bulk assign,
+  Allocate, cross-team routing and the leaver hand-over through
+  `notifyLeadMoves` inside the move's transaction (the previous owner too), then
+  one push per receiving person (`ringNewOwner`), not one per lead. A merge
+  tells nobody.
 
 ## Testing and verifying
 
@@ -251,6 +301,11 @@ the Real Estate module, proposals and portals, attendance in every workspace.
 
 Waiting on the owner:
 
+- **Data retention per workspace** (audit M18-11) — the window per data class
+  (audit log, attendance punches, AI events, leads) and whether a workspace may
+  shorten the deployment's window or only lengthen it; until then the
+  deployment's `*_RETENTION_DAYS` apply and unset keeps everything
+  (`changes/2026-10-18-le-settings-api.md`).
 - **Database pool size** — the pg adapter ignores `connection_limit` in
   `DATABASE_URL`, so every process holds 10 connections; `max` on `PrismaPg`
   (`src/lib/db.ts`) is an operations decision

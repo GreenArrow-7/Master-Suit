@@ -10,6 +10,8 @@ import { expireLapsedMandates } from '@/services/inventory/mandates';
 import { requirementsWanting } from '@/services/inventory/demand';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
+import { SHOWABLE } from '@/lib/proposals/publicProposal';
+import ShareWithLead from '../../leads/ShareWithLead';
 import MandatePanel from './MandatePanel';
 import { Metric } from '@/components/ui/MetricCard';
 
@@ -105,6 +107,11 @@ export default async function ListingDetailPage({
           }
         />
       </section>
+
+      {/* Share it with a lead (M10-09): the lead's own share, so a sharer who works leads, for a listing on the market. */}
+      {can(ctx, 'leads', 'VIEW') && can(ctx, 'leads', 'EDIT') && SHOWABLE.includes(listing.status) && (
+        <ShareWithLead shareTarget={{ listingId: listing.id }} />
+      )}
 
       {listing.description && (
         <section className="lf-card" style={{ padding: 18 }}>

@@ -1,16 +1,19 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { prisma, withTx, type TxClient } from '@/lib/db';
-import { Conflict, NotFound } from '@/lib/errors';
+import { AppError, Conflict, NotFound } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { agencyOf, PUBLIC_LISTING, publicListing, SHOWABLE } from '@/lib/proposals/publicProposal';
 import { publicLink } from '@/lib/publicLink';
 import { redis } from '@/lib/redis';
 import { audit } from '@/lib/security/audit';
 import { assertAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitlements';
+import { loadFieldRules, seesField } from '@/lib/security/fieldSecurity';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { assertLeadInScope } from '@/lib/security/record-scope';
 import { todayKey } from '@/services/targets/dailyBoard';
+import { LEAD_SENSITIVE_FIELDS } from './createLead';
+import { recipientOf } from './leadMessages';
 
 /**
  * A project or a listing shared with a lead (Lead Eagle audit row M4-30): a
@@ -61,8 +64,15 @@ export async function assertLeadTarget(ctx: Ctx, tx: TxClient, t: LeadTarget) {
   return { kind: 'listing', name: found.title, onMarket: SHOWABLE.includes(found.status) } as const;
 }
 
-/** A link for the lead, audited; `leads:EDIT` on the lead (404 outside it) and stock the sharer sees. */
+/**
+ * A link for the lead, audited and on its timeline as the sharer's (M10-09);
+ * `leads:EDIT` on the lead (404 outside it) and stock the sharer sees.
+ * `whatsapp`: wa.me with the link written, to the number a send would take
+ * (main first), where the sharer reads the lead's number and the lead may be
+ * messaged on WhatsApp; else null.
+ */
 export async function createShare(ctx: Ctx, leadId: string, target: LeadTarget, days = SHARE_DAYS) {
+  const rules = await loadFieldRules(ctx, 'LEAD');
   return withTx(ctx.tenantId, async (tx) => {
     const lead = await assertLeadInScope(ctx, leadId, tx, 'EDIT');
     const found = await assertLeadTarget(ctx, tx, target);
@@ -91,12 +101,54 @@ export async function createShare(ctx: Ctx, leadId: string, target: LeadTarget, 
       },
       tx,
     );
+    const type = await tx.activityType.upsert({
+      where: { tenantId_key: { tenantId: ctx.tenantId, key: 'link_shared' } },
+      update: {},
+      // Inactive: logged by the share, never by hand from the lead page.
+      create: {
+        tenantId: ctx.tenantId,
+        key: 'link_shared',
+        name: 'Property shared',
+        direction: 'OUTBOUND',
+        icon: 'link',
+        isActive: false,
+      },
+      select: { id: true },
+    });
+    await tx.activity.create({
+      data: {
+        tenantId: ctx.tenantId,
+        typeId: type.id,
+        leadId: lead.id,
+        ownerId: ctx.actor.id,
+        createdById: ctx.actor.id,
+        notes: `${found.kind === 'listing' ? 'Listing' : 'Project'}: ${found.name}`,
+      },
+    });
+
+    const url = shareLink.url(ctx.tenantId, share.id);
+    let number: string | null = null;
+    if (seesField(ctx, 'LEAD', rules, 'phone', LEAD_SENSITIVE_FIELDS)) {
+      const phones = await tx.leadPhone.findMany({
+        where: { tenantId: ctx.tenantId, leadId: lead.id },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, normalized: true, isWhatsapp: true },
+      });
+      try {
+        number = recipientOf({ ...lead, phones }, 'WHATSAPP');
+      } catch (err) {
+        if (!(err instanceof AppError)) throw err;
+      }
+    }
+    const firstName = lead.firstName?.trim() || lead.fullName.split(/\s+/)[0] || lead.fullName;
+    const text = `Hi ${firstName}, here are the details of ${found.name}: ${url}`;
     return {
       id: share.id,
       kind: found.kind,
       title: found.name,
-      url: shareLink.url(ctx.tenantId, share.id),
+      url,
       expiresAt: share.expiresAt,
+      whatsapp: number ? `https://wa.me/${number}?text=${encodeURIComponent(text)}` : null,
     };
   });
 }

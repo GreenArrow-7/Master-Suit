@@ -100,6 +100,26 @@ describe('company profile', () => {
     expect((row!.address as { formatted?: string }).formatted).toBe('Level 4, Somewhere');
   });
 
+  it('sets the brand colours the public pages draw with (M18-09)', async () => {
+    const res = await patch(
+      settingsPatch,
+      at('company').path,
+      { primaryColor: '#7a1f3d', accentColor: '#0E7C66' },
+      adminCookie,
+      at('company').params,
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ primaryColor: '#7A1F3D', accentColor: '#0E7C66' });
+    expect(await prisma.organizationSetting.findUnique({ where: { tenantId } })).toMatchObject({
+      primaryColor: '#7A1F3D',
+      accentColor: '#0E7C66',
+    });
+    for (const primaryColor of ['red', '#12345', 'url(x)']) {
+      const bad = await patch(settingsPatch, at('company').path, { primaryColor }, adminCookie, at('company').params);
+      expect(bad.status, primaryColor).toBe(422);
+    }
+  });
+
   it('rejects a malformed value rather than storing it', async () => {
     const res = await patch(
       settingsPatch,

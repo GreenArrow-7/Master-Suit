@@ -68,6 +68,15 @@ export function problemSummary(data: ProblemLike, fallback: string): string {
     .join(' ');
 }
 
+/**
+ * The key a 422 row's message is shown under: its full path when the form has
+ * a control by that name (Add lead's `custom.<key>` fields), otherwise its head
+ * field ("address.line1" lands on "address").
+ */
+export function errorKey(field: string, form?: HTMLFormElement | null): string {
+  return form?.elements.namedItem(field) ? field : field.split('.')[0]!;
+}
+
 export function useFormErrors() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -118,13 +127,12 @@ export function useFormErrors() {
     }
     const mapped: Record<string, string> = {};
     for (const row of rows) {
-      // Nested paths ("custom.budget") land on their head field.
-      const key = row.field!.split('.')[0]!;
+      const key = errorKey(row.field!, form);
       if (!(key in mapped)) mapped[key] = row.message!;
     }
     setFieldErrors(mapped);
     setFormError(null);
-    focusControl(form ?? null, rows[0]!.field!.split('.')[0]!);
+    focusControl(form ?? null, errorKey(rows[0]!.field!, form));
     return true;
   }, []);
 

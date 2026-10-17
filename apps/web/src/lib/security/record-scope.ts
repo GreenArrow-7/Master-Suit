@@ -1,5 +1,5 @@
 import { prisma, type TxClient } from '@/lib/db';
-import { AppError, NotFound } from '@/lib/errors';
+import { AppError, Forbidden, NotFound } from '@/lib/errors';
 import { atLeast, can, scopeFor, type Action, type Ctx } from '@/lib/security/rbac';
 import {
   assertRecordVisible,
@@ -348,4 +348,16 @@ export async function assertOwnerInScope(
   if (scope === 'NONE' || !ownerId || !(await resolveOwnerIds(ctx, scope, tx)).includes(ownerId)) {
     throw NotFound(what);
   }
+}
+
+/**
+ * The objection playbook and the buyer playbooks are workspace-wide wording the
+ * live coach reads out on every agent's calls, so writing them takes `calls` at
+ * ORGANIZATION: a rep with OWN scope reads and rehearses them, a workspace-wide
+ * manager writes them.
+ */
+export const mayEditPlaybook = (ctx: Ctx, action: Action = 'CREATE') => atLeast(ctx, 'calls', action, 'ORGANIZATION');
+
+export function assertPlaybookEditor(ctx: Ctx, action: Action) {
+  if (!mayEditPlaybook(ctx, action)) throw Forbidden('Only a workspace-wide manager can change the playbook.');
 }

@@ -28,21 +28,28 @@ const arg = (name: string) => {
 };
 const flag = (name: string) => process.argv.includes(`--${name}`);
 
-/** Tables left behind, reported with their row counts so nothing goes silently. */
-const NOT_MOVED = [
-  'Proposal',
-  'MediaAsset',
-  'PaymentPlan',
-  'CustomFieldDefinition',
-  'SavedView',
-  'AssignmentRule',
-  'Integration',
-  'WorkLocation',
-  'FaceEnrollment',
-  'AttendanceShift',
-  'PhoneCall',
-  'PortalFeed',
-];
+/** The tables the move reads. Every other table holding the company's rows is left behind, and counted. */
+const READ = new Set([
+  'User',
+  'LeadStatus',
+  'LeadSubStatus',
+  'LeadSource',
+  'Lead',
+  'LeadPhone',
+  'LeadProject',
+  'Activity',
+  'LeadEnquiry',
+  'FollowUp',
+  'DataRecord',
+  'CaptureLink',
+  'Project',
+  'Unit',
+  'Listing',
+  'Booking',
+  'Commission',
+]);
+/** A sign-in session or a request key means nothing in another app: not counted. */
+const EPHEMERAL = new Set(['Session', 'IdempotencyKey']);
 
 export async function readCompany(db: Client, slug: string): Promise<LeadEagleCompany> {
   // The standalone has its own row-level security; read it as its platform admin.
@@ -81,10 +88,16 @@ export async function readCompany(db: Client, slug: string): Promise<LeadEagleCo
     t,
   );
 
+  // From the standalone's own catalogue, so a table it gains later is counted too, never dropped unsaid.
+  const tables = await rows<{ name: string }>(
+    `select table_name as name from information_schema.columns
+      where table_schema = current_schema() and column_name = 'tenantId' order by 1`,
+  );
   const notMoved: Record<string, number> = {};
-  for (const table of NOT_MOVED) {
-    const [{ n }] = await rows<{ n: number }>(`select count(*)::int as n from "${table}" where "tenantId" = $1`, t);
-    if (n) notMoved[table] = n;
+  for (const { name } of tables) {
+    if (READ.has(name) || EPHEMERAL.has(name)) continue;
+    const [{ n }] = await rows<{ n: number }>(`select count(*)::int as n from "${name}" where "tenantId" = $1`, t);
+    if (n) notMoved[name] = n;
   }
   const [{ merged }] = await rows<{ merged: number }>(
     `select count(*)::int as merged from "Lead" where ${live} and "mergedIntoId" is not null`,

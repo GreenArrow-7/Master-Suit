@@ -134,6 +134,7 @@ const WORKSPACE_LEVEL = [
   'admin/users',
   'admin/users/new',
   'admin/work-locations',
+  'admin/holidays',
   'admin/roles',
   'admin/settings',
   'admin/audit',

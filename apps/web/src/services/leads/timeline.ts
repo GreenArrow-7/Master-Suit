@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma, withTx } from '@/lib/db';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { callScope } from '@/lib/security/record-scope';
@@ -129,6 +129,19 @@ async function inboxReach(ctx: Ctx): Promise<Prisma.CommunicationWhereInput> {
   };
 }
 
+/**
+ * Not a call's follow-up email: that is on the timeline as the activity its
+ * send logs beside it (calls/[id]/follow-up-email), once, and to everyone who
+ * reads the lead. A message with no `kind` is kept: on its own, the NOT would
+ * drop it too (a missing path compares as NULL).
+ */
+const NOT_FOLLOW_UP: Prisma.CommunicationWhereInput = {
+  OR: [
+    { metadata: { path: ['kind'], equals: Prisma.AnyNull } },
+    { NOT: { metadata: { path: ['kind'], equals: 'CALL_FOLLOW_UP' } } },
+  ],
+};
+
 export async function leadTimeline(
   ctx: Ctx,
   leadId: string,
@@ -223,7 +236,7 @@ export async function leadTimeline(
           tenantId,
           // A thread's earlier messages carry no lead: it was linked after them.
           OR: [{ leadId }, { conversation: { is: { leadId } } }],
-          AND: [inbox, after<Prisma.CommunicationWhereInput>(cursor, 'message', 'createdAt')],
+          AND: [inbox, after<Prisma.CommunicationWhereInput>(cursor, 'message', 'createdAt'), NOT_FOLLOW_UP],
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take,

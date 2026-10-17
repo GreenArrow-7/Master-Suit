@@ -31,13 +31,19 @@ export interface RecentPunch {
 }
 
 type Verdict = '—' | 'PASS' | 'FAIL' | '…';
+export interface DailyTarget {
+  target: number;
+  called: number;
+}
 
 interface Preflight {
   ok: boolean;
   code: string;
   message: string;
-  /** Leads assigned today and still untouched; only counted for check-out when the workspace gates on it. */
+  /** Leads still to work today (untouched, or short of the calling target); only counted for a gated check-out. */
   pendingWork: number;
+  /** Today's calling target and the leads called towards it, counted by the server; null with none. */
+  dailyTarget: DailyTarget | null;
   candidates: {
     name: string;
     distanceM: number;
@@ -79,6 +85,7 @@ export default function CheckInConsole({
   engineReady,
   openCheckIn,
   initialRecent,
+  initialTarget,
 }: {
   endpointBase: string;
   assigned: AssignedLocation[];
@@ -87,6 +94,7 @@ export default function CheckInConsole({
   engineReady: boolean;
   openCheckIn: boolean;
   initialRecent: RecentPunch[];
+  initialTarget: DailyTarget | null;
 }) {
   /**
    * Empty until mounted. A clock rendered on the server is a different second
@@ -102,6 +110,7 @@ export default function CheckInConsole({
   const [status, setStatus] = useState('Ready. Check in when you’re on site.');
   const [hint, setHint] = useState('Location not read yet');
   const [pendingWork, setPendingWork] = useState(0);
+  const [target, setTarget] = useState<DailyTarget | null>(initialTarget);
   const [askedEarly, setAskedEarly] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
@@ -209,9 +218,10 @@ export default function CheckInConsole({
           setOnSite('FAIL');
         }
         setPendingWork(pre.pendingWork);
+        setTarget(pre.dailyTarget);
         setHint(
           pre.pendingWork > 0
-            ? `${pre.pendingWork} assigned lead${pre.pendingWork === 1 ? '' : 's'} still untouched today — check-out will be refused until ${pre.pendingWork === 1 ? 'it is' : 'they are'} worked.`
+            ? `${pre.pendingWork} lead${pre.pendingWork === 1 ? '' : 's'} still to call or work today — check-out will be refused until then.`
             : pre.ok
               ? 'Location confirmed'
               : pre.message,
@@ -445,6 +455,20 @@ export default function CheckInConsole({
           {status}
         </p>
         <p className="lf-checkin__hint">{hint}</p>
+        {target && (
+          <div className="lf-checkin__target">
+            <p className="lf-checkin__status">
+              Today’s target: <strong>{target.called}</strong> of {target.target} leads called
+              {target.called >= target.target ? ' — met' : ` — ${target.target - target.called} to go`}
+            </p>
+            <progress
+              className="lf-checkin__target-bar"
+              max={target.target}
+              value={Math.min(target.called, target.target)}
+              aria-label="Today’s calling target"
+            />
+          </div>
+        )}
         {pendingWork > 0 && hasOpen && !askedEarly && (
           <button
             type="button"

@@ -1,7 +1,8 @@
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
-import { coachAction } from '@/lib/ai/liveCoach';
+import { coachAction, playbookHint } from '@/lib/ai/liveCoach';
+import { activeObjections } from '@/services/shared/callIntelligence';
 import { leadCallContext, contextPromptBlock } from '@/services/leads/callContext';
 import { assertCallInScope } from '@/lib/security/record-scope';
 
@@ -32,6 +33,16 @@ export const POST = route(
   { module: 'calls', productModule: LEAD_MODULES, action: 'EDIT', params, body },
   async ({ ctx, params, body }) => {
     const call = await assertCallInScope(ctx, params.id, 'EDIT');
+
+    // The workspace's own card for this objection comes first: its approved
+    // wording, cited, with or without a model (M21-01).
+    if (body.action === 'HANDLE_OBJECTION') {
+      const card = playbookHint(body.window, await activeObjections(ctx.tenantId));
+      if (card) {
+        const { objectionId: _cited, ...hint } = card;
+        return { hint };
+      }
+    }
 
     const context = call.leadId ? await leadCallContext(ctx.tenantId, call.leadId).catch(() => null) : null;
     const hint = await coachAction(

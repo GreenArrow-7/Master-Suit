@@ -50,6 +50,13 @@ export async function subtree(ctx: Ctx): Promise<string[]> {
 /** An empty subtree means "the whole workspace", not "nobody". */
 const ownerFilter = (userIds: string[]) => (userIds.length === 0 ? {} : { ownerId: { in: userIds } });
 
+/**
+ * A report's source and project (M16-12) on a record hung on a lead: through
+ * the lead, and nothing when there is no filter (a record with no lead stays in).
+ */
+export const throughLead = (lead: Prisma.LeadWhereInput) =>
+  Object.keys(lead).length === 0 ? {} : { lead: { is: lead } };
+
 export interface FunnelStage {
   stageId: string;
   name: string;
@@ -69,7 +76,12 @@ export interface FunnelStage {
  * reporting only the snapshot is how a team with a huge stalled pipeline looks
  * busy: nothing moved, but nothing left either.
  */
-export async function funnel(tenantId: string, userIds: string[], range: Range): Promise<FunnelStage[]> {
+export async function funnel(
+  tenantId: string,
+  userIds: string[],
+  range: Range,
+  lead: Prisma.LeadWhereInput = {},
+): Promise<FunnelStage[]> {
   // One transaction, one connection: three reads side by side asked the pool
   // for three (runPinned, lib/db.ts; #180).
   const [stages, open, entered] = await withTx(tenantId, (tx) =>
@@ -81,7 +93,7 @@ export async function funnel(tenantId: string, userIds: string[], range: Range):
       }),
       tx.lead.groupBy({
         by: ['stageId'],
-        where: { tenantId, deletedAt: null, ...ownerFilter(userIds) },
+        where: { tenantId, deletedAt: null, ...ownerFilter(userIds), ...lead },
         _count: { _all: true },
       }),
       tx.leadStageHistory.groupBy({
@@ -90,7 +102,7 @@ export async function funnel(tenantId: string, userIds: string[], range: Range):
           tenantId,
           createdAt: { gte: range.from, lte: range.to },
           // History has no owner of its own; it belongs to whoever owns the lead.
-          ...(userIds.length === 0 ? {} : { lead: { is: { ownerId: { in: userIds } } } }),
+          ...throughLead({ ...ownerFilter(userIds), ...lead }),
         },
         _count: { _all: true },
       }),
@@ -134,14 +146,19 @@ export interface Conversion {
 const rate = (numerator: number, denominator: number) =>
   denominator === 0 ? null : Math.round((numerator / denominator) * 1000) / 10;
 
-export async function conversion(tenantId: string, userIds: string[], range: Range): Promise<Conversion> {
+export async function conversion(
+  tenantId: string,
+  userIds: string[],
+  range: Range,
+  lead: Prisma.LeadWhereInput = {},
+): Promise<Conversion> {
   const created = { gte: range.from, lte: range.to };
 
   // One transaction, one connection: four reads side by side asked the pool
   // for four (runPinned, lib/db.ts; #180).
   const [leads, converted, opportunities, bookings] = await withTx(tenantId, (tx) =>
     Promise.all([
-      tx.lead.count({ where: { tenantId, deletedAt: null, createdAt: created, ...ownerFilter(userIds) } }),
+      tx.lead.count({ where: { tenantId, deletedAt: null, createdAt: created, ...ownerFilter(userIds), ...lead } }),
       tx.lead.count({
         where: {
           tenantId,
@@ -152,9 +169,12 @@ export async function conversion(tenantId: string, userIds: string[], range: Ran
           // qualified flatters every rate below.
           stage: { is: { category: 'CONVERSION' } },
           ...ownerFilter(userIds),
+          ...lead,
         },
       }),
-      tx.opportunity.count({ where: { tenantId, deletedAt: null, createdAt: created, ...ownerFilter(userIds) } }),
+      tx.opportunity.count({
+        where: { tenantId, deletedAt: null, createdAt: created, ...ownerFilter(userIds), ...throughLead(lead) },
+      }),
       tx.booking.count({
         where: {
           tenantId,
@@ -162,6 +182,7 @@ export async function conversion(tenantId: string, userIds: string[], range: Ran
           bookingDate: created,
           status: { not: 'CANCELLED' },
           ...ownerFilter(userIds),
+          ...throughLead(lead),
         },
       }),
     ]),
@@ -282,6 +303,7 @@ export async function rank(
   userIds: string[],
   range: Range,
   metric: BoardMetric,
+  lead: Prisma.LeadWhereInput = {},
 ): Promise<{ userId: string; value: number }[]> {
   const within = { gte: range.from, lte: range.to };
 
@@ -294,6 +316,7 @@ export async function rank(
         bookingDate: within,
         status: { not: 'CANCELLED' },
         ...ownerFilter(userIds),
+        ...throughLead(lead),
       },
       _count: { _all: true },
       _sum: { saleValue: true },
@@ -309,7 +332,7 @@ export async function rank(
   if (metric === 'leads') {
     const rows = await prisma.lead.groupBy({
       by: ['ownerId'],
-      where: { tenantId, deletedAt: null, createdAt: within, ...ownerFilter(userIds) },
+      where: { tenantId, deletedAt: null, createdAt: within, ...ownerFilter(userIds), ...lead },
       _count: { _all: true },
     });
     return rows
@@ -320,7 +343,7 @@ export async function rank(
 
   const rows = await prisma.activity.groupBy({
     by: ['ownerId'],
-    where: { tenantId, occurredAt: within, ...ownerFilter(userIds) },
+    where: { tenantId, occurredAt: within, ...ownerFilter(userIds), ...throughLead(lead) },
     _count: { _all: true },
   });
   return rows

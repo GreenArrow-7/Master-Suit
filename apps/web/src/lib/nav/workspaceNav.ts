@@ -180,6 +180,15 @@ function definitions(slug: string): SectionDef[] {
               unlessModule: H,
               keywords: 'exception early check-out temporary site approve',
             },
+            // Refused and flagged face check-ins, kept for review (OWN-03.3); People
+            // files it under Face Activity where People is licensed.
+            {
+              label: 'Face Activity',
+              href: `/${slug}/attendance/face-activity`,
+              permission: 'employee:VIEW',
+              unlessModule: H,
+              keywords: 'face recognition refused rejected flagged review punch biometric',
+            },
             { label: 'Sales Overview', href: s(''), module: S, keywords: 'sales desk overdue sla' },
             {
               label: 'Team Work',
@@ -411,6 +420,15 @@ function definitions(slug: string): SectionDef[] {
               permission: 'calls',
               module: R,
               keywords: 'dialer recordings',
+            },
+            {
+              // The objection cards the live coach cites (M21-01).
+              label: 'Playbook',
+              href: r('/playbook'),
+              aliases: [le('/playbook')],
+              permission: 'calls',
+              module: R,
+              keywords: 'objections scripts live call coach',
             },
             {
               label: 'Site Visits',
@@ -702,6 +720,15 @@ function definitions(slug: string): SectionDef[] {
               module: LE,
               unlessModule: [S, R],
               keywords: 'dialer recordings',
+            },
+            {
+              // The objection cards the live coach cites (M21-01).
+              label: 'Playbook',
+              href: le('/playbook'),
+              permission: 'calls',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'objections scripts live call coach',
             },
             {
               label: 'Site Visits',
@@ -1016,7 +1043,14 @@ function definitions(slug: string): SectionDef[] {
             { label: 'Leave Requests', href: p('/leave'), module: H, audience: 'oversight' },
             { label: 'Shifts', href: p('/shifts'), permission: 'employee', module: H, audience: 'oversight' },
             { label: 'Rosters', href: p('/roster'), permission: 'employee', module: H, audience: 'oversight' },
-            { label: 'Holidays', href: p('/holidays'), permission: 'employee', module: H, audience: 'oversight' },
+            {
+              label: 'Holidays',
+              href: p('/holidays'),
+              permission: 'employee',
+              module: H,
+              audience: 'oversight',
+              aliases: [a('/holidays')],
+            },
             {
               label: 'Exceptions',
               href: p('/requests'),
@@ -1039,6 +1073,7 @@ function definitions(slug: string): SectionDef[] {
             {
               label: 'Face Activity',
               href: p('/face-activity'),
+              aliases: [`/${slug}/attendance/face-activity`],
               permission: 'employee',
               module: H,
               audience: 'oversight',
@@ -1206,7 +1241,7 @@ function definitions(slug: string): SectionDef[] {
               href: a('/custom-fields'),
               permission: 'settings',
               module: [S, R, LE],
-              keywords: 'lead custom field text number date select column',
+              keywords: 'lead custom field text number date select column form layout order hide',
             },
             {
               label: 'Email Templates',
@@ -1246,6 +1281,14 @@ function definitions(slug: string): SectionDef[] {
               permission: 'employee:EDIT',
               unlessModule: H,
               keywords: 'check-in attendance geofence face enrolment check-out',
+            },
+            {
+              // Automatic assignment skips a holiday; People keeps its own entry.
+              label: 'Holidays',
+              href: a('/holidays'),
+              permission: 'employee:EDIT',
+              unlessModule: H,
+              keywords: 'public holiday assignment working hours off day',
             },
             {
               label: 'Integrations',

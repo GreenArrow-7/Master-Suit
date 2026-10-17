@@ -709,8 +709,8 @@ export default function LiveCallWorkspace({
                       {HINT_LABEL[hint.kind] ?? hint.kind.toLowerCase()}
                     </Badge>
                     <span style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-4)' }}>
-                      {hint.source === 'gemini' ? 'Gemini' : 'heuristic'} · {Math.floor(hint.at / 60)}:
-                      {String(hint.at % 60).padStart(2, '0')}
+                      {hint.source === 'gemini' ? 'Gemini' : hint.source === 'playbook' ? 'Your playbook' : 'heuristic'}{' '}
+                      · {Math.floor(hint.at / 60)}:{String(hint.at % 60).padStart(2, '0')}
                     </span>
                   </span>
                   <span style={{ fontSize: 'var(--lf-text-sm)' }}>{hint.text}</span>

@@ -19,6 +19,7 @@ import type { PermissionAction, VisibilityScope } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { resolveCtx } from '@/lib/auth/session';
 import { realtyDashboard } from '@/services/realty/dashboard';
+import { dayBounds, todayKey } from '@/services/targets/dailyBoard';
 import { ensureLeadSources } from '@/services/leads/leadSources';
 import LeadsPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/page';
 import LeadGrid from '@/app/(workspace)/[workspaceSlug]/sales/leads/LeadGrid';
@@ -44,6 +45,10 @@ const ctxFrom = (cookie: string) => resolveCtx(new Request('http://internal/', {
 const tag = () => randomBytes(3).toString('hex');
 const DAY = 86_400_000;
 const ago = (days: number) => new Date(Date.now() - days * DAY);
+// The board is read at the moment the fixtures were made, so a run that crosses
+// the workspace's midnight (CI at 20:00 UTC is midnight in Dubai) still sees the
+// same "today" the follow-ups were seeded into.
+let seededAt = Date.now();
 
 const AGENT: [string, PermissionAction][] = [
   ['leads', 'VIEW'],
@@ -204,12 +209,17 @@ describe('the board under its filters', () => {
     await booking(agentB.id, l4.id, 'DRAFT', ago(1), 300, true);
 
     const now = Date.now();
+    seededAt = now;
     const followUp = (ownerId: string, leadId: string, dueAt: Date) =>
       prisma.followUpTask.create({ data: { tenantId, ownerId, leadId, title: 'Ring', dueAt, kind: 'CALL' } });
-    // Due in a few minutes: today on any clock but a minute before midnight.
-    await followUp(agentA.id, l1.id, new Date(now + 60_000));
+    // Due later today on the workspace's clock: a minute from now, or the day's
+    // last millisecond when the run starts in its final minute.
+    const { timezone } = await prisma.tenant.findFirstOrThrow({ where: { id: tenantId }, select: { timezone: true } });
+    const endOfToday = dayBounds(todayKey(timezone, new Date(now)), timezone).to.getTime();
+    const laterToday = new Date(Math.min(now + 60_000, endOfToday));
+    await followUp(agentA.id, l1.id, laterToday);
     await followUp(agentA.id, l2.id, ago(3));
-    await followUp(agentB.id, l3.id, new Date(now + 60_000));
+    await followUp(agentB.id, l3.id, laterToday);
     await followUp(agentB.id, l4.id, ago(2));
 
     const call = (callerId: string, leadId: string, createdAt: Date, data: Record<string, unknown>) =>
@@ -284,7 +294,7 @@ describe('the board under its filters', () => {
   });
 
   const board = async (cookie: string, filter: Record<string, string> = {}) =>
-    realtyDashboard(await ctxFrom(cookie), new Date(), filter);
+    realtyDashboard(await ctxFrom(cookie), new Date(seededAt), filter);
 
   it('a period and a team narrow every figure (M3-16)', async () => {
     const all = await board(manager.cookie);

@@ -144,7 +144,11 @@ export interface CreateLeadInput {
  * row would stay locked against every other new lead until the rollback, and
  * nothing runs after commit, since nothing commits.
  */
-export async function createLead(ctx: Ctx, input: CreateLeadInput, opts: { dryRun?: TxClient } = {}) {
+export async function createLead(
+  ctx: Ctx,
+  input: CreateLeadInput,
+  opts: { dryRun?: TxClient; requireCustom?: boolean } = {},
+) {
   const db = opts.dryRun ?? prisma;
   const phoneNormalized = input.phone ? normalizePhone(input.phone) : null;
 
@@ -172,7 +176,7 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput, opts: { dryRu
   const sourceId = (input.sourceId as string | undefined) ?? null;
   if (sourceId) await assertLeadSource(db, ctx.tenantId, sourceId);
   // The workspace's own fields checked by type (M4-13): a wrong one is a 422, not a failed insert.
-  const custom = await customForCreate(db, ctx.tenantId, input.custom ?? {});
+  const custom = await customForCreate(db, ctx.tenantId, input.custom ?? {}, { required: opts.requireCustom });
 
   const inTx = <T>(fn: (tx: TxClient) => Promise<T>) => (opts.dryRun ? fn(opts.dryRun) : withTx(ctx.tenantId, fn));
   const lead = await inTx(async (tx) => {
@@ -271,12 +275,13 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput, opts: { dryRu
    * queue writes that may be skipped, this is a database write that must see the
    * committed lead. `notifyCrm` excludes the actor, so the common case — a rep
    * creating a lead for themselves — sends nothing, and only a lead created
-   * *for* somebody else reaches a bell.
+   * *for* somebody else reaches a bell. That is work handed to them, so it is
+   * `lead.assigned` and rings their phone, as any assignment does (audit M17-05).
    */
   await notifyCrm(ctx, {
-    event: 'lead.created',
+    event: 'lead.assigned',
     ownerId,
-    title: `New lead: ${lead.fullName}`,
+    title: `Lead assigned: ${lead.fullName}`,
     body: lead.reference,
     objectType: 'lead',
     recordId: lead.id,

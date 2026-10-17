@@ -112,9 +112,10 @@ const RESOURCE_PERMISSION: Record<HrResource, ExtraPermission | typeof FLOOR> = 
 
 /**
  * Check-in works in every workspace, so what it needs set up — locations and
- * who is assigned to them — does too. Everything else here is HRMS.
+ * who is assigned to them — does too, and so does the holiday register, which
+ * automatic assignment reads (M18-08). Everything else here is HRMS.
  */
-const ATTENDANCE_SETUP = new Set<string>(['work-locations', 'location-assignments']);
+const ATTENDANCE_SETUP = new Set<string>(['work-locations', 'location-assignments', 'holidays']);
 
 export const GET = route(
   { module: 'employee', productModule: PRODUCT_MODULE_KEYS, action: 'VIEW', params: paramsSchema, query: querySchema },
@@ -549,6 +550,7 @@ export const PATCH = route(
         const { changeReason, ...data } = input;
         const existing = await prisma.hrWorkLocation.findFirst({ where: { tenantId: ctx.tenantId, id } });
         if (!existing) throw NotFound('Record');
+        if (data.status === 'RETIRED' && existing.status !== 'RETIRED') await assertNobodyAssigned(ctx.tenantId, id);
 
         // Attendance is judged against this fence, so moving or resizing a live
         // one is a decision someone must own in writing. Punches snapshot the
@@ -622,6 +624,17 @@ export const PATCH = route(
   },
 );
 
+/** A location people still check in at is not retired from under them (OWN-02.2), by Archive or by status. */
+async function assertNobodyAssigned(tenantId: string, locationId: string) {
+  const assigned = await prisma.hrEmployeeLocationAssignment.count({
+    where: { tenantId, locationId, status: 'ACTIVE' },
+  });
+  if (assigned > 0)
+    throw Conflict(
+      `${assigned} ${assigned === 1 ? 'person is' : 'people are'} still assigned to this location. Revoke their assignments first.`,
+    );
+}
+
 export const DELETE = route(
   {
     module: 'employee',
@@ -670,6 +683,7 @@ export const DELETE = route(
         return prisma.hrLeaveType.update({ where: { tenantId: ctx.tenantId, id }, data: { isActive: false } });
       }
       case 'work-locations': {
+        await assertNobodyAssigned(ctx.tenantId, id);
         return prisma.hrWorkLocation.update({
           where: { tenantId: ctx.tenantId, id },
           data: { status: 'RETIRED', isActive: false },

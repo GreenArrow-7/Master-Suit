@@ -24,7 +24,7 @@
  *   ring a phone — see `PUSHED` below — and the rest wait in the bell. Adding a
  *   channel means adding it to an event, never to all of them.
  */
-import { prisma } from '@/lib/db';
+import { prisma, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { enqueue } from '@/lib/queue';
 import type { Ctx } from '@/lib/security/rbac';
@@ -183,6 +183,90 @@ export async function notifyCrm(
     logger.error({ err, event: notification.event }, 'crm notification failed');
     return { recipients: 0 };
   }
+}
+
+/** A lead that changed hands: from whom, to whom. */
+export interface LeadMove {
+  id: string;
+  fullName: string;
+  from: string | null;
+  to: string | null;
+}
+
+/**
+ * The bell for leads moved in bulk, inside the transaction that moves them
+ * (audit M17-05, M17-07): the new owner hears of each lead, the previous owner
+ * of each lead taken from them. Written with the move, so a rolled-back move
+ * tells nobody. The actor and inactive logins are left out, as in notifyCrm.
+ *
+ * Bell only: a phone ringing once per lead of a 200-lead move is the noise the
+ * PUSHED rule exists to prevent. Bulk assign, Allocate and routing to a person
+ * ring whoever received leads once, after the commit (ringNewOwner).
+ */
+export async function notifyLeadMoves(
+  db: TxClient,
+  ctx: Pick<Ctx, 'tenantId'> & { actor: Pick<Ctx['actor'], 'id'> },
+  moves: LeadMove[],
+) {
+  const moved = moves.filter((move) => move.from !== move.to);
+  const people = [...new Set(moved.flatMap((move) => [move.from, move.to]))].filter(
+    (id): id is string => !!id && id !== ctx.actor.id,
+  );
+  if (!people.length) return;
+  const active = await db.user.findMany({
+    where: { tenantId: ctx.tenantId, id: { in: people }, status: 'ACTIVE', deletedAt: null },
+    select: { id: true },
+  });
+  const told = new Set(active.map((user) => user.id));
+  const row = (userId: string | null, title: string, priority: 'HIGH' | 'MEDIUM', leadId: string) =>
+    userId && told.has(userId)
+      ? [
+          {
+            tenantId: ctx.tenantId,
+            userId,
+            kind: 'lead.assigned',
+            title,
+            objectType: 'lead',
+            recordId: leadId,
+            priority,
+            channels: ['in_app'],
+          },
+        ]
+      : [];
+  await db.notification.createMany({
+    data: moved.flatMap((move) => [
+      ...row(move.to, `Lead assigned: ${move.fullName}`, 'HIGH', move.id),
+      ...row(move.from, `Lead reassigned: ${move.fullName}`, 'MEDIUM', move.id),
+    ]),
+  });
+}
+
+/**
+ * One push to whoever just received leads in bulk, after the commit: the lead
+ * itself when there is one, their own leads when there are several. The
+ * worker applies their phone and email choices.
+ */
+export async function ringNewOwner(
+  ctx: Pick<Ctx, 'tenantId'> & { actor: Pick<Ctx['actor'], 'id'> },
+  ownerId: string | null,
+  leadIds: string[],
+) {
+  if (!ownerId || ownerId === ctx.actor.id || !leadIds.length) return;
+  const one = leadIds.length === 1;
+  await enqueue(
+    'notifications',
+    'record-push',
+    {
+      tenantId: ctx.tenantId,
+      userIds: [ownerId],
+      title: one ? 'A lead was assigned to you' : `${leadIds.length} leads were assigned to you`,
+      body: '',
+      objectType: one ? 'lead' : 'leads_mine',
+      recordId: one ? leadIds[0] : null,
+    },
+    // The same count to the same person tomorrow is a new push, not a replay.
+    { fresh: true },
+  );
 }
 
 /**
