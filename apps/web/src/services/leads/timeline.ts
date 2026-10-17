@@ -5,6 +5,7 @@ import { callScope } from '@/lib/security/record-scope';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { applyFieldSecurity, loadFieldRules } from '@/lib/security/fieldSecurity';
 import { workspaceTimezone } from '@/services/hr/attendance';
+import { leadCallTotals } from '@/services/leadership/reports';
 import { names } from '@/services/leadership/rollups';
 import { LEAD_SENSITIVE_FIELDS } from './createLead';
 import { leadFields } from './customFields';
@@ -40,6 +41,8 @@ export interface TimelinePage {
   entries: TimelineEntry[];
   /** Where the next, older page starts; null at the end. */
   next: string | null;
+  /** The lead's calls as the Call Report counts them, all time (M16-09): on the first page only. */
+  calls?: { calls: number; connected: number; minutes: number };
 }
 
 /** The lead fields an edit shows, by the audit row's `fieldKey`: the rest are bookkeeping or have their own entry. */
@@ -151,7 +154,7 @@ export async function leadTimeline(
   // pinned queries (lib/db.ts runPinned) they asked the pool for six at once,
   // on top of the lead page's own reads, and the page outran the pool: P2028.
   // Only `tx` inside: the global client there runs without the tenant.
-  const [activities, stages, edits, assignments, calls, messages] = await withTx(tenantId, (tx) =>
+  const [activities, stages, edits, assignments, calls, messages, callTotals] = await withTx(tenantId, (tx) =>
     Promise.all([
       tx.activity.findMany({
         where: {
@@ -239,6 +242,7 @@ export async function leadTimeline(
           createdById: true,
         },
       }),
+      cursor ? undefined : leadCallTotals(tx, tenantId, leadId, callWhere as Prisma.CallWhereInput),
     ]),
   );
 
@@ -392,5 +396,6 @@ export async function leadTimeline(
   return {
     entries: shownRows.map((row) => row.entry),
     next: rows.length > limit && last ? `${last.entry.at}~${last.entry.kind}~${last.id}` : null,
+    ...(callTotals && { calls: callTotals }),
   };
 }

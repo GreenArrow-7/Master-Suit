@@ -3,21 +3,24 @@
  *
  * A schedule names a report (and its grouping), a cadence and members of the
  * workspace to send it to. The maintenance sweep runs it as its creator, at
- * their scope today and only while they hold reports:EXPORT, over the period
- * the cadence covers, and mails the CSV the Export button would have given
- * them. Each send is audited as EXPORT_REQUESTED, as a download is.
+ * their scope today and only while they hold reports:VIEW and EXPORT and the
+ * workspace is live with a lead module, over the period the cadence covers,
+ * and mails the CSV the Export button would have given them, to the members
+ * who could see that report on the screen. Each send is audited as
+ * EXPORT_REQUESTED, as a download is.
  */
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { ReportCadence } from '@prisma/client';
 import { ctxForUser } from '@/lib/auth/session';
-import { prisma, withPlatformTx } from '@/lib/db';
+import { prisma, withPlatformTx, withTx } from '@/lib/db';
 import { Invalid, NotFound } from '@/lib/errors';
 import { shiftDay } from '@/lib/leads/followUpDue';
 import { logger } from '@/lib/logger';
 import { sendMail } from '@/lib/mailer';
 import { audit } from '@/lib/security/audit';
-import { can, type Ctx } from '@/lib/security/rbac';
+import { hasAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitlements';
+import { assertPermission, can, type Ctx } from '@/lib/security/rbac';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { dayBounds, todayKey } from '@/services/targets/dailyBoard';
 import {
@@ -31,6 +34,7 @@ import {
   type Pivot,
   type ReportKey,
 } from './reports';
+import { subtree } from './rollups';
 
 export const scheduleBody = z
   .object({
@@ -73,18 +77,34 @@ export function periodOf(cadence: ReportCadence, zone: string, at: Date) {
   return { from: dayBounds(first, zone).from, to: dayBounds(last, zone).to };
 }
 
-/** The addresses among `emails` (lower-cased) that belong to active members of the workspace. */
-async function memberEmails(tenantId: string, emails: string[]) {
+/**
+ * The addresses among `emails` (lower-cased) that may have `creator`'s report:
+ * active members holding reports:VIEW over at least the creator's people. A
+ * report reaches nobody it would not be shown to on the screen.
+ */
+async function recipientsOf(creator: Ctx, emails: string[]) {
   const users = await prisma.user.findMany({
     where: {
-      tenantId,
+      tenantId: creator.tenantId,
       status: 'ACTIVE',
       OR: emails.map((email) => ({ email: { equals: email, mode: 'insensitive' } })),
     },
-    select: { email: true },
+    select: { id: true, email: true },
   });
-  const members = new Set(users.map((u) => u.email.toLowerCase()));
-  return emails.filter((email) => members.has(email));
+  const shows = await subtree(creator); // [] is the whole workspace
+  const allowed = new Set<string>();
+  for (const user of users) {
+    const ctx =
+      user.id === creator.actor.id
+        ? creator
+        : await ctxForUser(user.id, creator.tenantId, creator.requestId).catch(() => null);
+    if (!ctx || !can(ctx, 'reports', 'VIEW')) continue;
+    const sees = await subtree(ctx);
+    if (sees.length === 0 || (shows.length > 0 && shows.every((id) => sees.includes(id)))) {
+      allowed.add(user.email.toLowerCase());
+    }
+  }
+  return emails.filter((email) => allowed.has(email));
 }
 
 const SCHEDULE = {
@@ -109,16 +129,18 @@ export async function listSchedules(ctx: Ctx) {
 }
 
 export async function createSchedule(ctx: Ctx, body: z.infer<typeof scheduleBody>) {
+  // The route asks for EXPORT; the report itself is read at the VIEW scope, as a download is.
+  assertPermission(ctx, 'reports', 'VIEW');
   const recipients = [...new Set(body.recipients)];
-  const members = await memberEmails(ctx.tenantId, recipients);
-  const outside = recipients.filter((email) => !members.includes(email));
-  // A report is the workspace's numbers: it goes to its people, never to an address typed in.
+  const allowed = await recipientsOf(ctx, recipients);
+  const outside = recipients.filter((email) => !allowed.includes(email));
+  // The workspace's numbers go to those of its people who may see them, never to an address typed in.
   if (outside.length > 0) {
     throw Invalid([
       {
         field: 'recipients',
         code: 'not_a_member',
-        message: `Only active members of this workspace can receive reports: ${outside.join(', ')}.`,
+        message: `Only active members of this workspace who may see everything this report shows can receive it: ${outside.join(', ')}.`,
       },
     ]);
   }
@@ -180,13 +202,22 @@ async function sendSchedule(tenantId: string, id: string, now: Date) {
   });
   if (count === 0) return false;
 
-  // As its creator today: a schedule outlives neither their account nor their right to export.
-  const ctx = await ctxForUser(schedule.createdById, tenantId, randomUUID()).catch(() => null);
-  if (!ctx || !can(ctx, 'reports', 'EXPORT')) {
-    logger.info({ tenantId, scheduleId: id }, 'scheduled report not sent: its creator may not export');
+  // Checked after the claim, so a workspace that cannot send holds no place in every sweep's batch.
+  // Suspended, deleted or without a lead module: nobody there can sign in to stop it, so it stops itself.
+  const live = await withTx(tenantId, (tx) =>
+    tx.tenant.count({ where: { id: tenantId, status: 'ACTIVE', deletedAt: null } }),
+  );
+  if (!live || !(await hasAnyModuleEntitlement(tenantId, LEAD_MODULES))) {
+    logger.info({ tenantId, scheduleId: id }, 'scheduled report not sent: the workspace is not live for reports');
     return false;
   }
-  const to = await memberEmails(tenantId, schedule.recipients);
+  // As its creator today: a schedule outlives neither their account nor their right to view and export.
+  const ctx = await ctxForUser(schedule.createdById, tenantId, randomUUID()).catch(() => null);
+  if (!ctx || !can(ctx, 'reports', 'VIEW') || !can(ctx, 'reports', 'EXPORT')) {
+    logger.info({ tenantId, scheduleId: id }, 'scheduled report not sent: its creator may not view and export');
+    return false;
+  }
+  const to = await recipientsOf(ctx, schedule.recipients);
   if (to.length === 0) return false;
 
   const key = schedule.reportKey as ReportKey;
@@ -202,25 +233,34 @@ async function sendSchedule(tenantId: string, id: string, now: Date) {
     `${report.title}, ${period}: ${report.rows.length} rows, attached as a CSV.\n\n` +
     `${ctx.actor.fullName} set this up to arrive ${schedule.cadence.toLowerCase()}; ` +
     'they can stop it under Reports → Scheduled emails.';
-  for (const address of to) await sendMail(address, `${report.title}: ${period}`, body, { attachments });
-
-  await audit(
-    { tenantId, source: 'report-schedule' },
-    {
-      event: 'EXPORT_REQUESTED',
-      objectType: 'report',
-      recordId: key,
-      metadata: {
-        report: key,
-        ...(by && { by }),
-        from: range.from.toISOString(),
-        to: range.to.toISOString(),
-        rows: report.rows.length,
-        scheduleId: id,
-        recipients: to.length,
-        runAs: schedule.createdById,
-      },
-    },
-  );
+  let delivered = 0;
+  try {
+    for (const address of to) {
+      await sendMail(address, `${report.title}: ${period}`, body, { attachments });
+      delivered += 1;
+    }
+  } finally {
+    // Every copy that left is audited, even when a later address is refused.
+    if (delivered > 0) {
+      await audit(
+        { tenantId, source: 'report-schedule' },
+        {
+          event: 'EXPORT_REQUESTED',
+          objectType: 'report',
+          recordId: key,
+          metadata: {
+            report: key,
+            ...(by && { by }),
+            from: range.from.toISOString(),
+            to: range.to.toISOString(),
+            rows: report.rows.length,
+            scheduleId: id,
+            recipients: delivered,
+            runAs: schedule.createdById,
+          },
+        },
+      );
+    }
+  }
   return true;
 }

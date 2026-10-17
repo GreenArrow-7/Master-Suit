@@ -14,6 +14,7 @@ vi.mock('next/headers', () => ({
 }));
 import { prisma } from '@/lib/db';
 import { runReport, toCsv, REPORT_KEYS } from '@/services/leadership/reports';
+import { leadTimeline } from '@/services/leads/timeline';
 import { GET as reportRoute } from '@/app/api/v1/reports/route';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import { createWorkspaceUser, grantPermissions, seedTwoTenants, type Fixture } from '../helpers/fixtures';
@@ -68,6 +69,25 @@ beforeAll(async () => {
   const booked = await prisma.project.create({ data: { tenantId, name: bookedProjectName, code: `CV-${suffix}` } });
   const unit = await prisma.unitInventory.create({
     data: { tenantId, projectId: booked.id, unitNumber: `U-${suffix}`, status: 'BOOKED' },
+  });
+  // A unit booked and then sold on the unit board: still taken, as the inventory rollup counts it.
+  await prisma.unitInventory.create({
+    data: { tenantId, projectId: booked.id, unitNumber: `S-${suffix}`, status: 'SOLD' },
+  });
+  // A lead that asked about the project in the period and was deleted since: not one of its leads.
+  const stage = await prisma.lead.findFirstOrThrow({ where: { tenantId, id: leads[0]! }, select: { stageId: true } });
+  const deleted = await prisma.lead.create({
+    data: {
+      tenantId,
+      reference: `DEL-${suffix}`,
+      fullName: 'Deleted lead',
+      stageId: stage.stageId,
+      ownerId: agent,
+      deletedAt: sep(1),
+    },
+  });
+  await prisma.leadProject.create({
+    data: { tenantId, leadId: deleted.id, projectId: booked.id, createdAt: aug(15) },
   });
   await prisma.siteVisit.create({
     data: {
@@ -186,16 +206,56 @@ describe('project report (M16-03)', () => {
     const row = report.rows.find((r) => r.project === bookedProjectName);
     expect(row).toEqual({
       project: bookedProjectName,
-      units: 1,
+      units: 2,
       available: 0,
-      booked: 1,
+      booked: 2,
       leads: 1,
       visited: 1,
       bookings: 1,
       value: 'AED 1,500,000',
     });
     expect(report.rows.find((r) => r.project === projectName)).toMatchObject({ units: 0, leads: 4, visited: 2 });
-    expect(toCsv(report)).toContain(`"${bookedProjectName}","1","0","1","1","1","1","AED 1,500,000"`);
+    expect(toCsv(report)).toContain(`"${bookedProjectName}","2","0","2","1","1","1","AED 1,500,000"`);
+  });
+});
+
+describe('who a report covers', () => {
+  it('a role without reports:VIEW is refused, never handed the whole workspace', async () => {
+    const exportOnly = buildCtx(buildActor({ id: agent, tenantId, grants: [['reports', 'EXPORT']] }));
+    await expect(runReport(exportOnly, 'call-report', RANGE)).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe('a lead’s calls on its timeline (M16-09)', () => {
+  it('heads the first page with the lead’s calls, connected calls and talk time, within the viewer’s calls reach', async () => {
+    // Another agent's connected call on the same lead, before the report range.
+    await prisma.call.create({
+      data: {
+        tenantId,
+        callerId: other.id,
+        leadId: leads[0]!,
+        status: 'COMPLETED',
+        outcome: 'CONNECTED',
+        durationSecs: 30,
+        createdAt: new Date('2026-07-10T10:00:00+04:00'),
+      },
+    });
+    // No calls:VIEW: their own calls only, as the timeline lists them.
+    expect((await leadTimeline(ctx(), leads[0]!)).calls).toEqual({ calls: 3, connected: 2, minutes: 3 });
+    const everyCall = buildCtx(
+      buildActor({
+        id: agent,
+        tenantId,
+        grants: [
+          ['reports', 'VIEW'],
+          ['calls', 'VIEW'],
+        ],
+      }),
+    );
+    const first = await leadTimeline(everyCall, leads[0]!, { limit: 1 });
+    expect(first.calls).toEqual({ calls: 4, connected: 3, minutes: 3.5 });
+    // Older pages carry the entries only.
+    expect((await leadTimeline(everyCall, leads[0]!, { cursor: first.next })).calls).toBeUndefined();
   });
 });
 

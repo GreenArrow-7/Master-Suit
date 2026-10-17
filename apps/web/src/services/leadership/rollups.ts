@@ -13,6 +13,7 @@
  */
 import { Prisma } from '@prisma/client';
 import { prisma, prismaRead, withTx } from '@/lib/db';
+import { Forbidden } from '@/lib/errors';
 import { resolveOwnerIds } from '@/lib/security/visibility';
 import { scopeFor, type Ctx } from '@/lib/security/rbac';
 import { classify } from '@/services/targets/dailyBoard';
@@ -42,7 +43,8 @@ export interface Range {
  */
 export async function subtree(ctx: Ctx): Promise<string[]> {
   const scope = scopeFor(ctx, 'reports', 'VIEW');
-  if (scope === 'NONE') return [];
+  // [] is the whole workspace: no grant must never read as that (a role with EXPORT alone, a schedule's creator).
+  if (scope === 'NONE') throw Forbidden();
   if (scope === 'ORGANIZATION') return [];
   return resolveOwnerIds(ctx, scope);
 }

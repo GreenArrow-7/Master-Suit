@@ -10,8 +10,8 @@
  * bespoke renderers is ten places to get alignment, empty states and CSV
  * escaping subtly different; one shape means one table component and one export.
  */
-import { Prisma } from '@prisma/client';
-import { prismaRead } from '@/lib/db';
+import { Prisma, type CallOutcome } from '@prisma/client';
+import { prismaRead, type TxClient } from '@/lib/db';
 import { csvHeader, csvRow, type CsvColumn } from '@/lib/csv';
 import { conversion, funnel, names, rank, subtree, type Range } from './rollups';
 import type { Ctx } from '@/lib/security/rbac';
@@ -102,6 +102,44 @@ const money = (amount: Prisma.Decimal | null, currency = 'AED') =>
 
 /** Empty user list means the whole workspace, matching the rollups module. */
 const owned = (userIds: string[]) => (userIds.length === 0 ? {} : { ownerId: { in: userIds } });
+
+/** Calls counted as the Call Report counts them (M16-09): a group of provider calls, or of calls logged by hand. */
+const CALL_SUMS = { _count: { _all: true }, _sum: { durationSecs: true } } as const;
+type CallSums = { _count: { _all: number }; _sum: { durationSecs: number | null } };
+const placedCalls = (g: CallSums & { status: string; outcome: CallOutcome | null }) => ({
+  n: g._count._all,
+  connected: g.status === 'COMPLETED' && !!g.outcome && CONNECTED_CALL_OUTCOMES.includes(g.outcome),
+  secs: g._sum.durationSecs,
+});
+const loggedCalls = (g: CallSums & { outcome: string | null }) => ({
+  n: g._count._all,
+  connected: !!g.outcome && CONNECTED_LOG_OUTCOMES.includes(g.outcome),
+  secs: g._sum.durationSecs,
+});
+
+/**
+ * One lead's calls, connected calls and talk time, all time: the Call Report's
+ * per-lead figures, heading the lead's timeline (M16-09). `reach` is the
+ * viewer's calls scope, as the timeline lists calls; logged calls are the
+ * lead's activities, which it lists to anyone who opens the lead.
+ */
+export async function leadCallTotals(db: TxClient, tenantId: string, leadId: string, reach: Prisma.CallWhereInput) {
+  const [calls, logs] = await Promise.all([
+    db.call.groupBy({
+      by: ['status', 'outcome'],
+      where: { tenantId, leadId, ...callTab('placed').where, AND: [reach] },
+      ...CALL_SUMS,
+    }),
+    db.activity.groupBy({ by: ['outcome'], where: { tenantId, leadId, ...LOGGED_CALL }, ...CALL_SUMS }),
+  ]);
+  const groups = [...calls.map(placedCalls), ...logs.map(loggedCalls)];
+  const sum = (n: (g: (typeof groups)[number]) => number) => groups.reduce((total, g) => total + n(g), 0);
+  return {
+    calls: sum((g) => g.n),
+    connected: sum((g) => (g.connected ? g.n : 0)),
+    minutes: Math.round(sum((g) => g.secs ?? 0) / 6) / 10,
+  };
+}
 
 /**
  * Where a lead came from, finer than its RecordSource: Marketplace is three
@@ -608,16 +646,19 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, { by }: 
         prismaRead.unitInventory.groupBy({ by: ['projectId', 'status'], where: { tenantId }, _count: { _all: true } }),
       ]);
       const [interests, visits, bookings] = await Promise.all([
+        // Neither model is soft-deleted, so the guard adds nothing below them: a deleted lead is left out here.
         prismaRead.leadProject.findMany({
-          where: {
-            tenantId,
-            createdAt: within,
-            ...(userIds.length === 0 ? {} : { lead: { is: { ownerId: { in: userIds } } } }),
-          },
+          where: { tenantId, createdAt: within, lead: { is: { deletedAt: null, ...owned(userIds) } } },
           select: { projectId: true, leadId: true },
         }),
         prismaRead.siteVisit.findMany({
-          where: { tenantId, scheduledAt: within, projectId: { not: null }, leadId: { not: null }, ...owned(userIds) },
+          where: {
+            tenantId,
+            scheduledAt: within,
+            projectId: { not: null },
+            lead: { is: { deletedAt: null } },
+            ...owned(userIds),
+          },
           select: { projectId: true, leadId: true, status: true },
         }),
         prismaRead.booking.groupBy({
@@ -646,7 +687,7 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, { by }: 
           { key: 'project', label: 'Project' },
           { key: 'units', label: 'Units', align: 'right' },
           { key: 'available', label: 'Available', align: 'right' },
-          { key: 'booked', label: 'Booked', align: 'right' },
+          { key: 'booked', label: 'Booked or sold', align: 'right' },
           { key: 'leads', label: 'Leads', align: 'right' },
           { key: 'visited', label: 'Visited', align: 'right' },
           { key: 'bookings', label: 'Bookings', align: 'right' },
@@ -657,7 +698,8 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, { by }: 
             project: p.name,
             units: unitsOf(p.id),
             available: unitsOf(p.id, 'AVAILABLE'),
-            booked: unitsOf(p.id, 'BOOKED'),
+            // A booked unit moves on to SOLD; both are taken, as the inventory rollup counts them.
+            booked: unitsOf(p.id, 'BOOKED') + unitsOf(p.id, 'SOLD'),
             leads: leadsOf(p.id, false),
             visited: leadsOf(p.id, true),
             bookings: bookedBy.get(p.id)?._count._all ?? 0,
@@ -739,36 +781,25 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, { by }: 
       const logged = (span: Within) => ({ tenantId, ...LOGGED_CALL, occurredAt: span, ...owned(userIds) });
       type Group = { key: string | null; n: number; connected: boolean; secs: number | null };
       const read = async (span: Within, month?: string): Promise<Group[]> => {
-        const sums = { _count: { _all: true }, _sum: { durationSecs: true } } as const;
         const [calls, logs] = await Promise.all([
           pivot === 'lead'
             ? prismaRead.call
-                .groupBy({ by: ['leadId', 'status', 'outcome'], where: placed(span), ...sums })
+                .groupBy({ by: ['leadId', 'status', 'outcome'], where: placed(span), ...CALL_SUMS })
                 .then((r) => r.map((g) => ({ ...g, key: g.leadId })))
             : prismaRead.call
-                .groupBy({ by: ['callerId', 'status', 'outcome'], where: placed(span), ...sums })
+                .groupBy({ by: ['callerId', 'status', 'outcome'], where: placed(span), ...CALL_SUMS })
                 .then((r) => r.map((g) => ({ ...g, key: month ?? (g.callerId as string | null) }))),
           pivot === 'lead'
             ? prismaRead.activity
-                .groupBy({ by: ['leadId', 'outcome'], where: logged(span), ...sums })
+                .groupBy({ by: ['leadId', 'outcome'], where: logged(span), ...CALL_SUMS })
                 .then((r) => r.map((g) => ({ ...g, key: g.leadId })))
             : prismaRead.activity
-                .groupBy({ by: ['ownerId', 'outcome'], where: logged(span), ...sums })
+                .groupBy({ by: ['ownerId', 'outcome'], where: logged(span), ...CALL_SUMS })
                 .then((r) => r.map((g) => ({ ...g, key: month ?? g.ownerId }))),
         ]);
         return [
-          ...calls.map((g) => ({
-            key: g.key,
-            n: g._count._all,
-            connected: g.status === 'COMPLETED' && !!g.outcome && CONNECTED_CALL_OUTCOMES.includes(g.outcome),
-            secs: g._sum.durationSecs,
-          })),
-          ...logs.map((g) => ({
-            key: g.key,
-            n: g._count._all,
-            connected: !!g.outcome && CONNECTED_LOG_OUTCOMES.includes(g.outcome),
-            secs: g._sum.durationSecs,
-          })),
+          ...calls.map((g) => ({ key: g.key, ...placedCalls(g) })),
+          ...logs.map((g) => ({ key: g.key, ...loggedCalls(g) })),
         ];
       };
       const groups = pivot === 'month' ? await perMonth(ctx, range, read) : await read(within);

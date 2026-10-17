@@ -3,8 +3,9 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { createSchedule, listSchedules, scheduleBody } from '@/services/leadership/reportSchedules';
 
 /**
- * Scheduled report emails (M16-16): the caller's own. EXPORT, not VIEW: every
- * send is the CSV the Export button gives, leaving the building on a timer.
+ * Scheduled report emails (M16-16): the caller's own. EXPORT: every send is the
+ * CSV the Export button gives, leaving the building on a timer. Making one also
+ * needs VIEW (createSchedule), as the download does: the report is read at it.
  */
 export const GET = route({ module: 'reports', productModule: LEAD_MODULES, action: 'EXPORT' }, async ({ ctx }) => ({
   data: await listSchedules(ctx),

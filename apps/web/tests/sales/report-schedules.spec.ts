@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { Queue } from 'bullmq';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The reports screen reads its session the way Next serves it.
 const cookieJar = vi.hoisted(() => ({ value: '' }));
@@ -13,9 +13,22 @@ vi.mock('next/headers', () => ({
     },
   }),
 }));
+// A mail server that refuses the addresses listed here, as SMTP does with a 4xx.
+const refused = vi.hoisted(() => new Set<string>());
+vi.mock('@/lib/mailer', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/mailer')>();
+  return {
+    ...real,
+    sendMail: async (to: string, ...rest: [string, string, Parameters<typeof real.sendMail>[3]?]) => {
+      if (refused.has(to)) throw new Error('451 try again later');
+      return real.sendMail(to, ...rest);
+    },
+  };
+});
 import { prisma } from '@/lib/db';
 import { mockOutbox } from '@/lib/mailer';
 import { invalidateActors } from '@/lib/auth/actorCache';
+import { invalidateEntitlements } from '@/lib/security/entitlements';
 import { handleJob } from '@/workers/jobs';
 import { GET as list, POST as create } from '@/app/api/v1/reports/schedules/route';
 import { DELETE as remove } from '@/app/api/v1/reports/schedules/[id]/route';
@@ -36,9 +49,13 @@ const TZ = 'Asia/Dubai';
 let fixture: Fixture;
 let tenantId: string;
 
-const person = async (key: string, grants: [string, 'VIEW' | 'EXPORT'][]) => {
+const person = async (
+  key: string,
+  grants: [string, 'VIEW' | 'EXPORT'][],
+  scope: 'OWN' | 'ORGANIZATION' = 'ORGANIZATION',
+) => {
   const role = await prisma.role.create({ data: { tenantId, key: `${key}-${suffix}`, name: key, rank: 50 } });
-  await grantPermissions(tenantId, role.id, grants);
+  await grantPermissions(tenantId, role.id, grants, scope);
   const email = `${key}.${suffix}@test.local`;
   const user = await createWorkspaceUser({ tenantId, roleId: role.id, email, fullName: key });
   return { id: user.id, email, cookie: await createSessionToken(tenantId, user.id) };
@@ -213,6 +230,104 @@ describe('a weekly schedule', () => {
       );
     } finally {
       armed.mockRestore();
+    }
+  });
+});
+
+describe('what a schedule may send, and to whom', () => {
+  const path = '/api/v1/reports/schedules';
+  const sweep = () => handleJob('maintenance', { name: 'report-schedules', data: { tenantIds: [tenantId] } });
+  /** A schedule already due, made directly: what the sweep does with one saved before a change. */
+  const due = (createdById: string, recipients: string[]) =>
+    prisma.reportSchedule.create({
+      data: {
+        tenantId,
+        reportKey: 'call-report',
+        cadence: 'DAILY',
+        recipients,
+        nextRunAt: new Date(Date.now() - 60_000),
+        createdById,
+      },
+    });
+  const auditsOf = async (scheduleId: string) =>
+    (
+      await prisma.auditLog.findMany({ where: { tenantId, event: 'EXPORT_REQUESTED', recordId: 'call-report' } })
+    ).filter((a) => (a.metadata as { scheduleId?: string } | null)?.scheduleId === scheduleId);
+
+  beforeEach(() => mockOutbox.clear());
+  afterEach(() => prisma.reportSchedule.deleteMany({ where: { tenantId } }));
+
+  it('a role that may export but not view reports can neither make one nor have one sent', async () => {
+    const exportOnly = await person('sched-export-only', [['reports', 'EXPORT']]);
+    const body = { report: 'call-report', by: 'lead', cadence: 'DAILY', recipients: [exportOnly.email] };
+    expect((await post(create, path, body, exportOnly.cookie, {})).status).toBe(403);
+
+    await due(exportOnly.id, [exportOnly.email]);
+    expect(await sweep()).toMatchObject({ sent: 0 });
+    expect(mockOutbox.lastTo(exportOnly.email)).toBeUndefined();
+  });
+
+  it('refuses, and never sends to, a member who may not see what its creator sees', async () => {
+    const ownOnly = await person('sched-own-viewer', [['reports', 'VIEW']], 'OWN');
+    const noReports = await person('sched-no-reports', [['leads', 'VIEW']]);
+    const body = { report: 'call-report', by: 'lead', cadence: 'DAILY' };
+    for (const member of [ownOnly, noReports]) {
+      const res = await post(create, path, { ...body, recipients: [member.email] }, exporter.cookie, {});
+      expect(res.status).toBe(422);
+      expect(JSON.stringify(res.body)).toContain(member.email);
+    }
+    // A member who sees the whole workspace, as its creator does, may have it.
+    expect((await post(create, path, { ...body, recipients: [viewer.email] }, exporter.cookie, {})).status).toBe(200);
+    await prisma.reportSchedule.deleteMany({ where: { tenantId } });
+
+    const schedule = await due(exporter.id, [exporter.email, ownOnly.email, noReports.email]);
+    expect(await sweep()).toMatchObject({ sent: 1 });
+    expect(mockOutbox.lastTo(exporter.email)).toBeDefined();
+    expect(mockOutbox.lastTo(ownOnly.email)).toBeUndefined();
+    expect(mockOutbox.lastTo(noReports.email)).toBeUndefined();
+    expect((await auditsOf(schedule.id))[0]!.metadata).toMatchObject({ recipients: 1 });
+  });
+
+  it('sends nothing for a suspended workspace, or one without a lead module, and moves on', async () => {
+    const suspended = await due(exporter.id, [exporter.email]);
+    await prisma.tenant.update({ where: { id: tenantId }, data: { status: 'SUSPENDED' } });
+    try {
+      expect(await sweep()).toMatchObject({ sent: 0 });
+    } finally {
+      await prisma.tenant.update({ where: { id: tenantId }, data: { status: 'ACTIVE' } });
+    }
+    expect(mockOutbox.lastTo(exporter.email)).toBeUndefined();
+    // Claimed all the same: it does not hold a place in every quarter hour's batch.
+    const after = await prisma.reportSchedule.findFirstOrThrow({ where: { tenantId, id: suspended.id } });
+    expect(after.nextRunAt.getTime()).toBeGreaterThan(Date.now());
+    await prisma.reportSchedule.deleteMany({ where: { tenantId } });
+
+    await due(exporter.id, [exporter.email]);
+    const entitlements = await prisma.moduleEntitlement.findMany({ where: { tenantId } });
+    await prisma.moduleEntitlement.updateMany({ where: { tenantId }, data: { state: 'CANCELED' } });
+    await invalidateEntitlements(tenantId);
+    try {
+      expect(await sweep()).toMatchObject({ sent: 0 });
+    } finally {
+      for (const e of entitlements) {
+        await prisma.moduleEntitlement.updateMany({ where: { tenantId, id: e.id }, data: { state: e.state } });
+      }
+      await invalidateEntitlements(tenantId);
+    }
+    expect(mockOutbox.lastTo(exporter.email)).toBeUndefined();
+  });
+
+  it('audits the copies that went out when a later address is refused', async () => {
+    refused.add(viewer.email);
+    try {
+      const schedule = await due(exporter.id, [exporter.email, viewer.email]);
+      expect(await sweep()).toMatchObject({ sent: 0 });
+      expect(mockOutbox.lastTo(exporter.email)).toBeDefined();
+      const audits = await auditsOf(schedule.id);
+      expect(audits).toHaveLength(1);
+      expect(audits[0]!.metadata).toMatchObject({ recipients: 1 });
+    } finally {
+      refused.clear();
     }
   });
 });
