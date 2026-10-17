@@ -70,6 +70,7 @@ export default async function AllocationPage({ searchParams }: { searchParams: P
             candidatePool: true,
             conditions: true,
             respectWorkingHours: true,
+            weights: true,
           },
         }),
         assignableUsers(ctx, 'leads', 'ASSIGN'),
@@ -110,11 +111,15 @@ export default async function AllocationPage({ searchParams }: { searchParams: P
             sources={sources}
             rules={rules.map((rule) => {
               const pool = (rule.candidatePool ?? {}) as { everyone?: boolean; userIds?: string[] };
-              const when = (rule.conditions ?? {}) as { sourceIds?: string[]; cities?: string[] };
+              const when = (rule.conditions ?? {}) as { sourceIds?: string[]; cities?: string[]; languages?: string[] };
               const routes = [
                 ...(when.sourceIds ?? []).map((id) => sourceName.get(id) ?? 'a removed source'),
                 ...(when.cities ?? []),
+                ...(when.languages ?? []).map((language) => `${language} speakers`),
               ].join(', ');
+              const shares = Object.entries((rule.weights ?? {}) as Record<string, number>)
+                .map(([id, share]) => `${nameBy.get(id) ?? 'A former member'} ×${share}`)
+                .join(', ');
               return {
                 id: rule.id,
                 name: rule.name,
@@ -123,6 +128,7 @@ export default async function AllocationPage({ searchParams }: { searchParams: P
                 people: (pool.userIds ?? []).map((id) => nameBy.get(id) ?? 'A former member'),
                 routes: routes ? `only ${routes}` : null,
                 workingHours: rule.respectWorkingHours,
+                shares: shares || null,
               };
             })}
           />

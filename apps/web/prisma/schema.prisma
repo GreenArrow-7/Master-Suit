@@ -4362,6 +4362,8 @@ model DistributionRule {
   escalateAfterMins   Int?
   externalEndpoint    String?
   lastAssignedUserId  String?
+  /// The next slot of a weighted rotation (`weights`, audit M7-02); unweighted rules turn on lastAssignedUserId.
+  rotationSlot        Int                @default(0)
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
   createdById         String?

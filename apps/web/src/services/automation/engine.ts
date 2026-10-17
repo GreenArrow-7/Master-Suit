@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db';
+import { prisma, withPlatformTx } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { enqueue } from '@/lib/queue';
 import { ctxForUser } from '@/lib/auth/session';
@@ -38,35 +38,107 @@ export async function enrollMatchingAutomations(tenantId: string, event: string,
     const triggerSpec = version.triggerSpec as { event?: string };
     if (triggerSpec.event !== event) continue;
 
-    if (!automation.allowReEnrollment) {
-      const existing = await prisma.automationEnrollment.findFirst({
-        where: { tenantId, automationId: automation.id, recordId },
-      });
-      if (existing) continue;
-    }
-
-    const graph = automationGraph.safeParse(version.graph);
-    if (!graph.success) {
-      logger.error(
-        { automationId: automation.id, versionId: version.id, err: graph.error },
-        'automation graph failed validation',
-      );
-      continue;
-    }
-
-    const enrollment = await prisma.automationEnrollment.create({
-      data: {
-        tenantId,
-        automationId: automation.id,
-        versionId: version.id,
-        objectType: object,
-        recordId,
-        currentNodeId: graph.data.entry,
-      },
-    });
-
-    await enqueue('automation', 'run-node', { tenantId, enrollmentId: enrollment.id });
+    await enroll(tenantId, automation, version, object, recordId);
   }
+}
+
+/** One record into one automation's published version, unless it is there already and may not re-enter. */
+async function enroll(
+  tenantId: string,
+  automation: { id: string; allowReEnrollment: boolean },
+  version: { id: string; graph: unknown },
+  object: string,
+  recordId: string,
+) {
+  if (!automation.allowReEnrollment) {
+    const existing = await prisma.automationEnrollment.findFirst({
+      where: { tenantId, automationId: automation.id, recordId },
+    });
+    if (existing) return;
+  }
+
+  const graph = automationGraph.safeParse(version.graph);
+  if (!graph.success) {
+    logger.error(
+      { automationId: automation.id, versionId: version.id, err: graph.error },
+      'automation graph failed validation',
+    );
+    return;
+  }
+
+  const enrollment = await prisma.automationEnrollment.create({
+    data: {
+      tenantId,
+      automationId: automation.id,
+      versionId: version.id,
+      objectType: object,
+      recordId,
+      currentNodeId: graph.data.entry,
+    },
+  });
+
+  await runNextStep(tenantId, enrollment.id);
+}
+
+/**
+ * Each step its own job. Every step of an enrollment carries the same payload,
+ * and enqueue's job id is a hash of the payload, so BullMQ dropped the add for
+ * the second step as a duplicate of the first (still active, then kept as
+ * completed) and no enrollment got past its trigger (review of PR #206).
+ */
+const runNextStep = (tenantId: string, enrollmentId: string, delayMs?: number) =>
+  enqueue('automation', 'run-node', { tenantId, enrollmentId }, { fresh: true, delayMs });
+
+/**
+ * Time triggers (audit M7-11): a published automation whose trigger is
+ * `{ event: 'time', afterMinutes }` enrolls each lead that long after the lead
+ * was created — once, as any enrollment; its condition then decides ("nobody
+ * has contacted it"). Every five minutes on the maintenance queue, across
+ * tenants, so through `withPlatformTx`.
+ *
+ * ponytail: leads only, and a lead older than the delay plus a day when the
+ * automation is published is never enrolled (no backfill); widen when a
+ * workflow needs either.
+ */
+export async function sweepTimeTriggers(): Promise<{ enrolled: number }> {
+  const due = await withPlatformTx(
+    (tx) =>
+      tx.$queryRaw<{ tenantId: string; automationId: string; recordId: string }[]>`
+      SELECT a."tenantId", a.id AS "automationId", l.id AS "recordId"
+        FROM "Automation" a
+        JOIN "AutomationVersion" v ON v.id = a."activeVersionId" AND v."tenantId" = a."tenantId"
+        JOIN "Lead" l ON l."tenantId" = a."tenantId" AND l."deletedAt" IS NULL
+         AND l."createdAt" <= now() - make_interval(mins => (v."triggerSpec"->>'afterMinutes')::int)
+         AND l."createdAt" > now() - make_interval(mins => (v."triggerSpec"->>'afterMinutes')::int) - interval '1 day'
+       WHERE a.state = 'PUBLISHED' AND a."deletedAt" IS NULL AND a."objectType" = 'LEAD'
+         AND v."triggerSpec"->>'event' = 'time'
+         AND NOT EXISTS (SELECT 1 FROM "AutomationEnrollment" e
+                          WHERE e."tenantId" = a."tenantId" AND e."automationId" = a.id AND e."recordId" = l.id)
+       LIMIT 500`,
+  );
+  const automations = new Map<string, Awaited<ReturnType<typeof publishedVersion>>>();
+  for (const row of due) {
+    if (!automations.has(row.automationId)) {
+      automations.set(row.automationId, await publishedVersion(row.tenantId, row.automationId));
+    }
+    const found = automations.get(row.automationId);
+    if (found) await enroll(row.tenantId, found, found.version, 'LEAD', row.recordId);
+  }
+  return { enrolled: due.length };
+}
+
+async function publishedVersion(tenantId: string, automationId: string) {
+  const automation = await prisma.automation.findFirst({
+    where: { tenantId, id: automationId, state: 'PUBLISHED', deletedAt: null },
+    select: { id: true, allowReEnrollment: true, activeVersionId: true },
+  });
+  const version = automation?.activeVersionId
+    ? await prisma.automationVersion.findFirst({
+        where: { tenantId, id: automation.activeVersionId },
+        select: { id: true, graph: true },
+      })
+    : null;
+  return automation && version ? { ...automation, version } : null;
 }
 
 /**
@@ -129,12 +201,7 @@ export async function runEnrollmentNode(tenantId: string, enrollmentId: string) 
           where: { tenantId, id: execution.id },
           data: { status: 'SUCCEEDED', finishedAt: new Date(), durationMs: Date.now() - started },
         });
-        await enqueue(
-          'automation',
-          'run-node',
-          { tenantId, enrollmentId: enrollment.id },
-          { delayMs: node.spec.durationMinutes * 60_000 },
-        );
+        await runNextStep(tenantId, enrollment.id, node.spec.durationMinutes * 60_000);
         return;
       }
 
@@ -157,7 +224,7 @@ export async function runEnrollmentNode(tenantId: string, enrollmentId: string) 
       where: { tenantId, id: enrollment.id },
       data: { currentNodeId: nextNodeId },
     });
-    await enqueue('automation', 'run-node', { tenantId, enrollmentId: enrollment.id });
+    await runNextStep(tenantId, enrollment.id);
   } catch (err) {
     logger.error({ err, enrollmentId: enrollment.id, nodeId: node.id }, 'automation node failed');
     await prisma.automationExecution.update({

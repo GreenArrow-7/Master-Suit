@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
+import { hasAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitlements';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
@@ -26,12 +27,22 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
   const outranked = account.role.rank > ctx.actor.roleRank;
   const mayAct = mayManage && !isSelf && outranked;
 
-  const [roles, employees] = await Promise.all([
+  const [roles, employees, leadWork, person, members] = await Promise.all([
     prisma.role.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { rank: 'asc' } }),
     prisma.employeeProfile.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: { notIn: ['EXITED'] } },
       include: { membership: { include: { platformUser: true } } },
       orderBy: { employeeNumber: 'asc' },
+    }),
+    hasAnyModuleEntitlement(ctx.tenantId, LEAD_MODULES),
+    prisma.user.findFirst({
+      where: { tenantId: ctx.tenantId, id: account.userId },
+      select: { managerId: true, dailyLeadQuota: true, languages: true, isAvailable: true },
+    }),
+    prisma.user.findMany({
+      where: { tenantId: ctx.tenantId, deletedAt: null, status: 'ACTIVE', id: { not: account.userId } },
+      select: { id: true, fullName: true },
+      orderBy: { fullName: 'asc' },
     }),
   ]);
 
@@ -202,6 +213,63 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
                     value: employee.id,
                     label: `${employee.employeeNumber} · ${employee.membership.platformUser.fullName}`,
                   })),
+              },
+            ]}
+          />
+        </section>
+      )}
+
+      {mayAct && leadWork && person && (
+        <section>
+          <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Lead work</h2>
+          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
+            Who this person reports to (a manager sees their whole line), and how automatic assignment treats them:
+            their daily lead quota, the languages they sell in, and whether new leads come to them at all.
+          </p>
+          <WorkspaceRecordForm
+            endpoint={`${endpoint}/account-lead-settings`}
+            submitLabel="Save lead work"
+            fields={[
+              {
+                name: 'userId',
+                label: 'User',
+                type: 'select',
+                required: true,
+                defaultValue: account.userId,
+                options: [{ value: account.userId, label: account.fullName }],
+              },
+              {
+                name: 'managerId',
+                label: 'Reports to (blank for nobody)',
+                type: 'select',
+                defaultValue: person.managerId ?? '',
+                options: members.map((member) => ({ value: member.id, label: member.fullName })),
+              },
+              {
+                name: 'dailyLeadQuota',
+                label: 'Daily lead quota',
+                type: 'number',
+                min: 0,
+                defaultValue: person.dailyLeadQuota === null ? '' : String(person.dailyLeadQuota),
+                hint: 'New leads a day at most. Blank for no limit.',
+              },
+              {
+                name: 'languages',
+                label: 'Languages',
+                defaultValue: person.languages.join(', '),
+                placeholder: 'Arabic, English',
+                hint: 'A rule that routes by language hands those leads only to people who speak it.',
+              },
+              {
+                name: 'available',
+                label: 'Available for new leads',
+                type: 'select',
+                required: true,
+                defaultValue: person.isAvailable ? 'yes' : 'no',
+                options: [
+                  { value: 'yes', label: 'Yes' },
+                  { value: 'no', label: 'No — passed over by automatic assignment' },
+                ],
               },
             ]}
           />

@@ -61,10 +61,13 @@ it('the rules API lists for viewers and creates only for allocation:APPROVE', as
   const created = await post(
     createRule,
     '/api/v1/distribution-rules',
-    { name: 'Ready agents', userIds: [leader.id] },
+    // Shares (M7-02) and a language (M7-04) travel with the rule.
+    { name: 'Ready agents', userIds: [leader.id], weights: { [leader.id]: 3 }, conditions: { languages: ['Arabic'] } },
     cookie,
   );
   expect(created.status).toBe(200);
+  expect(created.body.weights).toEqual({ [leader.id]: 3 });
+  expect(created.body.conditions).toEqual({ languages: ['Arabic'] });
   const id = created.body.id as string;
   // Working hours and holidays are respected unless the rule says otherwise (M18-08).
   expect(created.body.respectWorkingHours).toBe(true);
@@ -152,4 +155,135 @@ it('a rule with conditions takes only matching leads; others fall through to the
   expect(ruleMatches({ cities: ['Dubai'] }, { sourceId: null, city: 'dubai', projectIds: [] })).toBe(true);
   expect(ruleMatches({ cities: ['Dubai'] }, { sourceId: null, city: null, projectIds: [] })).toBe(false);
   expect(ruleMatches({ projectIds: ['p1'] }, { sourceId: null, city: null, projectIds: ['p1', 'p2'] })).toBe(true);
+});
+
+const loose = { respectWorkingHours: false, respectQuotas: false, respectCapacity: false, respectLeave: false };
+
+/** Two more members on the fixture administrator's role. */
+async function colleagues(...names: string[]) {
+  const { tenantId, userId } = fixture.a;
+  const { roleId } = await prisma.user.findFirstOrThrow({ where: { tenantId, id: userId }, select: { roleId: true } });
+  const ids: string[] = [];
+  for (const name of names) {
+    ids.push(
+      (
+        await createWorkspaceUser({
+          tenantId,
+          roleId,
+          email: `${name}-${randomBytes(3).toString('hex')}@rules-${suffix}.test`,
+          fullName: name,
+        })
+      ).id,
+    );
+  }
+  return ids;
+}
+
+it('a person weighted 2 gets twice the leads of the others in the rotation (M7-02)', async () => {
+  const { tenantId, stageId, userId } = fixture.a;
+  const [b, c] = await colleagues('Bina', 'Carlos');
+  await prisma.distributionRule.deleteMany({ where: { tenantId } });
+  await prisma.distributionRule.create({
+    data: {
+      tenantId,
+      name: 'Weighted',
+      method: 'ROUND_ROBIN',
+      isActive: true,
+      candidatePool: { userIds: [userId, b, c] },
+      weights: { [userId]: 2 },
+      ...loose,
+    },
+  });
+
+  const owners: string[] = [];
+  for (let i = 0; i < 8; i++) {
+    const lead = await prisma.lead.create({
+      data: { tenantId, reference: `W-${suffix}-${i}`, fullName: `Weighted ${i}`, stageId },
+    });
+    const outcome = await assignLead(tenantId, lead.id);
+    if (outcome.outcome === 'assigned') owners.push(outcome.userId);
+  }
+  const count = (id: string) => owners.filter((owner) => owner === id).length;
+  expect([count(userId), count(b!), count(c!)]).toEqual([4, 2, 2]);
+});
+
+it('a language rule takes leads tagged with that language, for people who speak it (M7-04)', async () => {
+  const { tenantId, stageId } = fixture.a;
+  const [speaker, other, rest] = await colleagues('Arabic speaker', 'English only', 'Everyone else');
+  await prisma.user.updateMany({ where: { tenantId, id: speaker }, data: { languages: ['Arabic', 'English'] } });
+  await prisma.user.updateMany({ where: { tenantId, id: other }, data: { languages: ['English'] } });
+  await prisma.distributionRule.deleteMany({ where: { tenantId } });
+  await prisma.distributionRule.createMany({
+    data: [
+      {
+        tenantId,
+        name: 'Arabic desk',
+        method: 'ROUND_ROBIN',
+        isActive: true,
+        position: 0,
+        // The English-only agent is next in turn, and is still passed over.
+        candidatePool: { userIds: [speaker!, other!] },
+        lastAssignedUserId: speaker,
+        conditions: { languages: ['arabic'] },
+        ...loose,
+      },
+      {
+        tenantId,
+        name: 'Rest',
+        method: 'ROUND_ROBIN',
+        isActive: true,
+        position: 1,
+        candidatePool: { userIds: [rest!] },
+        ...loose,
+      },
+    ],
+  });
+
+  const arabic = await prisma.lead.create({
+    data: { tenantId, reference: `AR-${suffix}`, fullName: 'Arabic speaking buyer', stageId, tags: ['Arabic', 'VIP'] },
+  });
+  const untagged = await prisma.lead.create({
+    data: { tenantId, reference: `EN-${suffix}`, fullName: 'Any buyer', stageId },
+  });
+  expect(await assignLead(tenantId, arabic.id)).toMatchObject({ outcome: 'assigned', userId: speaker });
+  expect(await assignLead(tenantId, untagged.id)).toMatchObject({ outcome: 'assigned', userId: rest });
+});
+
+it('a rule over two languages turns each language among its own speakers, weighted or not (review)', async () => {
+  const { tenantId, stageId } = fixture.a;
+  const [a, b, h] = await colleagues('Amal', 'Basim', 'Harsh');
+  await prisma.user.updateMany({ where: { tenantId, id: { in: [a!, b!] } }, data: { languages: ['Arabic'] } });
+  await prisma.user.updateMany({ where: { tenantId, id: h }, data: { languages: ['Hindi'] } });
+  await prisma.distributionRule.deleteMany({ where: { tenantId } });
+  const rule = await prisma.distributionRule.create({
+    data: {
+      tenantId,
+      name: 'Two desks',
+      method: 'ROUND_ROBIN',
+      isActive: true,
+      candidatePool: { userIds: [a!, b!, h!] },
+      conditions: { languages: ['Arabic', 'Hindi'] },
+      ...loose,
+    },
+  });
+
+  // Arabic and Hindi leads in turn: every Arabic one went to Amal while the rule's
+  // one pointer always named Harsh, who is not an Arabic speaker.
+  let n = 0;
+  const arabicOwners = async (rounds: number) => {
+    const owners: string[] = [];
+    for (let i = 0; i < rounds * 2; i++) {
+      const language = i % 2 ? 'Hindi' : 'Arabic';
+      const lead = await prisma.lead.create({
+        data: { tenantId, reference: `LG-${suffix}-${n++}`, fullName: 'Buyer', stageId, tags: [language] },
+      });
+      const outcome = await assignLead(tenantId, lead.id);
+      if (outcome.outcome === 'assigned' && language === 'Arabic') owners.push(outcome.userId);
+    }
+    return owners;
+  };
+  expect(await arabicOwners(3)).toEqual([a, b, a]);
+  // Amal ×2: the Arabic round is Amal, Basim, Amal, and it carries on where the last one stopped.
+  await prisma.distributionRule.updateMany({ where: { tenantId, id: rule.id }, data: { weights: { [a!]: 2 } } });
+  expect(await arabicOwners(6)).toEqual([a, b, a, a, b, a]);
 });

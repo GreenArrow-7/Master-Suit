@@ -30,18 +30,20 @@
  * ── What this does not stop ─────────────────────────────────────────────────
  *
  * DNS rebinding. The name is resolved here and resolved again by `fetch`, and a
- * record with a one-second TTL can differ between the two. Closing that means
- * connecting to a pinned address with a `Host` header — an undici dispatcher
- * rather than a check — which is a larger change than this is. The allow-list
- * is what carries the weight against it: an attacker would need a rebinding
- * record on a host somebody already trusts for recordings.
+ * record with a one-second TTL can differ between the two. The allow-list is
+ * what carries the weight against it here: an attacker would need a rebinding
+ * record on a host somebody already trusts for recordings. A caller whose host
+ * is anyone's choice (the automation webhook) connects through `node:https`
+ * with `publicLookup` below instead, which checks the addresses the socket
+ * then dials.
  *
  * Redirects are handled at the call site with `redirect: 'error'`, and that is
  * not optional. An allowed host that 302s to `http://169.254.169.254/` defeats
  * every check here, because the check ran against the first URL.
  */
+import { lookup as lookupEach, type LookupAddress } from 'node:dns';
 import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
+import { isIP, type LookupFunction } from 'node:net';
 
 export class BlockedUrlError extends Error {
   constructor(message: string) {
@@ -160,3 +162,23 @@ export async function assertFetchableUrl(raw: string, allowed: readonly string[]
   }
   return url;
 }
+
+/**
+ * A socket's own name lookup, checked: every address the name resolves to must
+ * be public, and the connection dials one of those same addresses. Pass it as
+ * `lookup` to `https.request` (with `agent: false`, so no pooled socket that
+ * resolved unchecked is reused). The check and the connection share one
+ * resolution, so a name that answers public to a check and private to the
+ * connection cannot slip between them.
+ */
+export const publicLookup: LookupFunction = (hostname, options, callback) =>
+  lookupEach(hostname, { ...options, all: true }, (err, addresses: LookupAddress[]) => {
+    if (err) return callback(err, '');
+    const inside = addresses.find(({ address }) => isPrivateAddress(address));
+    if (inside || addresses.length === 0) {
+      const why = inside ? `resolves to the private address ${inside.address}` : 'resolved to nothing';
+      return callback(new BlockedUrlError(`host ${hostname} ${why}`), '');
+    }
+    if (options.all) return callback(null, addresses);
+    callback(null, addresses[0]!.address, addresses[0]!.family);
+  });

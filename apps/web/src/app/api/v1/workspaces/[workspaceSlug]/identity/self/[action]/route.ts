@@ -12,6 +12,7 @@ import {
   regenerateRecoveryCodes,
   twoFactorStatus,
 } from '@/services/identity/twoFactor';
+import { setOwnAvailability } from '@/services/distribution/agentSettings';
 
 /**
  * Your own account: password and authenticator. Nothing here takes a target —
@@ -37,6 +38,7 @@ const paramsSchema = z.object({
     'account-deletion-status',
     'account-deletion-request',
     'account-deletion-cancel',
+    'lead-availability',
   ]),
 });
 
@@ -128,6 +130,9 @@ export const POST = route(
         // No body: you can only withdraw your own request, and only while it is still
         // waiting. Once erasure has started the service refuses.
         return cancelAccountDeletion(ctx);
+      // "Available for new leads" (audit M7-07): automatic assignment passes over whoever is off.
+      case 'lead-availability':
+        return setOwnAvailability(ctx, z.object({ isAvailable: z.boolean() }).parse(body).isAvailable);
       case 'two-factor-recovery-regenerate': {
         const input = z.object({ code: z.string().length(6) }).parse(body);
         return regenerateRecoveryCodes(ctx, input.code);

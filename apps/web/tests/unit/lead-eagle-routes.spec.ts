@@ -60,6 +60,23 @@ describe('Lead Eagle is a module', () => {
     );
   });
 
+  it('has Automation: Sales’ page re-exported, its API admitting every lead module, a menu entry (M7-11)', () => {
+    expect(read(path.join(APP, 'lead-eagle', 'automation', 'page.tsx'))).toContain(
+      "export { default, metadata } from '../../sales/automation/page';",
+    );
+    expect(read(path.join(APP, 'sales', 'automation', 'page.tsx'))).toContain('module: LEAD_MODULES');
+    for (const route of ['automations/route.ts', 'automations/[id]/route.ts']) {
+      expect(read(path.join(API, route))).toContain('productModule: LEAD_MODULES');
+    }
+    const tabs = buildNavigation({ slug: 'eagle', modules: ['LEAD_EAGLE'], permitted: ['automation'] })
+      .flatMap((section) => section.areas)
+      .flatMap((area) => area.tabs);
+    expect(tabs.find((tab) => tab.href === '/eagle/lead-eagle/automation')?.label).toBe('Automation');
+    expect(new Map(sameScreenElsewhere('/acme/sales/automation')).get('LEAD_EAGLE')).toBe(
+      '/acme/lead-eagle/automation',
+    );
+  });
+
   it('shares the website forms and landing pages, its own lead sources (M6-06, M6-09)', () => {
     expect(LEAD_EAGLE_SHARED_ROOTS).toEqual(expect.arrayContaining(['forms', 'landing-pages']));
   });
