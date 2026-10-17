@@ -36,6 +36,7 @@ import { takeRequirement } from './requirement';
 import { withSourceScore } from './scoring';
 import { normalizePhone } from './normalizePhone';
 import { nextReference } from '../shared/reference';
+import { notifyCrm } from '../crm/notify';
 
 export interface EnquiryJob {
   tenantId: string;
@@ -286,11 +287,18 @@ export async function takeEnquiry(
         slaDueAt,
         ...(ownerId && { ownerId, assignedAt: new Date() }),
       },
-      select: { id: true },
+      select: { id: true, fullName: true, reference: true },
     });
     if (ownerId) {
       await tx.leadAssignmentHistory.create({
-        data: { tenantId, leadId: lead.id, toOwnerId: ownerId, reason: 'CREATED' },
+        // Who converted it, when someone did: their own cold record is not "given to" them.
+        data: {
+          tenantId,
+          leadId: lead.id,
+          toOwnerId: ownerId,
+          assignedById: origin.actor?.actor.id ?? null,
+          reason: 'CREATED',
+        },
       });
     }
     await addPhones(tx, tenantId, lead.id, numbers, main?.[0], label);
@@ -314,6 +322,22 @@ export async function takeEnquiry(
     ),
     enqueue('automation', 'trigger', { tenantId, event: 'record.created', object: 'LEAD', recordId: lead.id }),
   ]);
+  // Straight to an agent (a QR code's, a cold record's): told at once, as automatic
+  // assignment tells one (audit M17-05). The person who sent it in is not told of it.
+  if (ownerId) {
+    await notifyCrm(
+      { tenantId, actor: { id: origin.actor?.actor.id ?? 'intake' } },
+      {
+        event: 'lead.assigned',
+        ownerId,
+        title: `Lead assigned: ${lead.fullName}`,
+        body: lead.reference,
+        objectType: 'lead',
+        recordId: lead.id,
+        priority: 'HIGH',
+      },
+    );
+  }
   logger.info({ tenantId, leadId: lead.id, source: origin.sourceDetail }, 'enquiry created a lead');
   return { leadId: lead.id, created: true };
 }

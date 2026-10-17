@@ -16,6 +16,7 @@ import { Forbidden, Invalid, NotFound } from '@/lib/errors';
 import { prisma, withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
+import { notifyLeadMoves, ringNewOwner } from '@/services/crm/notify';
 import { DEFAULT_POLICY, lockAndVerify } from './eligibility';
 
 export interface Headroom {
@@ -202,6 +203,8 @@ export async function allocate(input: AllocateInput): Promise<AllocationResult> 
 
     const take = r.available === null ? remaining : Math.min(remaining, r.available);
     const leadIds = await claimForUser(ctx, userId, take, input.filter, input.reason);
+    // The bell rows committed with the claim; one push for the batch (audit M17-05).
+    await ringNewOwner(ctx, userId, leadIds);
 
     if (leadIds.length > 0) allocated.push({ userId, leadIds });
     remaining -= leadIds.length;
@@ -265,7 +268,7 @@ async function claimForUser(
     if (filter?.territoryId) conditions.push(Prisma.sql`l."territoryId" = ${filter.territoryId}`);
     if (filter?.campaignId) conditions.push(Prisma.sql`l."campaignId" = ${filter.campaignId}`);
 
-    const rows = await tx.$queryRaw<{ id: string }[]>`
+    const rows = await tx.$queryRaw<{ id: string; fullName: string }[]>`
       WITH picked AS (
         SELECT l."id"
         FROM "Lead" l
@@ -280,7 +283,7 @@ async function claimForUser(
              "assignedAt" = NOW(),
              "updatedById" = ${ctx.actor.id}
        WHERE "id" IN (SELECT "id" FROM picked)
-      RETURNING "id"
+      RETURNING "id", "fullName"
     `;
 
     const leadIds = rows.map((r) => r.id);
@@ -308,6 +311,11 @@ async function claimForUser(
         newValue: { allocated: leadIds.length, reason: reason ?? 'BULK_ALLOCATION' },
       },
       tx,
+    );
+    await notifyLeadMoves(
+      tx,
+      ctx,
+      rows.map((row) => ({ ...row, from: null, to: userId })),
     );
 
     return leadIds;
@@ -351,7 +359,7 @@ export async function routeLeads(input: RouteInput) {
     throw Invalid([{ field: 'leadIds', code: 'required', message: 'Nothing selected.' }]);
   }
 
-  return withTx(ctx.tenantId, async (tx) => {
+  const routed = await withTx(ctx.tenantId, async (tx) => {
     if (input.toUserId) {
       const target = await tx.user.findFirst({
         where: { id: input.toUserId, tenantId: ctx.tenantId, deletedAt: null },
@@ -369,7 +377,7 @@ export async function routeLeads(input: RouteInput) {
 
     const leads = await tx.lead.findMany({
       where: { id: { in: input.leadIds }, tenantId: ctx.tenantId, deletedAt: null },
-      select: { id: true, ownerId: true, teamId: true },
+      select: { id: true, ownerId: true, teamId: true, fullName: true },
     });
     if (leads.length === 0) throw NotFound('Leads');
 
@@ -407,9 +415,16 @@ export async function routeLeads(input: RouteInput) {
       },
       tx,
     );
+    await notifyLeadMoves(
+      tx,
+      ctx,
+      leads.map((lead) => ({ id: lead.id, fullName: lead.fullName, from: lead.ownerId, to: input.toUserId ?? null })),
+    );
 
-    return { routed: leads.length };
+    return { routed: leads.length, moved: leads.filter((lead) => lead.ownerId !== input.toUserId).map((l) => l.id) };
   });
+  await ringNewOwner(ctx, input.toUserId ?? null, routed.moved);
+  return { routed: routed.routed };
 }
 
 /** How much unassigned work is sitting there. */

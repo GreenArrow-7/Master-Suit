@@ -52,6 +52,24 @@ export default function NotificationPrefsForm({ initial }: { initial: Notificati
           </span>
         </span>
       </label>
+      {prefs.email && (
+        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', paddingInlineStart: 'var(--lf-space-4)' }}>
+          <input
+            id="pref-digest"
+            type="checkbox"
+            checked={prefs.digest}
+            onChange={(event) => save({ ...prefs, digest: event.target.checked })}
+          />
+          <span>
+            <strong>One summary each morning instead</strong>
+            <br />
+            <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
+              At 8:00, your follow-ups overdue and due today and the leads given to you since the last summary — in
+              place of one email per notification.
+            </span>
+          </span>
+        </label>
+      )}
       {status && (
         <p role="status" style={{ margin: 0, fontSize: 'var(--lf-text-sm)' }}>
           {status}

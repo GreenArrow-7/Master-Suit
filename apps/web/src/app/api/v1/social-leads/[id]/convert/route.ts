@@ -5,6 +5,7 @@ import { NotFound, Conflict } from '@/lib/errors';
 import { can } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { assertAssignableUser } from '@/lib/security/record-scope';
+import { notifyCrm } from '@/services/crm/notify';
 import { findDuplicates } from '@/services/leads/findDuplicates';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { nextReference } from '@/services/shared/reference';
@@ -138,8 +139,10 @@ export const POST = route(
       : await prisma.leadStage.findFirst({ where: { tenantId: ctx.tenantId, isDefault: true }, select: { id: true } });
     if (!stage) throw Conflict('This workspace has no lead stage to place the customer in.');
 
-    const lead = await withTx(ctx.tenantId, async (tx) =>
-      tx.lead.create({
+    // Handing it to someone else takes ASSIGN, as in `createLead`.
+    const ownerId = (can(ctx, 'leads', 'ASSIGN') ? body.ownerId : undefined) ?? enquiry.ownerId ?? null;
+    const lead = await withTx(ctx.tenantId, async (tx) => {
+      const created = await tx.lead.create({
         data: {
           tenantId: ctx.tenantId,
           reference: await nextReference(tx, ctx.tenantId, 'LEAD'),
@@ -157,13 +160,36 @@ export const POST = route(
           // They asked a public question rather than submitting a form, so this
           // is not the implied consent a lead form gives.
           consentStatus: 'UNKNOWN',
-          // Handing it to someone else takes ASSIGN, as in `createLead`.
-          ownerId: (can(ctx, 'leads', 'ASSIGN') ? body.ownerId : undefined) ?? enquiry.ownerId ?? null,
+          ownerId,
+          ...(ownerId && { assignedAt: new Date() }),
           customData: { socialEnquiry: attribution },
         },
         select: { id: true, reference: true },
-      }),
-    );
+      });
+      // A hand-over like any other: its owner's morning summary lists it.
+      if (ownerId) {
+        await tx.leadAssignmentHistory.create({
+          data: {
+            tenantId: ctx.tenantId,
+            leadId: created.id,
+            toOwnerId: ownerId,
+            assignedById: ctx.actor.id,
+            reason: 'CREATED',
+          },
+        });
+      }
+      return created;
+    });
+    // Its owner is told at once (audit M17-05); not the person who converted it.
+    await notifyCrm(ctx, {
+      event: 'lead.assigned',
+      ownerId,
+      title: `Lead assigned: ${body.fullName}`,
+      body: lead.reference,
+      objectType: 'lead',
+      recordId: lead.id,
+      priority: 'HIGH',
+    });
 
     await prisma.socialComment.update({
       where: { id: enquiry.id, tenantId: ctx.tenantId },

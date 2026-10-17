@@ -271,12 +271,13 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput, opts: { dryRu
    * queue writes that may be skipped, this is a database write that must see the
    * committed lead. `notifyCrm` excludes the actor, so the common case — a rep
    * creating a lead for themselves — sends nothing, and only a lead created
-   * *for* somebody else reaches a bell.
+   * *for* somebody else reaches a bell. That is work handed to them, so it is
+   * `lead.assigned` and rings their phone, as any assignment does (audit M17-05).
    */
   await notifyCrm(ctx, {
-    event: 'lead.created',
+    event: 'lead.assigned',
     ownerId,
-    title: `New lead: ${lead.fullName}`,
+    title: `Lead assigned: ${lead.fullName}`,
     body: lead.reference,
     objectType: 'lead',
     recordId: lead.id,

@@ -102,5 +102,10 @@ describe('working hours', () => {
     expect(outcome).toMatchObject({ outcome: 'assigned', userId: agents.onShift.userId });
     const history = await prisma.leadAssignmentHistory.findFirstOrThrow({ where: { tenantId, leadId: lead.id } });
     expect(history.note).toBe('Next in turn on Portal leads; passed over evening (off shift (19:00–23:00)).');
+    // Audit M17-05: the chosen agent has an unread, urgent notice of it.
+    const told = await prisma.notification.findFirstOrThrow({
+      where: { tenantId, userId: agents.onShift.userId, recordId: lead.id, kind: 'lead.assigned' },
+    });
+    expect(told).toMatchObject({ priority: 'HIGH', readAt: null });
   });
 });
