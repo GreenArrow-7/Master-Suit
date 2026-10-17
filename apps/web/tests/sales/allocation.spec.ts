@@ -1,6 +1,7 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/db';
+import * as queue from '@/lib/queue';
 import { allocate, headroom, poolDepth, routeLeads } from '@/services/distribution/allocation';
 import { askForLeads, cancelRequest, decideRequest, pendingRequests } from '@/services/distribution/requests';
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
@@ -29,6 +30,17 @@ const perms = (extra: [string, Scope][] = []) =>
     ['leads:VIEW', 'ORGANIZATION'],
     ...extra,
   ]);
+
+/** The phone pushes `run` queues (audit M17-05), with the queue itself stubbed. */
+async function pushesDuring(run: () => Promise<unknown>) {
+  const spy = vi.spyOn(queue, 'enqueue').mockResolvedValue(null as never);
+  try {
+    await run();
+    return spy.mock.calls.filter(([, job]) => job === 'record-push').map(([, , data]) => data);
+  } finally {
+    spy.mockRestore();
+  }
+}
 
 /** Fresh unassigned leads sitting in the pool. */
 async function pool(n: number) {
@@ -157,7 +169,9 @@ describe('allocation', () => {
 
   it('writes a history row for every lead it moves', async () => {
     await pool(3);
-    await allocate({ ctx: leader, userIds: [agent.actor.id], count: 3, reason: 'Monday drop' });
+    const pushes = await pushesDuring(() =>
+      allocate({ ctx: leader, userIds: [agent.actor.id], count: 3, reason: 'Monday drop' }),
+    );
 
     const rows = await prisma.leadAssignmentHistory.findMany({
       where: { tenantId: fixture.a.tenantId, toOwnerId: agent.actor.id },
@@ -167,6 +181,20 @@ describe('allocation', () => {
     // A leader chose, rather than a rule firing.
     expect(rows[0].method).toBe('MANAGER_SELECTED');
     expect(rows[0].assignedById).toBe(leader.actor.id);
+    // Audit M17-05: the agent hears of each lead handed to them.
+    const told = await prisma.notification.count({
+      where: {
+        tenantId: fixture.a.tenantId,
+        userId: agent.actor.id,
+        kind: 'lead.assigned',
+        recordId: { in: rows.map((r) => r.leadId) },
+      },
+    });
+    expect(told).toBe(3);
+    // And their phone rings once for the batch, not once per lead.
+    expect(pushes).toEqual([
+      expect.objectContaining({ userIds: [agent.actor.id], title: '3 leads were assigned to you', recordId: null }),
+    ]);
   });
 
   it('stops at the quota and says which one stopped it', async () => {
@@ -350,6 +378,30 @@ describe('cross-segment routing', () => {
     });
     expect(history?.fromOwnerId).toBe(agent.actor.id);
     expect(history?.reason).toBe('Commercial enquiry, not residential');
+    // Audit M17-07: the agent the leads were taken from is told, once per lead.
+    const told = await prisma.notification.findMany({
+      where: { tenantId: fixture.a.tenantId, userId: agent.actor.id, title: { startsWith: 'Lead reassigned' } },
+      select: { recordId: true },
+    });
+    expect(told.map((row) => row.recordId).sort()).toEqual(leads.map((l) => l.id).sort());
+  });
+
+  it('rings the person a lead is routed to', async () => {
+    const lead = await prisma.lead.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        reference: `AL-R-${suffix}`,
+        fullName: 'Routed lead',
+        stageId: stageOpenId,
+        ownerId: agent.actor.id,
+      },
+    });
+    const pushes = await pushesDuring(() =>
+      routeLeads({ ctx: leader, leadIds: [lead.id], toUserId: agentB.actor.id, reason: 'Speaks Arabic' }),
+    );
+    expect(pushes).toEqual([
+      expect.objectContaining({ userIds: [agentB.actor.id], title: 'A lead was assigned to you', recordId: lead.id }),
+    ]);
   });
 
   it('needs the permission', async () => {

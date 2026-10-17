@@ -92,7 +92,11 @@ Node 22 or newer (CI uses 24).
   something else) on the workspace's clock (`followUpDueWhere`,
   `src/lib/leads/followUpDue.ts`). A lead's first contact (a call placed or
   answered, an activity that is not a note) stamps `firstContactedAt`
-  (`touchLead`). Cold data
+  (`touchLead`); a lead its owner leaves uncontacted past its stage's minutes,
+  counted from when they got it, tells their manager and is re-assigned when
+  the rule says so, once per hand-over (`src/services/sla/checkLeadFirstContact.ts`:
+  the delayed check at arrival and the five-minutely `first-contact` sweep,
+  `Lead.slaEscalatedAt`). Cold data
   follows the same rule (`coldDataScope(ctx, action)`), and working a cold
   record logs a call on it (`Activity.dataRecordId`) that the daily target
   and the check-out gate count (`services/targets/dailyBoard.ts`); making it a
@@ -206,6 +210,19 @@ Node 22 or newer (CI uses 24).
 - **Background jobs.** One `JOBS` table in `src/workers/jobs.ts`, keyed by queue;
   `src/workers/index.ts` starts a worker per queue. CI's observability gate reads
   that table, so keep it a literal.
+- **Notifications.** Every notice is a bell row; its phone and email copies
+  follow the recipient's `User.notificationPrefs` (`readPrefs`,
+  `src/workers/notifications.ts`): a push unless turned off, an email per
+  notice, or one summary each morning at 08:00 on the workspace's clock
+  (`src/services/notifications/digest.ts`, the hourly maintenance job
+  `digest`; workspaces with a lead product only, naming only leads the reader
+  may open). Hand-overs tell the new owner: automatic assignment, a lead
+  created or converted (intake, social enquiry) for someone, and the SLA
+  take-back through `notifyCrm` `lead.assigned` after the commit; bulk assign,
+  Allocate, cross-team routing and the leaver hand-over through
+  `notifyLeadMoves` inside the move's transaction (the previous owner too), then
+  one push per receiving person (`ringNewOwner`), not one per lead. A merge
+  tells nobody.
 
 ## Testing and verifying
 

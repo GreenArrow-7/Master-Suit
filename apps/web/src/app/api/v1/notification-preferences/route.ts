@@ -3,7 +3,7 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { readPrefs } from '@/lib/notificationPrefs';
 
-const body = z.object({ push: z.boolean(), email: z.boolean() }).strict();
+const body = z.object({ push: z.boolean(), email: z.boolean(), digest: z.boolean().default(false) }).strict();
 
 /** Your own delivery choices; not a privilege, so `selfService` like device registration. */
 export const GET = route({ module: 'notifications', action: 'VIEW', selfService: true }, async ({ ctx }) => {
@@ -21,6 +21,6 @@ export const PUT = route(
       where: { tenantId: ctx.tenantId, id: ctx.actor.id },
       data: { notificationPrefs: body },
     });
-    return body;
+    return readPrefs(body);
   },
 );

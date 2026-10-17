@@ -1194,6 +1194,8 @@ model User {
   activeLeadCapacity Int?
   notificationPrefs  Json       @default("{}")
   uiPreferences      Json       @default("{}")
+  /// When the morning summary last went (services/notifications/digest.ts): once a day, and "since the last one".
+  digestSentAt       DateTime?
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
   createdById        String?
@@ -3384,6 +3386,8 @@ model Lead {
   nextFollowUpAt        DateTime?
   slaDueAt              DateTime?
   slaState              SlaState      @default(ON_TRACK)
+  /// When the owner holding it then was escalated for missing first contact (services/sla): once per hand-over.
+  slaEscalatedAt        DateTime?
   convertedAt           DateTime?
   assignedAt            DateTime?
   duplicateOfId         String?

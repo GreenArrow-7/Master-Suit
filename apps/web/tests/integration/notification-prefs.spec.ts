@@ -37,8 +37,8 @@ afterAll(async () => {
 beforeEach(() => mockOutbox.clear());
 
 it('defaults to push on and email off', () => {
-  expect(readPrefs(undefined)).toEqual({ push: true, email: false });
-  expect(readPrefs({ push: false, email: true })).toEqual({ push: false, email: true });
+  expect(readPrefs(undefined)).toEqual({ push: true, email: false, digest: false });
+  expect(readPrefs({ push: false, email: true })).toEqual({ push: false, email: true, digest: false });
 });
 
 it('saves your own choice and reads it back', async () => {
@@ -52,6 +52,7 @@ it('saves your own choice and reads it back', async () => {
   expect((await get(readMine, '/api/v1/notification-preferences', people.wants.cookie)).body).toEqual({
     push: true,
     email: true,
+    digest: false,
   });
 });
 

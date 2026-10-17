@@ -108,6 +108,9 @@ describe('cold data', () => {
       sourceDetail: `data:${LIST}`,
     });
     expect(await record('050 777 0001')).toMatchObject({ status: 'CONVERTED', convertedLeadId: lead.id });
+    // Their own conversion, not a hand-over to them (the morning summary's "given to you").
+    const history = await prisma.leadAssignmentHistory.findFirstOrThrow({ where: { tenantId, leadId: lead.id } });
+    expect(history).toMatchObject({ toOwnerId: agent.id, assignedById: agent.id });
     expect((await post(convert, `/api/v1/cold-data/${id}/convert`, {}, agent.cookie, { id })).status).toBe(404);
   });
 

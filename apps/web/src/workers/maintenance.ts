@@ -9,6 +9,8 @@ import { sweepStaleTriage, sweepTriageDeadlines, sweepTriageNotifications } from
 import { deliverOutbox } from '@/services/notifications/outbox';
 import { sweepDriftCanary } from '@/services/leads/nextFollowUpReconcile';
 import { sweepAccountDeletions } from '@/services/identity/accountDeletion';
+import { runDigestSweep } from '@/services/notifications/digest';
+import { sweepFirstContact } from '@/services/sla/checkLeadFirstContact';
 
 /**
  * The `maintenance` queue: scheduled sweeps, one at a time (see startWorker).
@@ -105,6 +107,22 @@ export const MAINTENANCE_JOBS = {
     return result;
   },
   /**
+   * The morning summary email (M8-04, M17-04), for the people who chose it. Hourly,
+   * because 08:00 comes at a different hour in each workspace's zone; it sends once
+   * a day per person and is a no-op the other hours.
+   */
+  digest: async () => {
+    const result = await runDigestSweep();
+    logger.info(result, 'morning summary sweep complete');
+    return result;
+  },
+  /**
+   * Leads their owner got after the one delayed first-contact check and has not
+   * contacted within the stage's minutes (M17-08): manager told, re-assigned
+   * when the rule says so. Five-minutely, as the stage counts in minutes.
+   */
+  'first-contact': () => sweepFirstContact(),
+  /**
    * Report-only, by design and without an override.
    *
    * Every writer recomputes under the lead's lock, so a non-zero count here
@@ -154,6 +172,7 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
     { id: 'retention-daily', pattern: DAILY_PATTERN, name: 'retention' },
     { id: 'reminders-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'reminders' },
     { id: 'lead-triage-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'triage-sweep' },
+    { id: 'first-contact-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'first-contact' },
     // 03:20, after retention has settled: the canary reads what the night left.
     { id: 'follow-up-drift-daily', pattern: '20 3 * * *', name: 'follow-up-drift' },
     { id: 'account-deletions-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'account-deletions' },
@@ -164,6 +183,8 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
     { id: 'lead-recycle-daily', pattern: '10 4 * * *', name: 'lead-recycle' },
     // 03:40, once a day: a step is a whole period of days, so the hour only has to be steady.
     { id: 'lead-score-decay-daily', pattern: '40 3 * * *', name: 'lead-score-decay' },
+    // Five past every hour: each workspace's 08:00 falls on some hour (or half hour) of UTC.
+    { id: 'morning-digest-hourly', pattern: '5 * * * *', name: 'digest' },
   ];
   const queue = new Queue('maintenance', { connection: redis });
   for (const schedule of schedules) {

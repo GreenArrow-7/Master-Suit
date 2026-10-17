@@ -73,6 +73,12 @@ describe('QR capture', () => {
     });
     const counts = await prisma.captureLink.findFirstOrThrow({ where: { tenantId, id: link.id } });
     expect(counts.submitCount).toBe(1);
+    // Audit M17-05: the link's agent is told at once, in the bell and on the phone.
+    const told = await prisma.notification.findFirstOrThrow({
+      where: { tenantId, userId: fixture.a.userId, recordId: lead!.id, kind: 'lead.assigned' },
+    });
+    expect(told).toMatchObject({ title: 'Lead assigned: Lina Haddad', priority: 'HIGH', readAt: null });
+    expect(told.channels).toContain('push');
   });
 
   it('attaches a second submission from the same number to the same lead', async () => {

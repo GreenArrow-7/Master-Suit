@@ -6,6 +6,7 @@ import { assertAssignableUser, assignableUserWhere, leadScope } from '@/lib/secu
 import { resolveOwnerIds } from '@/lib/security/visibility';
 import { activeRule } from '@/services/distribution/assignLead';
 import { openTriageEntry } from '@/services/distribution/triage';
+import { notifyLeadMoves } from '@/services/crm/notify';
 import { OPEN_LEADS_WHERE } from './closeOut';
 import { OPEN_STATUSES } from './nextFollowUp';
 
@@ -23,6 +24,10 @@ import { OPEN_STATUSES } from './nextFollowUp';
  * OWN scope sees it and the Allocation queue does not list it; and from TEAM up
  * any active user in the workspace was taken.
  *
+ * The new owner and the previous one each get a bell row per lead, in the same
+ * transaction (`notifyLeadMoves`; audit M17-05, M17-07). A lead already with
+ * `ownerId` is left as it is: no hand-over recorded, its clock not restarted.
+ *
  * Returns the ids that moved. Inside `withTx`, pass its `tx`.
  */
 export async function assignLeads(
@@ -35,10 +40,12 @@ export async function assignLeads(
   if (ownerId) await assertAssignableUser(ctx, tx, 'leads', 'ASSIGN', ownerId);
 
   const scope = await leadScope(ctx, 'ASSIGN', { includeUnassigned: true, db: tx });
-  const leads = await tx.lead.findMany({
-    where: { ...scope, id: { in: leadIds }, deletedAt: null },
-    select: { id: true, ownerId: true },
-  });
+  const leads = (
+    await tx.lead.findMany({
+      where: { ...scope, id: { in: leadIds }, deletedAt: null },
+      select: { id: true, ownerId: true, fullName: true },
+    })
+  ).filter((lead) => lead.ownerId !== ownerId);
   const ids = leads.map((lead) => lead.id);
 
   await tx.lead.updateMany({
@@ -55,6 +62,11 @@ export async function assignLeads(
       reason,
     })),
   });
+  await notifyLeadMoves(
+    tx,
+    ctx,
+    leads.map((lead) => ({ id: lead.id, fullName: lead.fullName, from: lead.ownerId, to: ownerId })),
+  );
   return ids;
 }
 
