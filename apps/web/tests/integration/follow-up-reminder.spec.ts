@@ -44,3 +44,28 @@ it('a follow-up due in 20 minutes raises one follow_up.due notice, and a second 
   });
   expect(bell).toEqual([{ recordId: followUp.id, title: 'Call back about the villa' }]);
 });
+
+it('a site visit starting in 30 minutes raises one visit.reminder to its agent (M8-13)', async () => {
+  const contact = await prisma.contact.create({
+    data: { tenantId, reference: `C-FU-${suffix}`, fullName: 'Visiting client' },
+  });
+  const visit = await prisma.siteVisit.create({
+    data: {
+      tenantId,
+      ownerId,
+      contactId: contact.id,
+      scheduledAt: new Date(Date.now() + 30 * 60_000),
+      status: 'REQUESTED',
+      kind: 'CLIENT_MEETING',
+    },
+  });
+
+  await runReminderSweep();
+  await runReminderSweep();
+
+  const bell = await prisma.notification.findMany({
+    where: { tenantId, userId: ownerId, kind: 'visit.reminder' },
+    select: { recordId: true, title: true },
+  });
+  expect(bell).toEqual([{ recordId: visit.id, title: 'Site visit soon: a client' }]);
+});
