@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-17 | [An untouched lead at its SLA tells the manager, and can be handed on](2026-10-17-sla-escalation.md) | — | Lead Eagle, allocation, feature |
 | 2026-10-17 | [Follow-ups coming due ring the bell](2026-10-17-follow-up-reminders.md) | — | Lead Eagle, follow-ups, fix |
 | 2026-10-17 | [A Lead-Eagle-only workspace can record an owner and create a listing](2026-10-17-le-listing-owner.md) | — | Lead Eagle, listings, fix |
 | 2026-10-15 | [Phone app 1.2.0 (Android version code 11)](2026-10-15-mobile-1-2-0.md) | — | Mobile, build |
