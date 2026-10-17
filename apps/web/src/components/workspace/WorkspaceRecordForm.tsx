@@ -89,7 +89,11 @@ export default function WorkspaceRecordForm({
                 ))}
               </select>
             ) : field.type === 'select' ? (
+              // Keyed on its default: React applies a select's defaultValue only when it
+              // mounts, so after a save form.reset() put back the value the page opened
+              // with, and the next save of a form that sends every field wrote it back.
               <select
+                key={field.defaultValue}
                 className="lf-input"
                 name={field.name}
                 required={field.required}

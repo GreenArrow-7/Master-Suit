@@ -131,6 +131,30 @@ async function speakers(tenantId: string, pool: string[], languages: string[]): 
   return pool.filter((id) => speaks.has(id));
 }
 
+/**
+ * Where a language rule's speakers are in their turn. The rule's one pointer is
+ * shared by every language, so read alone it restarted one language's speakers
+ * from the first whenever the last lead went to another language's (review of
+ * PR #206); their place is read back from the rule's own assignments to them.
+ * ponytail: a weighted language rule takes its slot from how many of those
+ * there are, so a person passed over loses that turn; a pointer per language
+ * on the rule if that matters.
+ */
+async function speakersTurn(tenantId: string, rule: { id: string; weights: unknown }, pool: string[]) {
+  const where = { tenantId, ruleId: rule.id, toOwnerId: { in: pool } };
+  const last = await prisma.leadAssignmentHistory.findFirst({
+    where,
+    orderBy: { createdAt: 'desc' },
+    select: { toOwnerId: true },
+  });
+  const weighted = Object.keys((rule.weights ?? {}) as object).length > 0;
+  return {
+    weights: rule.weights,
+    lastAssignedUserId: last?.toOwnerId ?? null,
+    rotationSlot: weighted ? await prisma.leadAssignmentHistory.count({ where }) : 0,
+  };
+}
+
 /** The first active round-robin rule, by position, whose conditions the lead meets. */
 async function ruleForLead(
   tenantId: string,
@@ -233,7 +257,7 @@ export async function assignLead(tenantId: string, leadId: string, now = new Dat
   const verdicts = await assessEligibility(tenantId, pool, policy, now);
   const by = new Map(verdicts.map((v) => [v.userId, v]));
 
-  const { order, next } = turns(pool, rule);
+  const { order, next } = turns(pool, languages.length ? await speakersTurn(tenantId, rule, pool) : rule);
 
   /**
    * Redacted before it is written, not before it is rendered.

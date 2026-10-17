@@ -7,6 +7,7 @@ import { filterTreeSchema } from '@/lib/api/filterTree';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { assertAssignableUser } from '@/lib/security/record-scope';
 import { automationGraph } from '@/services/automation/graph';
+import { mayAssignLeads } from '@/services/automation/actions';
 import { RECORD_MODULE } from '@/services/automation/records';
 import { newWebhookSecret } from '@/services/automation/webhook';
 import { sendableTemplate } from '@/services/conversations/send';
@@ -105,8 +106,10 @@ export const POST = route(
     // every time the rule fires.
     let spec: Record<string, unknown> = body.actionSpec;
     let webhookSecret: string | undefined;
-    if (body.actionSpec.action === 'assign' && body.actionSpec.userId) {
-      await assertAssignableUser(ctx, prisma, 'leads', 'ASSIGN', body.actionSpec.userId);
+    if (body.actionSpec.action === 'assign') {
+      // updateLead drops an owner change from someone without either grant, so the rule would do nothing, every time.
+      if (!mayAssignLeads(ctx)) throw Forbidden('You cannot assign leads.');
+      if (body.actionSpec.userId) await assertAssignableUser(ctx, prisma, 'leads', 'ASSIGN', body.actionSpec.userId);
     }
     if (body.actionSpec.action === 'send_template') {
       await sendableTemplate(ctx.tenantId, body.actionSpec.channel, body.actionSpec.templateKey);

@@ -240,3 +240,42 @@ it('a language rule takes leads tagged with that language, for people who speak 
   expect(await assignLead(tenantId, arabic.id)).toMatchObject({ outcome: 'assigned', userId: speaker });
   expect(await assignLead(tenantId, untagged.id)).toMatchObject({ outcome: 'assigned', userId: rest });
 });
+
+it('a rule over two languages turns each language among its own speakers, weighted or not (review)', async () => {
+  const { tenantId, stageId } = fixture.a;
+  const [a, b, h] = await colleagues('Amal', 'Basim', 'Harsh');
+  await prisma.user.updateMany({ where: { tenantId, id: { in: [a!, b!] } }, data: { languages: ['Arabic'] } });
+  await prisma.user.updateMany({ where: { tenantId, id: h }, data: { languages: ['Hindi'] } });
+  await prisma.distributionRule.deleteMany({ where: { tenantId } });
+  const rule = await prisma.distributionRule.create({
+    data: {
+      tenantId,
+      name: 'Two desks',
+      method: 'ROUND_ROBIN',
+      isActive: true,
+      candidatePool: { userIds: [a!, b!, h!] },
+      conditions: { languages: ['Arabic', 'Hindi'] },
+      ...loose,
+    },
+  });
+
+  // Arabic and Hindi leads in turn: every Arabic one went to Amal while the rule's
+  // one pointer always named Harsh, who is not an Arabic speaker.
+  let n = 0;
+  const arabicOwners = async (rounds: number) => {
+    const owners: string[] = [];
+    for (let i = 0; i < rounds * 2; i++) {
+      const language = i % 2 ? 'Hindi' : 'Arabic';
+      const lead = await prisma.lead.create({
+        data: { tenantId, reference: `LG-${suffix}-${n++}`, fullName: 'Buyer', stageId, tags: [language] },
+      });
+      const outcome = await assignLead(tenantId, lead.id);
+      if (outcome.outcome === 'assigned' && language === 'Arabic') owners.push(outcome.userId);
+    }
+    return owners;
+  };
+  expect(await arabicOwners(3)).toEqual([a, b, a]);
+  // Amal ×2: the Arabic round is Amal, Basim, Amal, and it carries on where the last one stopped.
+  await prisma.distributionRule.updateMany({ where: { tenantId, id: rule.id }, data: { weights: { [a!]: 2 } } });
+  expect(await arabicOwners(6)).toEqual([a, b, a, a, b, a]);
+});

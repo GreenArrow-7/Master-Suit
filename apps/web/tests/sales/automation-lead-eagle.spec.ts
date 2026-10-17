@@ -1,11 +1,31 @@
 import { createHmac, randomBytes } from 'node:crypto';
+import { EventEmitter } from 'node:events';
+import https, { type RequestOptions } from 'node:https';
+import { Queue, Worker } from 'bullmq';
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
+
+// The automation queue for real, under a name of this file's own: each step of
+// an enrollment is a job, and enqueue's job id is a hash of its payload, which a
+// test calling runEnrollmentNode in a loop never meets (review of PR #206).
+const automationQueue = vi.hoisted(() => `automation-test-${Math.random().toString(36).slice(2, 10)}`);
+vi.mock('@/lib/queue', async (importOriginal) => {
+  const queue = await importOriginal<typeof import('@/lib/queue')>();
+  return {
+    ...queue,
+    enqueue: (...[name, ...rest]: Parameters<typeof queue.enqueue>) =>
+      queue.enqueue((name === 'automation' ? automationQueue : name) as typeof name, ...rest),
+  };
+});
+
 import { prisma } from '@/lib/db';
+import { redis } from '@/lib/redis';
+import { publicLookup } from '@/lib/security/outboundUrl';
+import { handleJob } from '@/workers/jobs';
 import { ctxForUser } from '@/lib/auth/session';
 import { mockOutbox } from '@/lib/mailer';
 import { POST as createAutomation } from '@/app/api/v1/automations/route';
 import { PATCH as editAutomation } from '@/app/api/v1/automations/[id]/route';
-import { enrollMatchingAutomations, runEnrollmentNode, sweepTimeTriggers } from '@/services/automation/engine';
+import { enrollMatchingAutomations, sweepTimeTriggers } from '@/services/automation/engine';
 import { runAction } from '@/services/automation/actions';
 import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import { createSessionToken } from '../helpers/session';
@@ -23,6 +43,8 @@ let tenantId = '';
 let stageId = '';
 let cookie = '';
 const people: Record<string, string> = {};
+let jobs: Queue | undefined;
+let worker: Worker | undefined;
 
 beforeAll(async () => {
   tenantId = (
@@ -57,9 +79,14 @@ beforeAll(async () => {
   }
   await prisma.user.updateMany({ where: { tenantId, id: people.agent }, data: { managerId: people.manager } });
   cookie = await createSessionToken(tenantId, people.admin!);
+  jobs = new Queue(automationQueue, { connection: redis });
+  worker = new Worker(automationQueue, (job) => handleJob('automation', job), { connection: redis });
 });
 
 afterAll(async () => {
+  await worker?.close();
+  await jobs?.obliterate({ force: true }).catch(() => {});
+  await jobs?.close();
   if (tenantId) await prisma.tenant.delete({ where: { id: tenantId } }).catch(() => {});
 });
 
@@ -75,13 +102,33 @@ const newLead = (data: Record<string, unknown> = {}) =>
 const publish = (body: Record<string, unknown>) =>
   post(createAutomation, '/api/v1/automations', { objectType: 'LEAD', activate: true, ...body }, cookie);
 
-/** Walks an enrollment to its end, node by node, as the automation queue would. */
+/** Waits while the automation queue's worker walks an enrollment, one job per step; a stuck one comes back ACTIVE. */
 async function drain(automationId: string, recordId: string) {
-  const enrollment = await prisma.automationEnrollment.findFirstOrThrow({
-    where: { tenantId, automationId, recordId },
-  });
-  for (let step = 0; step < 6; step++) await runEnrollmentNode(tenantId, enrollment.id);
-  return prisma.automationEnrollment.findFirstOrThrow({ where: { tenantId, id: enrollment.id } });
+  const deadline = Date.now() + 10_000;
+  let enrollment;
+  do {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    enrollment = await prisma.automationEnrollment.findFirstOrThrow({ where: { tenantId, automationId, recordId } });
+  } while (enrollment.status === 'ACTIVE' && Date.now() < deadline);
+  return enrollment;
+}
+
+/** The webhook's HTTPS request, answered 200 without leaving the machine. */
+function interceptWebhook() {
+  const sent: { url: string; options: RequestOptions; body: string }[] = [];
+  vi.spyOn(https, 'request').mockImplementation(((
+    url: URL,
+    options: RequestOptions,
+    onResponse: (response: object) => void,
+  ) =>
+    Object.assign(new EventEmitter(), {
+      destroy: () => {},
+      end: (body: string) => {
+        sent.push({ url: String(url), options, body });
+        onResponse({ statusCode: 200, resume: () => {} });
+      },
+    })) as unknown as typeof https.request);
+  return sent;
 }
 
 /** The spec the API stored on the published version's action node. */
@@ -220,26 +267,26 @@ it('webhook posts the event signed with a secret shown once, and refuses an addr
   const spec = await storedAction(created.body.id);
   expect(JSON.stringify(spec)).not.toContain(secret);
 
-  const sent = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+  const sent = interceptWebhook();
   const lead = await newLead({ ownerId: people.agent, phone: '+971501234567' });
   const ctx = await ctxForUser(people.admin!, tenantId, `auto-hook-${suffix}`);
   await runAction({ ctx, objectType: 'LEAD', recordId: lead.id, spec });
 
-  expect(sent).toHaveBeenCalledTimes(1);
-  const [url, init] = sent.mock.calls[0]!;
-  expect(String(url)).toBe('https://93.184.215.14/hooks/youhan');
-  const body = String(init!.body);
-  const headers = init!.headers as Record<string, string>;
+  expect(sent).toHaveLength(1);
+  const { url, options, body } = sent[0]!;
+  expect(url).toBe('https://93.184.215.14/hooks/youhan');
+  expect(options.method).toBe('POST');
+  const headers = options.headers as Record<string, string>;
   expect(headers['x-youhan-signature']).toBe(`sha256=${createHmac('sha256', secret).update(body).digest('hex')}`);
   expect(JSON.parse(body)).toMatchObject({ objectType: 'LEAD', recordId: lead.id, reference: lead.reference });
   expect(body).not.toContain('+971501234567');
 
   // An address on the inside is refused before anything is sent.
-  sent.mockClear();
+  sent.length = 0;
   await expect(
     runAction({ ctx, objectType: 'LEAD', recordId: lead.id, spec: { ...spec, url: 'https://169.254.169.254/latest' } }),
   ).rejects.toThrow(/private address/);
-  expect(sent).not.toHaveBeenCalled();
+  expect(sent).toHaveLength(0);
   expect(
     (await publish({ name: 'Plain', event: 'created', actionSpec: { action: 'webhook', url: 'http://x.test/' } }))
       .status,
@@ -299,22 +346,77 @@ it('webhook sends only what its author may see: authoring needs VIEW on the reco
   expect(created.status).toBe(200);
   const spec = await storedAction(created.body.id);
 
-  const sent = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+  const sent = interceptWebhook();
   const sellerCtx = await ctxForUser(seller.id, tenantId, `auto-own-${suffix}`);
   const someoneElses = await newLead({ ownerId: people.agent });
   await runAction({ ctx: sellerCtx, objectType: 'LEAD', recordId: someoneElses.id, spec });
-  expect(sent).not.toHaveBeenCalled();
+  expect(sent).toHaveLength(0);
   const theirs = await newLead({ ownerId: seller.id });
   await runAction({ ctx: sellerCtx, objectType: 'LEAD', recordId: theirs.id, spec });
-  expect(sent).toHaveBeenCalledTimes(1);
+  expect(sent).toHaveLength(1);
 
   // A webhook stored before (or whose author has since lost access) still sends nothing.
-  sent.mockClear();
+  sent.length = 0;
   const itCtx = await ctxForUser(it.id, tenantId, `auto-it-${suffix}`);
   await runAction({ ctx: itCtx, objectType: 'LEAD', recordId: theirs.id, spec });
   const contact = await prisma.contact.create({
     data: { tenantId, reference: `CT-${suffix}`, fullName: 'Omar Haddad' },
   });
   await runAction({ ctx: itCtx, objectType: 'CONTACT', recordId: contact.id, spec });
-  expect(sent).not.toHaveBeenCalled();
+  expect(sent).toHaveLength(0);
+});
+
+it('the webhook connects only to the address it checked, so a name that re-resolves inside is refused (review)', async () => {
+  const resolve = (host: string, options: { all?: boolean }) =>
+    new Promise((done, fail) => publicLookup(host, options, (err, address) => (err ? fail(err) : done(address))));
+  // The connection's own lookup: a name that resolves inside the network fails it, a public one is what it dials.
+  await expect(resolve('localhost', {})).rejects.toThrow(/private address/);
+  await expect(resolve('93.184.215.14', { all: true })).resolves.toEqual([{ address: '93.184.215.14', family: 4 }]);
+
+  const created = await publish({
+    name: 'Pinned',
+    event: 'created',
+    actionSpec: { action: 'webhook', url: 'https://93.184.215.14/pinned' },
+  });
+  const sent = interceptWebhook();
+  const lead = await newLead({ ownerId: people.agent });
+  const ctx = await ctxForUser(people.admin!, tenantId, `auto-pin-${suffix}`);
+  await runAction({ ctx, objectType: 'LEAD', recordId: lead.id, spec: await storedAction(created.body.id) });
+  // That lookup on a connection of its own: no pooled socket another caller resolved unchecked.
+  expect(sent.map(({ options }) => [options.lookup, options.agent])).toEqual([[publicLookup, false]]);
+});
+
+it('assign needs the author to hold leads:ASSIGN or REASSIGN, when it is written and each time it runs (review)', async () => {
+  const role = await prisma.role.create({
+    data: { tenantId, key: `editor-${suffix}`, name: 'Editor', rank: 40, defaultScope: 'ORGANIZATION' },
+  });
+  await grantPermissions(tenantId, role.id, [
+    ['automation', 'MANAGE_AUTOMATION'],
+    ['leads', 'VIEW'],
+    ['leads', 'EDIT'],
+  ]);
+  const editor = await createWorkspaceUser({
+    tenantId,
+    roleId: role.id,
+    email: `editor@${slug}.test`,
+    fullName: 'Editor',
+  });
+  const editorCookie = await createSessionToken(tenantId, editor.id);
+  for (const actionSpec of [{ action: 'assign', userId: editor.id }, { action: 'assign' }]) {
+    const refused = await post(
+      createAutomation,
+      '/api/v1/automations',
+      { name: 'Assign', objectType: 'LEAD', event: 'created', activate: true, actionSpec },
+      editorCookie,
+    );
+    expect(refused.status).toBe(403);
+  }
+
+  // One already stored fails its step, rather than leaving the lead unassigned under a COMPLETED run.
+  const lead = await newLead();
+  const ctx = await ctxForUser(editor.id, tenantId, `auto-editor-${suffix}`);
+  for (const spec of [{ action: 'assign', userId: editor.id }, { action: 'assign' }]) {
+    await expect(runAction({ ctx, objectType: 'LEAD', recordId: lead.id, spec })).rejects.toThrow(/assign leads/);
+  }
+  expect((await prisma.lead.findFirstOrThrow({ where: { tenantId, id: lead.id } })).ownerId).toBeNull();
 });

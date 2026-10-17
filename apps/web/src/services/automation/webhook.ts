@@ -1,6 +1,7 @@
 import { createHmac, randomBytes } from 'node:crypto';
+import https from 'node:https';
 import { envelope } from '@/lib/security/envelope';
-import { assertFetchableUrl } from '@/lib/security/outboundUrl';
+import { assertFetchableUrl, publicLookup } from '@/lib/security/outboundUrl';
 
 /**
  * The automation "webhook" action (audit M7-12): a POST to the administrator's
@@ -19,23 +20,39 @@ export const webhookSignature = (secret: string, body: string) =>
   `sha256=${createHmac('sha256', secret).update(body, 'utf8').digest('hex')}`;
 
 /**
- * The URL is the administrator's choice, so its host is its own allow-list;
- * the address check still refuses anything inside the network, and a redirect
- * is refused rather than followed (see `outboundUrl.ts`). A non-2xx answer
+ * The URL is the administrator's choice, so there is no allow-list to carry
+ * the weight (`outboundUrl.ts`): `assertFetchableUrl` refuses http and a
+ * literal private address up front, and the connection resolves the name once,
+ * through `publicLookup`, and dials only an address it checked — a name that
+ * answers public to a check and private to the connection (DNS rebinding)
+ * cannot reach inside. A redirect is not followed; anything but a 2xx answer
  * throws, so the automation queue retries.
  */
 export async function postWebhook(spec: { url: string; secret: string }, payload: unknown) {
   const url = await assertFetchableUrl(spec.url, [new URL(spec.url).hostname]);
   const body = JSON.stringify(payload);
-  const response = await fetch(url, {
-    method: 'POST',
-    redirect: 'error',
-    signal: AbortSignal.timeout(10_000),
-    headers: {
-      'content-type': 'application/json',
-      'x-youhan-signature': webhookSignature(secrets.decrypt(spec.secret), body),
-    },
-    body,
+  const status = await new Promise<number>((resolve, reject) => {
+    const request = https.request(
+      url,
+      {
+        method: 'POST',
+        lookup: publicLookup,
+        agent: false,
+        timeout: 10_000,
+        headers: {
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(body),
+          'x-youhan-signature': webhookSignature(secrets.decrypt(spec.secret), body),
+        },
+      },
+      (response) => {
+        response.resume();
+        resolve(response.statusCode ?? 0);
+      },
+    );
+    request.on('timeout', () => request.destroy(new Error('The webhook did not answer within 10 seconds.')));
+    request.on('error', reject);
+    request.end(body);
   });
-  if (!response.ok) throw new Error(`The webhook answered ${response.status}.`);
+  if (status < 200 || status > 299) throw new Error(`The webhook answered ${status}.`);
 }

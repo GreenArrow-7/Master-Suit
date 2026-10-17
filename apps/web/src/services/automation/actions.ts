@@ -1,6 +1,6 @@
 import { prisma, withTx } from '@/lib/db';
-import { AppError } from '@/lib/errors';
-import type { Ctx } from '@/lib/security/rbac';
+import { AppError, Forbidden } from '@/lib/errors';
+import { can, type Ctx } from '@/lib/security/rbac';
 import { assertLeadInScope, assertRecordInScope } from '@/lib/security/record-scope';
 import { updateRecordField, addTag, loadRecord, RECORD_MODULE, type AutomationObjectType } from './records';
 import { postWebhook } from './webhook';
@@ -8,6 +8,9 @@ import { withRecompute } from '@/services/leads/nextFollowUp';
 import { updateLead } from '@/services/leads/updateLead';
 import { sendLeadMessage, type MessageChannel } from '@/services/leads/leadMessages';
 import { assignLead } from '@/services/distribution/assignLead';
+
+/** What updateLead requires before it writes an owner (`services/leads/updateLead.ts`). */
+export const mayAssignLeads = (ctx: Ctx) => can(ctx, 'leads', 'ASSIGN') || can(ctx, 'leads', 'REASSIGN');
 
 export interface ActionContext {
   ctx: Ctx;
@@ -82,6 +85,8 @@ export async function runAction({ ctx, objectType, recordId, spec }: ActionConte
     // for a lead nobody holds, the next in turn under the assignment rules.
     case 'assign':
       if (objectType !== 'LEAD') throw new Error('Only a lead can be assigned.');
+      // An author who has lost both grants fails the step: updateLead would drop the owner and report success.
+      if (!mayAssignLeads(ctx)) throw Forbidden('The author of this automation cannot assign leads.');
       if (spec.userId) await updateLead(ctx, recordId, { ownerId: spec.userId as string });
       else await assignLead(ctx.tenantId, recordId);
       return;

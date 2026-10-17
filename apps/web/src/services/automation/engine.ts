@@ -77,8 +77,17 @@ async function enroll(
     },
   });
 
-  await enqueue('automation', 'run-node', { tenantId, enrollmentId: enrollment.id });
+  await runNextStep(tenantId, enrollment.id);
 }
+
+/**
+ * Each step its own job. Every step of an enrollment carries the same payload,
+ * and enqueue's job id is a hash of the payload, so BullMQ dropped the add for
+ * the second step as a duplicate of the first (still active, then kept as
+ * completed) and no enrollment got past its trigger (review of PR #206).
+ */
+const runNextStep = (tenantId: string, enrollmentId: string, delayMs?: number) =>
+  enqueue('automation', 'run-node', { tenantId, enrollmentId }, { fresh: true, delayMs });
 
 /**
  * Time triggers (audit M7-11): a published automation whose trigger is
@@ -192,12 +201,7 @@ export async function runEnrollmentNode(tenantId: string, enrollmentId: string) 
           where: { tenantId, id: execution.id },
           data: { status: 'SUCCEEDED', finishedAt: new Date(), durationMs: Date.now() - started },
         });
-        await enqueue(
-          'automation',
-          'run-node',
-          { tenantId, enrollmentId: enrollment.id },
-          { delayMs: node.spec.durationMinutes * 60_000 },
-        );
+        await runNextStep(tenantId, enrollment.id, node.spec.durationMinutes * 60_000);
         return;
       }
 
@@ -220,7 +224,7 @@ export async function runEnrollmentNode(tenantId: string, enrollmentId: string) 
       where: { tenantId, id: enrollment.id },
       data: { currentNodeId: nextNodeId },
     });
-    await enqueue('automation', 'run-node', { tenantId, enrollmentId: enrollment.id });
+    await runNextStep(tenantId, enrollment.id);
   } catch (err) {
     logger.error({ err, enrollmentId: enrollment.id, nodeId: node.id }, 'automation node failed');
     await prisma.automationExecution.update({
