@@ -1292,6 +1292,7 @@ function definitions(slug: string): SectionDef[] {
             },
             { label: 'Role & Access', href: `/${slug}/profile/role` },
             { label: 'Appearance', href: `/${slug}/profile/appearance`, keywords: 'theme density' },
+            { label: 'Notifications', href: `/${slug}/profile/notifications`, keywords: 'push email alerts' },
           ],
         },
       ],

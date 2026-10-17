@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-17 | [Each person chooses phone and email copies of their notifications](2026-10-17-notification-prefs.md) | — | Notifications, feature |
 | 2026-10-17 | [Teams can be created, with a manager and members](2026-10-17-teams.md) | — | Admin, scope, feature |
 | 2026-10-17 | [Follow-ups coming due ring the bell](2026-10-17-follow-up-reminders.md) | — | Lead Eagle, follow-ups, fix |
 | 2026-10-17 | [A Lead-Eagle-only workspace can record an owner and create a listing](2026-10-17-le-listing-owner.md) | — | Lead Eagle, listings, fix |
