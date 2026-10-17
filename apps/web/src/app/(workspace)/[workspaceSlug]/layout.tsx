@@ -26,6 +26,7 @@ import '@/styles/forms-mobile.css';
 import '@/styles/daily-board.css';
 import '@/styles/redesign-mobile.css';
 import { isEntitlementUsable } from '@/lib/security/entitlements';
+import { textDirection } from '@/lib/locale';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,7 +79,17 @@ export default async function WorkspaceLayout({
   }
 
   return (
-    <div className="lf-app-frame" data-lf-surface="workspace">
+    // The workspace's language sets its direction: Arabic reads right to left
+    // (NFR-09). No `lang` yet: the words are still English, and a screen reader
+    // would read them in an Arabic voice.
+    // data-outbox-owner: whose screen this is, so a change kept offline is only
+    // ever sent by the workspace and person that made it (lib/offline.ts).
+    <div
+      className="lf-app-frame"
+      data-lf-surface="workspace"
+      data-outbox-owner={shell.outboxOwner}
+      dir={textDirection(shell.locale)}
+    >
       <WorkspaceSidebar
         slug={shell.slug}
         name={shell.displayName}
@@ -182,6 +193,7 @@ async function loadShell(workspaceSlug: string) {
     const iosApp = isIosAppUserAgent((await headers()).get('user-agent'));
     return {
       workspaceId: workspace.id,
+      outboxOwner: `${ctx.tenantId}:${ctx.actor.id}`,
       supportMode,
       supportReadOnly,
       serviceMode,
@@ -190,6 +202,7 @@ async function loadShell(workspaceSlug: string) {
       platformStaff: supportMode || serviceMode,
       slug: workspace.slug,
       displayName: workspace.displayName,
+      locale: workspace.settings?.defaultLocale ?? 'en-AE',
       /**
        * The server-side half of the forced-change gate, and the one that counts:
        * the login response only *suggests* a destination, and typing any other

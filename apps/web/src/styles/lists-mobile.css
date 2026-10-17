@@ -89,7 +89,7 @@
     display: block;
     width: auto;
     order: 1;
-    margin-left: auto;
+    margin-inline-start: auto;
     padding: 0;
   }
   .lf-row-more__summary {

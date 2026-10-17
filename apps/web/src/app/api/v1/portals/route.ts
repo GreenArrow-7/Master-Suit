@@ -61,7 +61,13 @@ const patchBody = z.object({
 });
 
 export const PATCH = route(
-  { module: 'listings', productModule: SALES_OR_REALTY, action: 'EDIT', body: patchBody },
+  {
+    module: 'listings',
+    productModule: SALES_OR_REALTY,
+    action: 'EDIT',
+    body: patchBody,
+    auditEvent: 'INTEGRATION_MODIFIED',
+  },
   async ({ ctx, body }) => {
     const portal = body.portal as PortalKey;
 

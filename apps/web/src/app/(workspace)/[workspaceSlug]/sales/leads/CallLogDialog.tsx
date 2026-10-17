@@ -4,30 +4,35 @@ import { useEffect, useId, useRef, useState } from 'react';
 import Field from '@/components/forms/Field';
 import { DateTimeInput } from '@/components/forms/DateInput';
 import { sendOrQueue } from '@/lib/offline';
-import { CALL_LOG_OUTCOMES, tomorrowAtTen } from '@/lib/leads/callLog';
+import { CALL_LOG_OUTCOMES, afterDial, tomorrowAtTen } from '@/lib/leads/callLog';
 
 export interface CallLogLead {
   id: string;
   fullName: string;
+  /** Back from the dialler (M20-06): the time away as the estimate, and when the call began. */
+  dial?: { minutes: number; outcome?: string; at: string };
 }
 
 /**
  * After a `tel:` link: when the page is visible again, the call log opens for
- * the lead just dialled (M4-27). Returns what the link calls on click.
+ * the lead just dialled (M4-27), with the minutes estimated from the time away
+ * and, back within 8 seconds, No answer picked (M20-06). Returns what the link
+ * calls on click.
  */
 export function useAfterDial(open: (lead: CallLogLead) => void) {
-  const dialled = useRef<CallLogLead | null>(null);
+  const dialled = useRef<{ lead: CallLogLead; at: number } | null>(null);
   useEffect(() => {
     const back = () => {
       if (document.visibilityState !== 'visible' || !dialled.current) return;
-      open(dialled.current);
+      const { lead, at } = dialled.current;
+      open({ ...lead, dial: { ...afterDial(at, Date.now()), at: new Date(at).toISOString() } });
       dialled.current = null;
     };
     document.addEventListener('visibilitychange', back);
     return () => document.removeEventListener('visibilitychange', back);
   }, [open]);
   return (lead: CallLogLead) => {
-    dialled.current = { id: lead.id, fullName: lead.fullName };
+    dialled.current = { lead: { id: lead.id, fullName: lead.fullName }, at: Date.now() };
   };
 }
 
@@ -55,9 +60,9 @@ export default function CallLogDialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
-  const [outcome, setOutcome] = useState('');
+  const [outcome, setOutcome] = useState(lead.dial?.outcome ?? '');
   const [notes, setNotes] = useState('');
-  const [minutes, setMinutes] = useState('');
+  const [minutes, setMinutes] = useState(lead.dial ? String(lead.dial.minutes) : '');
   const [book, setBook] = useState(true);
   const [followUpAt, setFollowUpAt] = useState(() => tomorrowAtTen(timeZone));
   const [busy, setBusy] = useState(false);
@@ -84,7 +89,8 @@ export default function CallLogDialog({
         ...(minutes && !callId && { durationMins: Number(minutes) }),
         ...(book && followUpAt && { followUpAt }),
         requestKey,
-        occurredAt: new Date().toISOString(),
+        // Back from the dialler, the call began when the dialler opened.
+        occurredAt: lead.dial?.at ?? new Date().toISOString(),
       },
       `${lead.fullName}: call`,
     );
@@ -145,7 +151,13 @@ export default function CallLogDialog({
               inputMode="numeric"
               value={minutes}
               onChange={(e) => setMinutes(e.target.value)}
+              aria-describedby={lead.dial ? `${id}-estimate` : undefined}
             />
+            {lead.dial && (
+              <span id={`${id}-estimate`} className="lf-hint">
+                Estimated from your time in the phone app; correct it if it is off.
+              </span>
+            )}
           </Field>
         )}
         <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>

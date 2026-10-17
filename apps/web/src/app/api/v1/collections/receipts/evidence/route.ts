@@ -28,7 +28,13 @@ const SIGNATURES: { type: string; bytes: number[] }[] = [
  * reference, and the receipt still waits for a second person.
  */
 export const POST = route(
-  { module: 'collections', action: 'CREATE', productModule: SALES_OR_REALTY, sessionOnly: true },
+  {
+    module: 'collections',
+    action: 'CREATE',
+    productModule: SALES_OR_REALTY,
+    sessionOnly: true,
+    auditEvent: 'RECORD_CREATED',
+  },
   async ({ ctx, req }) => {
     const { form, file } = await readUpload(req);
 

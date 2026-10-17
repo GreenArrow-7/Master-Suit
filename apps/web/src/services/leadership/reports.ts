@@ -884,38 +884,51 @@ export async function runReport(
       };
     }
     case 'source-to-booking': {
-      const leads = await prismaRead.lead.findMany({
-        where: { tenantId, deletedAt: null, createdAt: within, ...owned(userIds), ...lead },
-        select: { id: true, source: true, sourceDetail: true, leadSource: LEAD_SOURCE },
-      });
-      // ponytail: the period's lead ids as one IN list; a join in SQL if a range ever holds 100k leads.
-      const leadId = { in: leads.map((l) => l.id) };
-      const [visited, booked] = await Promise.all([
+      // Counted in the database (NFR-10): a period of a large book holds more
+      // leads than one query may name, which the IN list of their ids used to
+      // need (it failed past 65,535; at 1,000,000 leads the default period holds
+      // about 200,000). Visits and bookings reach their leads by the relation.
+      // The period's leads, narrowed by the source and project filter (M16-12).
+      const inPeriod = { tenantId, deletedAt: null, createdAt: within, ...owned(userIds), ...lead };
+      const ofLead = { select: { source: true, sourceDetail: true, leadSource: LEAD_SOURCE } };
+      const [grouped, entries, visited, booked] = await Promise.all([
+        // ponytail: one group per distinct detail (a listing's portal reference,
+        // a form, a line), not per lead; group on the detail's prefix in SQL if
+        // details ever become one per lead.
+        prismaRead.lead.groupBy({
+          by: ['source', 'sourceDetail', 'sourceId'],
+          where: inPeriod,
+          _count: { _all: true },
+        }),
+        prismaRead.leadSource.findMany({ where: { tenantId }, select: { id: true, ...LEAD_SOURCE.select } }),
         prismaRead.siteVisit.findMany({
-          where: { tenantId, status: { in: [...VISITED] }, leadId },
-          select: { leadId: true },
+          where: { tenantId, status: { in: [...VISITED] }, lead: inPeriod },
+          select: { leadId: true, lead: ofLead },
           distinct: ['leadId'],
         }),
         // Bookings are Sales' and Real Estate's: none to read in a Lead-Eagle-only workspace (M16-00).
         money
           ? prismaRead.booking.findMany({
-              where: { tenantId, deletedAt: null, status: { not: 'CANCELLED' }, leadId },
-              select: { leadId: true, saleValue: true },
+              where: { tenantId, deletedAt: null, status: { not: 'CANCELLED' }, lead: inPeriod },
+              select: { saleValue: true, lead: ofLead },
             })
           : [],
       ]);
-      const sourceOf = new Map(leads.map((l) => [l.id, catalogueLabel(l)]));
+      const entry = new Map(entries.map((e) => [e.id, e]));
       const by = new Map<string, { leads: number; visited: number; bookings: number; value: Prisma.Decimal }>();
       const row = (source: string) => {
         const r = by.get(source) ?? { leads: 0, visited: 0, bookings: 0, value: new Prisma.Decimal(0) };
         by.set(source, r);
         return r;
       };
-      for (const l of leads) row(sourceOf.get(l.id)!).leads += 1;
-      for (const v of visited) if (v.leadId && sourceOf.has(v.leadId)) row(sourceOf.get(v.leadId)!).visited += 1;
+      for (const g of grouped) {
+        const leadSource = g.sourceId ? (entry.get(g.sourceId) ?? null) : null;
+        row(catalogueLabel({ source: g.source, sourceDetail: g.sourceDetail, leadSource })).leads += g._count._all;
+      }
+      for (const v of visited) if (v.lead) row(catalogueLabel(v.lead)).visited += 1;
       for (const b of booked) {
-        if (!b.leadId || !sourceOf.has(b.leadId)) continue;
-        const r = row(sourceOf.get(b.leadId)!);
+        if (!b.lead) continue;
+        const r = row(catalogueLabel(b.lead));
         r.bookings += 1;
         r.value = r.value.plus(b.saleValue);
       }
@@ -1170,7 +1183,7 @@ export async function runReport(
       // By the catalogue entry where a lead has one (M4-03); else by the portal its
       // intake named (`bayut:…`), which folds it into that portal's entry (M16-02);
       // else by its pipeline source.
-      // ponytail: the period's leads in memory, as Source to Booking reads them; a GROUP BY on the label at 100k leads.
+      // ponytail: the period's leads in memory; a groupBy as Source to Booking's (NFR-10) at 100k leads.
       const leads = await prismaRead.lead.findMany({
         where: { tenantId, deletedAt: null, createdAt: within, ...owned(userIds), ...lead },
         select: {

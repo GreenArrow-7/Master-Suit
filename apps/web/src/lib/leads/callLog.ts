@@ -64,6 +64,19 @@ export function tomorrowAtTen(timeZone: string, now = new Date()): string {
 }
 
 /**
+ * Back from the phone's dialler (M20-06): the time away as the call's estimate,
+ * shown in the call log for the agent to correct — the phone's own call log
+ * cannot be read (never on iOS; on Android only with READ_CALL_LOG, which the
+ * stores refuse a CRM). Under 8 seconds nobody answered.
+ */
+export function afterDial(leftAt: number, now: number): { minutes: number; outcome?: 'No answer' } {
+  const seconds = (now - leftAt) / 1000;
+  if (seconds < 8) return { minutes: 0, outcome: 'No answer' };
+  // 600: the most the call log accepts (`durationMins`).
+  return { minutes: Math.min(600, Math.max(1, Math.round(seconds / 60))) };
+}
+
+/**
  * The other party's number on a call: who rang in on an inbound call, not the
  * workspace's line it reached. The Calls list, the call's own page and a
  * seller's day all show and dial it through here.

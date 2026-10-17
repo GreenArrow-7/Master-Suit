@@ -213,13 +213,34 @@ Node 22 or newer (CI uses 24).
   through the route's `auditEvent`, or `audit(ctx, …)`
   (`src/lib/security/audit.ts`) where the route cannot say enough. A write no
   person makes (a webhook, a worker) calls `audit({ tenantId, source }, …)` and
-  shows as System. A date or a list in a value is stored as one. Not all
-  existing writes do yet; the known gaps are listed in
-  `changes/2026-10-11-report-export-audit.md`. A file out of the building needs
-  EXPORT, not VIEW, and writes `EXPORT_REQUESTED`; a scheduled report email
+  shows as System. A date or a list in a value is stored as one.
+  `tests/unit/mutation-audit.spec.ts` gates it: every POST, PATCH, PUT and
+  DELETE handler declares `auditEvent`, audits in its handler, or is listed
+  there with the file that audits it or why nothing is recorded (a draft, the
+  caller's own preferences); a new mutation route fails until it says which.
+  A named file is checked against what the handler calls from it: one of those
+  functions audits, and none writes a record without auditing. A
+  file out of the building needs EXPORT, not VIEW, and writes `EXPORT_REQUESTED`; a scheduled report email
   is one too, re-checked at every send. The Audit Log pages by
   keyset (`before=<ISO>|<id>`, across both logs) and narrows to a range of the
   workspace's days.
+- **Offline.** The phone app is a web view of the site, so its outbox is the
+  site's (`src/lib/offline.ts`, the notice in `OfflineBanner`): a change made
+  with no connection waits on the device and is sent when it returns, each with
+  its own `Idempotency-Key`, so a repeated send is replayed, not doubled. Sends
+  run one at a time (in the page, and across tabs by a Web Lock). Each change
+  carries its owner (`tenantId:userId`, the frame's `data-outbox-owner`) and is
+  only sent from a screen of that workspace and person; signing out
+  (`lib/auth/signOut.ts`) sends what it can and forgets the rest. The
+  lead page, the call log (list and lead page), the Follow-ups list (complete,
+  reschedule, cancel, reopen, a new follow-up) and Cold Data's call outcome go
+  through it; a write whose answer the screen needs (opening what it created)
+  still needs the connection.
+- **Direction.** A workspace's language (`OrganizationSetting.defaultLocale`,
+  Company profile) sets the shell's `dir`: Arabic lays it out right to left,
+  the words still English. Stylesheets use logical properties
+  (`margin-inline-start`, `inset-inline-end`, `text-align: start`), physical
+  ones only where the side is the point (centring, a compass); new CSS follows.
 - **Attendance is not HR.** Check-in, the attendance record, attendance
   requests and the attendance summary with its CSV (on the Attendance screen;
   `EVERY_WORKSPACE_REPORT`, `src/services/hr/reports.ts`) work in every

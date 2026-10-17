@@ -207,7 +207,7 @@ export async function addTask(
     where: { tenantId: ctx.tenantId, employeeId: input.employeeId, phase: input.phase },
     orderBy: { sequence: 'desc' },
   });
-  return prisma.hrChecklistTask.create({
+  const task = await prisma.hrChecklistTask.create({
     data: {
       tenantId: ctx.tenantId,
       employeeId: input.employeeId,
@@ -219,6 +219,13 @@ export async function addTask(
       sequence: (last?.sequence ?? -1) + 1,
     },
   });
+  await audit(ctx, {
+    event: 'RECORD_CREATED',
+    objectType: 'hr_checklist_task',
+    recordId: task.id,
+    metadata: { action: 'checklist.added', title: task.title, employeeId: input.employeeId, phase: input.phase },
+  });
+  return task;
 }
 
 // ── Onboarding ─────────────────────────────────────────────────────────────

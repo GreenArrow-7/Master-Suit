@@ -27,7 +27,14 @@ const addBody = z
   .strict();
 
 export const POST = route(
-  { module: 'events', productModule: SALES_OR_REALTY, action: 'EDIT', params, body: addBody },
+  {
+    module: 'events',
+    productModule: SALES_OR_REALTY,
+    action: 'EDIT',
+    params,
+    body: addBody,
+    auditEvent: 'RECORD_UPDATED',
+  },
   async ({ ctx, params, body }) => {
     await assertEventInScope(ctx, params.id, 'EDIT');
     // The event's callers see each invitee's lead by name and number on the

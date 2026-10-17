@@ -50,7 +50,11 @@ export default function OfflineBanner() {
   if (!waiting && !refused.length && !sent && connected) return null;
   return (
     <div role="status" className="lf-toast lf-outbox">
-      {!connected && <div>You are offline. Changes you make to leads are kept on this device.</div>}
+      {!connected && (
+        <div>
+          You are offline. Calls you log, follow-ups, and changes to leads and cold data are kept on this device.
+        </div>
+      )}
       {waiting > 0 && (
         <div>
           {waiting} change{waiting === 1 ? '' : 's'} waiting to be sent

@@ -350,7 +350,13 @@ export function renderCell(object: GridObject, key: string, row: GridRow, timeZo
           return <span style={{ fontWeight: 500 }}>{row.title}</span>;
         case 'actions':
           // `canAct` false: the page found the viewer may read this row, not change it.
-          return row.canAct === false ? null : <FollowUpRowActions id={String(row.id)} status={String(row.status)} />;
+          return row.canAct === false ? null : (
+            <FollowUpRowActions
+              id={String(row.id)}
+              status={String(row.status)}
+              title={row.title ? String(row.title) : undefined}
+            />
+          );
         case 'lead':
           return row.lead ? link(`/leads/${row.lead.id}`, row.lead.fullName) : dash;
         case 'kind':
