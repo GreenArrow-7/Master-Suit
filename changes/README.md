@@ -30,6 +30,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 | Date | Entry | PR | Area |
 |---|---|---|---|
 | 2026-10-17 | [Follow-ups coming due ring the bell](2026-10-17-follow-up-reminders.md) | — | Lead Eagle, follow-ups, fix |
+| 2026-10-17 | [A Lead-Eagle-only workspace can record an owner and create a listing](2026-10-17-le-listing-owner.md) | — | Lead Eagle, listings, fix |
 | 2026-10-15 | [Phone app 1.2.0 (Android version code 11)](2026-10-15-mobile-1-2-0.md) | — | Mobile, build |
 | 2026-10-15 | [Nothing in the iOS app sells, prices or points at buying the service](2026-10-15-ios-no-purchase-paths.md) | — | Mobile, App Store, fix |
 | 2026-10-14 | [An assigned lead never commits with a WAITING triage episode, whatever path wrote the owner](2026-10-14-triage-episode-on-assign.md) | #189 | Sales, triage queue, fix |
