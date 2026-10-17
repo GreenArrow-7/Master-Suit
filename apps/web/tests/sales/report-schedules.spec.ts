@@ -70,7 +70,11 @@ beforeAll(async () => {
     ['reports', 'VIEW'],
     ['reports', 'EXPORT'],
   ]);
-  viewer = await person('sched-viewer', [['reports', 'VIEW']]);
+  // Every report and every call: whatever its creator sees.
+  viewer = await person('sched-viewer', [
+    ['reports', 'VIEW'],
+    ['calls', 'VIEW'],
+  ]);
 });
 
 afterAll(async () => {
@@ -286,6 +290,33 @@ describe('what a schedule may send, and to whom', () => {
     expect(mockOutbox.lastTo(ownOnly.email)).toBeUndefined();
     expect(mockOutbox.lastTo(noReports.email)).toBeUndefined();
     expect((await auditsOf(schedule.id))[0]!.metadata).toMatchObject({ recipients: 1 });
+  });
+
+  it('sends a report that reads calls only to members whose calls reach covers its creator’s', async () => {
+    const callsExporter = await person('sched-calls-exporter', [
+      ['reports', 'VIEW'],
+      ['reports', 'EXPORT'],
+      ['calls', 'VIEW'],
+    ]);
+    // Every report, but no calls grant: on the screen, their own calls only.
+    const noCalls = await person('sched-no-calls', [['reports', 'VIEW']]);
+    const body = { cadence: 'DAILY', recipients: [noCalls.email] };
+    for (const report of ['call-performance', 'call-report', 'rep-activity']) {
+      const res = await post(create, path, { ...body, report }, callsExporter.cookie, {});
+      expect(res.status, report).toBe(422);
+      expect(JSON.stringify(res.body)).toContain(noCalls.email);
+    }
+    // A report that reads no calls reaches them; one that does reaches a member who sees every call.
+    expect((await post(create, path, { ...body, report: 'site-visits' }, callsExporter.cookie, {})).status).toBe(200);
+    const toViewer = { ...body, report: 'call-performance', recipients: [viewer.email] };
+    expect((await post(create, path, toViewer, callsExporter.cookie, {})).status).toBe(200);
+    await prisma.reportSchedule.deleteMany({ where: { tenantId } });
+
+    // One saved before the rule: the sweep leaves them out.
+    await due(callsExporter.id, [callsExporter.email, noCalls.email]);
+    expect(await sweep()).toMatchObject({ sent: 1 });
+    expect(mockOutbox.lastTo(callsExporter.email)).toBeDefined();
+    expect(mockOutbox.lastTo(noCalls.email)).toBeUndefined();
   });
 
   it('sends nothing for a suspended workspace, or one without a lead module, and moves on', async () => {

@@ -3,8 +3,18 @@
 import { useState } from 'react';
 import { send, useRun } from '@/components/forms/useRun';
 
-/** Email this report on a cadence (M16-16): the CSV, to members of the workspace. */
-export function ScheduleForm({ report, by, email }: { report: string; by?: string; email: string }) {
+/** Email this report on a cadence (M16-16): the CSV, to members of the workspace. `caveat`: what it leaves out. */
+export function ScheduleForm({
+  report,
+  by,
+  email,
+  caveat,
+}: {
+  report: string;
+  by?: string;
+  email: string;
+  caveat?: string;
+}) {
   const { busy, run, note } = useRun();
   const [cadence, setCadence] = useState('WEEKLY');
   const [recipients, setRecipients] = useState(email);
@@ -60,6 +70,7 @@ export function ScheduleForm({ report, by, email }: { report: string; by?: strin
           Schedule
         </button>
       </div>
+      {caveat && <p className="lf-hint">{caveat}</p>}
       {note}
     </form>
   );

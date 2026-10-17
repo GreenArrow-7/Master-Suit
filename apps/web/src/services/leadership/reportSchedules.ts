@@ -20,10 +20,12 @@ import { logger } from '@/lib/logger';
 import { sendMail } from '@/lib/mailer';
 import { audit } from '@/lib/security/audit';
 import { hasAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitlements';
-import { assertPermission, can, type Ctx } from '@/lib/security/rbac';
+import { assertPermission, can, scopeFor, type Ctx } from '@/lib/security/rbac';
+import { resolveOwnerIds } from '@/lib/security/visibility';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { dayBounds, todayKey } from '@/services/targets/dailyBoard';
 import {
+  CALL_REPORTS,
   nextMonth,
   offeredReports,
   PIVOT_KEYS,
@@ -78,12 +80,24 @@ export function periodOf(cadence: ReportCadence, zone: string, at: Date) {
   return { from: dayBounds(first, zone).from, to: dayBounds(last, zone).to };
 }
 
+/** Whose calls a person's reports read, as `callScope` decides: [] is everyone; no calls grant, their own. */
+async function callOwners(ctx: Ctx) {
+  const scope = scopeFor(ctx, 'calls', 'VIEW');
+  if (scope === 'ORGANIZATION') return [];
+  return scope === 'NONE' ? [ctx.actor.id] : resolveOwnerIds(ctx, scope);
+}
+
+/** Whether people `sees` takes in everyone `shows` does ([] is the whole workspace). */
+const covers = (sees: string[], shows: string[]) =>
+  sees.length === 0 || (shows.length > 0 && shows.every((id) => sees.includes(id)));
+
 /**
  * The addresses among `emails` (lower-cased) that may have `creator`'s report:
- * active members holding reports:VIEW over at least the creator's people. A
+ * active members holding reports:VIEW over at least the creator's people and,
+ * for a report that reads calls, a calls reach over at least the creator's. A
  * report reaches nobody it would not be shown to on the screen.
  */
-async function recipientsOf(creator: Ctx, emails: string[]) {
+async function recipientsOf(creator: Ctx, emails: string[], key: ReportKey) {
   const users = await prisma.user.findMany({
     where: {
       tenantId: creator.tenantId,
@@ -93,6 +107,8 @@ async function recipientsOf(creator: Ctx, emails: string[]) {
     select: { id: true, email: true },
   });
   const shows = await subtree(creator); // [] is the whole workspace
+  const calls = CALL_REPORTS.includes(key);
+  const callsShown = calls ? await callOwners(creator) : [];
   const allowed = new Set<string>();
   for (const user of users) {
     const ctx =
@@ -100,8 +116,7 @@ async function recipientsOf(creator: Ctx, emails: string[]) {
         ? creator
         : await ctxForUser(user.id, creator.tenantId, creator.requestId).catch(() => null);
     if (!ctx || !can(ctx, 'reports', 'VIEW')) continue;
-    const sees = await subtree(ctx);
-    if (sees.length === 0 || (shows.length > 0 && shows.every((id) => sees.includes(id)))) {
+    if (covers(await subtree(ctx), shows) && (!calls || covers(await callOwners(ctx), callsShown))) {
       allowed.add(user.email.toLowerCase());
     }
   }
@@ -135,7 +150,7 @@ export async function createSchedule(ctx: Ctx, body: z.infer<typeof scheduleBody
   // A money report is not offered where the plan has no Sales or Real Estate (M16-00): nor is its email.
   if (!(await offeredReports(ctx.tenantId)).includes(body.report)) throw NotFound('Report');
   const recipients = [...new Set(body.recipients)];
-  const allowed = await recipientsOf(ctx, recipients);
+  const allowed = await recipientsOf(ctx, recipients, body.report);
   const outside = recipients.filter((email) => !allowed.includes(email));
   // The workspace's numbers go to those of its people who may see them, never to an address typed in.
   if (outside.length > 0) {
@@ -220,10 +235,10 @@ async function sendSchedule(tenantId: string, id: string, now: Date) {
     logger.info({ tenantId, scheduleId: id }, 'scheduled report not sent: its creator may not view and export');
     return false;
   }
-  const to = await recipientsOf(ctx, schedule.recipients);
+  const key = schedule.reportKey as ReportKey;
+  const to = await recipientsOf(ctx, schedule.recipients, key);
   if (to.length === 0) return false;
 
-  const key = schedule.reportKey as ReportKey;
   const by = (schedule.by ?? undefined) as Pivot | undefined;
   // The period the send was due for, so a late sweep still reports the right week.
   const range = periodOf(schedule.cadence, zone, schedule.nextRunAt);

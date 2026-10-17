@@ -38,6 +38,8 @@ let tenantId: string;
 let agent: string;
 let other: { id: string; fullName: string };
 let leads: string[];
+let projectId: string;
+let bookedId: string;
 const projectName = `Marina Heights ${suffix}`;
 const bookedProjectName = `Creek Vista ${suffix}`;
 const ctx = () => buildCtx(buildActor({ id: agent, tenantId, grants: [['reports', 'VIEW']] }));
@@ -58,6 +60,7 @@ beforeAll(async () => {
 
   // M16-07: one agent's visits, 2 completed, 1 no-show, 1 requested.
   const project = await prisma.project.create({ data: { tenantId, name: projectName, code: `MH-${suffix}` } });
+  projectId = project.id;
   const visit = (leadId: string, scheduledAt: Date, status: 'COMPLETED' | 'NO_SHOW' | 'REQUESTED', ownerId = agent) =>
     prisma.siteVisit.create({ data: { tenantId, ownerId, leadId, projectId: project.id, scheduledAt, status } });
   await visit(leads[0]!, aug(10), 'COMPLETED');
@@ -67,6 +70,7 @@ beforeAll(async () => {
 
   // M16-03: a project with one booked unit and one visited lead (another agent's visit).
   const booked = await prisma.project.create({ data: { tenantId, name: bookedProjectName, code: `CV-${suffix}` } });
+  bookedId = booked.id;
   const unit = await prisma.unitInventory.create({
     data: { tenantId, projectId: booked.id, unitNumber: `U-${suffix}`, status: 'BOOKED' },
   });
@@ -159,6 +163,19 @@ describe('site-visit report (M16-07)', () => {
       { month: '2026-09', scheduled: 3, done: 1, missed: 1, cancelled: 0, rate: '50%' },
     ]);
   });
+
+  it('narrows to a project by the visit’s own project, as the board’s visit list does (M16-12)', async () => {
+    // A lead that asked about the other project, before the period: its visit here is still this project's.
+    await prisma.leadProject.create({
+      data: { tenantId, leadId: leads[1]!, projectId: bookedId, createdAt: new Date('2026-07-01T10:00:00+04:00') },
+    });
+    const here = await runReport(ctx(), 'site-visits', RANGE, { project: projectId });
+    expect(here.rows).toEqual([{ agent: AGENT, scheduled: 4, done: 2, missed: 1, cancelled: 0, rate: '67%' }]);
+    const there = await runReport(ctx(), 'site-visits', RANGE, { project: bookedId, by: 'project' });
+    expect(there.rows).toEqual([
+      { project: bookedProjectName, scheduled: 1, done: 1, missed: 0, cancelled: 0, rate: '100%' },
+    ]);
+  });
 });
 
 describe('call report (M16-09)', () => {
@@ -198,6 +215,44 @@ describe('call report (M16-09)', () => {
       { month: '2026-09', calls: 1, connected: 1, minutes: 1.5 },
     ]);
   });
+
+  it('reads calls under the calls scope, as Call Performance does, and leaves a removed call out', async () => {
+    const call = (callerId: string, extra: Record<string, unknown> = {}) =>
+      prisma.call.create({
+        data: {
+          tenantId,
+          callerId,
+          leadId: leads[2]!,
+          status: 'COMPLETED',
+          outcome: 'CONNECTED',
+          durationSecs: 600,
+          createdAt: aug(14),
+          ...extra,
+        },
+      });
+    await call(other.id);
+    await call(agent, { deletedAt: aug(15) });
+    // No calls grant: their own calls only, on every grouping.
+    expect((await runReport(ctx(), 'call-report', RANGE)).rows).toEqual([
+      { agent: AGENT, calls: 4, connected: 3, minutes: 4.5 },
+    ]);
+    const byLead = await runReport(ctx(), 'call-report', RANGE, { by: 'lead' });
+    expect(byLead.rows.map((r) => r.lead)).toEqual(['manath Lead 0', 'manath Lead 1']);
+    const everyCall = buildCtx(
+      buildActor({
+        id: agent,
+        tenantId,
+        grants: [
+          ['reports', 'VIEW'],
+          ['calls', 'VIEW'],
+        ],
+      }),
+    );
+    expect((await runReport(everyCall, 'call-report', RANGE)).rows).toEqual([
+      { agent: AGENT, calls: 4, connected: 3, minutes: 4.5 },
+      { agent: other.fullName, calls: 1, connected: 1, minutes: 10 },
+    ]);
+  });
 });
 
 describe('project report (M16-03)', () => {
@@ -216,6 +271,22 @@ describe('project report (M16-03)', () => {
     });
     expect(report.rows.find((r) => r.project === projectName)).toMatchObject({ units: 0, leads: 4, visited: 2 });
     expect(toCsv(report)).toContain(`"${bookedProjectName}","2","0","2","1","1","1","AED 1,500,000"`);
+  });
+
+  it('narrowed to a project, keeps its own visits and bookings, whether or not the lead asked about it (M16-12)', async () => {
+    const report = await runReport(ctx(), 'project-report', RANGE, { project: bookedId });
+    expect(report.rows).toEqual([
+      {
+        project: bookedProjectName,
+        units: 2,
+        available: 0,
+        booked: 2,
+        leads: 1,
+        visited: 1,
+        bookings: 1,
+        value: 'AED 1,500,000',
+      },
+    ]);
   });
 });
 
@@ -354,5 +425,11 @@ describe('the reports screen', () => {
     expect(screen).toContain('&by=project&format=csv');
     // The schedule form is handed this report and its grouping.
     expect(screen).toContain('rs.' + suffix + '@test.local');
+    expect(screen).not.toContain('without the filters above');
+    // A filtered view says the email is not.
+    const filtered = await pageText(
+      ReportsPage({ searchParams: Promise.resolve({ report: 'site-visits', owner: agent, from, to }) }),
+    );
+    expect(filtered).toContain('without the filters above');
   });
 });

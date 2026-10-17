@@ -268,7 +268,18 @@ export default async function ReportsPage({
           </div>
         )}
 
-        {mayExport && <ScheduleForm report={report.key} by={by} email={ctx.actor.email} />}
+        {mayExport && (
+          <ScheduleForm
+            report={report.key}
+            by={by}
+            email={ctx.actor.email}
+            caveat={
+              filter.owner || filter.team || filter.source || filter.project
+                ? 'The email is sent without the filters above: it covers every person, source and project you may see.'
+                : undefined
+            }
+          />
+        )}
       </>
     );
   }

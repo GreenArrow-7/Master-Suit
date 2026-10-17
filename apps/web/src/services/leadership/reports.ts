@@ -80,6 +80,9 @@ export type ReportKey = (typeof REPORT_KEYS)[number];
  */
 const MONEY_REPORTS: readonly ReportKey[] = ['revenue-forecast', 'team-performance', 'campaign-performance'];
 
+/** The reports that read calls, under the calls scope as well as the reports one (`callReach`). */
+export const CALL_REPORTS: readonly ReportKey[] = ['rep-activity', 'call-performance', 'call-report'];
+
 /** The reports this workspace's plan has rows for, in menu order. */
 export async function offeredReports(tenantId: string): Promise<ReportKey[]> {
   const money = await hasAnyModuleEntitlement(tenantId, SALES_OR_REALTY);
@@ -178,6 +181,19 @@ const aed = (amount: Prisma.Decimal | null, currency = 'AED') =>
 
 /** Empty user list means the whole workspace, matching the rollups module. */
 const owned = (userIds: string[]) => (userIds.length === 0 ? {} : { ownerId: { in: userIds } });
+
+/**
+ * The calls a report may read (M9-05, M16-09), as the Calls page reads them:
+ * provider calls by their caller (`callScope`), calls logged by hand by their
+ * owner at the same scope, and without a calls grant the viewer's own.
+ */
+const callReach = (ctx: Ctx) =>
+  Promise.all([
+    callScope(ctx, 'VIEW'),
+    can(ctx, 'calls', 'VIEW')
+      ? visibilityWhere(ctx, 'calls', 'VIEW', { ownerField: 'ownerId' })
+      : { tenantId: ctx.tenantId, ownerId: ctx.actor.id },
+  ]);
 
 /** Calls counted as the Call Report counts them (M16-09): a group of provider calls, or of calls logged by hand. */
 const CALL_SUMS = { _count: { _all: true }, _sum: { durationSecs: true } } as const;
@@ -321,13 +337,14 @@ export async function runReport(
   const { people } = await resolveBoardFilter(ctx, { owner: filter.owner, team: filter.team }, 'UTC');
   const kept = people && (reach.length === 0 ? people : people.filter((id) => reach.includes(id)));
   const userIds = !kept ? reach : kept.length > 0 ? kept : NOBODY;
-  // Source and project, on the lead (`lead`) or through it (`viaLead`), as the board's lists read them.
-  const lead = boardWhere(
-    { filter: { source: filter.source, project: filter.project }, people: null, span: null },
-    'lead',
-    false,
-  ) as Prisma.LeadWhereInput;
+  const byPerson = (field: string) => (userIds.length === 0 ? {} : { [field]: { in: userIds } });
+  // Source and project as the board's lists read them: on the lead (`lead`) or through it (`viaLead`);
+  // a visit's and a booking's project is their own, the source their lead's (`onVisit`, `onBooking`).
+  const narrowing = { filter: { source: filter.source, project: filter.project }, people: null, span: null };
+  const lead = boardWhere(narrowing, 'lead', false) as Prisma.LeadWhereInput;
   const viaLead = throughLead(lead);
+  const onVisit = boardWhere(narrowing, 'visit', false);
+  const onBooking = boardWhere(narrowing, 'booking', false);
   const within = { gte: range.from, lte: range.to };
   const pivot = by ?? PIVOTS[key]?.[0] ?? 'user';
 
@@ -530,7 +547,6 @@ export async function runReport(
     case 'rep-activity': {
       // Each agent's work (M16-05): activities, calls and how many got through, the
       // stage moves they made, their notes, and how fast they answered new leads.
-      const person = (field: string) => (userIds.length === 0 ? {} : { [field]: { in: userIds } });
       // Two rounds of three: one render asks for half the connection pool at most.
       const [activities, response, placed] = await Promise.all([
         rank(tenantId, userIds, range, 'activities', lead),
@@ -551,7 +567,7 @@ export async function runReport(
         callScope(ctx, 'VIEW').then((scope) =>
           prismaRead.call.groupBy({
             by: ['callerId', 'status', 'outcome'],
-            where: mergeWhere(scope, callTab('placed').where, person('callerId'), viaLead, {
+            where: mergeWhere(scope, callTab('placed').where, byPerson('callerId'), viaLead, {
               tenantId,
               deletedAt: null,
               createdAt: within,
@@ -747,14 +763,7 @@ export async function runReport(
       // Who called, who got through and for how long (M9-05): the calls placed
       // through the provider and those logged by hand, as the board counts them,
       // under the calls scope as well as the reports one.
-      const byPerson = (field: string) => (userIds.length === 0 ? {} : { [field]: { in: userIds } });
-      const mayCalls = can(ctx, 'calls', 'VIEW');
-      const [callsWhere, logWhere] = await Promise.all([
-        callScope(ctx, 'VIEW'),
-        mayCalls
-          ? visibilityWhere(ctx, 'calls', 'VIEW', { ownerField: 'ownerId' })
-          : { tenantId, ownerId: ctx.actor.id },
-      ]);
+      const [callsWhere, logWhere] = await callReach(ctx);
       const [placed, logged] = await Promise.all([
         prismaRead.call.groupBy({
           by: ['callerId', 'status', 'outcome'],
@@ -980,27 +989,22 @@ export async function runReport(
           select: { projectId: true, leadId: true },
         }),
         prismaRead.siteVisit.findMany({
-          where: {
-            tenantId,
-            scheduledAt: within,
-            projectId: { not: null },
-            lead: { is: { deletedAt: null, ...lead } },
-            ...owned(userIds),
-          },
+          where: mergeWhere(
+            { tenantId, scheduledAt: within, projectId: { not: null }, lead: { is: { deletedAt: null } } },
+            owned(userIds),
+            onVisit,
+          ) as Prisma.SiteVisitWhereInput,
           select: { projectId: true, leadId: true, status: true },
         }),
         // Bookings are Sales' and Real Estate's: none to read in a Lead-Eagle-only workspace (M16-00).
         money
           ? prismaRead.booking.groupBy({
               by: ['projectId'],
-              where: {
-                tenantId,
-                deletedAt: null,
-                status: { not: 'CANCELLED' },
-                bookingDate: within,
-                ...owned(userIds),
-                ...viaLead,
-              },
+              where: mergeWhere(
+                { tenantId, deletedAt: null, status: { not: 'CANCELLED' }, bookingDate: within },
+                owned(userIds),
+                onBooking,
+              ) as Prisma.BookingWhereInput,
               _count: { _all: true },
               _sum: { saleValue: true },
             })
@@ -1056,7 +1060,8 @@ export async function runReport(
 
     case 'site-visits': {
       // M16-07: scheduled is every visit not cancelled or refused; the show rate is done of done-or-missed.
-      const where = (span: Within) => ({ tenantId, scheduledAt: span, ...owned(userIds), ...viaLead });
+      const where = (span: Within) =>
+        mergeWhere({ tenantId, scheduledAt: span }, owned(userIds), onVisit) as Prisma.SiteVisitWhereInput;
       const groups =
         pivot === 'month'
           ? await perMonth(ctx, range, async (span, month) =>
@@ -1115,15 +1120,18 @@ export async function runReport(
     }
 
     case 'call-report': {
-      // M16-09: calls placed through the provider and calls logged by hand, as the board counts them.
-      const placed = (span: Within) => ({
-        tenantId,
-        ...callTab('placed').where,
-        createdAt: span,
-        ...(userIds.length === 0 ? {} : { callerId: { in: userIds } }),
-        ...viaLead,
-      });
-      const logged = (span: Within) => ({ tenantId, ...LOGGED_CALL, occurredAt: span, ...owned(userIds), ...viaLead });
+      // M16-09: calls placed through the provider and calls logged by hand, as the board counts them,
+      // under the calls scope as Call Performance reads them.
+      const [callsWhere, logWhere] = await callReach(ctx);
+      const placed = (span: Within) =>
+        mergeWhere(callsWhere, callTab('placed').where, byPerson('callerId'), viaLead, {
+          deletedAt: null,
+          createdAt: span,
+        }) as Prisma.CallWhereInput;
+      const logged = (span: Within) =>
+        mergeWhere(logWhere, LOGGED_CALL, byPerson('ownerId'), viaLead, {
+          occurredAt: span,
+        }) as Prisma.ActivityWhereInput;
       type Group = { key: string | null; n: number; connected: boolean; secs: number | null };
       const read = async (span: Within, month?: string): Promise<Group[]> => {
         const [calls, logs] = await Promise.all([
