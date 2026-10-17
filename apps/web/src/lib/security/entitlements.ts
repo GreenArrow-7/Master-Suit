@@ -117,6 +117,19 @@ export async function assertAnyModuleEntitlement(tenantId: string, module: Produ
 }
 
 /**
+ * Where a workspace opens after sign-in (owner, 18 Oct): the Lead Eagle board
+ * when Lead Eagle is its only usable product, the workspace summary otherwise.
+ *
+ * ponytail: decided by the plan, not the person; a role without `leads` in a
+ * Lead-Eagle-only workspace meets the board's refusal and uses the menu.
+ */
+export async function workspaceLanding(tenantId: string, slug: string): Promise<string> {
+  const usable = await Promise.all(PRODUCT_MODULE_KEYS.map((module) => hasModuleEntitlement(tenantId, module)));
+  const only = PRODUCT_MODULE_KEYS.filter((_, i) => usable[i]);
+  return only.length === 1 && only[0] === 'LEAD_EAGLE' ? `/${slug}/lead-eagle/dashboard` : `/${slug}/dashboard`;
+}
+
+/**
  * Call after any write to a workspace's module entitlements.
  *
  * Without this, revoking a module leaves it working for up to a minute. That is

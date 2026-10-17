@@ -426,6 +426,13 @@ export async function runCallAudit(job: AuditJob): Promise<Outcome> {
 
 // ── 2b. Objection playbook ───────────────────────────────────────────────────
 
+/** The workspace's live objection cards: what the analysis matches and the live coach cites. */
+export const activeObjections = (tenantId: string) =>
+  prisma.objection.findMany({
+    where: { tenantId, isActive: true, deletedAt: null },
+    select: { id: true, name: true, triggerPhrases: true, recommendedResponses: true },
+  });
+
 /**
  * Rewrites a call's playbook matches from the current playbook.
  *
@@ -436,10 +443,7 @@ export async function runCallAudit(job: AuditJob): Promise<Outcome> {
  * the insert safe against a concurrent re-run.
  */
 export async function matchPlaybook(tenantId: string, callId: string, transcript: string): Promise<number> {
-  const playbook = await prisma.objection.findMany({
-    where: { tenantId, isActive: true, deletedAt: null },
-    select: { id: true, name: true, triggerPhrases: true, recommendedResponses: true },
-  });
+  const playbook = await activeObjections(tenantId);
   if (playbook.length === 0) return 0;
 
   const hits = matchObjections(transcript, playbook);

@@ -2205,6 +2205,29 @@ a:hover {
   font: 400 12px/1.5 var(--lf-font-mono);
   color: var(--lf-ink-3);
 }
+.lf-checkin__target {
+  display: grid;
+  gap: 6px;
+}
+.lf-checkin__target-bar {
+  inline-size: 100%;
+  block-size: 8px;
+  appearance: none;
+  border: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--lf-surface-2);
+  accent-color: var(--lf-wine-700);
+}
+.lf-checkin__target-bar::-webkit-progress-bar {
+  background: var(--lf-surface-2);
+}
+.lf-checkin__target-bar::-webkit-progress-value {
+  background: var(--lf-wine-700);
+}
+.lf-checkin__target-bar::-moz-progress-bar {
+  background: var(--lf-wine-700);
+}
 .lf-checkin__recent-head {
   display: flex;
   align-items: center;

@@ -1,6 +1,7 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
-import { can } from '@/lib/security/rbac';
+import { mayEditPlaybook } from '@/lib/security/record-scope';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import EmptyState from '@/components/ui/EmptyState';
 import ListHeader from '@/components/workspace/ListHeader';
 import PlaybookEditor from './PlaybookEditor';
@@ -9,7 +10,8 @@ import BuyerPlaybooks, { type PlaybookRow } from './BuyerPlaybooks';
 export const metadata = { title: 'Objection Playbook' };
 
 export default async function PlaybookPage() {
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['calls', 'VIEW'] });
+  // Every lead module (M21-01): the live coach in Real Estate and Lead Eagle cites these cards too.
+  const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['calls', 'VIEW'] });
 
   const [objections, playbooks] = await Promise.all([
     prisma.objection.findMany({
@@ -25,7 +27,7 @@ export default async function PlaybookPage() {
     }),
   ]);
 
-  const canEdit = can(ctx, 'calls', 'CREATE');
+  const canEdit = mayEditPlaybook(ctx);
 
   return (
     <>

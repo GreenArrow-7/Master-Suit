@@ -3,18 +3,18 @@ import { forbidden } from 'next/navigation';
 import { queryDate } from '@/services/hr/rules';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
 import { isHrAdmin } from '@/services/hr/access';
+import { workspaceTimezone } from '@/services/hr/attendance';
+import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 import ExportCsv from '@/components/workspace/ExportCsv';
 import { csvCell } from '@/lib/csv';
-import SalesLink from '@/components/workspace/SalesLink';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import DateInput from '@/components/forms/DateInput';
 
 export const metadata = { title: 'Face recognition activity' };
 
-const DUBAI = 'Asia/Dubai';
-const stamp = (value: Date) =>
+const stamp = (value: Date, timeZone: string) =>
   new Intl.DateTimeFormat('en-GB', {
-    timeZone: DUBAI,
+    timeZone,
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -53,7 +53,12 @@ export default async function Page({
 }) {
   const { workspaceSlug } = await params;
   const query = await searchParams;
-  const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'HRMS', permission: ['employee', 'VIEW'] });
+  // Any module (OWN-03.3): face check-in works in every workspace, so the record of who
+  // was refused does too. Reached at attendance/face-activity outside People.
+  const { ctx } = await resolveWorkspacePage(workspaceSlug, {
+    module: PRODUCT_MODULE_KEYS,
+    permission: ['employee', 'VIEW'],
+  });
   // The same interrupt the page gate uses: a role that does not cover this
   // screen deserves the refusal page, not "something went wrong on our side".
   if (!isHrAdmin(ctx)) forbidden();
@@ -63,7 +68,8 @@ export default async function Page({
   const toEnd = new Date(to);
   toEnd.setHours(23, 59, 59, 999);
 
-  const [punches, employees, consents] = await Promise.all([
+  const [timeZone, punches, employees, consents] = await Promise.all([
+    workspaceTimezone(ctx),
     prisma.hrAttendancePunch.findMany({
       where: {
         tenantId: ctx.tenantId,
@@ -109,7 +115,7 @@ export default async function Page({
       id: punch.id,
       employee: punch.employee.membership.platformUser.fullName,
       employeeNumber: punch.employee.employeeNumber,
-      at: stamp(punch.serverTime),
+      at: stamp(punch.serverTime, timeZone),
       event: punch.punchType === 'CHECK_IN' ? 'Check-in' : 'Check-out',
       liveness: punch.livenessScore == null ? '—' : punch.livenessScore.toFixed(2),
       match: punch.faceScore == null ? '—' : punch.faceScore.toFixed(3),
@@ -232,9 +238,10 @@ export default async function Page({
         <button className="lf-btn" type="submit">
           Search
         </button>
-        <SalesLink className="lf-btn lf-btn--secondary" href="/face-activity">
+        {/* The same screen without its query, under People or at the workspace root alike. */}
+        <a className="lf-btn lf-btn--secondary" href="?">
           Clear filters
-        </SalesLink>
+        </a>
         <ExportCsv filename={`face-activity-${iso(from)}-to-${iso(to)}.csv`} csv={csv} />
       </form>
 
@@ -247,8 +254,8 @@ export default async function Page({
           rows={consents.map((consent) => [
             employees.find((employee) => employee.id === consent.employeeId)?.membership.platformUser.fullName ??
               consent.employeeId,
-            consent.grantedAt ? stamp(consent.grantedAt) : '—',
-            consent.withdrawnAt ? stamp(consent.withdrawnAt) : '—',
+            consent.grantedAt ? stamp(consent.grantedAt, timeZone) : '—',
+            consent.withdrawnAt ? stamp(consent.withdrawnAt, timeZone) : '—',
             consent.policyVersion ?? '—',
           ])}
           searchable

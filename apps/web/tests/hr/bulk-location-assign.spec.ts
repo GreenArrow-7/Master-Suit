@@ -10,10 +10,14 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { prisma } from '@/lib/db';
-import { POST as hrCreate } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/[resource]/route';
+import {
+  DELETE as hrRetire,
+  PATCH as hrEdit,
+  POST as hrCreate,
+} from '@/app/api/v1/workspaces/[workspaceSlug]/hr/[resource]/route';
 import { createSessionToken } from '../helpers/session';
 import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
-import { post } from '../helpers/request';
+import { del, patch, post } from '../helpers/request';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `bulkloc-${suffix}`;
@@ -42,6 +46,7 @@ beforeAll(async () => {
     ['employee', 'VIEW'],
     ['employee', 'EDIT'],
     ['employee', 'CREATE'],
+    ['employee', 'DELETE'],
   ] as const);
   const admin = await createWorkspaceUser({
     tenantId,
@@ -129,6 +134,37 @@ describe('bulk work-location assignment', () => {
     expect(res.status).toBeGreaterThanOrEqual(400);
     const after = await prisma.hrEmployeeLocationAssignment.count({ where: { tenantId, locationId } });
     expect(after).toBe(before);
+  });
+});
+
+/**
+ * OWN-02.2: a location people are assigned to cannot be retired out from under
+ * them, by Archive or by editing its status; one with nobody on it retires as before.
+ */
+describe('retiring a work location', () => {
+  const retire = (id: string) =>
+    del(hrRetire, `${at('work-locations').path}?id=${id}`, adminCookie, at('work-locations').params);
+  const setStatus = (id: string, status: string) =>
+    patch(hrEdit, `${at('work-locations').path}?id=${id}`, { status }, adminCookie, at('work-locations').params);
+  const statusOf = async (id: string) =>
+    (await prisma.hrWorkLocation.findFirstOrThrow({ where: { tenantId, id } })).status;
+
+  it('refuses to retire a location that still has an active assignment, naming how many', async () => {
+    const res = await retire(locationId);
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(res.body.detail).toMatch(/3 people are still assigned/);
+    expect((await setStatus(locationId, 'RETIRED')).status).toBe(409);
+    expect(await statusOf(locationId)).toBe('ACTIVE');
+  });
+
+  it('retires it once nobody is actively assigned', async () => {
+    await prisma.hrEmployeeLocationAssignment.updateMany({
+      where: { tenantId, locationId },
+      data: { status: 'REVOKED', revokedAt: new Date() },
+    });
+    const res = await retire(locationId);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await statusOf(locationId)).toBe('RETIRED');
   });
 });
 

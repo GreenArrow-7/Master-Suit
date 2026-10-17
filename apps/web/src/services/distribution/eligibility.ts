@@ -37,12 +37,22 @@
  * the answer goes in `HrLeaveType`, not in a constant in this file.
  */
 import { prisma, type TxClient } from '@/lib/db';
-import { toDay, withinTimeWindow, zonedParts } from '@/services/hr/rules';
+import { toDay, toMinutes, withinTimeWindow, zonedParts } from '@/services/hr/rules';
+import { resolvePolicy } from '@/services/hr/settings';
+import { startOfLocalDay } from '@/services/hr/attendance';
 
 /** A read-only client: the request-scoped one, or a transaction. */
 type Reader = Pick<
   typeof prisma,
-  'user' | 'lead' | 'leadAssignmentHistory' | 'hrLeaveRequest' | 'tenant' | 'hrAttendanceRecord' | 'hrRosterEntry'
+  | 'user'
+  | 'lead'
+  | 'leadAssignmentHistory'
+  | 'hrLeaveRequest'
+  | 'tenant'
+  | 'hrAttendanceRecord'
+  | 'hrRosterEntry'
+  | 'hrEmployeeShift'
+  | 'organizationSetting'
 >;
 
 /**
@@ -64,7 +74,7 @@ export type IneligibilityCode =
   | 'UNAVAILABLE'
   | 'QUOTA_REACHED'
   | 'AT_CAPACITY'
-  /** Rostered on a shift that does not cover now, or checked out for the day. */
+  /** Rostered on a shift that does not cover now, checked out for the day, or not checked in by the cut-off. */
   | 'OFF_SHIFT';
 
 export interface Ineligibility {
@@ -345,13 +355,17 @@ export async function assessEligibility(
 
 /**
  * Who is not at work now by their own schedule: checked out today (and not back
- * in), or rostered today on shifts none of which covers now in the workspace's
- * timezone. Someone with neither has no verdict — a missing schedule is not an
- * absence.
+ * in); rostered today on shifts none of which covers now in the workspace's
+ * timezone, or, with no roster entry today, outside their standing shift
+ * (`HrEmployeeShift`: its hours and working days); or, once the workspace's
+ * check-in cut-off (`assignmentCheckInBy`, M15-05) has passed, not checked in
+ * since midnight on the workspace's clock. Someone with none of these has no
+ * verdict — a missing schedule is not an absence, and neither is a missing
+ * check-in where no cut-off is set.
  */
 async function offShiftNow(client: Reader, tenantId: string, employeeIds: string[], now: Date) {
   const workDate = toDay(now);
-  const [tenant, days, roster] = await Promise.all([
+  const [tenant, days, roster, standing, settings] = await Promise.all([
     client.tenant.findFirst({ where: { id: tenantId }, select: { timezone: true } }),
     client.hrAttendanceRecord.findMany({
       where: { tenantId, employeeId: { in: employeeIds }, workDate, checkOutAt: { not: null } },
@@ -361,6 +375,19 @@ async function offShiftNow(client: Reader, tenantId: string, employeeIds: string
       where: { tenantId, employeeId: { in: employeeIds }, workDate },
       select: { employeeId: true, shift: { select: { startTime: true, endTime: true } } },
     }),
+    client.hrEmployeeShift.findMany({
+      where: {
+        tenantId,
+        employeeId: { in: employeeIds },
+        effectiveOn: { lte: now },
+        OR: [{ endsOn: null }, { endsOn: { gte: workDate } }],
+        shift: { isActive: true },
+      },
+      select: { employeeId: true, shift: { select: { startTime: true, endTime: true, workingDays: true } } },
+      // The latest assignment in force wins, as overtime's schedule lookup reads it.
+      orderBy: { effectiveOn: 'desc' },
+    }),
+    client.organizationSetting.findFirst({ where: { tenantId }, select: { hrPolicy: true } }),
   ]);
   const off = new Map<string, string>();
   // A check-in after the check-out leaves checkOutAt behind; only a check-out
@@ -368,12 +395,48 @@ async function offShiftNow(client: Reader, tenantId: string, employeeIds: string
   for (const day of days) {
     if (!day.checkInAt || day.checkOutAt! >= day.checkInAt) off.set(day.employeeId, 'checked out for the day');
   }
-  const { minutes } = zonedParts(now, tenant?.timezone ?? 'Asia/Dubai');
+  const timeZone = tenant?.timezone ?? 'Asia/Dubai';
+  const { minutes, weekday } = zonedParts(now, timeZone);
   const shifts = new Map<string, { startTime: string; endTime: string }[]>();
   for (const entry of roster) shifts.set(entry.employeeId, [...(shifts.get(entry.employeeId) ?? []), entry.shift]);
   for (const [employeeId, today] of shifts) {
     if (off.has(employeeId) || today.some((s) => withinTimeWindow(s.startTime, s.endTime, minutes))) continue;
     off.set(employeeId, `off shift (${today.map((s) => `${s.startTime}–${s.endTime}`).join(', ')})`);
+  }
+  // A dated roster entry is the day's word; the standing shift speaks only without one.
+  const seen = new Set<string>();
+  for (const { employeeId, shift } of standing) {
+    if (seen.has(employeeId) || shifts.has(employeeId)) continue;
+    seen.add(employeeId);
+    if (off.has(employeeId)) continue;
+    // An overnight shift (22:00–06:00) belongs to the day it starts: at 02:00
+    // the working day to check is yesterday.
+    const [start, end] = [toMinutes(shift.startTime), toMinutes(shift.endTime)];
+    const shiftDay = start !== null && end !== null && start > end && minutes <= end ? (weekday + 6) % 7 : weekday;
+    if (shift.workingDays.length > 0 && !shift.workingDays.includes(shiftDay)) {
+      off.set(employeeId, 'off shift (not a working day)');
+    } else if (!withinTimeWindow(shift.startTime, shift.endTime, minutes)) {
+      off.set(employeeId, `off shift (${shift.startTime}–${shift.endTime})`);
+    }
+  }
+  // ponytail: one cut-off for the whole workspace, not per rule or per shift;
+  // a rule-level time when one workspace needs two.
+  const cutOff = toMinutes(resolvePolicy(settings?.hrPolicy).assignmentCheckInBy || '');
+  if (cutOff !== null && minutes >= cutOff) {
+    // Today on the workspace's clock: a day is filed under its punch's UTC date,
+    // so east of UTC this morning's check-in can sit under yesterday's date.
+    const checkIns = await client.hrAttendanceRecord.findMany({
+      where: {
+        tenantId,
+        employeeId: { in: employeeIds },
+        checkInAt: { gte: startOfLocalDay(now, timeZone), lte: now },
+      },
+      select: { employeeId: true },
+    });
+    const checkedIn = new Set(checkIns.map((day) => day.employeeId));
+    for (const employeeId of employeeIds) {
+      if (!off.has(employeeId) && !checkedIn.has(employeeId)) off.set(employeeId, 'not checked in');
+    }
   }
   return off;
 }

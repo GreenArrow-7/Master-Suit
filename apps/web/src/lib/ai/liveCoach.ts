@@ -6,6 +6,7 @@ import { generateStructured } from './provider';
 import { modelCascade, runCascade } from './cascade';
 import { LIVE_COACH_SYSTEM_PROMPT } from './liveCoachPrompt';
 import type { LeadCallContext } from '@/services/leads/callContext';
+import { matchObjections, parseTranscript, type PlaybookEntry } from './callMetrics';
 
 /**
  * Hard ceiling on one provider round-trip. A hung provider must fail the one
@@ -31,7 +32,8 @@ export interface CoachHint {
   say?: string;
   /** WHY — one short line so the agent trusts the hint. */
   why?: string;
-  source: 'gemini' | 'simulated';
+  /** `playbook`: the workspace's own objection card, not a model or a built-in rule. */
+  source: 'gemini' | 'simulated' | 'playbook';
 }
 
 const HINT_KINDS = ['TIP', 'OBJECTION', 'SENTIMENT', 'ACTION', 'COMPLIANCE', 'ASK', 'BUYING_SIGNAL'];
@@ -89,6 +91,39 @@ const HEURISTICS: [RegExp, CoachHint['kind'], string][] = [
     'Frustration detected — slow down, acknowledge, and summarise their concern.',
   ],
 ];
+
+/**
+ * The workspace's own objection card for what the customer said last (M21-01):
+ * the first card whose trigger phrase the customer's latest line carries, with
+ * its first recommended response, citing the card. Only the latest line: an
+ * objection raised earlier, and likely answered since, must not keep answering
+ * for the one just raised. Cards in `cited` are skipped, so a live call shows
+ * each card once.
+ */
+export function playbookHint(
+  windowText: string,
+  cards: readonly PlaybookEntry[],
+  cited: ReadonlySet<string> = new Set(),
+): (CoachHint & { objectionId: string }) | null {
+  const lines = parseTranscript(windowText);
+  const attributed = lines.some((line) => line.side !== 'UNKNOWN');
+  const latest = lines.filter((line) => !attributed || line.side !== 'REP').pop();
+  if (!latest) return null;
+  const [hit] = matchObjections(
+    latest.speaker ? `${latest.speaker}: ${latest.text}` : latest.text,
+    cards.filter((card) => !cited.has(card.id)),
+  );
+  const card = hit && cards.find((c) => c.id === hit.objectionId);
+  if (!card) return null;
+  return {
+    objectionId: card.id,
+    kind: 'OBJECTION',
+    text: card.name,
+    say: card.recommendedResponses[0],
+    why: `From your playbook: ${card.name}`,
+    source: 'playbook',
+  };
+}
 
 export function heuristicHints(windowText: string): CoachHint[] {
   const hints: CoachHint[] = [];

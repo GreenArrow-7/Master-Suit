@@ -122,11 +122,12 @@ export async function boardUserIds(ctx: Ctx): Promise<string[] | 'all' | 'self'>
   return 'self';
 }
 
-export async function dailyBoard(ctx: Ctx, date?: string): Promise<DailyBoard> {
+/** `self`: the actor's own row only, whatever their reach — one seller's gate, not the board. */
+export async function dailyBoard(ctx: Ctx, date?: string, self = false): Promise<DailyBoard> {
   const timeZone = await workspaceTimezone(ctx);
   const dateKey = date ?? todayKey(timeZone);
   const { from, to } = dayBounds(dateKey, timeZone);
-  const who = await boardUserIds(ctx);
+  const who = self ? 'self' : await boardUserIds(ctx);
   const userIds = who === 'self' ? [ctx.actor.id] : who === 'all' ? [] : who;
   if (who !== 'all' && userIds.length === 0) return { date: dateKey, timeZone, from, to, rows: [] };
   const tenantId = ctx.tenantId;
@@ -399,9 +400,22 @@ export async function dailyCalls(
   };
 }
 
+/**
+ * Today's LEADS_CALLED target for one seller and the leads they called towards
+ * it, counted from the calls themselves; null with no target. Their row alone:
+ * an administrator checking out does not compute the whole workspace's board.
+ */
+export async function dailyTargetProgress(
+  ctx: Ctx,
+  userId: string,
+): Promise<{ target: number; called: number } | null> {
+  const board = await dailyBoard({ ...ctx, actor: { ...ctx.actor, id: userId } }, undefined, true);
+  const r = board.rows.find((x) => x.userId === userId);
+  return r?.target ? { target: r.target, called: r.leadsCalled } : null;
+}
+
 /** The shortfall against today's LEADS_CALLED target for one seller (0 when none or met). */
 export async function dailyTargetShortfall(ctx: Ctx, userId: string): Promise<number> {
-  const board = await dailyBoard({ ...ctx, actor: { ...ctx.actor, id: userId } }, undefined);
-  const r = board.rows.find((x) => x.userId === userId);
-  return r && r.target !== null ? r.pending : 0;
+  const progress = await dailyTargetProgress(ctx, userId);
+  return progress ? Math.max(0, progress.target - progress.called) : 0;
 }

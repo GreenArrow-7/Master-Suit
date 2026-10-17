@@ -9,8 +9,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { seedTwoTenants, createWorkspaceUser, grantPermissions, type Fixture } from '../helpers/fixtures';
 import { createSessionToken } from '../helpers/session';
-import { get, post } from '../helpers/request';
+import { get, patch, post } from '../helpers/request';
 import { GET as listObjections, POST as createObjection } from '@/app/api/v1/objections/route';
+import { PATCH as editObjection } from '@/app/api/v1/objections/[id]/route';
+import { POST as createPlaybook } from '@/app/api/v1/sales-playbooks/route';
+import { PATCH as editPlaybook } from '@/app/api/v1/sales-playbooks/[id]/route';
 import { POST as startPractice } from '@/app/api/v1/practice/route';
 import { POST as addCoaching } from '@/app/api/v1/calls/[id]/coaching/route';
 
@@ -105,6 +108,41 @@ describe('conversation intelligence RBAC', () => {
     );
     expect(created.status).toBe(200);
     expect(created.body.tenantId).toBe(fixture.a.tenantId);
+  });
+
+  it('refuses an OWN-scoped rep writing the playbook the live coach reads out on everyone’s calls', async () => {
+    // The kernel passes (the rep holds calls:CREATE and EDIT at OWN); the
+    // playbook is workspace-wide wording, so writing it needs workspace reach.
+    const card = await post(
+      createObjection,
+      '/api/v1/objections',
+      { name: 'Scope test card', triggerPhrases: ['scope test'] },
+      fixture.a.cookie,
+    );
+    const book = await post(createPlaybook, '/api/v1/sales-playbooks', { name: 'Scope test book' }, fixture.a.cookie);
+    expect([card.status, book.status]).toEqual([200, 200]);
+
+    const attempts = [
+      await post(createObjection, '/api/v1/objections', { name: 'Rep card', triggerPhrases: ['rep'] }, ownRep.cookie),
+      await patch(
+        editObjection,
+        `/api/v1/objections/${card.body.id}`,
+        { recommendedResponses: ['Arbitrary wording.'] },
+        ownRep.cookie,
+        { id: card.body.id },
+      ),
+      await post(createPlaybook, '/api/v1/sales-playbooks', { name: 'Rep book' }, ownRep.cookie),
+      await patch(
+        editPlaybook,
+        `/api/v1/sales-playbooks/${book.body.id}`,
+        { approvedClaims: ['Arbitrary claim.'] },
+        ownRep.cookie,
+        { id: book.body.id },
+      ),
+    ];
+    expect(attempts.map((r) => r.status)).toEqual([403, 403, 403, 403]);
+    // The rep still reads it.
+    expect((await get(listObjections, '/api/v1/objections', ownRep.cookie)).status).toBe(200);
   });
 
   it('refuses an OWN-scoped rep coaching on another rep’s call', async () => {

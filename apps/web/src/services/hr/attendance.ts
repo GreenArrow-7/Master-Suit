@@ -9,7 +9,7 @@
  * claim about where it was standing.
  */
 import { prisma } from '@/lib/db';
-import { dailyTargetShortfall } from '@/services/targets/dailyBoard';
+import { dailyTargetProgress, dailyTargetShortfall } from '@/services/targets/dailyBoard';
 import { AppError, Conflict, Forbidden, NotFound, isUniqueViolation } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import { atLeast, type Ctx } from '@/lib/security/rbac';
@@ -334,11 +334,14 @@ export async function preflight(
     getHrPolicy(ctx),
   ]);
   let candidates = candidateAssignments(assignments, action, new Date(), timeZone);
+  // Today's calling quota and the recorded progress towards it, shown on the
+  // check-in screen whether or not the workspace gates on it (OWN-05).
+  const dailyTarget = await dailyTargetProgress(ctx, ctx.actor.id);
   // Told before the punch, not only at it: the number falls as the day is worked.
   const pendingWork =
     action === 'CHECK_OUT' && workGateApplies(policy, open)
       ? (policy.checkoutRequiresLeadWork ? await pendingLeadWork(ctx, timeZone) : 0) +
-        (policy.checkoutRequiresDailyTarget ? await dailyTargetShortfall(ctx, ctx.actor.id) : 0)
+        (policy.checkoutRequiresDailyTarget && dailyTarget ? Math.max(0, dailyTarget.target - dailyTarget.called) : 0)
       : 0;
 
   if (!candidates.length) {
@@ -348,6 +351,7 @@ export async function preflight(
       message: 'You have no active work-location assignment for this action right now. Contact HR.',
       candidates: [],
       pendingWork,
+      dailyTarget,
     };
   }
   if (action === 'CHECK_OUT' && open?.locationId) {
@@ -386,6 +390,7 @@ export async function preflight(
       message: `Your GPS is accurate to about ±${Math.round(position.gpsAccuracyM)} m. This location requires ${nearest.maxAccuracyM} m or better. Move to an open area and retry.`,
       candidates: rows,
       pendingWork,
+      dailyTarget,
     };
   }
   const ready = rows.find((row) => row.inside);
@@ -396,6 +401,7 @@ export async function preflight(
       message: `You are ${Math.round(nearest.distanceM)} metres away from ${nearest.name}. The permitted radius is ${nearest.radiusM} metres.`,
       candidates: rows,
       pendingWork,
+      dailyTarget,
     };
   }
   return {
@@ -404,6 +410,7 @@ export async function preflight(
     message: `Inside ${ready.name} — ${Math.round(ready.distanceM)} m from centre, radius ${ready.radiusM} m.`,
     candidates: rows,
     pendingWork,
+    dailyTarget,
   };
 }
 
