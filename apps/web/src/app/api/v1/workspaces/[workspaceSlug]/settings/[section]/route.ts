@@ -31,6 +31,8 @@ const companyBody = z.object({
   companyPhone: z.string().max(40).nullable().optional().or(z.literal('')),
   companyAddress: z.string().max(500).nullable().optional().or(z.literal('')),
   logoUrl: z.string().url().nullable().optional().or(z.literal('')),
+  /** The brokerage's RERA ORN (M12-04): portal feeds, shared pages and proposals print it. */
+  reraOrn: z.string().trim().max(40).nullable().optional(),
 });
 
 const securityBody = z.object({
@@ -81,6 +83,14 @@ export const PATCH = route(
 
     if (params.section === 'company') {
       const input = companyBody.parse(body);
+      if (input.reraOrn !== undefined) {
+        const reraOrn = input.reraOrn || null;
+        await prisma.organizationSetting.upsert({
+          where: { tenantId: ctx.tenantId },
+          update: { reraOrn },
+          create: { tenantId: ctx.tenantId, reraOrn },
+        });
+      }
       return prisma.tenant.update({
         where: { id: ctx.tenantId },
         data: {

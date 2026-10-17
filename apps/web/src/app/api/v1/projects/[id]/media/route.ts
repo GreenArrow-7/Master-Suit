@@ -30,11 +30,9 @@ const createBody = z
  * own bucket, so brochures and creatives keep the access control and the
  * signed-URL expiry that vendor links do not have.
  *
- * ponytail: this registers media, it does not receive bytes. Browser upload of
- * a brochure needs a multipart handler, which cannot go through the JSON API
- * kernel — copy the shape of
- * `api/v1/workspaces/[slug]/hr/documents/upload/route.ts` when someone needs to
- * drag a PDF in rather than have an importer place it.
+ * This registers media, it does not receive bytes: a browser upload goes
+ * through `media/upload`, which scans and stores the file under the
+ * workspace's media prefix — the only keys this route accepts.
  */
 export const POST = route(
   {
@@ -54,7 +52,7 @@ export const POST = route(
 
     // Shared with the listing media route: the embed-versus-hosted rule is the
     // same in both places, and two copies of it is how they come to disagree.
-    assertMediaSource(body);
+    assertMediaSource(body, ctx.tenantId);
 
     return prisma.projectMedia.create({
       data: { tenantId: ctx.tenantId, projectId: project.id, createdById: ctx.actor.id, ...body },

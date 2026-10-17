@@ -100,6 +100,17 @@ describe('company profile', () => {
     expect((row!.address as { formatted?: string }).formatted).toBe('Level 4, Somewhere');
   });
 
+  it('stores the brokerage ORN on the workspace settings, and clears it when emptied (M12-04)', async () => {
+    const save = (reraOrn: string) =>
+      patch(settingsPatch, at('company').path, { reraOrn }, adminCookie, at('company').params);
+    expect((await save('ORN 12345')).status).toBe(200);
+    const orn = async () =>
+      (await prisma.organizationSetting.findUnique({ where: { tenantId }, select: { reraOrn: true } }))?.reraOrn;
+    expect(await orn()).toBe('ORN 12345');
+    expect((await save('')).status).toBe(200);
+    expect(await orn()).toBeNull();
+  });
+
   it('rejects a malformed value rather than storing it', async () => {
     const res = await patch(
       settingsPatch,

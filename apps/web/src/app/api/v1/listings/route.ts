@@ -17,6 +17,7 @@ import {
   listingWhere,
   maskOwner,
 } from '@/lib/inventory/listings';
+import { referenceFields, resolveReferences } from '@/services/inventory/reference';
 
 /**
  * The listing book.
@@ -71,6 +72,12 @@ const createBody = z
     amenityKeys: z.array(z.string().max(60)).max(60).default([]),
     highlights: z.array(z.string().max(200)).max(20).default([]),
     description: z.string().max(8000).optional(),
+    /** The Trakheesi (advertising) permit and its expiry (M12-04). */
+    permitNumber: z.string().trim().max(60).optional(),
+    permitExpiry: z.coerce.date().optional(),
+    /** A community by name, found or created (M11-01), when the list lacks it. */
+    community: referenceFields.community,
+    city: referenceFields.city,
   })
   .strict();
 
@@ -112,7 +119,9 @@ export const POST = route(
       throw Invalid([{ field: 'propertyOwnerId', code: 'not_found', message: 'Record the property owner first.' }]);
     }
 
+    const { community, city, ...fields } = body;
     const listing = await withTx(ctx.tenantId, async (tx) => {
+      const { micromarketId } = await resolveReferences(tx, ctx.tenantId, { community, city });
       const reference = await nextReference(tx, ctx.tenantId, 'LISTING');
       return tx.listing.create({
         data: {
@@ -122,7 +131,8 @@ export const POST = route(
           ownerId: ctx.actor.id,
           createdById: ctx.actor.id,
           updatedById: ctx.actor.id,
-          ...body,
+          ...fields,
+          micromarketId: fields.micromarketId ?? micromarketId,
         },
         select: { ...LISTING_LIST_SELECT, propertyOwner: { select: { id: true, fullName: true, phone: true } } },
       });

@@ -115,6 +115,56 @@ export async function matchesForRequirement(tenantId: string, requirementId: str
 }
 
 /**
+ * Developer units that answer a buyer's requirement (M12-06): AVAILABLE units
+ * of live projects, on the same rules as listings — budget strict, the rest
+ * "not stated or satisfied", a unit that has not recorded a criterion kept.
+ * A rental requirement gets none: units are sold.
+ *
+ * ponytail: a unit has no property type (its plan's `unitType` is free text,
+ * "2BR"), so a requirement's property types do not narrow units; map
+ * unitType onto PropertyType if agents report villas offered to flat-hunters.
+ */
+export async function unitsForRequirement(tenantId: string, r: Requirement, limit = 5) {
+  if (r.purpose !== 'BUY') return [];
+  const and: Prisma.UnitInventoryWhereInput[] = [];
+  const plan = (bedrooms: Prisma.IntNullableFilter) => ({
+    OR: [{ unitPlanId: null }, { unitPlan: { is: { OR: [{ bedrooms: null }, { bedrooms }] } } }],
+  });
+  if (r.bedroomsMin != null) and.push(plan({ gte: r.bedroomsMin }));
+  if (r.bedroomsMax != null) and.push(plan({ lte: r.bedroomsMax }));
+  if (r.areaMinSqft != null) and.push({ OR: [{ areaSqft: { gte: r.areaMinSqft } }, { areaSqft: null }] });
+  if (r.budgetMin != null) and.push({ price: { gte: r.budgetMin } });
+  if (r.budgetMax != null) and.push({ price: { lte: r.budgetMax } });
+
+  const rows = await prisma.unitInventory.findMany({
+    where: {
+      tenantId,
+      status: 'AVAILABLE',
+      project: {
+        is: {
+          deletedAt: null,
+          ...(r.micromarketIds.length ? { micromarketId: { in: r.micromarketIds } } : {}),
+          ...(r.possessionBy ? { OR: [{ possessionAt: { lte: r.possessionBy } }, { possessionAt: null }] } : {}),
+        },
+      },
+      ...(and.length ? { AND: and } : {}),
+    },
+    select: {
+      id: true,
+      unitNumber: true,
+      tower: true,
+      price: true,
+      currency: true,
+      areaSqft: true,
+      project: { select: { id: true, name: true, micromarket: { select: { name: true } } } },
+      unitPlan: { select: { name: true, bedrooms: true } },
+    },
+    take: 200,
+  });
+  return rankByBudget(rows, r.budgetMin, r.budgetMax).slice(0, limit);
+}
+
+/**
  * Who wanted this?
  *
  * The inverse predicate, expressed against the requirement table. It cannot
@@ -185,12 +235,14 @@ export async function requirementsWanting(tenantId: string, listingId: string, l
  * stands. Sorted here rather than in SQL because the key is a distance from a
  * value, which no index can serve, and the set is already bounded.
  */
-function rankByBudget<T extends { price: Prisma.Decimal }>(
+function rankByBudget<T extends { price: Prisma.Decimal | null }>(
   rows: T[],
   min: Prisma.Decimal | null,
   max: Prisma.Decimal | null,
 ): T[] {
   if (!min && !max) return rows;
   const target = min && max ? min.add(max).div(2) : (max ?? min)!;
-  return [...rows].sort((a, b) => a.price.minus(target).abs().comparedTo(b.price.minus(target).abs()));
+  // A price is required on a listing, and a stated budget keeps only priced units.
+  const gap = (row: T) => (row.price ?? target).minus(target).abs();
+  return [...rows].sort((a, b) => gap(a).comparedTo(gap(b)));
 }

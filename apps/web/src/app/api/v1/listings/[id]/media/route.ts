@@ -43,7 +43,7 @@ export const POST = route(
     });
     if (!listing) throw NotFound('Listing');
 
-    assertMediaSource(body);
+    assertMediaSource(body, ctx.tenantId);
 
     return prisma.listingMedia.create({
       data: { tenantId: ctx.tenantId, listingId: listing.id, createdById: ctx.actor.id, ...body },

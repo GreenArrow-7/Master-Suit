@@ -54,6 +54,7 @@ export const GET = route(
   },
 );
 
+// Numbers coerced: the project page's forms post them as strings (M11-04).
 const createBody = z
   .object({
     unitPlanId: z.string().cuid().optional(),
@@ -64,13 +65,13 @@ const createBody = z
      * entered once, at handover, as "floors 1 to 40, four units a floor" — and
      * 160 separate POSTs is how that becomes a job nobody does.
      */
-    fromFloor: z.number().int().min(-5).max(200),
-    toFloor: z.number().int().min(-5).max(200),
-    unitsPerFloor: z.number().int().min(1).max(20),
+    fromFloor: z.coerce.number().int().min(-5).max(200),
+    toFloor: z.coerce.number().int().min(-5).max(200),
+    unitsPerFloor: z.coerce.number().int().min(1).max(20),
     /** `{floor}0{n}` → 1201, 1202. The house style varies; this is the common one. */
     numberPattern: z.string().max(40).default('{floor}0{n}'),
-    price: z.number().nonnegative().optional(),
-    areaSqft: z.number().int().positive().optional(),
+    price: z.coerce.number().nonnegative().optional(),
+    areaSqft: z.coerce.number().int().positive().optional(),
   })
   .strict();
 

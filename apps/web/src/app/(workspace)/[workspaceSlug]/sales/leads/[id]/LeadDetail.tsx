@@ -144,6 +144,15 @@ interface LeadData {
       bedrooms: number | null;
       community: string | null;
     }[];
+    /** AVAILABLE developer units the requirement matches (M12-06). */
+    units: {
+      id: string;
+      projectId: string;
+      label: string;
+      price: string | null;
+      bedrooms: number | null;
+      community: string | null;
+    }[];
   } | null;
   documents: Doc[];
 }
@@ -1535,8 +1544,8 @@ function MatchingStock({
       </div>
       {!stock.hasRequirement ? (
         <p style={hint}>Add a requirement to see the listings that match.</p>
-      ) : stock.listings.length === 0 ? (
-        <p style={hint}>No live listing matches the requirement yet.</p>
+      ) : stock.listings.length === 0 && stock.units.length === 0 ? (
+        <p style={hint}>No live listing or available unit matches the requirement yet.</p>
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 'var(--lf-space-2)' }}>
           {stock.listings.map((l) => (
@@ -1548,6 +1557,16 @@ function MatchingStock({
                 {[l.reference, l.price, l.bedrooms != null && `${l.bedrooms} bed`, l.community]
                   .filter(Boolean)
                   .join(' · ')}
+              </div>
+            </li>
+          ))}
+          {stock.units.map((u) => (
+            <li key={u.id} style={{ fontSize: 'var(--lf-text-sm)', overflowWrap: 'anywhere' }}>
+              <SalesLink href={`/projects/${u.projectId}`} style={{ fontWeight: 500 }}>
+                {u.label}
+              </SalesLink>
+              <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)', marginTop: 2 }}>
+                {['Unit', u.price, u.bedrooms != null && `${u.bedrooms} bed`, u.community].filter(Boolean).join(' · ')}
               </div>
             </li>
           ))}

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
 import { pageQuery, cursorWhere, toPage } from '@/lib/api/pagination';
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import { Conflict } from '@/lib/errors';
 import {
   catalogueFilters,
@@ -12,6 +12,7 @@ import {
   PROJECT_STATUSES,
   POSSESSION_STATUSES,
 } from '@/lib/inventory/catalogue';
+import { referenceFields, resolveReferences } from '@/services/inventory/reference';
 
 /**
  * The project catalogue.
@@ -78,6 +79,8 @@ const createBody = z
     isPriority: z.boolean().default(false),
     isPitchable: z.boolean().default(true),
     launchedAt: z.coerce.date().optional(),
+    /** By name, found or created (M11-01): a new workspace has no developers, communities or amenities yet. */
+    ...referenceFields,
   })
   .strict();
 
@@ -108,9 +111,22 @@ export const POST = route(
       );
     }
 
-    return prisma.project.create({
-      data: { tenantId: ctx.tenantId, createdById: ctx.actor.id, updatedById: ctx.actor.id, ...body },
-      select: PROJECT_LIST_SELECT,
+    const { developerName, community, city, amenityNames, ...fields } = body;
+    return withTx(ctx.tenantId, async (tx) => {
+      const named = await resolveReferences(tx, ctx.tenantId, { developerName, community, city, amenityNames });
+      return tx.project.create({
+        data: {
+          tenantId: ctx.tenantId,
+          createdById: ctx.actor.id,
+          updatedById: ctx.actor.id,
+          ...fields,
+          // A list pick wins over a typed name.
+          developerId: fields.developerId ?? named.developerId,
+          micromarketId: fields.micromarketId ?? named.micromarketId,
+          amenityKeys: [...new Set([...fields.amenityKeys, ...named.amenityKeys])],
+        },
+        select: PROJECT_LIST_SELECT,
+      });
     });
   },
 );

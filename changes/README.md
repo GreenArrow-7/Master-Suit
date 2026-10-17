@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-18 | [Projects and listings for every lead module: payment plans, uploads, units from the page, paging and views, permits, pocket listings, unit matches](2026-10-18-le-projects-listings.md) | #207 | Lead Eagle, projects, listings, feature |
 | 2026-10-17 | [The phone apps carry the push plugin](2026-10-17-native-push-plugin.md) | — | Mobile, build |
 | 2026-10-17 | [Each person chooses phone and email copies of their notifications](2026-10-17-notification-prefs.md) | — | Notifications, feature |
 | 2026-10-17 | [Automatic assignment can be switched on, and is on for new Lead Eagle workspaces](2026-10-17-assignment-rules.md) | #194 | Lead Eagle, allocation, feature |

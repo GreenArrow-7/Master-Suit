@@ -23,6 +23,9 @@ export default function ListingFilters({
     // fresh server render per field. Same value → no navigation.
     if ((params.get(key) ?? '') === (value ?? '')) return;
     const next = new URLSearchParams(params.toString());
+    // A changed filter starts at its first page, and is no longer the saved view.
+    next.delete('page');
+    next.delete('saved');
     if (value) next.set(key, value);
     else next.delete(key);
     router.push(`${pathname}?${next.toString()}`);
@@ -126,6 +129,32 @@ export default function ListingFilters({
             placeholder="Any"
             defaultValue={value('bedroomsMin')}
             onBlur={(e) => set('bedroomsMin', e.target.value || null)}
+          />
+        </Field>
+
+        <Field label="Beds up to">
+          <input
+            className="lf-input"
+            type="number"
+            min={0}
+            max={50}
+            style={{ width: 100 }}
+            placeholder="Any"
+            defaultValue={value('bedroomsMax')}
+            onBlur={(e) => set('bedroomsMax', e.target.value || null)}
+          />
+        </Field>
+
+        <Field label="Price from">
+          <input
+            className="lf-input"
+            type="number"
+            min={0}
+            step={50000}
+            style={{ width: 140 }}
+            placeholder="Any"
+            defaultValue={value('minPrice')}
+            onBlur={(e) => set('minPrice', e.target.value || null)}
           />
         </Field>
 

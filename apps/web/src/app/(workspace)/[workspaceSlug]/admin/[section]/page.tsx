@@ -41,6 +41,10 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
 
   switch (section) {
     case 'company': {
+      const setting = await prisma.organizationSetting.findUnique({
+        where: { tenantId: ctx.tenantId },
+        select: { reraOrn: true },
+      });
       const fields: SettingsField[] = [
         { name: 'displayName', label: 'Display name', value: workspace.displayName },
         { name: 'legalName', label: 'Legal name', value: workspace.legalName },
@@ -56,6 +60,12 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           type: 'url',
           value: workspace.logoUrl ?? '',
           hint: 'A link to your logo. Shown in the workspace shell.',
+        },
+        {
+          name: 'reraOrn',
+          label: 'RERA ORN',
+          value: setting?.reraOrn ?? '',
+          hint: 'Your brokerage registration number. Printed on shared pages, proposals and portal feeds.',
         },
       ];
       return (
