@@ -243,7 +243,22 @@ export async function provisionLeadWork(
   before: readonly string[] = [],
 ): Promise<void> {
   if (!modules.some((module) => (LEAD_MODULES as readonly string[]).includes(module))) return;
-  if (modules.includes('LEAD_EAGLE') && !before.includes('LEAD_EAGLE')) await provisionStarterRoles(tx, tenantId);
+  if (modules.includes('LEAD_EAGLE') && !before.includes('LEAD_EAGLE')) {
+    await provisionStarterRoles(tx, tenantId);
+    // Automatic assignment from day one (audit M7-01): one round-robin rule over
+    // every active member, editable under Allocation → Rules.
+    if ((await tx.distributionRule.count({ where: { tenantId, deletedAt: null } })) === 0) {
+      await tx.distributionRule.create({
+        data: {
+          tenantId,
+          name: 'Everyone, in turn',
+          method: 'ROUND_ROBIN',
+          isActive: true,
+          candidatePool: { everyone: true },
+        },
+      });
+    }
+  }
   // The source catalogue (M4-03); workspaces from before it got it from the migration's backfill.
   await ensureLeadSources(tx, tenantId);
   if ((await tx.leadStage.count({ where: { tenantId } })) === 0) {
