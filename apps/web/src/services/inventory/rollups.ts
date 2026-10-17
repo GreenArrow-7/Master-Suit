@@ -24,7 +24,17 @@ export interface Rollups {
   soldUnits: number;
 }
 
-export async function recalculateProjectRollups(tx: TxClient, tenantId: string, projectId: string): Promise<Rollups> {
+/**
+ * `countsOnly` writes the unit counts and types and leaves the price and area
+ * bands alone: the move tool's projects bring a band of their own and plans
+ * with no price, which would otherwise blank it.
+ */
+export async function recalculateProjectRollups(
+  tx: TxClient,
+  tenantId: string,
+  projectId: string,
+  { countsOnly = false }: { countsOnly?: boolean } = {},
+): Promise<Rollups> {
   const [plans, counts] = await Promise.all([
     tx.unitPlan.findMany({
       where: { tenantId, projectId },
@@ -84,6 +94,16 @@ export async function recalculateProjectRollups(tx: TxClient, tenantId: string, 
     soldUnits: by('SOLD') + by('BOOKED'),
   };
 
-  await tx.project.update({ where: { id: projectId, tenantId }, data: rollups });
+  await tx.project.update({
+    where: { id: projectId, tenantId },
+    data: countsOnly
+      ? {
+          unitTypes: rollups.unitTypes,
+          totalUnits: rollups.totalUnits,
+          availableUnits: rollups.availableUnits,
+          soldUnits: rollups.soldUnits,
+        }
+      : rollups,
+  });
   return rollups;
 }

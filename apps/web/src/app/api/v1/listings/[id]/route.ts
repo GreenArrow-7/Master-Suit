@@ -58,6 +58,9 @@ const patchBody = z
     amenityKeys: z.array(z.string().max(60)).max(60).optional(),
     highlights: z.array(z.string().max(200)).max(20).optional(),
     description: z.string().max(8000).nullable().optional(),
+    /** The Trakheesi (advertising) permit and its expiry (M12-04). */
+    permitNumber: z.string().trim().max(60).nullable().optional(),
+    permitExpiry: z.coerce.date().nullable().optional(),
     /** Reassigning the listing to another agent. */
     ownerId: z.string().cuid().nullable().optional(),
   })

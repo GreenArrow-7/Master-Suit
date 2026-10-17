@@ -1,6 +1,6 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { columnsFor } from '@/lib/grid/resolve';
 import { catalogueFilters, catalogueWhere, PROJECT_LIST_SELECT } from '@/lib/inventory/catalogue';
@@ -10,6 +10,10 @@ import ColumnEditor from '@/components/workspace/ColumnEditor';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
 import ProjectFilters from './ProjectFilters';
+import Pager from '@/components/workspace/Pager';
+import InventoryViews from '@/components/workspace/InventoryViews';
+import { catalogueFacets } from '@/services/inventory/facets';
+import { listViews } from '@/services/inventory/views';
 
 export const metadata = { title: 'Projects' };
 
@@ -47,29 +51,47 @@ export default async function ProjectsPage({
     : undefined;
 
   const where = catalogueWhere(ctx.tenantId, filters, favouriteIds);
+  // ponytail: OFFSET pages (M11-08); a keyset like the lead grid's (leadPage) when a catalogue passes ~10,000 projects.
+  const page = Math.max(1, Math.min(10_000, Number(raw.page) || 1));
 
-  const [rows, total, columns, micromarkets, developers] = await Promise.all([
+  const [found, columns, [micromarkets, developers, amenities], views] = await Promise.all([
     prisma.project.findMany({
       where,
       select: PROJECT_LIST_SELECT,
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-      take: PAGE_SIZE,
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE + 1,
     }),
-    prisma.project.count({ where }),
     columnsFor(ctx.tenantId, 'PROJECT'),
-    prisma.micromarket.findMany({
-      where: { tenantId: ctx.tenantId, isActive: true },
-      select: { id: true, name: true, city: true },
-      orderBy: [{ city: 'asc' }, { name: 'asc' }],
-      take: 200,
-    }),
-    prisma.developer.findMany({
-      where: { tenantId: ctx.tenantId, isActive: true },
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
-      take: 200,
-    }),
+    withTx(ctx.tenantId, (tx) =>
+      Promise.all([
+        tx.micromarket.findMany({
+          where: { tenantId: ctx.tenantId, isActive: true },
+          select: { id: true, name: true, city: true },
+          orderBy: [{ city: 'asc' }, { name: 'asc' }],
+          take: 200,
+        }),
+        tx.developer.findMany({
+          where: { tenantId: ctx.tenantId, isActive: true },
+          select: { id: true, name: true },
+          orderBy: { name: 'asc' },
+          take: 200,
+        }),
+        tx.amenity.findMany({
+          where: { tenantId: ctx.tenantId },
+          select: { key: true, label: true },
+          orderBy: [{ category: 'asc' }, { position: 'asc' }],
+          take: 200,
+        }),
+      ]),
+    ),
+    listViews(ctx, 'PROJECT'),
   ]);
+  // The facet counts the filter bar shows, and the total, from the same `where` (M11-08).
+  const facets = await withTx(ctx.tenantId, (tx) => catalogueFacets(tx, where));
+  const total = facets.total;
+  const rows = found.slice(0, PAGE_SIZE);
+  const { page: _page, ...kept } = raw;
 
   const mayCreate = can(ctx, 'projects', 'CREATE');
 
@@ -80,7 +102,9 @@ export default async function ProjectsPage({
         description={
           <>
             {total.toLocaleString('en-GB')} project{total === 1 ? '' : 's'}
-            {total > PAGE_SIZE ? ` — showing the first ${PAGE_SIZE}` : ''}
+            {total > PAGE_SIZE && rows.length
+              ? ` — showing ${(page - 1) * PAGE_SIZE + 1}–${(page - 1) * PAGE_SIZE + rows.length}`
+              : ''}
           </>
         }
         actions={
@@ -97,7 +121,9 @@ export default async function ProjectsPage({
         }
       />
 
-      <ProjectFilters micromarkets={micromarkets} developers={developers} />
+      <InventoryViews endpoint="/api/v1/projects/views" listPath="/projects" views={views} />
+
+      <ProjectFilters micromarkets={micromarkets} developers={developers} amenities={amenities} counts={facets} />
 
       {rows.length === 0 ? (
         <div className="lf-card">
@@ -117,6 +143,7 @@ export default async function ProjectsPage({
       ) : (
         <ConfigurableGrid object="PROJECT" columns={columns} rows={rows as never} />
       )}
+      <Pager page={page} hasMore={found.length > PAGE_SIZE} basePath="/projects" params={kept} />
     </>
   );
 }

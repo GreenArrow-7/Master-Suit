@@ -17,7 +17,7 @@ import { fieldForScreen, leadFields } from '@/services/leads/customFields';
 import { leadFormLayout } from '@/lib/leads/formLayout';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { leadTimeline, onClock } from '@/services/leads/timeline';
-import { matchesForRequirement } from '@/services/inventory/demand';
+import { matchesForRequirement, unitsForRequirement, type Requirement } from '@/services/inventory/demand';
 import { leadShares } from '@/services/leads/leadShares';
 import { whatsappLink } from '@/components/workspace/CallLink';
 import StageRail from '@/components/ui/StageRail';
@@ -227,7 +227,18 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     // Log call is offered where POST /leads/{id}/call-log takes it.
     leadReach(ctx, 'EDIT'),
     // Matching stock (M4-48): the listings its open requirement matches, for a viewer who sees listings.
-    requirement && seesListings ? matchesForRequirement(ctx.tenantId, requirement.id, STOCK_CAP) : null,
+    // And the developer units it matches (M12-06), for a viewer who also sees projects.
+    requirement && seesListings
+      ? matchesForRequirement(ctx.tenantId, requirement.id, STOCK_CAP).then(
+          async (m) =>
+            m && {
+              ...m,
+              units: can(ctx, 'projects', 'VIEW')
+                ? await unitsForRequirement(ctx.tenantId, m.requirement as Requirement, 5)
+                : [],
+            },
+        )
+      : null,
     // Its shared links (M4-30), for the card that makes and revokes them.
     leadShares(ctx.tenantId, lead.id),
   ]);
@@ -376,6 +387,14 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             price: `${m.currency} ${Number(m.price).toLocaleString('en-GB')}`,
             bedrooms: m.bedrooms,
             community: m.micromarket?.name ?? null,
+          })),
+          units: (matched?.units ?? []).map((u) => ({
+            id: u.id,
+            projectId: u.project.id,
+            label: `${u.project.name} · ${[u.tower, u.unitNumber].filter(Boolean).join(' ')}`,
+            price: u.price ? `${u.currency} ${Number(u.price).toLocaleString('en-GB')}` : null,
+            bedrooms: u.unitPlan?.bedrooms ?? null,
+            community: u.project.micromarket?.name ?? null,
           })),
         }
       : null,

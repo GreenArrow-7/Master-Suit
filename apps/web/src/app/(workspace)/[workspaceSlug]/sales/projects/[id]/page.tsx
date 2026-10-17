@@ -12,6 +12,9 @@ import FavouriteButton, { ProjectFlags } from './FavouriteButton';
 import UnitBoard from './UnitBoard';
 import ShareWithLead from '../../leads/ShareWithLead';
 import { Metric } from '@/components/ui/MetricCard';
+import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
+import MediaUpload from '@/components/workspace/MediaUpload';
+import { readMilestones } from '@/lib/inventory/paymentPlans';
 
 export const metadata = { title: 'Project' };
 
@@ -37,6 +40,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       micromarket: { select: { id: true, name: true, city: true } },
       media: { orderBy: [{ kind: 'asc' }, { position: 'asc' }] },
       unitPlans: { orderBy: { position: 'asc' } },
+      paymentPlans: {
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: { id: true, name: true, milestones: true },
+      },
     },
   });
   if (!project) notFound();
@@ -121,8 +128,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         .slice(0, 5)
     : [];
 
+  const canEdit = can(ctx, 'projects', 'EDIT');
+  // Plans and units are added under `projects:CREATE`, as their POST routes ask.
+  const canAdd = can(ctx, 'projects', 'CREATE');
   const gallery = project.media.filter((m) => m.kind === 'IMAGE');
-  const documents = project.media.filter((m) => m.kind === 'BROCHURE' || m.kind === 'CREATIVE');
+  const documents = project.media.filter(
+    (m) => m.kind === 'BROCHURE' || m.kind === 'CREATIVE' || m.kind === 'FLOOR_PLAN',
+  );
   const embeds = project.media.filter((m) => m.kind === 'VIDEO' || m.kind === 'VR_TOUR');
 
   return (
@@ -145,7 +157,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <FavouriteButton projectId={project.id} initial={Boolean(favourite)} />
-          {can(ctx, 'projects', 'EDIT') && (
+          {canEdit && (
             <ProjectFlags projectId={project.id} isPriority={project.isPriority} isPitchable={project.isPitchable} />
           )}
         </div>
@@ -210,35 +222,134 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </dl>
       </section>
 
-      {project.unitPlans.length > 0 && (
-        <section className="lf-card" style={{ padding: 18 }}>
+      {(project.unitPlans.length > 0 || canAdd) && (
+        <section className="lf-card" style={{ padding: 18 }} aria-label="Unit plans">
           <h2 className="lf-h2" style={{ fontSize: 'var(--lf-text-lg)', marginTop: 0 }}>
             Unit plans
           </h2>
-          <div className="lf-grid-wrap" style={{ overflowX: 'auto' }}>
-            <table className="lf-grid">
-              <thead>
-                <tr>
-                  <th>Plan</th>
-                  <th>Type</th>
-                  <th>Beds</th>
-                  <th style={{ textAlign: 'right' }}>Carpet sqft</th>
-                  <th style={{ textAlign: 'right' }}>Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                {project.unitPlans.map((p) => (
-                  <tr key={p.id}>
-                    <td style={{ fontWeight: 500 }}>{p.name}</td>
-                    <td>{p.unitType}</td>
-                    <td>{p.bedrooms ?? '—'}</td>
-                    <td style={{ textAlign: 'right' }}>{p.carpetAreaSqft?.toLocaleString('en-GB') ?? '—'}</td>
-                    <td style={{ textAlign: 'right' }}>{money(p.price, p.currency)}</td>
+          {project.unitPlans.length > 0 && (
+            <div className="lf-grid-wrap" style={{ overflowX: 'auto' }}>
+              <table className="lf-grid">
+                <thead>
+                  <tr>
+                    <th>Plan</th>
+                    <th>Type</th>
+                    <th>Beds</th>
+                    <th style={{ textAlign: 'right' }}>Carpet sqft</th>
+                    <th style={{ textAlign: 'right' }}>Price</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {project.unitPlans.map((p) => (
+                    <tr key={p.id}>
+                      <td style={{ fontWeight: 500 }}>{p.name}</td>
+                      <td>{p.unitType}</td>
+                      <td>{p.bedrooms ?? '—'}</td>
+                      <td style={{ textAlign: 'right' }}>{p.carpetAreaSqft?.toLocaleString('en-GB') ?? '—'}</td>
+                      <td style={{ textAlign: 'right' }}>{money(p.price, p.currency)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {/* Entering a tower from this page (M11-04): the typologies, then
+              the units floor by floor. The price band and the counts above
+              follow, recalculated by the same POST that adds them. */}
+          {canAdd && (
+            <>
+              <details style={{ marginTop: 12 }}>
+                <summary className="lf-btn lf-btn--secondary lf-btn--sm">Add unit plan</summary>
+                <WorkspaceRecordForm
+                  endpoint={`/api/v1/projects/${project.id}/plans`}
+                  submitLabel="Add plan"
+                  fields={[
+                    { name: 'name', label: 'Plan name', required: true, placeholder: '2 bed Type A' },
+                    { name: 'unitType', label: 'Type', required: true, placeholder: '2BR' },
+                    { name: 'bedrooms', label: 'Bedrooms', type: 'number', min: 0 },
+                    { name: 'bathrooms', label: 'Bathrooms', type: 'number', min: 0 },
+                    { name: 'carpetAreaSqft', label: 'Area (sqft)', type: 'number', min: 1 },
+                    { name: 'price', label: `Price (${project.currency})`, type: 'number', min: 0 },
+                  ]}
+                />
+              </details>
+              <details style={{ marginTop: 12 }}>
+                <summary className="lf-btn lf-btn--secondary lf-btn--sm">Add units (floor range)</summary>
+                <WorkspaceRecordForm
+                  endpoint={`/api/v1/projects/${project.id}/units`}
+                  submitLabel="Add units"
+                  fields={[
+                    {
+                      name: 'unitPlanId',
+                      label: 'Unit plan',
+                      type: 'select',
+                      options: project.unitPlans.map((p) => ({ value: p.id, label: p.name })),
+                    },
+                    { name: 'tower', label: 'Tower or block' },
+                    { name: 'fromFloor', label: 'From floor', type: 'number', required: true },
+                    { name: 'toFloor', label: 'To floor', type: 'number', required: true },
+                    { name: 'unitsPerFloor', label: 'Units per floor', type: 'number', required: true, min: 1 },
+                    {
+                      name: 'numberPattern',
+                      label: 'Unit numbers',
+                      defaultValue: '{floor}0{n}',
+                      hint: '{floor} and {n}: floor 12, unit 1 reads 1201.',
+                    },
+                    { name: 'price', label: `Price (${project.currency})`, type: 'number', min: 0 },
+                    { name: 'areaSqft', label: 'Area (sqft)', type: 'number', min: 1 },
+                    { name: 'facing', label: 'View' },
+                  ]}
+                />
+              </details>
+            </>
+          )}
+        </section>
+      )}
+
+      {/* Payment plans (M11-02): what a buyer pays when. */}
+      {(project.paymentPlans.length > 0 || canEdit) && (
+        <section className="lf-card" style={{ padding: 18 }} aria-label="Payment plans">
+          <h2 className="lf-h2" style={{ fontSize: 'var(--lf-text-lg)', marginTop: 0 }}>
+            Payment plans
+          </h2>
+          {project.paymentPlans.length === 0 ? (
+            <p className="lf-hint" style={{ margin: 0 }}>
+              No payment plan recorded yet.
+            </p>
+          ) : (
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
+              {project.paymentPlans.map((plan) => (
+                <li key={plan.id}>
+                  <strong>{plan.name}</strong>
+                  <span style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
+                    {' — '}
+                    {readMilestones(plan.milestones)
+                      .map((m) => `${m.percent}% ${m.label}`)
+                      .join(' · ')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {canEdit && (
+            <details style={{ marginTop: 12 }}>
+              <summary className="lf-btn lf-btn--secondary lf-btn--sm">Add payment plan</summary>
+              <WorkspaceRecordForm
+                endpoint={`/api/v1/projects/${project.id}/payment-plans`}
+                submitLabel="Add plan"
+                fields={[
+                  { name: 'name', label: 'Payment plan name', required: true, placeholder: '20/80 post-handover' },
+                  {
+                    name: 'milestones',
+                    label: 'Milestones',
+                    required: true,
+                    placeholder: '20 On booking, 80 Post-handover',
+                    hint: 'A share and a label each, adding up to 100. Separate them with semicolons when a label has a comma.',
+                  },
+                ]}
+              />
+            </details>
+          )}
         </section>
       )}
 
@@ -291,8 +402,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       )}
 
       <UnitBoard
+        // Remounted when units are added above, so the board shows them.
+        key={units.length}
         projectId={project.id}
-        canEdit={can(ctx, 'projects', 'EDIT')}
+        canEdit={canEdit}
         // Decimal and Date do not survive the server/client boundary, so the
         // board receives them the same shape the API returns.
         initialUnits={units.map((u) => ({
@@ -315,8 +428,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </section>
       )}
 
-      {(gallery.length > 0 || documents.length > 0 || embeds.length > 0) && (
-        <section className="lf-card" style={{ padding: 18 }}>
+      {(gallery.length > 0 || documents.length > 0 || embeds.length > 0 || canEdit) && (
+        <section className="lf-card" style={{ padding: 18 }} aria-label="Media">
           <h2 className="lf-h2" style={{ fontSize: 'var(--lf-text-lg)', marginTop: 0 }}>
             Media
           </h2>
@@ -354,7 +467,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                     href={`/api/v1/projects/${project.id}/media/${m.id}/file`}
                     className="lf-btn lf-btn--secondary lf-btn--sm"
                   >
-                    {m.kind === 'BROCHURE' ? 'Brochure' : 'Creative'}: {m.title ?? 'Untitled'}
+                    {MEDIA_LABEL[m.kind] ?? 'File'}: {m.title ?? 'Untitled'}
                   </a>
                 </li>
               ))}
@@ -372,6 +485,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               ))}
             </ul>
           )}
+          {canEdit && <MediaUpload endpoint={`/api/v1/projects/${project.id}/media/upload`} />}
         </section>
       )}
 
@@ -442,6 +556,8 @@ function Row({ label, value, warn }: { label: string; value?: string | null; war
     </>
   );
 }
+
+const MEDIA_LABEL: Record<string, string> = { BROCHURE: 'Brochure', CREATIVE: 'Creative', FLOOR_PLAN: 'Floor plan' };
 
 const money = (amount: Prisma.Decimal | null, currency: string) =>
   amount == null ? '—' : `${currency} ${Number(amount).toLocaleString('en-AE')}`;

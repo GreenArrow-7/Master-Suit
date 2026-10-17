@@ -44,6 +44,7 @@ const READ = new Set([
   'CaptureLink',
   'Project',
   'Unit',
+  'PaymentPlan',
   'Listing',
   'Booking',
   'Commission',
@@ -163,11 +164,12 @@ export async function readCompany(db: Client, slug: string): Promise<LeadEagleCo
       t,
     ),
     units: await rows(
-      `select id, "projectId", "unitNumber", floor, view, "priceAed" as price, "sizeSqft", status::text as status,
-              "heldById", "heldUntil"
+      `select id, "projectId", "unitNumber", floor, view, type::text as type, bedrooms, bathrooms,
+              "priceAed" as price, "sizeSqft", status::text as status, "heldById", "heldUntil"
          from "Unit" where ${live}`,
       t,
     ),
+    paymentPlans: await rows(`select "projectId", name, milestones from "PaymentPlan" where ${live}`, t),
     listings: await rows(
       `select id, reference, title, purpose::text as purpose, "propertyType"::text as "propertyType",
               status::text as status, bedrooms, bathrooms, "sizeSqft", furnishing::text as furnishing,

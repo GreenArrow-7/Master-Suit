@@ -39,6 +39,8 @@ const companyBody = z.object({
   /** The colours the workspace's public pages draw with (M18-09): `#RRGGBB`. */
   primaryColor: hex.optional(),
   accentColor: hex.optional(),
+  /** The brokerage's RERA ORN (M12-04): portal feeds, shared pages and proposals print it. */
+  reraOrn: z.string().trim().max(40).nullable().optional(),
 });
 
 const securityBody = z.object({
@@ -89,16 +91,17 @@ export const PATCH = route(
 
     if (params.section === 'company') {
       const input = companyBody.parse(body);
-      // The brand colours live on the settings row, which the public pages read (agencyOf).
-      const colours = {
+      // The brand colours and the ORN live on the settings row, which the public pages read (agencyOf).
+      const settings = {
         ...(input.primaryColor && { primaryColor: input.primaryColor }),
         ...(input.accentColor && { accentColor: input.accentColor }),
+        ...(input.reraOrn !== undefined && { reraOrn: input.reraOrn || null }),
       };
       const brand = await prisma.organizationSetting.upsert({
         where: { tenantId: ctx.tenantId },
-        create: { tenantId: ctx.tenantId, ...colours },
-        update: colours,
-        select: { primaryColor: true, accentColor: true },
+        create: { tenantId: ctx.tenantId, ...settings },
+        update: settings,
+        select: { primaryColor: true, accentColor: true, reraOrn: true },
       });
       const company = await prisma.tenant.update({
         where: { id: ctx.tenantId },

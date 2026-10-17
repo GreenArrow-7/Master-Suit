@@ -1,7 +1,8 @@
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { route } from '@/lib/api/handler';
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import { catalogueFilters, catalogueWhere } from '@/lib/inventory/catalogue';
+import { catalogueFacets } from '@/services/inventory/facets';
 
 /**
  * Counts for the filter sidebar, computed against the *same* `where` the list
@@ -30,52 +31,37 @@ export const GET = route(
       : undefined;
 
     const where = catalogueWhere(ctx.tenantId, query, favouriteIds);
-
-    const [byMicromarket, byDeveloper, byStatus, byPossession, total, available] = await Promise.all([
-      prisma.project.groupBy({ by: ['micromarketId'], where, _count: { _all: true } }),
-      prisma.project.groupBy({ by: ['developerId'], where, _count: { _all: true } }),
-      prisma.project.groupBy({ by: ['status'], where, _count: { _all: true } }),
-      prisma.project.groupBy({ by: ['possessionStatus'], where, _count: { _all: true } }),
-      prisma.project.count({ where }),
-      prisma.project.count({ where: { ...where, availableUnits: { gt: 0 } } }),
-    ]);
+    const facets = await withTx(ctx.tenantId, (tx) => catalogueFacets(tx, where));
 
     // Names for the ids, in one round trip each rather than a join per group.
     const [micromarkets, developers] = await Promise.all([
       prisma.micromarket.findMany({
-        where: { tenantId: ctx.tenantId, id: { in: ids(byMicromarket, 'micromarketId') } },
+        where: { tenantId: ctx.tenantId, id: { in: Object.keys(facets.micromarket) } },
         select: { id: true, name: true, city: true },
       }),
       prisma.developer.findMany({
-        where: { tenantId: ctx.tenantId, id: { in: ids(byDeveloper, 'developerId') } },
+        where: { tenantId: ctx.tenantId, id: { in: Object.keys(facets.developer) } },
         select: { id: true, name: true },
       }),
     ]);
 
     const mmName = new Map(micromarkets.map((m) => [m.id, `${m.name}, ${m.city}`]));
     const devName = new Map(developers.map((d) => [d.id, d.name]));
+    const rows = (counts: Record<string, number>, label: (value: string) => string) =>
+      Object.entries(counts)
+        .map(([value, count]) => ({ value, label: label(value), count }))
+        .sort(byCount);
 
     return {
-      total,
-      available,
-      micromarket: byMicromarket
-        .filter((r) => r.micromarketId)
-        .map((r) => ({ value: r.micromarketId!, label: mmName.get(r.micromarketId!) ?? '—', count: r._count._all }))
-        .sort(byCount),
-      developer: byDeveloper
-        .filter((r) => r.developerId)
-        .map((r) => ({ value: r.developerId!, label: devName.get(r.developerId!) ?? '—', count: r._count._all }))
-        .sort(byCount),
-      status: byStatus.map((r) => ({ value: r.status, label: title(r.status), count: r._count._all })).sort(byCount),
-      possession: byPossession
-        .map((r) => ({ value: r.possessionStatus, label: title(r.possessionStatus), count: r._count._all }))
-        .sort(byCount),
+      total: facets.total,
+      available: facets.available,
+      micromarket: rows(facets.micromarket, (id) => mmName.get(id) ?? '—'),
+      developer: rows(facets.developer, (id) => devName.get(id) ?? '—'),
+      status: rows(facets.status, title),
+      possession: rows(facets.possession, title),
     };
   },
 );
-
-const ids = <K extends string>(rows: Record<K, string | null>[], key: K) =>
-  rows.map((r) => r[key]).filter((v): v is string => Boolean(v));
 
 const byCount = (a: { count: number }, b: { count: number }) => b.count - a.count;
 

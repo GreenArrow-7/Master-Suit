@@ -39,6 +39,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 | 2026-10-18 | [Project, site-visit and call reports; reports regroup by user, month, project or lead; any report can be emailed on a schedule](2026-10-18-reports-new.md) | #204 | Reports, Lead Eagle, feature |
 | 2026-10-18 | [A provider's calls on the lead's timeline, a call report per agent, missed-call notices and tracking numbers](2026-10-18-le-calls.md) | #205 | Lead Eagle, calls, telephony |
 | 2026-10-18 | [A manager sees their whole line; quotas, languages, availability and shares steer assignment; Lead Eagle writes its own automations](2026-10-18-assignment-followups.md) | #206 | Lead Eagle, allocation, automation, follow-ups |
+| 2026-10-18 | [Projects and listings for every lead module: payment plans, uploads, units from the page, paging and views, permits, pocket listings, unit matches](2026-10-18-le-projects-listings.md) | #207 | Lead Eagle, projects, listings, feature |
 | 2026-10-17 | [The phone apps carry the push plugin](2026-10-17-native-push-plugin.md) | — | Mobile, build |
 | 2026-10-17 | [Each person chooses phone and email copies of their notifications](2026-10-17-notification-prefs.md) | — | Notifications, feature |
 | 2026-10-17 | [Automatic assignment can be switched on, and is on for new Lead Eagle workspaces](2026-10-17-assignment-rules.md) | #194 | Lead Eagle, allocation, feature |

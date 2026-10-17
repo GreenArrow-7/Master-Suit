@@ -41,9 +41,10 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
 
   switch (section) {
     case 'company': {
-      const brand = await prisma.organizationSetting.findUnique({
+      // One read of the settings row: the brand colours (M18-09) and the ORN (M12-04).
+      const setting = await prisma.organizationSetting.findUnique({
         where: { tenantId: ctx.tenantId },
-        select: { primaryColor: true, accentColor: true },
+        select: { primaryColor: true, accentColor: true, reraOrn: true },
       });
       const fields: SettingsField[] = [
         { name: 'displayName', label: 'Display name', value: workspace.displayName },
@@ -65,10 +66,16 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           name: 'primaryColor',
           label: 'Brand colour',
           type: 'color',
-          value: brand?.primaryColor ?? '#2447C7',
+          value: setting?.primaryColor ?? '#2447C7',
           hint: 'Your QR capture page, shared listings and shortlists draw with it.',
         },
-        { name: 'accentColor', label: 'Accent colour', type: 'color', value: brand?.accentColor ?? '#0E7C66' },
+        { name: 'accentColor', label: 'Accent colour', type: 'color', value: setting?.accentColor ?? '#0E7C66' },
+        {
+          name: 'reraOrn',
+          label: 'RERA ORN',
+          value: setting?.reraOrn ?? '',
+          hint: 'Your brokerage registration number. Printed on shared pages, proposals and portal feeds.',
+        },
       ];
       return (
         <Shell title="Company profile">

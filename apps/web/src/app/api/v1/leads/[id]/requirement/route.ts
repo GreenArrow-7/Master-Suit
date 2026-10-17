@@ -8,6 +8,7 @@ import { audit } from '@/lib/security/audit';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { assertLeadInScope } from '@/lib/security/record-scope';
 import { workspaceTimezone } from '@/services/hr/attendance';
+import { communitiesNamed } from '@/services/inventory/reference';
 import { openRequirement } from '@/services/leads/requirement';
 import { dayBounds } from '@/services/targets/dailyBoard';
 
@@ -67,6 +68,8 @@ export const PUT = route(
         budgetMin: body.budgetMin ?? null,
         budgetMax: body.budgetMax ?? null,
         locations: body.locations,
+        // The typed areas that name a community narrow the matching stock (M12-06).
+        micromarketIds: await communitiesNamed(tx, ctx.tenantId, body.locations),
         possessionBy,
         notes: body.notes || null,
         updatedById: ctx.actor.id,

@@ -112,6 +112,8 @@ export default async function NewListingPage() {
             type: 'select',
             options: micromarkets.map((m) => ({ value: m.id, label: `${m.name}, ${m.city}` })),
           },
+          { name: 'community', label: 'Or a new community', placeholder: 'Dubai Marina' },
+          { name: 'city', label: 'City of the new community', placeholder: 'Dubai' },
           { name: 'address', label: 'Address' },
           { name: 'bedrooms', label: 'Bedrooms', type: 'number' },
           { name: 'bathrooms', label: 'Bathrooms', type: 'number' },
@@ -124,6 +126,8 @@ export default async function NewListingPage() {
             options: FURNISHINGS.map((f) => ({ value: f, label: title(f) })),
           },
           { name: 'availableFrom', label: 'Available from', type: 'date' },
+          { name: 'permitNumber', label: 'Trakheesi permit number' },
+          { name: 'permitExpiry', label: 'Permit expires', type: 'date' },
           {
             name: 'amenityKeys',
             label: 'Amenities',
