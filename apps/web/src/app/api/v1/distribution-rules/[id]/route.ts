@@ -29,8 +29,8 @@ export const PATCH = route(
   async ({ ctx, body, params }) => {
     await findRule(ctx.tenantId, params.id);
     const { everyone, userIds, ...rest } = body;
-    return prisma.distributionRule.update({
-      where: { id: params.id },
+    await prisma.distributionRule.updateMany({
+      where: { tenantId: ctx.tenantId, id: params.id },
       data: {
         ...rest,
         ...(everyone !== undefined || userIds !== undefined
@@ -38,8 +38,8 @@ export const PATCH = route(
           : {}),
         updatedById: ctx.actor.id,
       },
-      select: RULE_FIELDS,
     });
+    return prisma.distributionRule.findFirstOrThrow({ where: { tenantId: ctx.tenantId, id: params.id }, select: RULE_FIELDS });
   },
 );
 
@@ -47,8 +47,8 @@ export const DELETE = route(
   { module: 'allocation', productModule: LEAD_MODULES, action: 'APPROVE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) => {
     await findRule(ctx.tenantId, params.id);
-    await prisma.distributionRule.update({
-      where: { id: params.id },
+    await prisma.distributionRule.updateMany({
+      where: { tenantId: ctx.tenantId, id: params.id },
       data: { deletedAt: new Date(), isActive: false },
     });
     return { deleted: true };

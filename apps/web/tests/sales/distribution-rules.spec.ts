@@ -4,9 +4,10 @@ import { prisma, withPlatformTx } from '@/lib/db';
 import { assignLead } from '@/services/distribution/assignLead';
 import { provisionLeadWork } from '@/services/platform/provisioning';
 import { GET as listRules, POST as createRule } from '@/app/api/v1/distribution-rules/route';
+import { PATCH as editRule, DELETE as deleteRule } from '@/app/api/v1/distribution-rules/[id]/route';
 import { createWorkspaceUser, grantPermissions, seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { createSessionToken } from '../helpers/session';
-import { get, post } from '../helpers/request';
+import { del, get, patch, post } from '../helpers/request';
 
 // Audit M7-01: a Lead Eagle workspace can turn automatic assignment on, and starts with it on.
 const suffix = randomBytes(4).toString('hex');
@@ -64,6 +65,10 @@ it('the rules API lists for viewers and creates only for allocation:APPROVE', as
     cookie,
   );
   expect(created.status).toBe(200);
+  const id = created.body.id as string;
+  const off = await patch(editRule, `/api/v1/distribution-rules/${id}`, { isActive: false }, cookie, { id });
+  expect([off.status, off.body.isActive]).toEqual([200, false]);
+  expect((await del(deleteRule, `/api/v1/distribution-rules/${id}`, cookie, { id })).status).toBe(200);
 
   const viewerRole = await prisma.role.create({
     data: { tenantId, key: `viewer-${suffix}`, name: 'Viewer', rank: 90, defaultScope: 'OWN' },
