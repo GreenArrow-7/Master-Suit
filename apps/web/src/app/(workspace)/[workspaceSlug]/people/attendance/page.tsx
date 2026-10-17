@@ -7,6 +7,7 @@ import { myEmployee } from '@/services/hr/leave';
 import { attendanceScope } from '@/services/hr/reads';
 import { listExceptionRequests } from '@/services/hr/requests';
 import { productivity, type ProductivityRow } from '@/services/leadership/rollups';
+import { EVERY_WORKSPACE_REPORT, runReport as runHrReport } from '@/services/hr/reports';
 import ExportCsv from '@/components/workspace/ExportCsv';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
@@ -120,6 +121,13 @@ export default async function Page({
   }
   const workOf = (row: (typeof rows)[number]) => work.get(row.employee.membership.salesUserId ?? '');
 
+  // Days and hours per person (M16-10): HR's attendance summary, which every
+  // workspace has, and its CSV, audited as every HR export is.
+  const summary = seesOthers
+    ? await runHrReport(ctx, EVERY_WORKSPACE_REPORT, { from, to: toEnd }).catch(() => null)
+    : null;
+  const summaryCsv = `/api/v1/workspaces/${workspaceSlug}/hr/reports/${EVERY_WORKSPACE_REPORT}/export?from=${iso(from)}&to=${iso(to)}`;
+
   const totalMinutes = rows.reduce((sum, row) => sum + (row.workMinutes ?? 0), 0);
   const completed = rows.filter((row) => row.checkOutAt !== null).length;
   const open = rows.filter((row) => row.checkInAt !== null && row.checkOutAt === null).length;
@@ -203,6 +211,22 @@ export default async function Page({
                 />
               </span>,
             ])}
+          />
+        </section>
+      )}
+
+      {summary && summary.rows.length > 0 && (
+        <section>
+          <div className="lf-toolbar" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
+            <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>Per person</h2>
+            <a className="lf-btn lf-btn--secondary lf-btn--sm" href={summaryCsv}>
+              Export summary
+            </a>
+          </div>
+          <WorkspaceTable
+            headers={summary.columns.map((column) => column.label)}
+            empty=""
+            rows={summary.rows.map((row) => summary.columns.map((column) => String(row[column.key] ?? '—')))}
           />
         </section>
       )}

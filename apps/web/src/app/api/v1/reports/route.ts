@@ -3,17 +3,32 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { audit } from '@/lib/security/audit';
 import { assertPermission } from '@/lib/security/rbac';
-import { runReport, toCsv, REPORT_KEYS } from '@/services/leadership/reports';
+import { BOARD_RANGES, type BoardRange } from '@/lib/leads/boardFilter';
+import { isDayKey } from '@/lib/leads/followUpDue';
+import { reportParams, runReport, toCsv, REPORT_KEYS } from '@/services/leadership/reports';
+import { todayKey } from '@/services/targets/dailyBoard';
+
+/** A day on the workspace's clock (YYYY-MM-DD), or an instant as links carried before. */
+const when = z
+  .string()
+  .refine((v) => isDayKey(v) || !Number.isNaN(Date.parse(v)), 'A day (YYYY-MM-DD) or a date and time.');
+const id = z.string().max(40).optional();
 
 const query = z
   .object({
     report: z.enum(REPORT_KEYS),
-    from: z.coerce.date().optional(),
-    to: z.coerce.date().optional(),
+    // The board's filters (M16-12): a period, a person or team, a source, a project.
+    range: z.enum(Object.keys(BOARD_RANGES) as [BoardRange, ...BoardRange[]]).optional(),
+    from: when.optional(),
+    to: when.optional(),
+    owner: id,
+    team: id,
+    source: id,
+    project: id,
     format: z.enum(['json', 'csv']).default('json'),
   })
   .strict()
-  .refine((v) => !v.from || !v.to || v.to >= v.from, {
+  .refine((v) => !v.from || !v.to || Date.parse(v.to) >= Date.parse(v.from), {
     path: ['to'],
     message: 'The range ends before it starts.',
   });
@@ -31,19 +46,24 @@ export const GET = route(
   { module: 'reports', productModule: LEAD_MODULES, action: 'VIEW', query },
   async ({ ctx, query: q }) => {
     if (q.format === 'csv') assertPermission(ctx, 'reports', 'EXPORT');
-    const to = q.to ?? new Date();
-    const from = q.from ?? new Date(to.getFullYear(), to.getMonth() - 2, 1);
+    const { range, filter, zone } = await reportParams(ctx, q);
 
-    const report = await runReport(ctx, q.report, { from, to });
+    const report = await runReport(ctx, q.report, range, filter);
     if (q.format === 'json') return report;
 
     await audit(ctx, {
       event: 'EXPORT_REQUESTED',
       objectType: 'report',
       recordId: q.report,
-      metadata: { report: q.report, from: from.toISOString(), to: to.toISOString(), rows: report.rows.length },
+      metadata: {
+        report: q.report,
+        ...filter,
+        from: range.from.toISOString(),
+        to: range.to.toISOString(),
+        rows: report.rows.length,
+      },
     });
-    const stamp = to.toISOString().slice(0, 10);
+    const stamp = todayKey(zone, range.to);
     return new Response(toCsv(report), {
       headers: {
         'content-type': 'text/csv; charset=utf-8',

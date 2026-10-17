@@ -2,8 +2,8 @@ import { mergeWhere } from '@/lib/api/where';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { CONNECTED_CALL_OUTCOMES, CONNECTED_LOG_OUTCOMES } from '@/lib/leads/callLog';
 import { isDayKey, shiftDay } from '@/lib/leads/followUpDue';
-import { can, type Ctx } from '@/lib/security/rbac';
-import { ownerReach } from '@/lib/security/record-scope';
+import { can, scopeFor, type Ctx } from '@/lib/security/rbac';
+import { assignableUserWhere, ownerReach } from '@/lib/security/record-scope';
 import { dayBounds, todayKey } from '@/services/targets/dailyBoard';
 
 /**
@@ -74,13 +74,19 @@ export function boardQuery(filter: BoardFilter) {
 
 /**
  * The filter as this viewer may apply it: a person outside their `leads`
- * reach, a team with no one in it, or a source or project the workspace does
- * not hold is dropped, never widening what they see (and never a 403).
+ * reach (the reports' own reach for a report), a team with no one in it, or a
+ * source or project the workspace does not hold is dropped, never widening
+ * what they see (and never a 403).
  */
-export async function scopeBoardFilter(ctx: Ctx, filter: BoardFilter, db: TxClient | typeof prisma = prisma) {
+export async function scopeBoardFilter(
+  ctx: Ctx,
+  filter: BoardFilter,
+  db: TxClient | typeof prisma = prisma,
+  module = 'leads',
+) {
   const { tenantId } = ctx;
   const out = { ...filter };
-  const reach = await ownerReach(ctx, 'leads', 'VIEW');
+  const reach = await ownerReach(ctx, module, 'VIEW');
   if (out.owner) {
     const user = await db.user.findFirst({ where: { tenantId, id: out.owner }, select: { id: true } });
     if (!user || !reach(user.id)) delete out.owner;
@@ -101,6 +107,59 @@ export async function scopeBoardFilter(ctx: Ctx, filter: BoardFilter, db: TxClie
   }
   return out;
 }
+
+export type BoardFilterOption = { id: string; name: string };
+
+/**
+ * What the filters offer this viewer, each within what they may see: the
+ * people their `module` reach covers and the teams with someone of theirs in
+ * it (none at OWN, whose board is their own), the catalogue's top-level
+ * sources, and the workspace's projects where they may read projects. One
+ * transaction, one connection.
+ */
+export function boardFilterOptions(ctx: Ctx, module = 'leads') {
+  const ranks = scopeFor(ctx, module, 'VIEW') !== 'OWN';
+  return withTx(ctx.tenantId, async (tx) => {
+    const people = ranks
+      ? await tx.user.findMany({
+          where: await assignableUserWhere(ctx, module, 'VIEW', tx),
+          select: { id: true, fullName: true },
+          orderBy: { fullName: 'asc' },
+        })
+      : [];
+    const teams = ranks
+      ? await tx.team.findMany({
+          where: {
+            tenantId: ctx.tenantId,
+            deletedAt: null,
+            members: { some: { userId: { in: people.map((person) => person.id) } } },
+          },
+          select: { id: true, name: true },
+          orderBy: { name: 'asc' },
+        })
+      : [];
+    const sources = await tx.leadSource.findMany({
+      where: { tenantId: ctx.tenantId, parentId: null },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+    const projects = can(ctx, 'projects', 'VIEW')
+      ? await tx.project.findMany({
+          where: { tenantId: ctx.tenantId, deletedAt: null },
+          select: { id: true, name: true },
+          orderBy: { name: 'asc' },
+          take: 200,
+        })
+      : [];
+    return {
+      people: people.map((person) => ({ id: person.id, name: person.fullName })),
+      teams,
+      sources,
+      projects,
+    } satisfies Record<string, BoardFilterOption[]>;
+  });
+}
+export type BoardFilterOptions = Awaited<ReturnType<typeof boardFilterOptions>>;
 
 /** The board's registers: whose a record is, and the date a period reads. */
 const REGISTERS = {

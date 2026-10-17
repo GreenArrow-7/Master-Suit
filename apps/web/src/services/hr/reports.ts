@@ -167,6 +167,12 @@ function window(filters: ReportFilters) {
 
 const num = (value: Prisma.Decimal | number | null | undefined) => Number(value ?? 0);
 
+/**
+ * The one report every workspace has, HRMS or not (M16-10): attendance is not
+ * HR, so its summary runs and exports wherever check-in does.
+ */
+export const EVERY_WORKSPACE_REPORT = 'attendance-summary';
+
 export const REPORTS: ReportDefinition[] = [
   // ── Employees ────────────────────────────────────────────────────────────
   {
@@ -328,14 +334,18 @@ export const REPORTS: ReportDefinition[] = [
           employeeId: true,
           workMinutes: true,
           status: true,
-          employee: { select: { employeeNumber: true } },
+          employee: {
+            select: { employeeNumber: true, membership: { select: { platformUser: { select: { fullName: true } } } } },
+          },
         },
         take: MAX_ROWS,
       });
-      const grouped = new Map<string, { employeeNumber: string; days: number; minutes: number }>();
+      const grouped = new Map<string, { employeeNumber: string; name: string; days: number; minutes: number }>();
       for (const row of rows) {
         const entry = grouped.get(row.employeeId) ?? {
           employeeNumber: row.employee.employeeNumber,
+          // A Lead Eagle manager knows the person, not the HR number (M16-10).
+          name: row.employee.membership.platformUser.fullName,
           days: 0,
           minutes: 0,
         };
@@ -346,12 +356,14 @@ export const REPORTS: ReportDefinition[] = [
       return {
         columns: [
           { key: 'employeeNumber', label: 'Employee' },
+          { key: 'name', label: 'Name' },
           { key: 'days', label: 'Days recorded', numeric: true },
           { key: 'hours', label: 'Hours worked', numeric: true },
           { key: 'averageHours', label: 'Avg hours/day', numeric: true },
         ],
         rows: [...grouped.values()].map((entry) => ({
           employeeNumber: entry.employeeNumber,
+          name: entry.name,
           days: entry.days,
           hours: Number((entry.minutes / 60).toFixed(1)),
           averageHours: Number((entry.minutes / 60 / entry.days).toFixed(1)),

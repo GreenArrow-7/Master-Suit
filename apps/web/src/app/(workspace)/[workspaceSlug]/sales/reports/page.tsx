@@ -1,10 +1,13 @@
+import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { can } from '@/lib/security/rbac';
-import { runReport, REPORT_KEYS, type ReportKey } from '@/services/leadership/reports';
+import { boardFilterOptions } from '@/lib/leads/boardFilter';
+import { offeredReports, reportParams, runReport, REPORT_KEYS, type ReportKey } from '@/services/leadership/reports';
 import EmptyState from '@/components/ui/EmptyState';
 import ListHeader from '@/components/workspace/ListHeader';
 import SalesLink from '@/components/workspace/SalesLink';
+import BoardFilterBar from '@/components/workspace/BoardFilterBar';
 
 export const metadata = { title: 'Reports' };
 
@@ -21,8 +24,8 @@ const REPORTS = [
       {
         key: 'pipeline-summary',
         icon: '📈',
-        title: 'Sales Pipeline Summary',
-        desc: 'Stage distribution and open pipeline value.',
+        title: 'Pipeline Summary',
+        desc: 'Leads in each stage, by person or team.',
       },
       { key: 'activity-log', icon: '📋', title: 'Activity Log Report', desc: 'Logged activities by type and user.' },
       {
@@ -46,7 +49,7 @@ const REPORTS = [
         key: 'rep-activity',
         icon: '🏃',
         title: 'Rep Activity Summary',
-        desc: 'Activity counts and average first response.',
+        desc: 'Calls, stage moves, notes and first response, by agent.',
       },
       {
         key: 'follow-up-adherence',
@@ -81,7 +84,7 @@ const REPORTS = [
         key: 'source-analysis',
         icon: '🔍',
         title: 'Source Analysis',
-        desc: 'Lead volume and conversion by source channel.',
+        desc: 'Lead volume and conversion by source and sub-source.',
       },
       {
         key: 'lead-quality',
@@ -103,27 +106,36 @@ const isReportKey = (value: string | undefined): value is ReportKey =>
  * and to a path missing the workspace slug — so the menu advertised ten reports
  * and delivered a 404. Both are fixed here: the parameter selects a report and
  * the links are workspace-relative like the rest of the app.
+ *
+ * A report reads the board's filters (period, person, team, source, project)
+ * and its CSV link carries the same query; a Lead-Eagle-only workspace is
+ * offered only the reports it has rows for (`offeredReports`).
  */
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ report?: string; from?: string; to?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['reports', 'VIEW'] });
 
-  const to = params.to ? new Date(params.to) : new Date();
-  const from = params.from ? new Date(params.from) : new Date(to.getFullYear(), to.getMonth() - 2, 1);
-  const range = { from, to };
+  // The board's filters, on the workspace's clock (M16-12); the money reports only where the plan has them (M16-00).
+  const [{ range, filter, zone, query }, offered] = await Promise.all([
+    reportParams(ctx, params),
+    offeredReports(ctx.tenantId),
+  ]);
+  const asked = [params.report].flat()[0];
+  const selected = isReportKey(asked) ? asked : null;
+  if (selected && !offered.includes(selected)) notFound();
+  const [report, options] = selected
+    ? await Promise.all([runReport(ctx, selected, range, filter), boardFilterOptions(ctx, 'reports')])
+    : [null, null];
 
-  const selected = isReportKey(params.report) ? params.report : null;
-  const report = selected ? await runReport(ctx, selected, range) : null;
+  const day = (at: Date) => at.toLocaleDateString('en-GB', { dateStyle: 'medium', timeZone: zone });
+  const period = `${day(range.from)} to ${day(range.to)}`;
+  const carried = query ? `&${query}` : '';
 
-  const period = `${from.toLocaleDateString('en-GB', { dateStyle: 'medium' })} to ${to.toLocaleDateString('en-GB', { dateStyle: 'medium' })}`;
-
-  if (report) {
-    const query = new URLSearchParams({ report: report.key, from: from.toISOString(), to: to.toISOString() });
-
+  if (report && options) {
     return (
       <>
         <ListHeader
@@ -132,15 +144,27 @@ export default async function ReportsPage({
           actions={
             <>
               {can(ctx, 'reports', 'EXPORT') && (
-                <a className="lf-btn lf-btn--secondary lf-btn--sm" href={`/api/v1/reports?${query}&format=csv`}>
+                <a
+                  className="lf-btn lf-btn--secondary lf-btn--sm"
+                  href={`/api/v1/reports?report=${report.key}${carried}&format=csv`}
+                >
                   Export CSV
                 </a>
               )}
-              <SalesLink className="lf-btn lf-btn--secondary lf-btn--sm" href="/reports">
+              <SalesLink className="lf-btn lf-btn--secondary lf-btn--sm" href={`/reports${query ? `?${query}` : ''}`}>
                 All reports
               </SalesLink>
             </>
           }
+        />
+
+        <BoardFilterBar
+          filter={filter}
+          options={options}
+          hidden={{ report: report.key }}
+          clearHref={`?report=${report.key}`}
+          idle="The default period, everyone"
+          noPeriod="The default period, or these dates"
         />
 
         {report.note && (
@@ -196,42 +220,49 @@ export default async function ReportsPage({
     <>
       <ListHeader title="Reports" description={`Pre-built reports · ${period}`} />
 
-      {REPORTS.map((group) => (
-        <section key={group.category} style={{ marginBottom: 'var(--lf-space-6)' }}>
-          <h2 className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
-            {group.category}
-          </h2>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-              gap: 'var(--lf-space-3)',
-            }}
-          >
-            {group.items.map((r) => (
-              <SalesLink
-                key={r.key}
-                href={`/reports?report=${r.key}`}
-                className="lf-card"
-                style={{
-                  padding: 'var(--lf-space-4)',
-                  display: 'flex',
-                  gap: 'var(--lf-space-3)',
-                  alignItems: 'flex-start',
-                  textDecoration: 'none',
-                  color: 'inherit',
-                }}
-              >
-                <span style={{ fontSize: '1.5rem', lineHeight: 1, flexShrink: 0 }}>{r.icon}</span>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 'var(--lf-text-sm)' }}>{r.title}</div>
-                  <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)', marginTop: 2 }}>{r.desc}</div>
-                </div>
-              </SalesLink>
-            ))}
-          </div>
-        </section>
-      ))}
+      {REPORTS.map((group) => ({
+        ...group,
+        items: group.items.filter((r) => offered.includes(r.key)),
+      }))
+        .filter((group) => group.items.length > 0)
+        .map((group) => (
+          <section key={group.category} style={{ marginBottom: 'var(--lf-space-6)' }}>
+            <h2 className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
+              {group.category}
+            </h2>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                gap: 'var(--lf-space-3)',
+              }}
+            >
+              {group.items.map((r) => (
+                <SalesLink
+                  key={r.key}
+                  href={`/reports?report=${r.key}${carried}`}
+                  className="lf-card"
+                  style={{
+                    padding: 'var(--lf-space-4)',
+                    display: 'flex',
+                    gap: 'var(--lf-space-3)',
+                    alignItems: 'flex-start',
+                    textDecoration: 'none',
+                    color: 'inherit',
+                  }}
+                >
+                  <span style={{ fontSize: '1.5rem', lineHeight: 1, flexShrink: 0 }}>{r.icon}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 'var(--lf-text-sm)' }}>{r.title}</div>
+                    <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)', marginTop: 2 }}>
+                      {r.desc}
+                    </div>
+                  </div>
+                </SalesLink>
+              ))}
+            </div>
+          </section>
+        ))}
     </>
   );
 }

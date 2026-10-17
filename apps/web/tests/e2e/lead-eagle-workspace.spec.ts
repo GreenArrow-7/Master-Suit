@@ -235,6 +235,16 @@ test.describe('Lead Eagle, from the platform portal to a lead', () => {
       const events = await page.request.get('/api/v1/events');
       expect(events.status()).toBe(403);
       expect((await events.json()).detail).toBe('Sales or Real Estate is not enabled for this company.');
+
+      // Its Reports menu has the lead reports, not the revenue, booking-value and campaign ones (M16-00).
+      await page.goto(at('/lead-eagle/reports'));
+      await expect(page.getByRole('link', { name: /Follow-up Adherence/ })).toBeVisible();
+      await expect(page.getByRole('link', { name: /Source to Booking/ })).toBeVisible();
+      await expect(page.getByText('Revenue Forecast')).toHaveCount(0);
+      expect((await page.request.get('/api/v1/reports?report=revenue-forecast')).status()).toBe(404);
+      // The page streams under a loading boundary, so the 404 shows as the not-found screen.
+      await page.goto(at('/lead-eagle/reports?report=revenue-forecast'));
+      await expect(page.getByRole('heading', { name: 'We couldn’t find that' })).toBeVisible();
     });
 
     await test.step('a link followed from that page is decided afresh, not left under the old heading', async () => {
