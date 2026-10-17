@@ -56,11 +56,19 @@ test.describe('A right-to-left workspace', () => {
     await expect(page.getByText(LEAD).first()).toBeVisible();
     await expect(page.locator('.lf-app-frame')).toHaveAttribute('dir', 'rtl');
     expect(await page.evaluate(() => getComputedStyle(document.querySelector('.lf-page-main')!).direction)).toBe('rtl');
-    const width = await page.evaluate(() => ({
-      scroll: document.documentElement.scrollWidth,
-      client: document.documentElement.clientWidth,
-    }));
-    expect(width.scroll).toBeLessThanOrEqual(width.client);
+    // Measured with the root both ways round. <html> stays left to right, and a
+    // left-to-right root cannot scroll to (or count) what a right-to-left frame
+    // spills past its left edge; turned right to left, it counts that side.
+    const width = await page.evaluate(() => {
+      const root = document.documentElement;
+      const spill = () => root.scrollWidth - root.clientWidth;
+      const right = spill();
+      root.dir = 'rtl';
+      const left = spill();
+      root.removeAttribute('dir');
+      return { spill: Math.max(right, left), client: root.clientWidth };
+    });
+    expect(width.spill).toBeLessThanOrEqual(0);
     // The closed menu waits past the right edge, the side it opens from.
     const rail = await page.locator('.lf-workspace-sidebar').boundingBox();
     if (rail) expect(rail.x).toBeGreaterThanOrEqual(width.client - 1);

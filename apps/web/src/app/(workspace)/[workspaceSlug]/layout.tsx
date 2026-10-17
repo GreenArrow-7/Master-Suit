@@ -82,7 +82,14 @@ export default async function WorkspaceLayout({
     // The workspace's language sets its direction: Arabic reads right to left
     // (NFR-09). No `lang` yet: the words are still English, and a screen reader
     // would read them in an Arabic voice.
-    <div className="lf-app-frame" data-lf-surface="workspace" dir={textDirection(shell.locale)}>
+    // data-outbox-owner: whose screen this is, so a change kept offline is only
+    // ever sent by the workspace and person that made it (lib/offline.ts).
+    <div
+      className="lf-app-frame"
+      data-lf-surface="workspace"
+      data-outbox-owner={shell.outboxOwner}
+      dir={textDirection(shell.locale)}
+    >
       <WorkspaceSidebar
         slug={shell.slug}
         name={shell.displayName}
@@ -186,6 +193,7 @@ async function loadShell(workspaceSlug: string) {
     const iosApp = isIosAppUserAgent((await headers()).get('user-agent'));
     return {
       workspaceId: workspace.id,
+      outboxOwner: `${ctx.tenantId}:${ctx.actor.id}`,
       supportMode,
       supportReadOnly,
       serviceMode,

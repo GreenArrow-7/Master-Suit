@@ -7,22 +7,28 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 const store = new Map<string, string>();
 const fetchMock = vi.fn();
-const net = { onLine: true };
+const net: { onLine: boolean; locks?: { request: (name: string, run: () => unknown) => unknown } } = { onLine: true };
+// The workspace frame names whose screen this is (layout.tsx, data-outbox-owner).
+const frame = { dataset: { outboxOwner: 'tenant-x:agent-a' } };
 vi.stubGlobal('localStorage', {
   getItem: (k: string) => store.get(k) ?? null,
   setItem: (k: string, v: string) => void store.set(k, v),
+  removeItem: (k: string) => void store.delete(k),
 });
 vi.stubGlobal('window', { dispatchEvent: () => true });
+vi.stubGlobal('document', { querySelector: () => frame });
 vi.stubGlobal('navigator', net);
 vi.stubGlobal('fetch', fetchMock);
 
-const { flush, pending, sendOrQueue } = await import('@/lib/offline');
+const { flush, forget, pending, sendOrQueue } = await import('@/lib/offline');
 const reply = (status: number, body: unknown = {}) => new Response(JSON.stringify(body), { status });
 
 beforeEach(() => {
   store.clear();
   fetchMock.mockReset();
   net.onLine = true;
+  delete net.locks;
+  frame.dataset.outboxOwner = 'tenant-x:agent-a';
 });
 
 describe('offline outbox', () => {
@@ -75,6 +81,54 @@ describe('offline outbox', () => {
     expect(result.refused.map((r) => [r.label, r.reason])).toEqual([
       ['Call logged', 'An activity is logged within a week of when it happened.'],
     ]);
+    expect(pending()).toHaveLength(0);
+  });
+
+  it("never sends one session's change as another's: held until its workspace and person are back", async () => {
+    net.onLine = false;
+    await sendOrQueue('/api/v1/follow-ups', 'POST', { title: 'Call back Ahmed' }, 'New follow-up');
+    // Signed out by expiry, then someone else (or the same agent in another workspace) signs in.
+    frame.dataset.outboxOwner = 'tenant-y:agent-b';
+    net.onLine = true;
+    fetchMock.mockResolvedValue(reply(200));
+    expect(pending()).toHaveLength(0);
+    expect(await flush()).toEqual({ sent: 0, refused: [] });
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Back in workspace X as agent A: sent.
+    frame.dataset.outboxOwner = 'tenant-x:agent-a';
+    expect(pending().map((p) => p.label)).toEqual(['New follow-up']);
+    expect(await flush()).toEqual({ sent: 1, refused: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends each change once when two sends start together (reconnecting and coming back to the app)', async () => {
+    net.onLine = false;
+    await sendOrQueue('/api/v1/follow-ups', 'POST', { title: 'Call back' }, 'New follow-up');
+    await sendOrQueue('/api/v1/cold-data/1', 'PATCH', { status: 'INTERESTED' }, 'Cold call');
+    net.onLine = true;
+    fetchMock.mockImplementation(() => new Promise((done) => setTimeout(() => done(reply(200)), 5)));
+    const [first, second] = await Promise.all([flush(), flush()]);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(['/api/v1/follow-ups', '/api/v1/cold-data/1']);
+    expect(first.sent + second.sent).toBe(2);
+    expect(pending()).toHaveLength(0);
+  });
+
+  it('sends under the Web Lock where there is one, so two tabs take turns', async () => {
+    net.onLine = false;
+    await sendOrQueue('/a', 'PATCH', {}, 'First');
+    net.onLine = true;
+    const request = vi.fn((_name: string, run: () => unknown) => run());
+    net.locks = { request };
+    fetchMock.mockResolvedValue(reply(200));
+    expect(await flush()).toEqual({ sent: 1, refused: [] });
+    expect(request).toHaveBeenCalledWith('youhan.outbox.v1', expect.any(Function));
+  });
+
+  it('forgets what waited on signing out', async () => {
+    net.onLine = false;
+    await sendOrQueue('/a', 'PATCH', {}, 'First');
+    forget();
+    expect(store.has('youhan.outbox.v1')).toBe(false);
     expect(pending()).toHaveLength(0);
   });
 });

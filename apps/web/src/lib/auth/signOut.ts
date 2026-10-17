@@ -1,4 +1,5 @@
 import { unregisterNativePush } from '@/lib/pwa/nativePush';
+import { flush, forget } from '@/lib/offline';
 
 /**
  * Ending a session, from the browser.
@@ -17,6 +18,10 @@ export async function signOut(): Promise<void> {
   // First, and awaited: the request needs the session cookie that the next call
   // is about to revoke. A browser skips it in a microtask.
   await unregisterNativePush();
+  // Changes made offline go now, while this session can still send them as its
+  // own; what still cannot is forgotten, never sent under the next sign-in.
+  await flush().catch(() => undefined);
+  forget();
   await fetch('/api/v1/auth/logout', { method: 'POST' }).catch(() => {
     // A failed logout still clears the client. The session cookie is httpOnly
     // and cannot be removed here, but sending the person to /login is closer to

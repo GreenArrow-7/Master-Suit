@@ -195,12 +195,18 @@ Node 22 or newer (CI uses 24).
   `tests/unit/mutation-audit.spec.ts` gates it: every POST, PATCH, PUT and
   DELETE handler declares `auditEvent`, audits in its handler, or is listed
   there with the file that audits it or why nothing is recorded (a draft, the
-  caller's own preferences); a new mutation route fails until it says which. A
+  caller's own preferences); a new mutation route fails until it says which.
+  A named file is checked against what the handler calls from it: one of those
+  functions audits, and none writes a record without auditing. A
   file out of the building needs EXPORT, not VIEW, and writes `EXPORT_REQUESTED`.
 - **Offline.** The phone app is a web view of the site, so its outbox is the
   site's (`src/lib/offline.ts`, the notice in `OfflineBanner`): a change made
   with no connection waits on the device and is sent when it returns, each with
-  its own `Idempotency-Key`, so a repeated send is replayed, not doubled. The
+  its own `Idempotency-Key`, so a repeated send is replayed, not doubled. Sends
+  run one at a time (in the page, and across tabs by a Web Lock). Each change
+  carries its owner (`tenantId:userId`, the frame's `data-outbox-owner`) and is
+  only sent from a screen of that workspace and person; signing out
+  (`lib/auth/signOut.ts`) sends what it can and forgets the rest. The
   lead page, the call log (list and lead page), the Follow-ups list (complete,
   reschedule, cancel, reopen, a new follow-up) and Cold Data's call outcome go
   through it; a write whose answer the screen needs (opening what it created)

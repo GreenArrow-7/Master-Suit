@@ -735,6 +735,11 @@ describe('receipt evidence documents', () => {
     const b = await sale();
     const up = await upload(recorder.cookie, b.id, PDF);
     expect(up.status, JSON.stringify(up.body)).toBe(200);
+    expect(
+      await prisma.auditLog.count({
+        where: { tenantId: fixture.a.tenantId, recordId: up.body.id, event: 'RECORD_CREATED' },
+      }),
+    ).toBe(1);
 
     const body = receiptBody(b.id, '1000.00', { evidenceDocumentId: up.body.id });
     delete (body as Record<string, unknown>).providerTransactionRef;

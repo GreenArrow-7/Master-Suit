@@ -111,9 +111,9 @@ test.describe('Working offline on a phone', () => {
     });
 
     await test.step('online again: each is sent once, and the notice says so', async () => {
-      // Sent on reconnecting, and on arriving at any screen. Both may run here;
-      // each change carries its own Idempotency-Key, so a second send of the
-      // same change is replayed by the server, not repeated.
+      // Sent on reconnecting, and on arriving at any screen. Both may start
+      // here; sends run one at a time (lib/offline.ts flush), so the later one
+      // finds only what the earlier left, and each change is created once.
       await context.setOffline(false);
       await page.reload();
       await expect

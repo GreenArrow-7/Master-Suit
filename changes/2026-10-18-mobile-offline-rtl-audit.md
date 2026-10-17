@@ -14,6 +14,14 @@ NFR-07, NFR-09, NFR-10, NFR-11, NFR-13, PROD-13, PROD-14; PR #215, branch
   that sets a value. The Follow-ups list (complete, reschedule, cancel, reopen,
   New follow-up) and Cold Data's call outcome go through it, as the lead page
   and the call log already did. The offline notice names what is kept.
+  Review fixes: a new follow-up names no record, so the server would file it
+  under whichever session replayed it; each change now carries its owner
+  (workspace and person, from the frame's `data-outbox-owner`) and is only sent
+  from a screen with the same owner, and signing out sends what it can and
+  forgets the rest. Sends run one at a time (queued in the page, a Web Lock
+  across tabs): reconnecting and coming back to the app used to start two that
+  both sent the first change, and the request key replays a retry, not a twin
+  arriving alongside it.
 - **The call log after the dialler** (M20-06). Back from a `tel:` call, the
   call log opens with the minutes estimated from the time away (rounded, at
   least one, at most 600) and a note that it is an estimate; back within 8
@@ -27,7 +35,14 @@ NFR-07, NFR-09, NFR-10, NFR-11, NFR-13, PROD-13, PROD-14; PR #215, branch
   qualifications and talking points; event invitees and an RSVP taken by an
   agent; a listing's portals; the portal feeds; the Sales manual target tally;
   and the platform's retention sweep (a `RETENTION_CLEANUP_RUN` platform audit
-  row when it is not a dry run).
+  row when it is not a dry run). Review fixes: "audited by" is now checked
+  against what the handler calls from the named file (one of those functions
+  audits, and none writes without auditing), which found four more: a client's
+  testimonial (now audited as the link, System), a receipt's evidence upload
+  (`auditEvent`), an HR checklist task added by hand, and platform staff leaving
+  a workspace (`WORKSPACE_LEFT`); seeding the competency library audits too.
+  Two entries named the wrong file (sign-up confirm, user delete) and the two
+  lead webhooks only store and queue (their worker audits), now listed so.
 - **Right to left** (NFR-09). Company profile has a Language (English, or
   Arabic, right to left); it is `OrganizationSetting.defaultLocale` and sets
   the workspace frame's `dir`. Every left/right in the workspace stylesheets
@@ -69,11 +84,11 @@ current `main`.
 
 **Where** (under `apps/web/` unless named)
 
-- `src/lib/offline.ts` — the per-change `Idempotency-Key`.
+- `src/lib/offline.ts` — the per-change `Idempotency-Key`, the owner, one send at a time, `forget`; `src/lib/auth/signOut.ts`; the frame's `data-outbox-owner` in `layout.tsx`.
 - `src/app/(workspace)/[workspaceSlug]/sales/follow-ups/FollowUpRowActions.tsx`, `FollowUpComposer.tsx`; `sales/cold-data/ColdDataActions.tsx` — through the outbox.
 - `src/components/workspace/OfflineBanner.tsx` — the notice's wording.
 - `src/lib/leads/callLog.ts` (`afterDial`), `sales/leads/CallLogDialog.tsx`, `sales/leads/[id]/LeadDetail.tsx` — the estimate.
-- `tests/unit/mutation-audit.spec.ts` — the gate; the nine routes under `src/app/api/v1/`.
+- `tests/unit/mutation-audit.spec.ts` — the gate; the nine routes under `src/app/api/v1/`; `services/clients/testimonials.ts`, `api/v1/collections/receipts/evidence`, `services/hr/lifecycle.ts` (`addTask`), `services/hr/performance.ts` (`seedCompetencies`), `api/v1/platform/workspaces/[workspaceId]/enter` (DELETE).
 - `src/lib/locale.ts`, `src/lib/workspace.ts` (the language on the workspace read), `src/app/(workspace)/[workspaceSlug]/layout.tsx`, `admin/[section]/page.tsx` and `SettingsForm.tsx` (a select), `api/v1/workspaces/[workspaceSlug]/settings/[section]/route.ts` (`locale`).
 - `tests/perf/lead-list-100k.spec.ts` — `PERF_LEADS`, the SQL seed, `more`.
 - `src/services/leadership/reports.ts` — Source to Booking counted by `groupBy`, visits and bookings by the lead relation.
@@ -92,13 +107,18 @@ current `main`.
 **Verified**
 
 - New specs, each failing on the old code: `tests/unit/offline-outbox.spec.ts`
-  (the key case), `tests/unit/after-dial.spec.ts`,
-  `tests/unit/mutation-audit.spec.ts` (nine routes named),
-  `tests/permission/admin-editors.spec.ts` (the language case).
+  (the key case; review: another session's change held, two sends at once
+  send each change once, sign-out forgets), `tests/unit/after-dial.spec.ts`,
+  `tests/unit/mutation-audit.spec.ts` (nine routes named; review: the four
+  above), `tests/permission/admin-editors.spec.ts` (the language case);
+  review: the audit row asserted in `tests/sales/client-profiling.spec.ts`
+  (testimonial) and `tests/sales/collections.spec.ts` (evidence).
 - Browser specs for CI: `tests/e2e/offline-outbox.spec.ts` (390 px, offline:
   a follow-up completed, one booked, a cold call; each sent once),
   `tests/e2e/rtl-workspace.spec.ts` (an Arabic Lead Eagle workspace's leads at
-  390 px: `dir` rtl, no sideways scroll, the closed menu off the right edge),
+  390 px: `dir` rtl, no sideways scroll measured with the root both ways
+  round, since a left-to-right root cannot see a spill past the left edge; the
+  closed menu off the right edge),
   `tests/e2e/lead-call-log.spec.ts` (the estimate and No answer).
 - Source to Booking: the existing report specs pass on the new code
   (`tests/sales/lead-eagle-reports.spec.ts`, `lead-record-fields.spec.ts`,
@@ -137,8 +157,9 @@ In Postgres (the list's own SELECT, app role, RLS on), p95: page 1 3.7 / 4.8
   (100k), 27% (1M lists), 22% (follow-ups before the index), 100% at the start
   of the run with it. A first 100k run under heavier load gave the agent's grid
   page 1 513 ms; the repeat above gave 92.
-- Reading: every list a screen or the API uses is under 300 ms at p95 at 1M
-  leads. The one miss, the workspace-wide Follow-ups list at 307 ms, sorted all
+- Reading: the lists measured here (the leads API, the leads grid and the
+  Follow-ups API) are under 300 ms at p95 at 1M leads; Cold Data, Calls, Tasks,
+  Site visits and the activity timeline were not timed. The one miss, the workspace-wide Follow-ups list at 307 ms, sorted all
   131,000 open follow-ups per page; the new index reads them in due order
   (EXPLAIN: an index scan, 26 ms, from a sort of the table, 58 ms in SQL).
 - Source to Booking failed outright once a period held more than 65,535 leads

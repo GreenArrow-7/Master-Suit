@@ -85,9 +85,22 @@ export async function DELETE(req: Request) {
   const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformSupport(req, requestId);
-    await prisma.platformSession.update({
-      where: { id: ctx.sessionId },
-      data: { activeTenantId: null, lastSeenAt: new Date() },
+    // Leaving is recorded as entering is, so the trail says when the look ended.
+    await withPlatformTx(async (tx) => {
+      await tx.platformSession.update({
+        where: { id: ctx.sessionId },
+        data: { activeTenantId: null, lastSeenAt: new Date() },
+      });
+      await platformAudit(
+        ctx,
+        {
+          tenantId: ctx.activeTenantId,
+          event: 'WORKSPACE_LEFT',
+          objectType: 'workspace',
+          objectId: ctx.activeTenantId,
+        },
+        tx,
+      );
     });
     return NextResponse.json({ destination: '/platform' }, { headers: { 'x-request-id': requestId } });
   } catch (err) {

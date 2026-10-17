@@ -197,6 +197,11 @@ export async function seedCompetencies(ctx: Ctx) {
     })),
     skipDuplicates: true,
   });
+  await audit(ctx, {
+    event: 'RECORD_CREATED',
+    objectType: 'hr_competency',
+    metadata: { action: 'competencies.seeded', created: result.count },
+  });
   return { created: result.count };
 }
 
