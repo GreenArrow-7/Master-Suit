@@ -21,9 +21,11 @@ export interface RuleRow {
 export default function RulesPanel({
   rules,
   agents,
+  sources,
 }: {
   rules: RuleRow[];
   agents: { id: string; fullName: string }[];
+  sources: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
