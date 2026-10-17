@@ -3,11 +3,12 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { audit } from '@/lib/security/audit';
 import { assertPermission } from '@/lib/security/rbac';
-import { runReport, toCsv, REPORT_KEYS } from '@/services/leadership/reports';
+import { runReport, toCsv, PIVOT_KEYS, PIVOTS, REPORT_KEYS, reportFileName } from '@/services/leadership/reports';
 
 const query = z
   .object({
     report: z.enum(REPORT_KEYS),
+    by: z.enum(PIVOT_KEYS).optional(),
     from: z.coerce.date().optional(),
     to: z.coerce.date().optional(),
     format: z.enum(['json', 'csv']).default('json'),
@@ -16,6 +17,10 @@ const query = z
   .refine((v) => !v.from || !v.to || v.to >= v.from, {
     path: ['to'],
     message: 'The range ends before it starts.',
+  })
+  .refine((v) => !v.by || (PIVOTS[v.report] ?? []).includes(v.by), {
+    path: ['by'],
+    message: 'This report cannot be grouped that way.',
   });
 
 /**
@@ -34,20 +39,25 @@ export const GET = route(
     const to = q.to ?? new Date();
     const from = q.from ?? new Date(to.getFullYear(), to.getMonth() - 2, 1);
 
-    const report = await runReport(ctx, q.report, { from, to });
+    const report = await runReport(ctx, q.report, { from, to }, { by: q.by });
     if (q.format === 'json') return report;
 
     await audit(ctx, {
       event: 'EXPORT_REQUESTED',
       objectType: 'report',
       recordId: q.report,
-      metadata: { report: q.report, from: from.toISOString(), to: to.toISOString(), rows: report.rows.length },
+      metadata: {
+        report: q.report,
+        ...(q.by && { by: q.by }),
+        from: from.toISOString(),
+        to: to.toISOString(),
+        rows: report.rows.length,
+      },
     });
-    const stamp = to.toISOString().slice(0, 10);
     return new Response(toCsv(report), {
       headers: {
         'content-type': 'text/csv; charset=utf-8',
-        'content-disposition': `attachment; filename="${q.report}-${stamp}.csv"`,
+        'content-disposition': `attachment; filename="${reportFileName(q.report, q.by, to)}"`,
         // A report is somebody's live numbers; a cached copy in a shared proxy
         // is both stale and somebody else's data.
         'cache-control': 'no-store',

@@ -9,6 +9,7 @@ import { sweepStaleTriage, sweepTriageDeadlines, sweepTriageNotifications } from
 import { deliverOutbox } from '@/services/notifications/outbox';
 import { sweepDriftCanary } from '@/services/leads/nextFollowUpReconcile';
 import { sweepAccountDeletions } from '@/services/identity/accountDeletion';
+import { runReportSchedules } from '@/services/leadership/reportSchedules';
 
 /**
  * The `maintenance` queue: scheduled sweeps, one at a time (see startWorker).
@@ -135,6 +136,15 @@ export const MAINTENANCE_JOBS = {
     logger.info(result, 'account deletion sweep complete');
     return result;
   },
+  /**
+   * Scheduled report emails (M16-16), each at 07:00 on its workspace's clock.
+   * A caller that names workspaces gets only theirs, for the reason given above.
+   */
+  'report-schedules': async (data?: { tenantIds?: string[] }) => {
+    const result = await runReportSchedules(new Date(), data?.tenantIds);
+    logger.info(result, 'report schedule sweep complete');
+    return result;
+  },
 };
 
 /**
@@ -164,6 +174,8 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
     { id: 'lead-recycle-daily', pattern: '10 4 * * *', name: 'lead-recycle' },
     // 03:40, once a day: a step is a whole period of days, so the hour only has to be steady.
     { id: 'lead-score-decay-daily', pattern: '40 3 * * *', name: 'lead-score-decay' },
+    // A quarter hour is how late a 07:00 report may arrive.
+    { id: 'report-schedules-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'report-schedules' },
   ];
   const queue = new Queue('maintenance', { connection: redis });
   for (const schedule of schedules) {

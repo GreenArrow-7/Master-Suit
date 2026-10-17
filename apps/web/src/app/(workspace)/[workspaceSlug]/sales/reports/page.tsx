@@ -1,10 +1,13 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { can } from '@/lib/security/rbac';
-import { runReport, REPORT_KEYS, type ReportKey } from '@/services/leadership/reports';
+import { PIVOTS, runReport, REPORT_KEYS, type Pivot, type ReportKey } from '@/services/leadership/reports';
+import { listSchedules } from '@/services/leadership/reportSchedules';
+import { workspaceTimezone } from '@/services/hr/attendance';
 import EmptyState from '@/components/ui/EmptyState';
 import ListHeader from '@/components/workspace/ListHeader';
 import SalesLink from '@/components/workspace/SalesLink';
+import { ScheduleForm, ScheduleList } from './ReportSchedules';
 
 export const metadata = { title: 'Reports' };
 
@@ -30,6 +33,12 @@ const REPORTS = [
         icon: '💰',
         title: 'Revenue Forecast',
         desc: 'Open pipeline weighted by each deal’s probability.',
+      },
+      {
+        key: 'project-report',
+        icon: '🏗️',
+        title: 'Projects',
+        desc: 'Units and availability, the leads each project drew, its visits and bookings.',
       },
     ],
   },
@@ -59,6 +68,18 @@ const REPORTS = [
         icon: '🔀',
         title: 'Lead Assignment Report',
         desc: 'Who received leads, and how they were assigned.',
+      },
+      {
+        key: 'site-visits',
+        icon: '🚗',
+        title: 'Site Visits',
+        desc: 'Visits scheduled, done and missed, and the show rate, by agent, project or month.',
+      },
+      {
+        key: 'call-report',
+        icon: '📞',
+        title: 'Call Report',
+        desc: 'Calls, connected calls and talk time, by agent, lead or month.',
       },
     ],
   },
@@ -93,6 +114,8 @@ const REPORTS = [
   },
 ] as const;
 
+const PIVOT_LABEL: Record<Pivot, string> = { user: 'agent', month: 'month', project: 'project', lead: 'lead' };
+
 const isReportKey = (value: string | undefined): value is ReportKey =>
   value !== undefined && (REPORT_KEYS as readonly string[]).includes(value);
 
@@ -107,7 +130,7 @@ const isReportKey = (value: string | undefined): value is ReportKey =>
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ report?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ report?: string; from?: string; to?: string; by?: string }>;
 }) {
   const params = await searchParams;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['reports', 'VIEW'] });
@@ -117,12 +140,16 @@ export default async function ReportsPage({
   const range = { from, to };
 
   const selected = isReportKey(params.report) ? params.report : null;
-  const report = selected ? await runReport(ctx, selected, range) : null;
+  const pivots = (selected && PIVOTS[selected]) || [];
+  const by = pivots.find((p) => p === params.by);
+  const report = selected ? await runReport(ctx, selected, range, { by }) : null;
+  const mayExport = can(ctx, 'reports', 'EXPORT');
 
   const period = `${from.toLocaleDateString('en-GB', { dateStyle: 'medium' })} to ${to.toLocaleDateString('en-GB', { dateStyle: 'medium' })}`;
 
   if (report) {
     const query = new URLSearchParams({ report: report.key, from: from.toISOString(), to: to.toISOString() });
+    const grouped = (pivot: Pivot) => `/reports?${query}&by=${pivot}`;
 
     return (
       <>
@@ -131,8 +158,11 @@ export default async function ReportsPage({
           description={period}
           actions={
             <>
-              {can(ctx, 'reports', 'EXPORT') && (
-                <a className="lf-btn lf-btn--secondary lf-btn--sm" href={`/api/v1/reports?${query}&format=csv`}>
+              {mayExport && (
+                <a
+                  className="lf-btn lf-btn--secondary lf-btn--sm"
+                  href={`/api/v1/reports?${query}${by ? `&by=${by}` : ''}&format=csv`}
+                >
                   Export CSV
                 </a>
               )}
@@ -142,6 +172,21 @@ export default async function ReportsPage({
             </>
           }
         />
+
+        {pivots.length > 0 && (
+          <nav className="lf-chips" aria-label="Group by" style={{ marginBottom: 'var(--lf-space-3)' }}>
+            {pivots.map((pivot) => (
+              <SalesLink
+                key={pivot}
+                className="lf-chip"
+                href={grouped(pivot)}
+                aria-current={(by ?? pivots[0]) === pivot ? 'page' : undefined}
+              >
+                {`By ${PIVOT_LABEL[pivot]}`}
+              </SalesLink>
+            ))}
+          </nav>
+        )}
 
         {report.note && (
           <p className="lf-hint" style={{ marginBottom: 'var(--lf-space-3)' }}>
@@ -188,13 +233,31 @@ export default async function ReportsPage({
             </table>
           </div>
         )}
+
+        {mayExport && <ScheduleForm report={report.key} by={by} email={ctx.actor.email} />}
       </>
     );
   }
 
+  const schedules = mayExport ? await listSchedules(ctx) : [];
+  const zone = schedules.length > 0 ? await workspaceTimezone(ctx) : 'UTC';
+  const titles = new Map<string, string>(REPORTS.flatMap((g) => g.items.map((r) => [r.key, r.title] as const)));
+
   return (
     <>
       <ListHeader title="Reports" description={`Pre-built reports · ${period}`} />
+
+      {schedules.length > 0 && (
+        <ScheduleList
+          schedules={schedules.map((s) => ({
+            id: s.id,
+            title: `${titles.get(s.report) ?? s.report}${s.by ? ` by ${PIVOT_LABEL[s.by as Pivot]}` : ''}`,
+            cadence: s.cadence,
+            recipients: s.recipients,
+            next: s.nextRunAt.toLocaleString('en-GB', { timeZone: zone, dateStyle: 'medium', timeStyle: 'short' }),
+          }))}
+        />
+      )}
 
       {REPORTS.map((group) => (
         <section key={group.category} style={{ marginBottom: 'var(--lf-space-6)' }}>
