@@ -204,6 +204,13 @@ export const CALL_TABS: {
   { label: 'Voicemail', key: 'voicemail', where: { outcome: 'VOICEMAIL' }, logged: null },
   { label: 'Failed', key: 'failed', where: { status: 'FAILED' }, logged: null },
   { label: 'Scheduled', key: 'scheduled', where: { status: 'SCHEDULED' }, logged: null },
+  // The recordings to play (M9-07): in our own storage, not still at the vendor ('provider').
+  {
+    label: 'Recorded',
+    key: 'recorded',
+    where: { recording: { is: { OR: [{ storageBucket: null }, { storageBucket: { not: 'provider' } }] } } },
+    logged: null,
+  },
 ];
 
 export const callTab = (key: string | undefined) => CALL_TABS.find((tab) => tab.key === (key ?? '')) ?? CALL_TABS[0]!;

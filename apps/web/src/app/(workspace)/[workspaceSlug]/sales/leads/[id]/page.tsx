@@ -435,6 +435,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         canEdit={can(ctx, 'leads', 'EDIT')}
         canLog={works}
         canCall={can(ctx, 'calls', 'CREATE')}
+        canViewCalls={can(ctx, 'calls', 'VIEW')}
         messaging={messaging}
         sharing={
           works

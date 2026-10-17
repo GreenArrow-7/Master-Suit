@@ -6055,6 +6055,8 @@ model Call {
   answeredAt      DateTime?
   endedAt         DateTime?
   durationSecs    Int?
+  /// Conversation time without the ring, where the vendor reports it (PROP-05).
+  talkSecs        Int?
   notes           String?
   followUpAt      DateTime?
   scriptId        String?

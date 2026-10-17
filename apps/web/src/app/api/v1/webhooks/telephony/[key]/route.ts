@@ -11,8 +11,10 @@ import { TERMINAL_EVENTS, type CallEvent, type CallEventKind } from '@/lib/integ
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { touchLead } from '@/services/leads/touch';
 import { capturesUnknown, heldInWorkspace, takeEnquiry } from '@/services/leads/intake';
-import { leadSourceIdFor } from '@/services/leads/leadSources';
+import { leadSourceIdFor, leadSourceNamed } from '@/services/leads/leadSources';
+import { trackingNumbers } from '@/lib/integrations/telephony/resolve';
 import { isUniqueViolation } from '@/lib/errors';
+import { notifyAboutCall } from '@/services/crm/notify';
 
 /**
  * Every vendor's callbacks land here, keyed by the connection's `webhookKey` in
@@ -48,6 +50,16 @@ const CALL_OUTCOME: Partial<Record<CallEventKind, string>> = {
   CALL_BUSY: 'BUSY',
   CALL_NO_ANSWER: 'NO_ANSWER',
 };
+
+/**
+ * A finished call the vendor saw answered is a connected one (PROP-05), so the
+ * Calls list, the board and the call report count it with nobody logging it.
+ * Where the vendor reports the conversation itself (talk time), that decides:
+ * a call answered by an IVR or a ringing agent, with no talk, is not connected.
+ */
+// ponytail: Twilio's click-to-call reports the agent's leg, so its "answered" is the agent picking up; the client's own leg (<Dial action>) when that misleads.
+const connected = (call: { answeredAt: Date | null }, event: CallEvent) =>
+  event.talkSecs != null ? event.talkSecs > 0 : call.answeredAt != null;
 
 /**
  * Callbacks arrive out of order often enough that it cannot be treated as an
@@ -157,8 +169,17 @@ export async function handleTelephonyWebhook(webhookKey: string, req: Request): 
     return NextResponse.json({ ok: true, ignored: true });
   }
 
-  await applyCallEvent(call, event);
+  const status = await applyCallEvent(call, event);
   if (event.event === 'CALL_COMPLETED') await touchLead(call.tenantId, call.leadId, event.occurredAt);
+  // M9-08: a client rang and nobody answered. Once, on the transition, never on a late or repeated callback.
+  if (call.direction === 'INBOUND' && status === 'MISSED' && call.status !== 'MISSED') {
+    await notifyAboutCall(
+      { tenantId: call.tenantId, actor: { id: 'telephony' } },
+      call,
+      'call.missed',
+      'Missed call from',
+    );
+  }
 
   if (event.event === 'RECORDING_AVAILABLE' && event.recordingUrl) {
     await storeRecording(connection, call, event);
@@ -250,18 +271,24 @@ async function createInboundCall(
   if (lead || contact || !phoneNormalized) return created;
   if (!(await capturesUnknown(tenantId, 'createLeadsFromUnknownCallers', connection.metadata))) return created;
   if (await heldInWorkspace(tenantId, phoneNormalized)) return created;
-  // The line this connection advertises, else the number dialled (a vendor's
-  // `to` may be the agent the call was put through to).
-  const line = (connection.metadata as { callerNumber?: string } | null)?.callerNumber || event.to;
+  // M9-06: a tracking number the connection tags with a source is the line, and
+  // the lead's source the entry its tag names (Settings → Sources).
+  const dialled = event.to ? normalizePhone(event.to) : null;
+  const tag = dialled ? trackingNumbers(connection.metadata).get(dialled) : undefined;
+  // Else the line this connection advertises, else the number dialled (a
+  // vendor's `to` may be the agent the call was put through to).
+  const line = tag ? dialled : (connection.metadata as { callerNumber?: string } | null)?.callerNumber || event.to;
   const taken = await takeEnquiry(
     tenantId,
     // Not the number as the name: a role that sees numbers masked would read it there.
     { fullName: 'Unknown caller', email: null, phones: [event.from!], message: null, reference: null, details: [] },
     {
-      label: 'Telephony',
+      label: tag ? `Telephony · ${tag}` : 'Telephony',
       source: 'TELEPHONY',
       sourceDetail: line ? `${connection.provider}:${line}` : connection.provider,
-      sourceId: await leadSourceIdFor(prisma, tenantId, 'telephony'),
+      sourceId:
+        (tag && (await leadSourceNamed(prisma, tenantId, tag))) ||
+        (await leadSourceIdFor(prisma, tenantId, 'telephony')),
       consent: 'UNKNOWN',
     },
   ).catch((err: Error) => {
@@ -275,10 +302,11 @@ async function createInboundCall(
     : created;
 }
 
+/** The call's status after the event. */
 async function applyCallEvent(
-  call: { id: string; tenantId: string; status: string; outcome: string | null },
+  call: { id: string; tenantId: string; status: string; outcome: string | null; answeredAt: Date | null },
   event: CallEvent,
-) {
+): Promise<string> {
   const nextStatus = CALL_STATUS[event.event];
   const data: Record<string, unknown> = {};
 
@@ -289,12 +317,15 @@ async function applyCallEvent(
   }
 
   if (event.durationSecs != null) data.durationSecs = event.durationSecs;
+  if (event.talkSecs != null) data.talkSecs = event.talkSecs;
 
-  const outcome = CALL_OUTCOME[event.event];
+  const outcome =
+    CALL_OUTCOME[event.event] ?? (event.event === 'CALL_COMPLETED' && connected(call, event) ? 'CONNECTED' : undefined);
   if (outcome && !call.outcome) data.outcome = outcome;
 
-  if (Object.keys(data).length === 0) return;
+  if (Object.keys(data).length === 0) return call.status;
   await prisma.call.update({ where: { id: call.id, tenantId: call.tenantId }, data });
+  return (data.status as string | undefined) ?? call.status;
 }
 
 /**

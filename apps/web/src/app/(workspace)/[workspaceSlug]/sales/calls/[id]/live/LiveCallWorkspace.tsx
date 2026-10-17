@@ -9,6 +9,7 @@ import { DateTimeInput } from '@/components/forms/DateInput';
 import type { LeadCallContext } from '@/services/leads/callContext';
 import { LIVE_AUDIO_NOTICE, vendorLabel, type LiveAudio } from '@/lib/integrations/telephony/liveAudio';
 import { recorderOptions } from '@/lib/media/recorderMimeType';
+import CallLogDialog from '../../../leads/CallLogDialog';
 
 interface Segment {
   speaker: string;
@@ -67,6 +68,7 @@ export default function LiveCallWorkspace({
   vendor = null,
   placed = false,
   consented = false,
+  timeZone,
 }: {
   call: {
     id: string;
@@ -86,6 +88,8 @@ export default function LiveCallWorkspace({
   placed?: boolean;
   /** Consent is on file, so the call can be placed with streaming. */
   consented?: boolean;
+  /** The workspace's clock, for the post-call log's next follow-up. */
+  timeZone: string;
 }) {
   const lead = context?.lead ?? null;
   const router = useRouter();
@@ -112,6 +116,9 @@ export default function LiveCallWorkspace({
   const [visitTimes, setVisitTimes] = useState<Record<string, string>>({});
   const [visitStatus, setVisitStatus] = useState<Record<string, 'busy' | 'done' | string>>({});
   const sourceRef = useRef<EventSource | null>(null);
+  /** The post-call log (M9-02): opens once, when the provider says the call ended. */
+  const [logOpen, setLogOpen] = useState(false);
+  const logShown = useRef(false);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
 
   // The timer runs while live; the stream's `at` field keeps it honest.
@@ -120,6 +127,23 @@ export default function LiveCallWorkspace({
     const timer = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(timer);
   }, [phase]);
+
+  // A provider call reaches its end at the vendor, not on this screen: ask for
+  // its status until it is over, then open the outcome-and-follow-up dialog.
+  // ponytail: a 5-second poll while the screen is open; a pushed status event if the stream engine grows one.
+  useEffect(() => {
+    if (!vendorMode || !lead || logShown.current) return;
+    const timer = setInterval(async () => {
+      const res = await fetch(`/api/v1/calls/${call.id}`).catch(() => null);
+      const status = res?.ok ? ((await res.json()) as { status?: string }).status : undefined;
+      if (status && ['COMPLETED', 'MISSED', 'FAILED'].includes(status) && !logShown.current) {
+        logShown.current = true;
+        clearInterval(timer);
+        setLogOpen(true);
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [vendorMode, lead, call.id]);
 
   useEffect(() => {
     transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: 'smooth' });
@@ -774,6 +798,16 @@ export default function LiveCallWorkspace({
           )}
         </div>
       </section>
+      {logOpen && lead && (
+        <CallLogDialog
+          lead={{ id: lead.id, fullName: lead.fullName }}
+          callId={call.id}
+          timeZone={timeZone}
+          onClose={() => setLogOpen(false)}
+          // The call is over: its page is where it now lives.
+          onLogged={() => router.refresh()}
+        />
+      )}
     </div>
   );
 }

@@ -5,6 +5,9 @@ import { runReport, REPORT_KEYS, type ReportKey } from '@/services/leadership/re
 import EmptyState from '@/components/ui/EmptyState';
 import ListHeader from '@/components/workspace/ListHeader';
 import SalesLink from '@/components/workspace/SalesLink';
+import DateInput from '@/components/forms/DateInput';
+import { workspaceTimezone } from '@/services/hr/attendance';
+import { dayBounds } from '@/services/targets/dailyBoard';
 
 export const metadata = { title: 'Reports' };
 
@@ -60,6 +63,12 @@ const REPORTS = [
         title: 'Lead Assignment Report',
         desc: 'Who received leads, and how they were assigned.',
       },
+      {
+        key: 'call-performance',
+        icon: '📞',
+        title: 'Call Performance',
+        desc: 'Calls, connected calls, time on calls and talk time, by agent.',
+      },
     ],
   },
   {
@@ -112,14 +121,19 @@ export default async function ReportsPage({
   const params = await searchParams;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['reports', 'VIEW'] });
 
-  const to = params.to ? new Date(params.to) : new Date();
-  const from = params.from ? new Date(params.from) : new Date(to.getFullYear(), to.getMonth() - 2, 1);
+  // A day (the period form's YYYY-MM-DD) is the workspace's whole day; anything else an instant.
+  const timeZone = await workspaceTimezone(ctx);
+  const day = (value?: string) => (value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? dayBounds(value, timeZone) : null);
+  const to = day(params.to)?.to ?? (params.to ? new Date(params.to) : new Date());
+  const from =
+    day(params.from)?.from ?? (params.from ? new Date(params.from) : new Date(to.getFullYear(), to.getMonth() - 2, 1));
   const range = { from, to };
+  const dayOf = (at: Date) => new Intl.DateTimeFormat('en-CA', { timeZone }).format(at);
 
   const selected = isReportKey(params.report) ? params.report : null;
   const report = selected ? await runReport(ctx, selected, range) : null;
 
-  const period = `${from.toLocaleDateString('en-GB', { dateStyle: 'medium' })} to ${to.toLocaleDateString('en-GB', { dateStyle: 'medium' })}`;
+  const period = `${from.toLocaleDateString('en-GB', { dateStyle: 'medium', timeZone })} to ${to.toLocaleDateString('en-GB', { dateStyle: 'medium', timeZone })}`;
 
   if (report) {
     const query = new URLSearchParams({ report: report.key, from: from.toISOString(), to: to.toISOString() });
@@ -142,6 +156,25 @@ export default async function ReportsPage({
             </>
           }
         />
+
+        <form method="get" className="lf-boardfilter" aria-label="Period">
+          <input type="hidden" name="report" value={report.key} />
+          <div className="lf-boardfilter__body" style={{ paddingTop: 'var(--lf-space-3)' }}>
+            <label className="lf-boardfilter__field">
+              <span>From</span>
+              <DateInput name="from" defaultValue={dayOf(from)} required />
+            </label>
+            <label className="lf-boardfilter__field">
+              <span>To</span>
+              <DateInput name="to" defaultValue={dayOf(to)} required />
+            </label>
+            <div className="lf-boardfilter__actions">
+              <button type="submit" className="lf-btn lf-btn--sm">
+                Apply
+              </button>
+            </div>
+          </div>
+        </form>
 
         {report.note && (
           <p className="lf-hint" style={{ marginBottom: 'var(--lf-space-3)' }}>

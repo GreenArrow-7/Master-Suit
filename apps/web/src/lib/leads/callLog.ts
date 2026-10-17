@@ -16,6 +16,18 @@ export const CALL_LOG_OUTCOMES = [
   'Wrong number',
 ] as const;
 
+/** The dialog's outcome as a provider call's own, when the log is of that call (M9-02). */
+export const CALL_OUTCOME_OF: Record<(typeof CALL_LOG_OUTCOMES)[number], CallOutcome> = {
+  Connected: 'CONNECTED',
+  Interested: 'INTERESTED',
+  'Not interested': 'NOT_INTERESTED',
+  'Call back later': 'CALLBACK_REQUESTED',
+  'No answer': 'NO_ANSWER',
+  Busy: 'BUSY',
+  'Switched off': 'NO_ANSWER',
+  'Wrong number': 'WRONG_NUMBER',
+};
+
 /** A call that reached someone, as the Calls list's Connected tab reads a call's outcome. */
 export const CONNECTED_CALL_OUTCOMES: readonly CallOutcome[] = [
   'CONNECTED',

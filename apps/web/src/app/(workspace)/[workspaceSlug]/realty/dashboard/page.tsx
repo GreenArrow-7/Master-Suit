@@ -472,6 +472,15 @@ export default async function RealtyDashboardPage({
                 <strong className="lf-num">{talkTime(board.calls.seconds)}</strong> talk time
               </SalesLink>
             </div>
+            {/* Each agent's calls, connected calls and time (M9-05). */}
+            {can(ctx, 'reports', 'VIEW') && (
+              <SalesLink
+                href="/reports?report=call-performance"
+                style={{ display: 'inline-block', marginTop: 'var(--lf-space-3)', fontSize: 'var(--lf-text-sm)' }}
+              >
+                Call performance by agent
+              </SalesLink>
+            )}
           </Panel>
         )}
 

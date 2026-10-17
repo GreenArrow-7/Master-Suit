@@ -172,6 +172,8 @@ interface Props {
   canLog: boolean;
   /** An assisted call can be placed: `calls:CREATE`, which /calls/new asks for. */
   canCall: boolean;
+  /** The Calls list opens for this lead (`calls:VIEW`, which the list asks for). */
+  canViewCalls: boolean;
   /** Send WhatsApp and Send email (M4-28): null without `communications:CREATE` or the lead's `leads:EDIT`. */
   messaging: LeadMessaging | null;
   /** Share a property (M4-30): its links, and wa.me where the lead's WhatsApp number is visible; null where `leads:EDIT` does not reach it. */
@@ -228,6 +230,7 @@ export default function LeadDetail({
   canEdit,
   canLog,
   canCall,
+  canViewCalls,
   messaging,
   sharing,
   canDeleteDocuments,
@@ -434,6 +437,7 @@ export default function LeadDetail({
               key={lead.timeline.entries[0]?.key ?? 'empty'}
               lead={lead}
               activityTypes={activityTypes}
+              canViewCalls={canViewCalls}
               router={router}
             />
           )}
@@ -1143,10 +1147,12 @@ function OtherNumbers({
 function TimelineTab({
   lead,
   activityTypes,
+  canViewCalls,
   router,
 }: {
   lead: Props['lead'];
   activityTypes: ActivityType[];
+  canViewCalls: boolean;
   router: ReturnType<typeof useRouter>;
 }) {
   const [showForm, setShowForm] = useState(false);
@@ -1214,9 +1220,16 @@ function TimelineTab({
         }}
       >
         <div className="lf-eyebrow">Activity timeline</div>
-        <button className="lf-btn lf-btn--sm" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? 'Cancel' : 'Log activity'}
-        </button>
+        <div style={{ display: 'flex', gap: 'var(--lf-space-2)', alignItems: 'center' }}>
+          {canViewCalls && (
+            <SalesLink href={`/calls?lead=${lead.id}`} style={{ fontSize: 'var(--lf-text-sm)' }}>
+              All calls
+            </SalesLink>
+          )}
+          <button className="lf-btn lf-btn--sm" onClick={() => setShowForm((v) => !v)}>
+            {showForm ? 'Cancel' : 'Log activity'}
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -1332,6 +1345,14 @@ function TimelineTab({
                 >
                   {e.notes}
                 </div>
+              )}
+              {e.link && (
+                <SalesLink
+                  href={e.link.href}
+                  style={{ display: 'inline-block', marginTop: 2, fontSize: 'var(--lf-text-xs)' }}
+                >
+                  {e.link.label}
+                </SalesLink>
               )}
             </div>
           ))}

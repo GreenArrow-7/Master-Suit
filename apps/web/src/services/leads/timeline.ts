@@ -34,6 +34,8 @@ export interface TimelineEntry {
   notes: string | null;
   /** Who did it, by name; null for the system. */
   by: string | null;
+  /** Where it opens, under the module's base: a call's own page, which plays its recording (M9-03). */
+  link?: { href: string; label: string };
 }
 
 export interface TimelinePage {
@@ -216,6 +218,7 @@ export async function leadTimeline(
           durationSecs: true,
           notes: true,
           callerId: true,
+          recording: { select: { storageBucket: true } },
         },
       }),
       tx.communication.findMany({
@@ -370,6 +373,11 @@ export async function leadTimeline(
             .join(' · ') || null,
         notes: c.notes,
         by: person(c.callerId),
+        // Playable once ingested: until then its media is only at the vendor (storageBucket 'provider').
+        link: {
+          href: `/calls/${c.id}`,
+          label: c.recording && c.recording.storageBucket !== 'provider' ? 'Play recording' : 'Open call',
+        },
       }),
     ),
     ...messages.map((m) =>

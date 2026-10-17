@@ -202,8 +202,15 @@ export async function notifyCrm(
  * the call. `verb` is the start of it, "Missed call from".
  */
 export async function notifyAboutCall(
-  ctx: Ctx,
-  call: { id: string; leadId: string | null; callerId: string | null; recipientNumber: string | null },
+  // Who acted: a person, or the telephony webhook (`{ id: 'telephony' }`).
+  ctx: Pick<Ctx, 'tenantId'> & { actor: Pick<Ctx['actor'], 'id'> },
+  call: {
+    id: string;
+    leadId: string | null;
+    callerId: string | null;
+    recipientNumber: string | null;
+    direction?: string;
+  },
   event: Extract<CrmEventKey, 'call.scheduled' | 'call.missed' | 'call.completed'>,
   verb: string,
   body?: string,
@@ -214,14 +221,18 @@ export async function notifyAboutCall(
         select: { id: true, ownerId: true, fullName: true },
       })
     : null;
+  // An inbound call's `callerId` is whoever it is recorded against: the lead's
+  // owner, else the most senior user until distribution names one (M9-08). Its
+  // `recipientNumber` is the workspace's own line, never the caller's name.
+  const inbound = call.direction === 'INBOUND';
 
   return notifyCrm(ctx, {
     event,
-    ownerId: lead?.ownerId,
+    ownerId: lead?.ownerId ?? (inbound ? call.callerId : undefined),
     // The dialler hears about their own missed call only when somebody else owns
     // the lead and the two are different people.
-    alsoNotify: [call.callerId],
-    title: `${verb} ${lead ? lead.fullName : (call.recipientNumber ?? 'an unknown number')}`,
+    alsoNotify: inbound ? [] : [call.callerId],
+    title: `${verb} ${lead ? lead.fullName : inbound ? 'a number with no lead' : (call.recipientNumber ?? 'an unknown number')}`,
     body,
     objectType: lead ? 'lead' : 'call',
     recordId: lead ? lead.id : call.id,

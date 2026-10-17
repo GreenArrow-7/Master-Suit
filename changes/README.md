@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-18 | [A provider's calls on the lead's timeline, a call report per agent, missed-call notices and tracking numbers](2026-10-18-le-calls.md) | #205 | Lead Eagle, calls, telephony |
 | 2026-10-17 | [Automatic assignment can be switched on, and is on for new Lead Eagle workspaces](2026-10-17-assignment-rules.md) | #194 | Lead Eagle, allocation, feature |
 | 2026-10-17 | [Teams can be created, with a manager and members](2026-10-17-teams.md) | — | Admin, scope, feature |
 | 2026-10-17 | [An untouched lead at its SLA tells the manager, and can be handed on](2026-10-17-sla-escalation.md) | — | Lead Eagle, allocation, feature |
