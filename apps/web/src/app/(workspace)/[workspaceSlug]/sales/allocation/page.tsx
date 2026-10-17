@@ -7,6 +7,8 @@ import { pendingRequests } from '@/services/distribution/requests';
 import { assessEligibility } from '@/services/distribution/eligibility';
 import { listTriageQueue } from '@/services/distribution/triageQueue';
 import WaitingQueue from './WaitingQueue';
+import RulesPanel from './RulesPanel';
+import { assignableUsers } from '@/lib/security/record-scope';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -55,6 +57,18 @@ export default async function AllocationPage({ searchParams }: { searchParams: P
       : [],
   ]);
 
+  // Leaders configure automatic assignment here (audit M7-01).
+  const [rules, assignable] = isLeader
+    ? await Promise.all([
+        prisma.distributionRule.findMany({
+          where: { tenantId: ctx.tenantId, objectType: 'LEAD', deletedAt: null },
+          orderBy: { position: 'asc' },
+          select: { id: true, name: true, isActive: true, candidatePool: true },
+        }),
+        assignableUsers(ctx, 'leads', 'ASSIGN'),
+      ])
+    : [[], []];
+
   const roomBy = new Map(room.map((r) => [r.userId, r]));
   const nameBy = new Map(agents.map((a) => [a.id, a.fullName]));
 
@@ -75,6 +89,24 @@ export default async function AllocationPage({ searchParams }: { searchParams: P
           </>
         }
       />
+
+      {isLeader && (
+        <div style={{ marginBottom: 'var(--lf-space-4)' }}>
+          <RulesPanel
+            agents={assignable}
+            rules={rules.map((rule) => {
+              const pool = (rule.candidatePool ?? {}) as { everyone?: boolean; userIds?: string[] };
+              return {
+                id: rule.id,
+                name: rule.name,
+                isActive: rule.isActive,
+                everyone: !!pool.everyone,
+                people: (pool.userIds ?? []).map((id) => nameBy.get(id) ?? 'A former member'),
+              };
+            })}
+          />
+        </div>
+      )}
 
       <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="View">
         <SalesLink className="lf-tab" href="/allocation" aria-selected={view === 'requests'} role="tab">
