@@ -1,4 +1,5 @@
 import { mergeWhere } from '@/lib/api/where';
+import { parseTypedDate } from '@/lib/dates';
 import { FOLLOW_UP_KINDS, type FollowUpKind } from '@/lib/leads/callLog';
 import { dayBounds, todayKey } from '@/services/targets/dailyBoard';
 
@@ -10,9 +11,11 @@ export const isFollowUpKind = (value: string | undefined): value is FollowUpKind
 /** A follow-up still to do, as the Follow-ups list shows it. */
 export const OPEN_FOLLOW_UP = { status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] } } as const;
 
-/** A real calendar day as `YYYY-MM-DD`: not "2026-02-31", which `dayBounds` would roll into March. */
-export const isDayKey = (value: string | undefined): value is string =>
-  !!value && /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().startsWith(value);
+/**
+ * A real calendar day as `YYYY-MM-DD`: not "2026-02-31", which `dayBounds` would
+ * roll into March, nor "2026-00-10" or "0000-01-01", on which it throws.
+ */
+export const isDayKey = (value: string | undefined): value is string => !!value && parseTypedDate(value) === value;
 
 /** The day key `days` after `key` (before, when negative). */
 export const shiftDay = (key: string, days: number) => {

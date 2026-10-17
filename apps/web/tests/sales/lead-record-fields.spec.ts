@@ -460,7 +460,8 @@ describe('tags on the screens (M4-10)', () => {
   });
 
   it('the lead form and the Overview offer a tags input', () => {
-    expect(readFileSync(path.join(app, 'new', 'LeadForm.tsx'), 'utf8')).toContain('name="tags"');
+    // The form draws its text fields through `text(name, …)` since M18-04's layout.
+    expect(readFileSync(path.join(app, 'new', 'LeadForm.tsx'), 'utf8')).toContain("tags: text('tags'");
     expect(readFileSync(path.join(app, '[id]', 'LeadDetail.tsx'), 'utf8')).toContain(
       'aria-label="Tags, comma-separated"',
     );

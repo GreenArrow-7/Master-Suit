@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-18 | [Lead settings: required custom fields on Add lead, the lead form layout, holidays in assignment, brand colours on the QR page, a paged Audit Log, and the OpenAPI document](2026-10-18-le-settings-api.md) | #214 | Lead Eagle, admin, allocation, audit, API |
 | 2026-10-17 | [The phone apps carry the push plugin](2026-10-17-native-push-plugin.md) | — | Mobile, build |
 | 2026-10-17 | [Each person chooses phone and email copies of their notifications](2026-10-17-notification-prefs.md) | — | Notifications, feature |
 | 2026-10-17 | [Automatic assignment can be switched on, and is on for new Lead Eagle workspaces](2026-10-17-assignment-rules.md) | #194 | Lead Eagle, allocation, feature |

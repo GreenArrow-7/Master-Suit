@@ -15,6 +15,7 @@ import { audit } from '@/lib/security/audit';
 import { atLeast, type Ctx } from '@/lib/security/rbac';
 import {
   haversineM,
+  knownTimeZone,
   insideGeofence,
   toDay,
   withinTimeWindow,
@@ -109,13 +110,7 @@ async function loadAssignments(ctx: Ctx, employeeId: string) {
  */
 export async function workspaceTimezone(ctx: Ctx) {
   const tenant = await prisma.tenant.findFirst({ where: { id: ctx.tenantId }, select: { timezone: true } });
-  const zone = tenant?.timezone || 'Asia/Dubai';
-  try {
-    new Intl.DateTimeFormat('en', { timeZone: zone });
-    return zone;
-  } catch {
-    return 'Asia/Dubai';
-  }
+  return knownTimeZone(tenant?.timezone);
 }
 
 const withinDates = (from: Date | null, to: Date | null, today: Date) =>

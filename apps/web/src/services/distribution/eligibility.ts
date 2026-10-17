@@ -37,12 +37,20 @@
  * the answer goes in `HrLeaveType`, not in a constant in this file.
  */
 import { prisma, type TxClient } from '@/lib/db';
-import { toDay, withinTimeWindow, zonedParts } from '@/services/hr/rules';
+import { knownTimeZone, toDay, withinTimeWindow, zonedParts } from '@/services/hr/rules';
+import { todayKey } from '@/services/targets/dailyBoard';
 
 /** A read-only client: the request-scoped one, or a transaction. */
 type Reader = Pick<
   typeof prisma,
-  'user' | 'lead' | 'leadAssignmentHistory' | 'hrLeaveRequest' | 'tenant' | 'hrAttendanceRecord' | 'hrRosterEntry'
+  | 'user'
+  | 'lead'
+  | 'leadAssignmentHistory'
+  | 'hrLeaveRequest'
+  | 'tenant'
+  | 'hrAttendanceRecord'
+  | 'hrRosterEntry'
+  | 'hrHoliday'
 >;
 
 /**
@@ -64,7 +72,7 @@ export type IneligibilityCode =
   | 'UNAVAILABLE'
   | 'QUOTA_REACHED'
   | 'AT_CAPACITY'
-  /** Rostered on a shift that does not cover now, or checked out for the day. */
+  /** Rostered on a shift that does not cover now, checked out for the day, or a holiday. */
   | 'OFF_SHIFT';
 
 export interface Ineligibility {
@@ -138,7 +146,9 @@ export interface Eligibility {
  *
  * Working hours are the agent's own schedule where one exists — a roster entry
  * today, a check-out today — and nothing where none does: a workspace that keeps
- * neither rosters nor attendance assigns exactly as it did before. Off by
+ * neither rosters nor attendance assigns exactly as it did before. A confirmed
+ * holiday in the workspace's register (`HrHoliday`, today on its clock) is off
+ * for everyone, scheduled or not (M18-08). Off by
  * default outside a rule, so a leader's manual allocation is never refused for
  * the hour it is made at.
  */
@@ -221,7 +231,7 @@ export async function assessEligibility(
     .map((u) => u.workspaceMembership?.employee?.id)
     .filter((id): id is string => typeof id === 'string');
 
-  const [onLeave, dayRows, weekRows, monthRows, heldRows, offShift] = await Promise.all([
+  const [onLeave, dayRows, weekRows, monthRows, heldRows, offShift, holiday] = await Promise.all([
     policy.respectLeave && employeeIds.length > 0
       ? client.hrLeaveRequest.findMany({
           where: {
@@ -248,6 +258,7 @@ export async function assessEligibility(
     policy.respectWorkingHours && employeeIds.length > 0
       ? offShiftNow(client, tenantId, employeeIds, now)
       : Promise.resolve(new Map<string, string>()),
+    policy.respectWorkingHours ? holidayNow(client, tenantId, now) : Promise.resolve(null),
   ]);
 
   const leaveByEmployee = new Map(onLeave.map((l) => [l.employeeId, l.endDate]));
@@ -308,7 +319,7 @@ export async function assessEligibility(
       if (!u.isAvailable) blockers.push({ code: 'MARKED_UNAVAILABLE', detail: 'marked unavailable' });
     }
 
-    const off = employee ? offShift.get(employee.id) : undefined;
+    const off = holiday ? `holiday (${holiday})` : employee ? offShift.get(employee.id) : undefined;
     if (off) blockers.push({ code: 'OFF_SHIFT', detail: off });
 
     // Quotas are computed even for a blocked user, because "at quota *and* on
@@ -368,7 +379,7 @@ async function offShiftNow(client: Reader, tenantId: string, employeeIds: string
   for (const day of days) {
     if (!day.checkInAt || day.checkOutAt! >= day.checkInAt) off.set(day.employeeId, 'checked out for the day');
   }
-  const { minutes } = zonedParts(now, tenant?.timezone ?? 'Asia/Dubai');
+  const { minutes } = zonedParts(now, knownTimeZone(tenant?.timezone));
   const shifts = new Map<string, { startTime: string; endTime: string }[]>();
   for (const entry of roster) shifts.set(entry.employeeId, [...(shifts.get(entry.employeeId) ?? []), entry.shift]);
   for (const [employeeId, today] of shifts) {
@@ -376,6 +387,18 @@ async function offShiftNow(client: Reader, tenantId: string, employeeIds: string
     off.set(employeeId, `off shift (${today.map((s) => `${s.startTime}–${s.endTime}`).join(', ')})`);
   }
   return off;
+}
+
+/** Today's confirmed holiday in the workspace's register, by name, on the workspace's clock. */
+async function holidayNow(client: Reader, tenantId: string, now: Date) {
+  const tenant = await client.tenant.findFirst({ where: { id: tenantId }, select: { timezone: true } });
+  // The register keeps a day as its UTC midnight (HR's `z.coerce.date()` of YYYY-MM-DD).
+  const day = new Date(`${todayKey(knownTimeZone(tenant?.timezone), now)}T00:00:00Z`);
+  const row = await client.hrHoliday.findFirst({
+    where: { tenantId, confirmed: true, holidayDate: { gte: day, lt: new Date(day.getTime() + 86_400_000) } },
+    select: { name: true },
+  });
+  return row?.name ?? null;
 }
 
 async function counts(client: Reader, tenantId: string, userIds: string[], since: Date | null) {

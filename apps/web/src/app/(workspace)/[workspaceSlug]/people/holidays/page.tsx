@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
+import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 import { isHrAdmin } from '@/services/hr/access';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
@@ -11,7 +12,12 @@ const isoDate = (value: Date) => value.toISOString().slice(0, 10);
 
 export default async function Page({ params }: { params: Promise<{ workspaceSlug: string }> }) {
   const { workspaceSlug } = await params;
-  const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'HRMS', permission: ['employee', 'VIEW'] });
+  // Any module: automatic assignment reads the register too (M18-08), and a
+  // workspace without People sets it up from Administration → Holidays.
+  const { ctx } = await resolveWorkspacePage(workspaceSlug, {
+    module: PRODUCT_MODULE_KEYS,
+    permission: ['employee', 'VIEW'],
+  });
 
   const rows = await prisma.hrHoliday.findMany({
     where: { tenantId: ctx.tenantId },
@@ -27,7 +33,8 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Holidays</h1>
         <p style={{ margin: '4px 0 0', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
-          Holidays are excluded from the working-day count when leave is calculated.
+          Holidays are excluded from the working-day count when leave is calculated, and automatic assignment hands out
+          no lead on a confirmed one where its rule respects working hours.
         </p>
       </div>
 
