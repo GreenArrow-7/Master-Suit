@@ -10,6 +10,8 @@ export interface RuleRow {
   isActive: boolean;
   everyone: boolean;
   people: string[];
+  /** A short description of the rule's conditions, or null when it takes every lead. */
+  routes: string | null;
 }
 
 /**
@@ -19,9 +21,11 @@ export interface RuleRow {
 export default function RulesPanel({
   rules,
   agents,
+  sources,
 }: {
   rules: RuleRow[];
   agents: { id: string; fullName: string }[];
+  sources: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -48,10 +52,15 @@ export default function RulesPanel({
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const userIds = form.getAll('userIds').map(String);
+    const cities = String(form.get('cities') ?? '')
+      .split(',')
+      .map((city) => city.trim())
+      .filter(Boolean);
     await send('/api/v1/distribution-rules', 'POST', {
       name: String(form.get('name') ?? ''),
       everyone: userIds.length === 0,
       userIds,
+      conditions: { sourceIds: form.getAll('sourceIds').map(String), cities },
     });
   }
 
@@ -73,6 +82,8 @@ export default function RulesPanel({
           <strong>{rule.name}</strong>
           <span style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
             {rule.everyone ? 'Everyone' : rule.people.join(', ') || 'Nobody'}
+            {' · '}
+            {rule.routes ?? 'every lead'}
           </span>
           <button
             type="button"
@@ -109,6 +120,23 @@ export default function RulesPanel({
             ))}
           </select>
         </label>
+        <label className="lf-field">
+          <span className="lf-label">Only leads from these sources (none selected = any source)</span>
+          <select id="rule-sources" className="lf-input" name="sourceIds" multiple size={5}>
+            {sources.map((source) => (
+              <option key={source.id} value={source.id}>
+                {source.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="lf-field">
+          <span className="lf-label">Only leads in these cities (comma-separated, blank = any city)</span>
+          <input id="rule-cities" className="lf-input" name="cities" maxLength={500} />
+        </label>
+        <p style={{ margin: 0, fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
+          A lead goes to the first rule that is on and whose conditions it meets.
+        </p>
         <div>
           <button type="submit" className="lf-btn lf-btn--sm" disabled={busy}>
             Add rule
