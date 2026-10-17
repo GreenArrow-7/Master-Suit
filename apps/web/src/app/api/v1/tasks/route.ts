@@ -1,4 +1,5 @@
 import { LEAD_MODULES } from '@/lib/security/entitlements';
+import { REPEATS } from '@/lib/tasks/recurrence';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
@@ -20,13 +21,15 @@ const createBody = z
     dueAt: z.coerce.date(),
     priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
     description: z.string().max(2000).optional(),
+    /** Repeat on completion (M8-10). */
+    repeat: z.enum(REPEATS).optional(),
   })
   .strict();
 
 export const POST = route(
   { module: 'leads', productModule: LEAD_MODULES, action: 'EDIT', body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, body }) => {
-    const { ownerId, ...rest } = body;
+    const { ownerId, repeat, ...rest } = body;
     // Another person only inside the caller's own scope: from TEAM up this took
     // any active user in the workspace. Outside it, 404 as an unknown user.
     const resolvedOwner = ownerId ?? ctx.actor.id;
@@ -43,6 +46,7 @@ export const POST = route(
             tenantId: ctx.tenantId,
             ownerId: resolvedOwner,
             createdById: ctx.actor.id,
+            recurrenceRule: repeat ?? null,
             ...rest,
           },
           include: { type: true, owner: { select: { fullName: true } } },
