@@ -25,6 +25,7 @@ import { audit } from '@/lib/security/audit';
 import type { Action, Ctx, Scope } from '@/lib/security/rbac';
 import { can, scopeFor } from '@/lib/security/rbac';
 import { resolveOwnerIds } from '@/lib/security/visibility';
+import { attendanceScope } from './attendance';
 import { addDays, dayKey, toDay } from './rules';
 
 /**
@@ -119,6 +120,13 @@ export interface ReportAudience {
  */
 async function audienceFor(ctx: Ctx, permission: [string, Action]): Promise<ReportAudience> {
   const scope = scopeFor(ctx, permission[0], permission[1]);
+  // Attendance reaches whom the attendance screen and API reach (attendanceScope):
+  // a line manager's reporting line, not everyone in their sales teams (M16-10).
+  if (permission[0] === 'attendance') {
+    const { employeeId } = await attendanceScope(ctx);
+    const employeeIds = employeeId === undefined ? null : typeof employeeId === 'string' ? [employeeId] : employeeId.in;
+    return { scope, employeeIds };
+  }
   if (scope === 'ORGANIZATION') return { scope, employeeIds: null };
 
   const userIds = await resolveOwnerIds(ctx, scope);

@@ -8,6 +8,8 @@
  * audited CSV work without HRMS.
  */
 import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 const jar = vi.hoisted(() => ({ cookie: '', path: '/' }));
@@ -21,12 +23,13 @@ vi.mock('next/headers', () => ({
   }),
 }));
 
-import { prisma } from '@/lib/db';
+import { prisma, withPlatformTx } from '@/lib/db';
 import { csvCell } from '@/lib/csv';
 import { resolveCtx } from '@/lib/auth/session';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
 import type { PermissionAction } from '@prisma/client';
 import { ensureLeadSources } from '@/services/leads/leadSources';
+import { createLead } from '@/services/leads/createLead';
 import { reportParams, runReport, toCsv } from '@/services/leadership/reports';
 import { GET as reportRoute } from '@/app/api/v1/reports/route';
 import { GET as hrExport } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/reports/[reportKey]/export/route';
@@ -115,12 +118,23 @@ beforeAll(async () => {
   await lead({ ownerId: agentB.id });
   await prisma.leadProject.create({ data: { tenantId, leadId: a1.id, projectId } });
 
-  // M16-02: two portal leads from before the catalogue (no entry), one from after.
+  // M16-02: intake leads from before the catalogue (no entry), which the backfill
+  // links to their entries; one from after; a referral whose detail only looks
+  // like a portal's; and one whose intake the workspace has no entry for.
   await ensureLeadSources(prisma, tenantId);
   bayutId = (await prisma.leadSource.findFirstOrThrow({ where: { tenantId, key: 'bayut' } })).id;
   await lead({ ownerId: ws.userId, source: 'MARKETPLACE', sourceDetail: 'bayut:R-1' });
   await lead({ ownerId: ws.userId, source: 'MARKETPLACE', sourceDetail: 'property_finder:R-2' });
+  await lead({ ownerId: ws.userId, source: 'AD_LEAD_FORM', sourceDetail: 'google_ads:G-1' });
+  await lead({ ownerId: ws.userId, source: 'AD_LEAD_FORM', sourceDetail: 'facebook:form-1' });
+  await lead({ ownerId: ws.userId, source: 'REFERRAL', sourceDetail: 'bayut:Ali' });
+  const backfill = readFileSync(
+    path.join(__dirname, '..', '..', 'prisma', 'migrations', '20261018120000_lead_source_backfill', 'migration.sql'),
+    'utf8',
+  ).replace('WHERE l."sourceId" IS NULL', `WHERE l."tenantId" = '${tenantId}' AND l."sourceId" IS NULL`);
+  await withPlatformTx((tx) => tx.$executeRawUnsafe(backfill));
   await lead({ ownerId: ws.userId, source: 'MARKETPLACE', sourceDetail: 'bayut:R-3', sourceId: bayutId });
+  await lead({ ownerId: ws.userId, source: 'WEBHOOK', sourceDetail: 'custom_webhook:W-1' });
 
   // M16-12: follow-ups either side of midnight in Dubai (UTC+4).
   const followUp = (ownerId: string, dueAt: string) =>
@@ -178,12 +192,23 @@ describe('a Lead-Eagle-only workspace’s report menu (M16-00)', () => {
     expect(report.columns.map((c) => c.key)).toEqual(['stage', 'open', 'entered']);
   });
 
+  it('leaves the booking and opportunity figures out of the lead reports it keeps', async () => {
+    const ctx = await ctxFrom(ws.cookie);
+    const range = { from: new Date(Date.now() - 86_400_000), to: new Date(Date.now() + 86_400_000) };
+    const sourceToBooking = await runReport(ctx, 'source-to-booking', range);
+    expect(sourceToBooking.columns.map((c) => c.key)).toEqual(['source', 'leads', 'visited']);
+    const conversion = await runReport(ctx, 'lead-conversion', range);
+    expect(conversion.rows.map((r) => r.step)).toEqual(['Leads in', 'Reached a conversion stage']);
+  });
+
   it('offers them again once the plan has Sales', async () => {
     await prisma.moduleEntitlement.create({ data: { tenantId, module: 'SALES', state: 'ACTIVE' } });
     await invalidateEntitlements(tenantId);
     try {
       expect((await api(ws.cookie, 'report=revenue-forecast')).status).toBe(200);
       expect(await screen(ws.cookie, {})).toContain('Revenue Forecast');
+      const booked = await api(ws.cookie, 'report=source-to-booking');
+      expect(booked.body.columns.map((c: { key: string }) => c.key)).toContain('value');
     } finally {
       await prisma.moduleEntitlement.deleteMany({ where: { tenantId, module: 'SALES' } });
       await invalidateEntitlements(tenantId);
@@ -199,7 +224,7 @@ describe('report filters (M16-01, M16-12)', () => {
     const team = await api(ws.cookie, `report=pipeline-summary&team=${teamId}`);
     expect(stages(team.body.rows)).toEqual({ New: 1, Qualified: 1 });
     const everyone = await api(ws.cookie, 'report=pipeline-summary');
-    expect(stages(everyone.body.rows)).toEqual({ New: 5, Qualified: 1 });
+    expect(stages(everyone.body.rows)).toEqual({ New: 9, Qualified: 1 });
   });
 
   it('reads a day as the workspace’s day, and a person with it', async () => {
@@ -231,8 +256,9 @@ describe('report filters (M16-01, M16-12)', () => {
   });
 
   it('narrows by source and by project', async () => {
+    // Both Bayut leads, as the unfiltered Bayut row counts them (M16-02).
     const bayut = await api(ws.cookie, `report=source-analysis&source=${bayutId}`);
-    expect(bayut.body.rows).toEqual([expect.objectContaining({ source: 'Bayut', leads: 1 })]);
+    expect(bayut.body.rows).toEqual([expect.objectContaining({ source: 'Bayut', leads: 2 })]);
     const tower = await api(ws.cookie, `report=pipeline-summary&project=${projectId}`);
     expect(stages(tower.body.rows)).toEqual({ New: 1, Qualified: 0 });
   });
@@ -243,6 +269,18 @@ describe('report filters (M16-01, M16-12)', () => {
     expect(filter.owner).toBeUndefined();
     const report = await runReport(ctx, 'pipeline-summary', range, filter);
     expect(stages(report.rows as never)).toEqual({ New: 1, Qualified: 1 });
+  });
+
+  it('takes a lone day as that bound, with the default for the other', async () => {
+    const after = await api(ws.cookie, 'report=pipeline-summary&from=2027-01-01');
+    expect(after.status).toBe(200);
+    expect(after.body.rows.every((r: { entered: number }) => r.entered === 0)).toBe(true);
+    const before = await api(ws.cookie, 'report=pipeline-summary&to=2020-01-01');
+    expect(before.body.rows.every((r: { entered: number }) => r.entered === 0)).toBe(true);
+    const ctx = await ctxFrom(ws.cookie);
+    const { range, query } = await reportParams(ctx, { from: '2026-10-02' });
+    expect(range.from.toISOString()).toBe('2026-10-01T20:00:00.000Z');
+    expect(query).toBe('from=2026-10-02');
   });
 
   it('records the filters with the export', async () => {
@@ -268,6 +306,13 @@ describe('sources and sub-sources (M16-02)', () => {
       const rows = Object.fromEntries((await runReport(ctx, key, range)).rows.map((r) => [r.source, r]));
       expect(rows.Bayut, key).toMatchObject({ leads: 2 });
       expect(rows['Property Finder'], key).toMatchObject({ leads: 1 });
+      // Under the catalogue's names, not the intake's: one row each (M16-02).
+      expect(rows['Google Ads'], key).toMatchObject({ leads: 1 });
+      expect(rows.Meta, key).toMatchObject({ leads: 1 });
+      expect(rows, key).not.toHaveProperty(['Google Ads lead forms']);
+      expect(rows, key).not.toHaveProperty(['Facebook lead ads']);
+      // No entry for it: the intake's own name.
+      expect(rows['Custom webhook'], key).toMatchObject({ leads: 1 });
     }
   });
 });
@@ -285,6 +330,23 @@ describe('rep activity (M16-05)', () => {
     });
     // Who, activities, calls, connected, stage moves, notes, leads responded to, average first response.
     expect(toCsv(report)).toContain(['Agent Able', 2, 2, 1, 1, 1, 0, null].map(csvCell).join(','));
+  });
+
+  it('counts neither a lead’s creation as a move nor a deleted or imported note', async () => {
+    await createLead(await ctxFrom(agentB.cookie), { fullName: 'Typed in', phone: '+971500004321' });
+    const note = await prisma.activityType.findFirstOrThrow({ where: { tenantId, key: 'note' } });
+    const leadId = (await prisma.lead.findFirstOrThrow({ where: { tenantId, ownerId: agentB.id } })).id;
+    await prisma.activity.create({
+      data: { tenantId, typeId: note.id, ownerId: agentB.id, leadId, deletedAt: new Date() },
+    });
+    await prisma.activity.create({
+      data: { tenantId, typeId: note.id, ownerId: agentB.id, leadId, source: 'IMPORT', notes: 'Remarks column' },
+    });
+    const range = { from: new Date(Date.now() - 86_400_000), to: new Date(Date.now() + 86_400_000) };
+    const report = await runReport(await ctxFrom(ws.cookie), 'rep-activity', range);
+    const baker = report.rows.find((r) => r.who === 'Agent Baker');
+    expect(baker?.moves ?? 0).toBe(0);
+    expect(baker?.notes ?? 0).toBe(0);
   });
 });
 
@@ -310,6 +372,65 @@ describe('the attendance summary without HRMS (M16-10)', () => {
     });
     expect(audited).not.toBeNull();
     expect((await download('headcount-by-department')).status).toBe(403);
+  });
+
+  it('lists the same people as the screen’s rows: a line manager’s reporting line, not their whole team', async () => {
+    const role = await prisma.role.create({
+      data: { tenantId, key: `team-lead-${tag()}`, name: 'Team Lead', rank: 60, defaultScope: 'TEAM' },
+    });
+    await grantPermissions(
+      tenantId,
+      role.id,
+      [
+        ['employee', 'VIEW'],
+        ['attendance', 'VIEW'],
+        ['attendance', 'APPROVE'],
+        ['reports', 'EXPORT'],
+      ],
+      'TEAM',
+    );
+    const manager = await createEmployee({ tenantId, label: 'Line Lead', suffix: tag(), roleId: role.id });
+    const direct = await createEmployee({
+      tenantId,
+      label: 'Direct Report',
+      suffix: tag(),
+      managerMembershipId: manager.membershipId,
+    });
+    const peer = await createEmployee({ tenantId, label: 'Team Peer', suffix: tag() });
+    const team = await prisma.team.create({ data: { tenantId, name: 'Shift Team', code: `S-${tag()}` } });
+    for (const userId of [manager.userId, direct.userId, peer.userId]) {
+      await prisma.userTeam.create({ data: { tenantId, teamId: team.id, userId } });
+    }
+    for (const employeeId of [direct.employeeId, peer.employeeId]) {
+      await prisma.hrAttendanceRecord.create({
+        data: { tenantId, employeeId, workDate: new Date('2026-10-06'), workMinutes: 420 },
+      });
+    }
+    const cookie = await createSessionToken(tenantId, manager.userId);
+
+    const res = await hrExport(
+      new Request(
+        `http://localhost/api/v1/workspaces/${ws.slug}/hr/reports/attendance-summary/export?from=2026-10-01&to=2026-10-31`,
+        { headers: { cookie } },
+      ),
+      { params: Promise.resolve({ workspaceSlug: ws.slug, reportKey: 'attendance-summary' }) },
+    );
+    expect(res.status).toBe(200);
+    const file = await res.text();
+    expect(file).toContain('Direct Report');
+    expect(file).not.toContain('Team Peer');
+
+    jar.cookie = cookie;
+    jar.path = `/${ws.slug}/attendance`;
+    const text = await pageText(
+      AttendancePage({
+        params: Promise.resolve({ workspaceSlug: ws.slug }),
+        searchParams: Promise.resolve({ from: '2026-10-01', to: '2026-10-31' }),
+      }),
+    );
+    expect(text).toContain('Per person');
+    expect(text).toContain('Direct Report');
+    expect(text).not.toContain('Team Peer');
   });
 
   it('shows the per-person summary on the attendance screen, with its export', async () => {

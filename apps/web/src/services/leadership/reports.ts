@@ -89,29 +89,33 @@ export type ReportFilter = Pick<BoardFilter, 'owner' | 'team' | 'source' | 'proj
  * parameters (`range`, `from` and `to`, `owner`, `team`, `source`, `project`;
  * lib/leads/boardFilter.ts), so the board, its lists and a report read one link
  * alike. A day is the workspace's whole day; an instant (a link from before) is
- * taken as it is. With no period, the first of the month two months back to the
- * end of today. A person or team outside the viewer's reports reach, or a source
- * or project the workspace does not hold, is dropped. `query` is the link that
+ * taken as it is; a lone `from` or `to` is that bound, the other the default.
+ * With no period, the first of the month two months back to the end of today.
+ * A person or team outside the viewer's reports reach, or a source or project
+ * the workspace does not hold, is dropped. `query` is the link that
  * reproduces exactly this: the CSV's, the menu's.
  */
 export async function reportParams(ctx: Ctx, raw: Record<string, unknown>, now = new Date()) {
   const zone = await workspaceTimezone(ctx);
   const filter = await scopeBoardFilter(ctx, cleanBoardFilter(raw), undefined, 'reports');
   const { span } = await resolveBoardFilter(ctx, { range: filter.range, from: filter.from, to: filter.to }, zone, now);
-  const instant = (key: string) => {
+  // A bound the board's period does not carry: a lone day, or an instant.
+  const given = (key: 'from' | 'to') => {
     const value = [raw[key]].flat()[0];
-    return typeof value === 'string' && !isDayKey(value) && !Number.isNaN(Date.parse(value)) ? new Date(value) : null;
+    if (typeof value !== 'string') return null;
+    if (isDayKey(value)) return { at: dayBounds(value, zone)[key], text: value };
+    return Number.isNaN(Date.parse(value)) ? null : { at: new Date(value), text: new Date(value).toISOString() };
   };
   const today = todayKey(zone, now);
   const firstOfMonth = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 3, 1));
   const range = span
     ? { from: span.gte, to: span.lte }
     : {
-        from: instant('from') ?? dayBounds(firstOfMonth.toISOString().slice(0, 10), zone).from,
-        to: instant('to') ?? dayBounds(today, zone).to,
+        from: given('from')?.at ?? dayBounds(firstOfMonth.toISOString().slice(0, 10), zone).from,
+        to: given('to')?.at ?? dayBounds(today, zone).to,
       };
   const query = new URLSearchParams(boardQuery(filter));
-  if (!span) for (const key of ['from', 'to']) if (instant(key)) query.set(key, instant(key)!.toISOString());
+  if (!span) for (const key of ['from', 'to'] as const) if (given(key)) query.set(key, given(key)!.text);
   return { filter, range, zone, query: query.toString() };
 }
 
@@ -204,8 +208,13 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, filter: 
         rows: [
           { step: 'Leads in', count: c.leads, rate: null },
           { step: 'Reached a conversion stage', count: c.converted, rate: pct(c.leadToConverted) },
-          { step: 'Became an opportunity', count: c.opportunities, rate: pct(c.leadToOpportunity) },
-          { step: 'Became a booking', count: c.bookings, rate: pct(c.leadToBooking) },
+          // Opportunities and bookings are Sales' and Real Estate's records (M16-00).
+          ...(money
+            ? [
+                { step: 'Became an opportunity', count: c.opportunities, rate: pct(c.leadToOpportunity) },
+                { step: 'Became a booking', count: c.bookings, rate: pct(c.leadToBooking) },
+              ]
+            : []),
         ],
         note: 'A rate with no leads behind it is blank rather than 0%.',
       };
@@ -418,6 +427,8 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, filter: 
           where: {
             tenantId,
             createdAt: within,
+            // A lead's first stage is its creation (createLead, an import), not a move.
+            fromStageId: { not: null },
             changedById: userIds.length === 0 ? { not: null } : { in: userIds },
             ...viaLead,
           },
@@ -425,7 +436,18 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, filter: 
         }),
         prismaRead.activity.groupBy({
           by: ['ownerId'],
-          where: { tenantId, occurredAt: within, type: { is: { key: NOTE_ACTIVITY } }, ...owned(userIds), ...viaLead },
+          // Notes they wrote and kept: not deleted ones, nor a spreadsheet's remarks, which an
+          // import files as notes under the importer. ponytail: notes moved from the standalone
+          // Lead Eagle are IMPORT too, so they drop out; mark the move's source if that history matters.
+          where: {
+            tenantId,
+            occurredAt: within,
+            deletedAt: null,
+            source: { not: 'IMPORT' },
+            type: { is: { key: NOTE_ACTIVITY } },
+            ...owned(userIds),
+            ...viaLead,
+          },
           _count: { _all: true },
         }),
       ]);
@@ -644,10 +666,13 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, filter: 
           select: { leadId: true },
           distinct: ['leadId'],
         }),
-        prismaRead.booking.findMany({
-          where: { tenantId, deletedAt: null, status: { not: 'CANCELLED' }, leadId },
-          select: { leadId: true, saleValue: true },
-        }),
+        // Bookings are Sales' and Real Estate's: none to read in a Lead-Eagle-only workspace (M16-00).
+        money
+          ? prismaRead.booking.findMany({
+              where: { tenantId, deletedAt: null, status: { not: 'CANCELLED' }, leadId },
+              select: { leadId: true, saleValue: true },
+            })
+          : [],
       ]);
       const sourceOf = new Map(leads.map((l) => [l.id, catalogueLabel(l)]));
       const by = new Map<string, { leads: number; visited: number; bookings: number; value: Prisma.Decimal }>();
@@ -671,9 +696,13 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, filter: 
           { key: 'source', label: 'Source' },
           { key: 'leads', label: 'Leads', align: 'right' },
           { key: 'visited', label: 'Visited a property', align: 'right' },
-          { key: 'bookings', label: 'Bookings', align: 'right' },
-          { key: 'value', label: 'Booked value', align: 'right' },
-          { key: 'rate', label: 'Lead to booking', align: 'right' },
+          ...(money
+            ? ([
+                { key: 'bookings', label: 'Bookings', align: 'right' },
+                { key: 'value', label: 'Booked value', align: 'right' },
+                { key: 'rate', label: 'Lead to booking', align: 'right' },
+              ] satisfies Column[])
+            : []),
         ],
         rows: [...by]
           .map(([source, r]) => ({
@@ -685,7 +714,9 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, filter: 
             rate: pct(Math.round((r.bookings / r.leads) * 100)),
           }))
           .sort((a, b) => b.bookings - a.bookings || b.leads - a.leads),
-        note: 'Leads that arrived in the period, followed to their site visits and bookings whenever those happened. Cancelled bookings are left out.',
+        note: money
+          ? 'Leads that arrived in the period, followed to their site visits and bookings whenever those happened. Cancelled bookings are left out.'
+          : 'Leads that arrived in the period, followed to their site visits whenever those happened.',
       };
     }
     case 'source-analysis':

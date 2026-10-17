@@ -122,7 +122,8 @@ export default async function Page({
   const workOf = (row: (typeof rows)[number]) => work.get(row.employee.membership.salesUserId ?? '');
 
   // Days and hours per person (M16-10): HR's attendance summary, which every
-  // workspace has, and its CSV, audited as every HR export is.
+  // workspace has, over the same people as the rows (attendanceScope), and its
+  // CSV, audited as every HR export is.
   const summary = seesOthers
     ? await runHrReport(ctx, EVERY_WORKSPACE_REPORT, { from, to: toEnd }).catch(() => null)
     : null;
