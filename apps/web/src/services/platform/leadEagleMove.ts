@@ -342,14 +342,22 @@ export async function moveCompany(
     ...snap.captureLinks.map((c) => c.assignToId),
     ...snap.units.map((u) => u.heldById),
   ].filter(lost);
-  for (const user of snap.users) {
-    const holds = holders.filter((id) => id === user.id).length;
-    if (holds) problems.push(`${user.email} owns ${holds} records but has no account here; they move unowned.`);
-  }
   // Deleted in Lead Eagle, so not among the users read: no email to name.
   const known = new Set(snap.users.map((u) => u.id));
-  const removed = holders.filter((id) => !known.has(id)).length;
-  if (removed) problems.push(`${removed} records are owned by people no longer in Lead Eagle; they move unowned.`);
+  /** One line per person without an account here, by email, so the operator can invite them; one for the deleted. */
+  const name = (ids: Id[], named: (email: string, n: number) => string, unnamed: (n: number) => string) => {
+    for (const user of snap.users) {
+      const n = ids.filter((id) => id === user.id).length;
+      if (n) problems.push(named(user.email, n));
+    }
+    const n = ids.filter((id) => !known.has(id)).length;
+    if (n) problems.push(unnamed(n));
+  };
+  name(
+    holders,
+    (who, n) => `${who} owns ${n} records but has no account here; they move unowned.`,
+    (n) => `${n} records are owned by people no longer in Lead Eagle; they move unowned.`,
+  );
   const fallback =
     people.find((p) => p.status === 'ACTIVE' && p.role?.key === 'company_admin') ??
     people.find((p) => p.status === 'ACTIVE');
@@ -516,8 +524,8 @@ export async function moveCompany(
         let stageChanges = 0;
         // The reader leaves merged-duplicate and deleted leads and cold data behind, not their rows.
         let leftBehind = 0;
-        let lostActivities = 0;
-        let lostStageChanges = 0;
+        const lostActivities: Id[] = [];
+        const lostStageChanges: Id[] = [];
         const recordIds = new Set(snap.dataRecords.map((r) => r.id));
         const recordNotes = new Map<Id, string[]>();
         // Each lead's earliest contact (a call, an email, a meeting; not a note), as touchLead stamps it.
@@ -554,10 +562,10 @@ export async function moveCompany(
               },
             });
             stageChanges += 1;
-            if (lost(a.userId)) lostStageChanges += 1;
+            if (lost(a.userId)) lostStageChanges.push(a.userId);
             continue;
           }
-          if (lost(a.userId)) lostActivities += 1;
+          if (lost(a.userId)) lostActivities.push(a.userId);
           const kind = a.type === 'CALL' ? `CALL_${a.callDirection ?? 'OUTBOUND'}` : a.type;
           await tx.activity.create({
             data: {
@@ -602,16 +610,16 @@ export async function moveCompany(
           activities += 1;
         }
         tally('activities and enquiries', snap.activities.length + snap.enquiries.length, activities + stageChanges);
-        if (lostActivities) {
-          problems.push(
-            `${lostActivities} activities were logged by someone without an account here; they move without who logged them.`,
-          );
-        }
-        if (lostStageChanges) {
-          problems.push(
-            `${lostStageChanges} stage changes were made by someone without an account here; they move without who made them.`,
-          );
-        }
+        name(
+          lostActivities,
+          (who, n) => `${who} logged ${n} activities but has no account here; they move without who logged them.`,
+          (n) => `${n} activities were logged by people no longer in Lead Eagle; they move without who logged them.`,
+        );
+        name(
+          lostStageChanges,
+          (who, n) => `${who} made ${n} stage changes but has no account here; they move without who made them.`,
+          (n) => `${n} stage changes were made by people no longer in Lead Eagle; they move without who made them.`,
+        );
         if (leftBehind) {
           problems.push(
             `${leftBehind} activities and enquiries are on merged duplicates, deleted records or no record; they stay behind.`,
