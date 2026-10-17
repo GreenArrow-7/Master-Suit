@@ -60,7 +60,7 @@ export async function runReminderSweep(): Promise<ReminderSweepResult> {
 }
 
 /**
- * Open tasks coming due, addressed to whoever owns them.
+ * Open tasks and follow-ups coming due, addressed to whoever owns them.
  *
  * The destination is the task's lead where it has one — "your follow-up on
  * Marco Haddad is due" is only actionable if it opens Marco Haddad. Tasks with
@@ -76,7 +76,11 @@ async function sweepDueTasks(): Promise<number> {
               CASE WHEN t."leadId" IS NULL THEN 'tasks' ELSE 'lead' END AS "objectType",
               t.title,
               l."fullName"                                  AS body
-         FROM "Task" t
+         FROM (SELECT "tenantId", "ownerId", "leadId", id, title, status, "dueAt", "deletedAt" FROM "Task"
+               UNION ALL
+               -- The Follow-ups register (Lead Eagle's own) is a separate table;
+               -- without it a follow-up due in 20 minutes rang nothing (audit M8-02).
+               SELECT "tenantId", "ownerId", "leadId", id, title, status, "dueAt", "deletedAt" FROM "FollowUpTask") t
          LEFT JOIN "Lead" l
                 ON l.id = t."leadId" AND l."tenantId" = t."tenantId" AND l."deletedAt" IS NULL
         WHERE t.status = 'OPEN'
