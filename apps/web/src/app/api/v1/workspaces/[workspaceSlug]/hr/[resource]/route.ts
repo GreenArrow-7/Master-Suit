@@ -112,9 +112,10 @@ const RESOURCE_PERMISSION: Record<HrResource, ExtraPermission | typeof FLOOR> = 
 
 /**
  * Check-in works in every workspace, so what it needs set up — locations and
- * who is assigned to them — does too. Everything else here is HRMS.
+ * who is assigned to them — does too, and so does the holiday register, which
+ * automatic assignment reads (M18-08). Everything else here is HRMS.
  */
-const ATTENDANCE_SETUP = new Set<string>(['work-locations', 'location-assignments']);
+const ATTENDANCE_SETUP = new Set<string>(['work-locations', 'location-assignments', 'holidays']);
 
 export const GET = route(
   { module: 'employee', productModule: PRODUCT_MODULE_KEYS, action: 'VIEW', params: paramsSchema, query: querySchema },

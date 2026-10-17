@@ -9,7 +9,7 @@ import SourcePicker, { type SourceOption } from '@/components/forms/SourcePicker
 import { parseTags } from '@/lib/leads/tags';
 import { customPatch } from '@/lib/leads/customPatch';
 import Field from '@/components/forms/Field';
-import DateInput from '@/components/forms/DateInput';
+import CustomFieldInput from '@/components/forms/CustomFieldInput';
 import { formatTypedDate } from '@/lib/dates';
 import type { LeadField } from '@/services/leads/customFields';
 import type { LeadRequirement } from '@/services/leads/requirement';
@@ -160,6 +160,8 @@ interface Props {
   sources: SourceOption[];
   /** The workspace's active custom fields (Administration → Custom fields). */
   customFields: LeadField[];
+  /** Fields the workspace's lead form hides (M18-04, lib/leads/formLayout.ts): not in Details either. */
+  hiddenFields: string[];
   /** What the interest pickers offer; null where the viewer cannot see projects or listings. */
   projectOptions: { id: string; name: string }[] | null;
   listingOptions: { id: string; reference: string; title: string }[] | null;
@@ -221,6 +223,7 @@ export default function LeadDetail({
   users,
   sources,
   customFields,
+  hiddenFields,
   projectOptions,
   listingOptions,
   matchesHref,
@@ -399,6 +402,7 @@ export default function LeadDetail({
                 canEdit={canEdit}
                 sources={sources}
                 customFields={customFields}
+                hiddenFields={hiddenFields}
                 onDial={canLog ? () => dialled(lead) : undefined}
               />
               <RequirementCard
@@ -790,6 +794,7 @@ function OverviewTab({
   canEdit,
   sources,
   customFields,
+  hiddenFields,
   onDial,
 }: {
   lead: Props['lead'];
@@ -799,6 +804,7 @@ function OverviewTab({
   canEdit: boolean;
   sources: SourceOption[];
   customFields: LeadField[];
+  hiddenFields: string[];
   /** Dialling one of its other numbers. */
   onDial?: () => void;
 }) {
@@ -854,20 +860,24 @@ function OverviewTab({
 
   type TextKey = 'email' | 'phone' | 'company' | 'jobTitle' | 'city' | 'country' | 'nationality' | 'campaignName';
   // A masked value is not offered for editing: saving it would write the dots.
-  const fields: [string, string, TextKey | null][] = [
-    ['Email', lead.email ?? '—', lead.contactMasked.email ? null : 'email'],
-    ['Phone', lead.phone ?? '—', lead.contactMasked.phone ? null : 'phone'],
-    ['Company', lead.company ?? '—', 'company'],
-    ['Job title', lead.jobTitle ?? '—', 'jobTitle'],
-    ['City', lead.city ?? '—', 'city'],
-    ['Country', lead.country ?? '—', 'country'],
-    ['Nationality', lead.nationality ?? '—', 'nationality'],
-    ['Industry', lead.industry ?? '—', null],
-    ['Source', lead.sourceLabel, null],
-    ['Campaign', lead.campaignName ?? '—', 'campaignName'],
-    ['Consent', lead.consentStatus.toLowerCase(), null],
-    ['Created', fmtDate(lead.createdAt), null],
-  ];
+  // The fourth is the lead form's key (M18-04): a field the workspace hides is left out.
+  const shown = (key: string) => !hiddenFields.includes(key);
+  const fields = (
+    [
+      ['Email', lead.email ?? '—', lead.contactMasked.email ? null : 'email', 'email'],
+      ['Phone', lead.phone ?? '—', lead.contactMasked.phone ? null : 'phone', 'phone'],
+      ['Company', lead.company ?? '—', 'company', 'company'],
+      ['Job title', lead.jobTitle ?? '—', 'jobTitle', 'jobTitle'],
+      ['City', lead.city ?? '—', 'city', 'city'],
+      ['Country', lead.country ?? '—', 'country', 'country'],
+      ['Nationality', lead.nationality ?? '—', 'nationality', 'nationality'],
+      ['Industry', lead.industry ?? '—', null, null],
+      ['Source', lead.sourceLabel, null, 'source'],
+      ['Campaign', lead.campaignName ?? '—', 'campaignName', 'campaignName'],
+      ['Consent', lead.consentStatus.toLowerCase(), null, null],
+      ['Created', fmtDate(lead.createdAt), null, null],
+    ] as [string, string, TextKey | null, string | null][]
+  ).filter(([, , , layoutKey]) => !layoutKey || shown(layoutKey));
 
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-4)' }}>
@@ -919,7 +929,7 @@ function OverviewTab({
               </dd>
             </div>
           ))}
-          {(editing || lead.tags.length > 0) && (
+          {(editing || lead.tags.length > 0) && shown('tags') && (
             <div>
               <dt className="lf-label">Tags</dt>
               <dd style={{ margin: '3px 0 0', display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -949,7 +959,7 @@ function OverviewTab({
               </dt>
               <dd style={{ margin: '3px 0 0', fontSize: 'var(--lf-text-sm)', overflowWrap: 'anywhere' }}>
                 {editing ? (
-                  <CustomInput
+                  <CustomFieldInput
                     field={field}
                     value={custom[field.key] ?? ''}
                     onChange={(value) => setCustom((c) => ({ ...c, [field.key]: value }))}
@@ -965,7 +975,7 @@ function OverviewTab({
             </div>
           ))}
         </dl>
-        {lead.phones && (lead.phones.length > 0 || canEdit) && (
+        {shown('otherNumbers') && lead.phones && (lead.phones.length > 0 || canEdit) && (
           <OtherNumbers
             phones={lead.phones}
             leadId={lead.id}
@@ -985,36 +995,6 @@ function OverviewTab({
         )}
       </section>
     </div>
-  );
-}
-
-/** A custom field's control, by its type (M4-13); the server checks the value again. */
-function CustomInput({ field, value, onChange }: { field: LeadField; value: string; onChange: (v: string) => void }) {
-  const common = { 'aria-label': field.label, style: { width: '100%', fontSize: 'var(--lf-text-sm)' } };
-  if (field.type === 'DATE')
-    return <DateInput {...common} value={value} onChange={onChange} required={field.isRequired} />;
-  if (field.type === 'DROPDOWN') {
-    return (
-      <select className="lf-input" {...common} value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">—</option>
-        {field.options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    );
-  }
-  return (
-    <input
-      className="lf-input"
-      {...common}
-      type={field.type === 'NUMBER' ? 'number' : 'text'}
-      step={field.type === 'NUMBER' ? 'any' : undefined}
-      maxLength={500}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    />
   );
 }
 

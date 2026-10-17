@@ -12,6 +12,8 @@ export interface RuleRow {
   people: string[];
   /** A short description of the rule's conditions, or null when it takes every lead. */
   routes: string | null;
+  /** Passes over agents off shift or on a holiday (M18-08). */
+  workingHours: boolean;
 }
 
 /**
@@ -61,6 +63,7 @@ export default function RulesPanel({
       everyone: userIds.length === 0,
       userIds,
       conditions: { sourceIds: form.getAll('sourceIds').map(String), cities },
+      respectWorkingHours: form.get('respectWorkingHours') === 'on',
     });
   }
 
@@ -70,8 +73,8 @@ export default function RulesPanel({
         Automatic assignment
       </h2>
       <p style={{ margin: 0, fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
-        New leads are handed out in turn to the people of the first rule that is on. Leave, quotas and working hours are
-        respected.
+        New leads are handed out in turn to the people of the first rule that is on. Leave and quotas are respected, and
+        working hours and holidays (Administration → Holidays, or People → Holidays) unless a rule ignores them.
       </p>
       {rules.length === 0 && <p style={{ margin: 0 }}>No rule yet — every new lead waits to be handed out by hand.</p>}
       {rules.map((rule) => (
@@ -84,7 +87,18 @@ export default function RulesPanel({
             {rule.everyone ? 'Everyone' : rule.people.join(', ') || 'Nobody'}
             {' · '}
             {rule.routes ?? 'every lead'}
+            {rule.workingHours ? '' : ' · ignores working hours'}
           </span>
+          <button
+            type="button"
+            className="lf-btn lf-btn--secondary lf-btn--sm"
+            disabled={busy}
+            onClick={() =>
+              send(`/api/v1/distribution-rules/${rule.id}`, 'PATCH', { respectWorkingHours: !rule.workingHours })
+            }
+          >
+            {rule.workingHours ? 'Ignore working hours' : 'Respect working hours'}
+          </button>
           <button
             type="button"
             className="lf-btn lf-btn--sm"
@@ -133,6 +147,10 @@ export default function RulesPanel({
         <label className="lf-field">
           <span className="lf-label">Only leads in these cities (comma-separated, blank = any city)</span>
           <input id="rule-cities" className="lf-input" name="cities" maxLength={500} />
+        </label>
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
+          <input type="checkbox" name="respectWorkingHours" defaultChecked />
+          Skip people off shift, checked out or on a holiday
         </label>
         <p style={{ margin: 0, fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
           A lead goes to the first rule that is on and whose conditions it meets.

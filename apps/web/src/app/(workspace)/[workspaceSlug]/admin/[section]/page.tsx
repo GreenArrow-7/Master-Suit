@@ -41,6 +41,10 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
 
   switch (section) {
     case 'company': {
+      const brand = await prisma.organizationSetting.findUnique({
+        where: { tenantId: ctx.tenantId },
+        select: { primaryColor: true, accentColor: true },
+      });
       const fields: SettingsField[] = [
         { name: 'displayName', label: 'Display name', value: workspace.displayName },
         { name: 'legalName', label: 'Legal name', value: workspace.legalName },
@@ -55,8 +59,16 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           label: 'Logo URL',
           type: 'url',
           value: workspace.logoUrl ?? '',
-          hint: 'A link to your logo. Shown in the workspace shell.',
+          hint: 'A link to your logo. Shown in the workspace shell and on your public pages.',
         },
+        {
+          name: 'primaryColor',
+          label: 'Brand colour',
+          type: 'color',
+          value: brand?.primaryColor ?? '#2447C7',
+          hint: 'Your QR capture page, shared listings and shortlists draw with it.',
+        },
+        { name: 'accentColor', label: 'Accent colour', type: 'color', value: brand?.accentColor ?? '#0E7C66' },
       ];
       return (
         <Shell title="Company profile">

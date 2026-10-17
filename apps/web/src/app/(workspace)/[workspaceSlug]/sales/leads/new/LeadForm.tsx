@@ -1,22 +1,37 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { Fragment, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import SalesLink from '@/components/workspace/SalesLink';
 import { useModuleBase } from '@/components/workspace/SalesLink';
 import Field from '@/components/forms/Field';
+import CustomFieldInput from '@/components/forms/CustomFieldInput';
 import SourcePicker, { type SourceOption } from '@/components/forms/SourcePicker';
 import { useFormErrors } from '@/components/forms/useFormErrors';
 import { parseTags } from '@/lib/leads/tags';
+import type { LayoutField, LeadFormKey } from '@/lib/leads/formLayout';
+import type { LeadField } from '@/services/leads/customFields';
 
 /**
  * Required markers mirror the API schema (`createBody` in api/v1/leads/route.ts):
- * `fullName` is the only required field, so it is the only one starred. The
- * form stays `noValidate` — the design system draws the error, not the browser
- * bubble — and `useFormErrors` runs the same required check before the round
- * trip, then maps the API's per-field 422 list onto fields after it.
+ * `fullName`, and the workspace's required custom fields (M18-03), are the
+ * starred ones. The form stays `noValidate` — the design system draws the
+ * error, not the browser bubble — and `useFormErrors` runs the same required
+ * check before the round trip, then maps the API's per-field 422 list onto
+ * fields after it. The fields after Full name come in the workspace's order,
+ * its hidden ones left out (`layout`, M18-04).
  */
-export default function LeadForm({ sources }: { sources: SourceOption[] }) {
+export default function LeadForm({
+  sources,
+  layout,
+  customFields,
+}: {
+  sources: SourceOption[];
+  /** The shown fields, in order (lib/leads/formLayout.ts). */
+  layout: LayoutField[];
+  /** The workspace's active custom fields. */
+  customFields: LeadField[];
+}) {
   const router = useRouter();
   const base = useModuleBase();
   const formRef = useRef<HTMLFormElement>(null);
@@ -35,6 +50,8 @@ export default function LeadForm({ sources }: { sources: SourceOption[] }) {
   const [tags, setTags] = useState('');
   const [priority, setPriority] = useState('MEDIUM');
   const [referrer, setReferrer] = useState('');
+  // Custom field values as typed, by key; '' is none.
+  const [custom, setCustom] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const { fieldErrors, formError, setFormError, reset, clear, validateRequired, applyProblem } = useFormErrors();
   // The catalogue's Referral entry (or a sub-source under it) is a REFERRAL lead,
@@ -66,6 +83,7 @@ export default function LeadForm({ sources }: { sources: SourceOption[] }) {
           ...(source.subSourceId || source.sourceId ? { sourceId: source.subSourceId || source.sourceId } : {}),
           ...(campaignName ? { campaignName } : {}),
           tags: parseTags(tags),
+          custom: Object.fromEntries(Object.entries(custom).filter(([, value]) => value.trim())),
         }),
       });
       const data = await res.json();
@@ -81,6 +99,104 @@ export default function LeadForm({ sources }: { sources: SourceOption[] }) {
       setBusy(false);
     }
   }
+
+  /** A plain text field of the form. */
+  const text = (
+    name: string,
+    label: string,
+    value: string,
+    set: (v: string) => void,
+    extra: { type?: string; placeholder?: string } = {},
+  ) => (
+    <Field label={label} htmlFor={name} error={fieldErrors[name]}>
+      <input
+        id={name}
+        name={name}
+        className="lf-input"
+        {...extra}
+        value={value}
+        onChange={(e) => {
+          set(e.target.value);
+          clear(name);
+        }}
+      />
+    </Field>
+  );
+
+  const blocks: Record<LeadFormKey, React.ReactNode> = {
+    email: text('email', 'Email', email, setEmail, { type: 'email' }),
+    phone: (
+      <>
+        {text('phone', 'Phone', phone, setPhone)}
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
+          <input
+            type="checkbox"
+            name="phoneIsWhatsapp"
+            checked={phoneIsWhatsapp}
+            onChange={(e) => setPhoneIsWhatsapp(e.target.checked)}
+          />
+          On WhatsApp
+        </label>
+      </>
+    ),
+    company: text('company', 'Company', company, setCompany),
+    jobTitle: text('jobTitle', 'Job title', jobTitle, setJobTitle),
+    country: text('country', 'Country', country, setCountry),
+    city: text('city', 'City', city, setCity),
+    nationality: text('nationality', 'Nationality', nationality, setNationality),
+    source: (
+      <>
+        <SourcePicker
+          sources={sources}
+          sourceId={source.sourceId}
+          subSourceId={source.subSourceId}
+          onChange={(sourceId, subSourceId) => {
+            setSource({ sourceId, subSourceId });
+            clear('sourceId');
+          }}
+          error={fieldErrors.sourceId}
+        />
+        {referral && (
+          <Field label="Referred by" htmlFor="sourceDetail" required error={fieldErrors.sourceDetail}>
+            <input
+              id="sourceDetail"
+              name="sourceDetail"
+              className="lf-input"
+              value={referrer}
+              placeholder="A client, a partner, a colleague"
+              required
+              onChange={(e) => {
+                setReferrer(e.target.value);
+                clear('sourceDetail');
+              }}
+            />
+          </Field>
+        )}
+      </>
+    ),
+    campaignName: text('campaignName', 'Campaign', campaignName, setCampaignName, {
+      placeholder: 'e.g. Marina launch',
+    }),
+    tags: text('tags', 'Tags', tags, setTags, { placeholder: 'Comma-separated, e.g. vip, investor' }),
+    priority: (
+      <Field label="Priority" htmlFor="priority" error={fieldErrors.priority}>
+        <select
+          id="priority"
+          name="priority"
+          className="lf-input"
+          value={priority}
+          onChange={(e) => setPriority(e.target.value)}
+        >
+          <option value="LOW">Low</option>
+          <option value="MEDIUM">Medium</option>
+          <option value="HIGH">High</option>
+          <option value="URGENT">Urgent</option>
+        </select>
+      </Field>
+    ),
+    // Added on the lead page, once the lead exists.
+    otherNumbers: null,
+  };
 
   return (
     <form ref={formRef} onSubmit={submit} style={{ display: 'grid', gap: 'var(--lf-space-4)' }} noValidate>
@@ -105,178 +221,32 @@ export default function LeadForm({ sources }: { sources: SourceOption[] }) {
         />
       </Field>
 
-      <Field label="Email" htmlFor="email" error={fieldErrors.email}>
-        <input
-          id="email"
-          name="email"
-          className="lf-input"
-          type="email"
-          value={email}
-          onChange={(e) => {
-            setEmail(e.target.value);
-            clear('email');
-          }}
-        />
-      </Field>
+      {layout.map((field) => (
+        <Fragment key={field.key}>{blocks[field.key]}</Fragment>
+      ))}
 
-      <Field label="Phone" htmlFor="phone" error={fieldErrors.phone}>
-        <input
-          id="phone"
-          name="phone"
-          className="lf-input"
-          value={phone}
-          onChange={(e) => {
-            setPhone(e.target.value);
-            clear('phone');
-          }}
-        />
-      </Field>
-      <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
-        <input
-          type="checkbox"
-          name="phoneIsWhatsapp"
-          checked={phoneIsWhatsapp}
-          onChange={(e) => setPhoneIsWhatsapp(e.target.checked)}
-        />
-        On WhatsApp
-      </label>
-
-      <Field label="Company" htmlFor="company" error={fieldErrors.company}>
-        <input
-          id="company"
-          name="company"
-          className="lf-input"
-          value={company}
-          onChange={(e) => {
-            setCompany(e.target.value);
-            clear('company');
-          }}
-        />
-      </Field>
-
-      <Field label="Job title" htmlFor="jobTitle" error={fieldErrors.jobTitle}>
-        <input
-          id="jobTitle"
-          name="jobTitle"
-          className="lf-input"
-          value={jobTitle}
-          onChange={(e) => {
-            setJobTitle(e.target.value);
-            clear('jobTitle');
-          }}
-        />
-      </Field>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--lf-space-3)' }}>
-        <Field label="Country" htmlFor="country" error={fieldErrors.country}>
-          <input
-            id="country"
-            name="country"
-            className="lf-input"
-            value={country}
-            onChange={(e) => {
-              setCountry(e.target.value);
-              clear('country');
-            }}
-          />
-        </Field>
-        <Field label="City" htmlFor="city" error={fieldErrors.city}>
-          <input
-            id="city"
-            name="city"
-            className="lf-input"
-            value={city}
-            onChange={(e) => {
-              setCity(e.target.value);
-              clear('city');
-            }}
-          />
-        </Field>
-      </div>
-
-      <Field label="Nationality" htmlFor="nationality" error={fieldErrors.nationality}>
-        <input
-          id="nationality"
-          name="nationality"
-          className="lf-input"
-          value={nationality}
-          onChange={(e) => {
-            setNationality(e.target.value);
-            clear('nationality');
-          }}
-        />
-      </Field>
-
-      <SourcePicker
-        sources={sources}
-        sourceId={source.sourceId}
-        subSourceId={source.subSourceId}
-        onChange={(sourceId, subSourceId) => {
-          setSource({ sourceId, subSourceId });
-          clear('sourceId');
-        }}
-        error={fieldErrors.sourceId}
-      />
-
-      {referral && (
-        <Field label="Referred by" htmlFor="sourceDetail" required error={fieldErrors.sourceDetail}>
-          <input
-            id="sourceDetail"
-            name="sourceDetail"
-            className="lf-input"
-            value={referrer}
-            placeholder="A client, a partner, a colleague"
-            required
-            onChange={(e) => {
-              setReferrer(e.target.value);
-              clear('sourceDetail');
-            }}
-          />
-        </Field>
-      )}
-
-      <Field label="Campaign" htmlFor="campaignName" error={fieldErrors.campaignName}>
-        <input
-          id="campaignName"
-          name="campaignName"
-          className="lf-input"
-          placeholder="e.g. Marina launch"
-          value={campaignName}
-          onChange={(e) => {
-            setCampaignName(e.target.value);
-            clear('campaignName');
-          }}
-        />
-      </Field>
-
-      <Field label="Tags" htmlFor="tags" error={fieldErrors.tags}>
-        <input
-          id="tags"
-          name="tags"
-          className="lf-input"
-          placeholder="Comma-separated, e.g. vip, investor"
-          value={tags}
-          onChange={(e) => {
-            setTags(e.target.value);
-            clear('tags');
-          }}
-        />
-      </Field>
-
-      <Field label="Priority" htmlFor="priority" error={fieldErrors.priority}>
-        <select
-          id="priority"
-          name="priority"
-          className="lf-input"
-          value={priority}
-          onChange={(e) => setPriority(e.target.value)}
-        >
-          <option value="LOW">Low</option>
-          <option value="MEDIUM">Medium</option>
-          <option value="HIGH">High</option>
-          <option value="URGENT">Urgent</option>
-        </select>
-      </Field>
+      {customFields.map((field) => {
+        const name = `custom.${field.key}`;
+        return (
+          <Field
+            key={field.key}
+            label={field.label}
+            htmlFor={name}
+            required={field.isRequired}
+            error={fieldErrors[name]}
+          >
+            <CustomFieldInput
+              id={name}
+              field={field}
+              value={custom[field.key] ?? ''}
+              onChange={(value) => {
+                setCustom((current) => ({ ...current, [field.key]: value }));
+                clear(name);
+              }}
+            />
+          </Field>
+        );
+      })}
 
       <div style={{ display: 'flex', gap: 'var(--lf-space-3)', marginTop: 'var(--lf-space-2)' }}>
         <button className="lf-btn" type="submit" disabled={busy}>

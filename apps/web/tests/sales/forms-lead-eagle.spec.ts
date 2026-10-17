@@ -409,3 +409,21 @@ describe('a submission from a site', () => {
     }
   });
 });
+
+describe('the QR capture page carries the workspace’s branding (M18-09)', () => {
+  it('shows its logo and its colour, set under Administration → Company', async () => {
+    const capture = await prisma.captureLink.create({ data: { tenantId, key: `brand-${suffix}`, label: 'Brand' } });
+    await prisma.organizationSetting.upsert({
+      where: { tenantId },
+      create: { tenantId, primaryColor: '#7A1F3D' },
+      update: { primaryColor: '#7A1F3D' },
+    });
+    await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { logoUrl: 'https://cdn.example.test/eagle-logo.png' },
+    });
+    const text = await pageText(CapturePage({ params: Promise.resolve({ workspaceSlug: slug, key: capture.key }) }));
+    expect(text).toContain('#7A1F3D');
+    expect(text).toContain('https://cdn.example.test/eagle-logo.png');
+  });
+});

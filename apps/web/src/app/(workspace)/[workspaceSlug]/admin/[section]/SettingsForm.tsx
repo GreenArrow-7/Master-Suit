@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 export interface SettingsField {
   name: string;
   label: string;
-  type?: 'text' | 'email' | 'url' | 'number' | 'checkbox';
+  type?: 'text' | 'email' | 'url' | 'number' | 'checkbox' | 'color';
   value: string | boolean;
   hint?: string;
 }

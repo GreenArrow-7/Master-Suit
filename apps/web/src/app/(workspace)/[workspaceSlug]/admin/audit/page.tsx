@@ -5,7 +5,10 @@ import { can } from '@/lib/security/rbac';
 import EmptyState from '@/components/ui/EmptyState';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import ListHeader from '@/components/workspace/ListHeader';
+import DateInput from '@/components/forms/DateInput';
 import { workspaceTimezone } from '@/services/hr/attendance';
+import { dayBounds } from '@/services/targets/dailyBoard';
+import { isDayKey } from '@/lib/leads/followUpDue';
 
 export const metadata = { title: 'Audit log' };
 
@@ -60,16 +63,28 @@ const DOMAINS: Record<string, { label: string; objectTypes: string[] }> = {
 
 const title = (value: string) => value.replace(/[_.]/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 const truncate = (value: string) => (value.length > 40 ? `${value.slice(0, 40)}…` : value);
+/** Rows per page, merged across both logs (M18-12). */
+const PAGE = 150;
+
+/**
+ * `before` is the last row shown, `<ISO time>|<id>`: the next page is what is
+ * older, or as old with a smaller id, in either log. A malformed one is ignored.
+ */
+function cursorOf(before: string | undefined) {
+  const [iso, id] = (before ?? '').split('|');
+  const at = iso ? new Date(iso) : null;
+  return at && id && !Number.isNaN(at.getTime()) ? { at, id } : null;
+}
 
 export default async function Page({
   params,
   searchParams,
 }: {
   params: Promise<{ workspaceSlug: string }>;
-  searchParams: Promise<{ domain?: string }>;
+  searchParams: Promise<{ domain?: string; from?: string; to?: string; before?: string }>;
 }) {
   const { workspaceSlug } = await params;
-  const { domain } = await searchParams;
+  const { domain, from, to, before } = await searchParams;
   const { ctx } = await resolveWorkspacePage(workspaceSlug, { permission: ['auditlogs', 'VIEW'] });
 
   if (!can(ctx, 'auditlogs', 'VIEW')) {
@@ -84,11 +99,28 @@ export default async function Page({
   /** The platform events that are neither an automated read nor a staff read. */
   const AUTH_EXCLUDES = ['SERVICE_READ', 'SUPPORT_READ'];
 
-  const [records, platformEvents, timeZone] = await Promise.all([
+  // The range is the workspace's days; the page, a keyset on (time, id) in both logs.
+  const timeZone = await workspaceTimezone(ctx);
+  const fromDay = isDayKey(from) ? from : null;
+  const toDay = isDayKey(to) ? to : null;
+  const range = {
+    ...(fromDay ? { gte: dayBounds(fromDay, timeZone).from } : {}),
+    ...(toDay ? { lte: dayBounds(toDay, timeZone).to } : {}),
+  };
+  const cursor = cursorOf(before);
+  const window = {
+    ...(fromDay || toDay ? { occurredAt: range } : {}),
+    ...(cursor && {
+      OR: [{ occurredAt: { lt: cursor.at } }, { occurredAt: cursor.at, id: { lt: cursor.id } }],
+    }),
+  };
+  const newestFirst = [{ occurredAt: 'desc' as const }, { id: 'desc' as const }];
+
+  const [records, platformEvents] = await Promise.all([
     prisma.auditLog.findMany({
-      where: { tenantId: ctx.tenantId, ...(selected ? { objectType: { in: selected.objectTypes } } : {}) },
-      orderBy: { occurredAt: 'desc' },
-      take: 150,
+      where: { tenantId: ctx.tenantId, ...(selected ? { objectType: { in: selected.objectTypes } } : {}), ...window },
+      orderBy: newestFirst,
+      take: PAGE + 1,
       select: {
         id: true,
         event: true,
@@ -115,9 +147,10 @@ export default async function Page({
                 : showStaff
                   ? { event: 'SUPPORT_READ' }
                   : { event: { notIn: AUTH_EXCLUDES } }),
+            ...window,
           },
-          orderBy: { occurredAt: 'desc' },
-          take: 60,
+          orderBy: newestFirst,
+          take: PAGE + 1,
           select: {
             id: true,
             event: true,
@@ -129,7 +162,6 @@ export default async function Page({
           },
         })
       : Promise.resolve([]),
-    workspaceTimezone(ctx),
   ]);
 
   // One name lookup for both tables rather than a join per row.
@@ -212,9 +244,16 @@ export default async function Page({
         ip: row.ipAddress,
       };
     }),
-  ]
-    .sort((a, b) => b.at.getTime() - a.at.getTime())
-    .slice(0, 200);
+  ].sort((a, b) => b.at.getTime() - a.at.getTime() || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+  // Each log gave PAGE + 1, so the newest PAGE of the two together are here.
+  const rows = merged.slice(0, PAGE);
+  const last = merged.length > PAGE ? rows[rows.length - 1] : null;
+  /** This screen's URL with `change` applied; the domain and range carry over unless changed. */
+  const link = (change: Record<string, string | undefined>) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries({ domain, from, to, ...change })) if (value) query.set(key, value);
+    return `?${query}`;
+  };
 
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-5)' }}>
@@ -230,20 +269,43 @@ export default async function Page({
       />
 
       <nav style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }} aria-label="Filter by domain">
-        <Link className="lf-btn lf-btn--ghost" href="?" aria-current={!selected ? 'page' : undefined}>
+        <Link
+          className="lf-btn lf-btn--ghost"
+          href={link({ domain: undefined })}
+          aria-current={!selected ? 'page' : undefined}
+        >
           All
         </Link>
         {Object.entries(DOMAINS).map(([key, value]) => (
           <Link
             key={key}
             className="lf-btn lf-btn--ghost"
-            href={`?domain=${key}`}
+            href={link({ domain: key })}
             aria-current={domain === key ? 'page' : undefined}
           >
             {value.label}
           </Link>
         ))}
       </nav>
+
+      <form
+        method="get"
+        style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}
+        aria-label="Date range"
+      >
+        {domain && <input type="hidden" name="domain" value={domain} />}
+        <label className="lf-field" style={{ flex: '1 1 150px', minWidth: 0 }}>
+          <span className="lf-label">From</span>
+          <DateInput name="from" defaultValue={fromDay} />
+        </label>
+        <label className="lf-field" style={{ flex: '1 1 150px', minWidth: 0 }}>
+          <span className="lf-label">To</span>
+          <DateInput name="to" defaultValue={toDay} />
+        </label>
+        <button className="lf-btn lf-btn--secondary" type="submit">
+          Show
+        </button>
+      </form>
 
       <WorkspaceTable
         headers={[
@@ -255,8 +317,8 @@ export default async function Page({
           { label: 'Detail', priority: 'detail' },
           { label: 'From', priority: 'detail' },
         ]}
-        empty="Nothing recorded in this domain yet."
-        rows={merged.map((row) => [
+        empty={cursor ? 'Nothing older.' : 'Nothing recorded in this domain and range yet.'}
+        rows={rows.map((row) => [
           row.actor,
           <strong key="a">{title(row.action)}</strong>,
           title(row.objectType),
@@ -277,6 +339,21 @@ export default async function Page({
           row.ip ?? '—',
         ])}
       />
+
+      {(cursor || last) && (
+        <nav style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }} aria-label="Pages">
+          {cursor && (
+            <Link className="lf-btn lf-btn--ghost" href={link({})}>
+              Newest
+            </Link>
+          )}
+          {last && (
+            <Link className="lf-btn lf-btn--secondary" href={link({ before: `${last.at.toISOString()}|${last.id}` })}>
+              Older
+            </Link>
+          )}
+        </nav>
+      )}
     </div>
   );
 }

@@ -1,8 +1,13 @@
 # LeadFlow CRM — API Structure
 
 Base path `/api/v1`. OpenAPI 3.1 generated from the Zod schemas at
-`/api/v1/openapi.json`, browsable at `/api-docs`. Every route goes through the same
-kernel (`src/lib/api/handler.ts`); a route that does not is a review blocker.
+`/api/v1/openapi.json` (public): `route()` keeps each route's spec on its handler,
+`src/lib/api/openapi.ts` turns them into the document, and
+`tests/unit/openapi.spec.ts` keeps `public/openapi.json` equal to the routes (run
+it with `OPENAPI_WRITE=1` after changing a schema). There
+is no browsable `/api-docs` page; any OpenAPI viewer reads the document. Every
+route goes through the same kernel (`src/lib/api/handler.ts`); a route that does
+not is a review blocker, and shows in the document under the tag `other`.
 
 ## 1. Request pipeline
 

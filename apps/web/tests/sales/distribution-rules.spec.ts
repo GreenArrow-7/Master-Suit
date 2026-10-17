@@ -66,8 +66,16 @@ it('the rules API lists for viewers and creates only for allocation:APPROVE', as
   );
   expect(created.status).toBe(200);
   const id = created.body.id as string;
-  const off = await patch(editRule, `/api/v1/distribution-rules/${id}`, { isActive: false }, cookie, { id });
-  expect([off.status, off.body.isActive]).toEqual([200, false]);
+  // Working hours and holidays are respected unless the rule says otherwise (M18-08).
+  expect(created.body.respectWorkingHours).toBe(true);
+  const off = await patch(
+    editRule,
+    `/api/v1/distribution-rules/${id}`,
+    { isActive: false, respectWorkingHours: false },
+    cookie,
+    { id },
+  );
+  expect([off.status, off.body.isActive, off.body.respectWorkingHours]).toEqual([200, false, false]);
   expect((await del(deleteRule, `/api/v1/distribution-rules/${id}`, cookie, { id })).status).toBe(200);
 
   const viewerRole = await prisma.role.create({

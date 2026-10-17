@@ -21,6 +21,11 @@ const paramsSchema = z.object({
   section: z.enum(['company', 'security']),
 });
 
+const hex = z
+  .string()
+  .regex(/^#[0-9a-f]{6}$/i, 'A colour is # and six hex digits, e.g. #2447C7.')
+  .transform((value) => value.toUpperCase());
+
 const companyBody = z.object({
   displayName: z.string().min(2).max(120).optional(),
   legalName: z.string().min(2).max(180).optional(),
@@ -31,6 +36,9 @@ const companyBody = z.object({
   companyPhone: z.string().max(40).nullable().optional().or(z.literal('')),
   companyAddress: z.string().max(500).nullable().optional().or(z.literal('')),
   logoUrl: z.string().url().nullable().optional().or(z.literal('')),
+  /** The colours the workspace's public pages draw with (M18-09): `#RRGGBB`. */
+  primaryColor: hex.optional(),
+  accentColor: hex.optional(),
 });
 
 const securityBody = z.object({
@@ -81,7 +89,18 @@ export const PATCH = route(
 
     if (params.section === 'company') {
       const input = companyBody.parse(body);
-      return prisma.tenant.update({
+      // The brand colours live on the settings row, which the public pages read (agencyOf).
+      const colours = {
+        ...(input.primaryColor && { primaryColor: input.primaryColor }),
+        ...(input.accentColor && { accentColor: input.accentColor }),
+      };
+      const brand = await prisma.organizationSetting.upsert({
+        where: { tenantId: ctx.tenantId },
+        create: { tenantId: ctx.tenantId, ...colours },
+        update: colours,
+        select: { primaryColor: true, accentColor: true },
+      });
+      const company = await prisma.tenant.update({
         where: { id: ctx.tenantId },
         data: {
           displayName: input.displayName,
@@ -107,6 +126,7 @@ export const PATCH = route(
           logoUrl: true,
         },
       });
+      return { ...company, ...brand };
     }
 
     const input = securityBody.parse(body);

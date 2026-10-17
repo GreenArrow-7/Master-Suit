@@ -16,6 +16,8 @@ export const ruleBody = z
     position: z.number().int().min(0).max(1000).optional(),
     reassignAfterMins: z.number().int().min(5).max(10_080).nullable().optional(),
     escalateAfterMins: z.number().int().min(5).max(10_080).nullable().optional(),
+    /** Pass over agents off shift, checked out, or on a holiday (M18-08); on unless switched off. */
+    respectWorkingHours: z.boolean().optional(),
     /** Route only leads that match (audit M7-03); empty lists match everything. */
     conditions: z
       .object({
@@ -36,6 +38,7 @@ export const RULE_FIELDS = {
   candidatePool: true,
   reassignAfterMins: true,
   escalateAfterMins: true,
+  respectWorkingHours: true,
   conditions: true,
   updatedAt: true,
 } as const;

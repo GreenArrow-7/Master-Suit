@@ -1043,7 +1043,14 @@ function definitions(slug: string): SectionDef[] {
             { label: 'Leave Requests', href: p('/leave'), module: H, audience: 'oversight' },
             { label: 'Shifts', href: p('/shifts'), permission: 'employee', module: H, audience: 'oversight' },
             { label: 'Rosters', href: p('/roster'), permission: 'employee', module: H, audience: 'oversight' },
-            { label: 'Holidays', href: p('/holidays'), permission: 'employee', module: H, audience: 'oversight' },
+            {
+              label: 'Holidays',
+              href: p('/holidays'),
+              permission: 'employee',
+              module: H,
+              audience: 'oversight',
+              aliases: [a('/holidays')],
+            },
             {
               label: 'Exceptions',
               href: p('/requests'),
@@ -1234,7 +1241,7 @@ function definitions(slug: string): SectionDef[] {
               href: a('/custom-fields'),
               permission: 'settings',
               module: [S, R, LE],
-              keywords: 'lead custom field text number date select column',
+              keywords: 'lead custom field text number date select column form layout order hide',
             },
             {
               label: 'Email Templates',
@@ -1274,6 +1281,14 @@ function definitions(slug: string): SectionDef[] {
               permission: 'employee:EDIT',
               unlessModule: H,
               keywords: 'check-in attendance geofence face enrolment check-out',
+            },
+            {
+              // Automatic assignment skips a holiday; People keeps its own entry.
+              label: 'Holidays',
+              href: a('/holidays'),
+              permission: 'employee:EDIT',
+              unlessModule: H,
+              keywords: 'public holiday assignment working hours off day',
             },
             {
               label: 'Integrations',

@@ -130,20 +130,35 @@ export async function withCustomValues(
 /**
  * A new lead's `custom` (POST /api/v1/leads) checked against the workspace's
  * fields: a key a field defines is checked by its type and kept typed, ''
- * dropped (required is not asked on create, so an integration that leaves a
- * field out still lands its lead); a key no field defines is kept as given, as
- * the create API always has. Returns `customData` and the typed value rows.
+ * dropped; a key no field defines is kept as given, as the create API always
+ * has. Returns `customData` and the typed value rows.
+ *
+ * `required` (a person creating it, M18-03) also refuses each active required
+ * field left out or empty. Without it, as for an API key, the import and the
+ * intake, a lead that leaves a field out still lands.
  */
-export async function customForCreate(db: Db, tenantId: string, input: Record<string, unknown>) {
+export async function customForCreate(
+  db: Db,
+  tenantId: string,
+  input: Record<string, unknown>,
+  { required = false } = {},
+) {
   const data = { ...input };
   const rows: ({ definitionId: string } & ReturnType<typeof columnFor>)[] = [];
   const keys = Object.keys(input);
-  if (!keys.length) return { data, rows };
+  if (!keys.length && !required) return { data, rows };
   const defs = await db.leadCustomFieldDefinition.findMany({
-    where: { tenantId, objectType: 'LEAD', key: { in: keys } },
+    where: {
+      tenantId,
+      objectType: 'LEAD',
+      OR: [{ key: { in: keys } }, ...(required ? [{ isRequired: true, isHidden: false }] : [])],
+    },
   });
   for (const def of defs) {
-    const value = fieldValue({ ...fieldForScreen(def), isRequired: false }, input[def.key]);
+    const value = fieldValue(
+      { ...fieldForScreen(def), isRequired: required && def.isRequired && !def.isHidden },
+      input[def.key],
+    );
     if (value === null) delete data[def.key];
     else {
       data[def.key] = value;

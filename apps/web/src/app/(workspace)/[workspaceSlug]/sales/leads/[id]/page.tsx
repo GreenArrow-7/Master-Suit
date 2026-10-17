@@ -14,6 +14,7 @@ import { findDuplicates } from '@/services/leads/findDuplicates';
 import { leadSourceText, listLeadSources } from '@/services/leads/leadSources';
 import { openRequirement, requirementForPage } from '@/services/leads/requirement';
 import { fieldForScreen, leadFields } from '@/services/leads/customFields';
+import { leadFormLayout } from '@/lib/leads/formLayout';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { leadTimeline, onClock } from '@/services/leads/timeline';
 import { matchesForRequirement } from '@/services/inventory/demand';
@@ -96,7 +97,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
   const [
     lead,
-    [stages, activityTypes, taskTypes, sources, fields, projectOptions, listingOptions],
+    [stages, activityTypes, taskTypes, sources, fields, projectOptions, listingOptions, setting],
     tenantUsers,
     rules,
     requirement,
@@ -151,6 +152,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
               select: { id: true, reference: true, title: true },
             })
           : null,
+        // The lead form's hidden fields leave Details too (M18-04).
+        tx.organizationSetting.findUnique({ where: { tenantId: ctx.tenantId }, select: { leadFormLayout: true } }),
       ]),
     ),
     // The owner menu offers whom updateLead accepts.
@@ -428,6 +431,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         // The offered entries, plus the lead's own (and its source) should it have been withdrawn since.
         sources={sources.filter((s) => s.isActive || s.id === lead.sourceId || s.id === lead.leadSource?.parentId)}
         customFields={fields.map(fieldForScreen)}
+        hiddenFields={leadFormLayout(setting?.leadFormLayout)
+          .filter((field) => field.hidden)
+          .map((field) => field.key)}
         projectOptions={projectOptions}
         listingOptions={listingOptions}
         matchesHref={opensRequirement ? `/requirements/${requirement!.id}` : null}
