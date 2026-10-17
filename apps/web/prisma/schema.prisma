@@ -6303,6 +6303,8 @@ model FollowUpTask {
   @@index([tenantId, callId])
   // The derivation reads open obligations per lead; this is the index it uses.
   @@index([tenantId, leadId, status, dueAt])
+  // The Follow-ups list across owners, in due order (NFR-10).
+  @@index([tenantId, dueAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

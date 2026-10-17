@@ -5,6 +5,7 @@ import { can, type Action } from '@/lib/security/rbac';
 import { inIosApp } from '@/lib/mobile/iosApp';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import SettingsForm, { type SettingsField } from './SettingsForm';
+import { WORKSPACE_LOCALES } from '@/lib/locale';
 
 /**
  * One route serving four administration screens.
@@ -41,6 +42,10 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
 
   switch (section) {
     case 'company': {
+      const setting = await prisma.organizationSetting.findUnique({
+        where: { tenantId: ctx.tenantId },
+        select: { defaultLocale: true },
+      });
       const fields: SettingsField[] = [
         { name: 'displayName', label: 'Display name', value: workspace.displayName },
         { name: 'legalName', label: 'Legal name', value: workspace.legalName },
@@ -56,6 +61,14 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           type: 'url',
           value: workspace.logoUrl ?? '',
           hint: 'A link to your logo. Shown in the workspace shell.',
+        },
+        {
+          name: 'locale',
+          label: 'Language',
+          type: 'select',
+          value: setting?.defaultLocale ?? 'en-AE',
+          options: WORKSPACE_LOCALES,
+          hint: 'Arabic lays the workspace out right to left for everyone in it.',
         },
       ];
       return (

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Field from '@/components/forms/Field';
 import { DateTimeInput } from '@/components/forms/DateInput';
 import { FOLLOW_UP_KINDS, FOLLOW_UP_KIND_LABELS } from '@/lib/leads/callLog';
+import { sendOrQueue } from '@/lib/offline';
 
 /** Create a follow-up from the Follow-ups page, against POST /api/v1/follow-ups. */
 const EMPTY = { title: '', dueAt: '', kind: 'CALL', priority: 'MEDIUM', description: '' };
@@ -29,27 +30,28 @@ export default function FollowUpComposer() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/follow-ups', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+      // Kept on the device without a connection, and sent with its own key so a
+      // late or repeated send makes one follow-up (lib/offline.ts).
+      const res = await sendOrQueue(
+        '/api/v1/follow-ups',
+        'POST',
+        {
           title: form.title,
           dueAt: new Date(form.dueAt).toISOString(),
           kind: form.kind,
           priority: form.priority,
           ...(form.description ? { description: form.description } : {}),
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
+        },
+        `New follow-up: ${form.title}`,
+      );
+      if (res !== 'queued' && !res.ok) {
+        const data = await res.json().catch(() => ({}));
         setError(data.detail ?? 'Could not create this follow-up.');
         return;
       }
       setForm(EMPTY);
       setOpen(false);
-      router.refresh();
-    } catch {
-      setError('Could not reach the server. Try again.');
+      if (res !== 'queued') router.refresh();
     } finally {
       setBusy(false);
     }

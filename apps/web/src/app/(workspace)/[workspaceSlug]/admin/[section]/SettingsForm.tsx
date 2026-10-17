@@ -6,9 +6,11 @@ import { useRouter } from 'next/navigation';
 export interface SettingsField {
   name: string;
   label: string;
-  type?: 'text' | 'email' | 'url' | 'number' | 'checkbox';
+  type?: 'text' | 'email' | 'url' | 'number' | 'checkbox' | 'select';
   value: string | boolean;
   hint?: string;
+  /** For `select`. */
+  options?: readonly { value: string; label: string }[];
 }
 
 /**
@@ -113,6 +115,21 @@ export default function SettingsForm({
                 <span className="lf-label" style={{ margin: 0 }}>
                   {field.label}
                 </span>
+              </>
+            ) : field.type === 'select' ? (
+              <>
+                <span className="lf-label">{field.label}</span>
+                <select
+                  className="lf-input"
+                  value={String(values[field.name] ?? '')}
+                  onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))}
+                >
+                  {field.options?.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </>
             ) : (
               <>

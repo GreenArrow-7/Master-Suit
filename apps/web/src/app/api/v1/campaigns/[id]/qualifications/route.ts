@@ -13,7 +13,14 @@ const createBody = z
   .strict();
 
 export const POST = route(
-  { module: 'campaigns', productModule: 'SALES', action: 'EDIT', params, body: createBody },
+  {
+    module: 'campaigns',
+    productModule: 'SALES',
+    action: 'EDIT',
+    params,
+    body: createBody,
+    auditEvent: 'RECORD_CREATED',
+  },
   async ({ ctx, params, body }) => {
     const count = await prisma.campaignQualification.count({
       where: { tenantId: ctx.tenantId, campaignId: params.id },

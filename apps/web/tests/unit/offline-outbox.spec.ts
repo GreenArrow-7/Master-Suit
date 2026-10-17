@@ -53,6 +53,19 @@ describe('offline outbox', () => {
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(['/a', '/b']);
   });
 
+  it('sends one Idempotency-Key per change, the same on every attempt, so a late or repeated send is replayed', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValue(reply(200));
+    expect(await sendOrQueue('/api/v1/follow-ups', 'POST', { title: 'Call back' }, 'New follow-up')).toBe('queued');
+    await sendOrQueue('/api/v1/follow-ups/1', 'PATCH', { status: 'COMPLETED' }, 'Follow-up done');
+    await flush();
+    const keys = fetchMock.mock.calls.map(([, init]) => new Headers(init.headers).get('idempotency-key'));
+    expect(keys).toHaveLength(3);
+    expect(keys.every(Boolean)).toBe(true);
+    // The first change, failed then flushed, kept its key; the second has its own.
+    expect(keys[2]).toBe(keys[0]);
+    expect(keys[1]).not.toBe(keys[0]);
+  });
+
   it('drops and reports a refusal, which retrying would not change', async () => {
     net.onLine = false;
     await sendOrQueue('/a', 'POST', {}, 'Call logged');

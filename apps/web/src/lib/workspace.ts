@@ -8,6 +8,8 @@ export async function requireWorkspace(ctx: Ctx, workspaceSlug: string) {
     include: {
       subscription: { include: { plan: true } },
       moduleEntitlements: true,
+      // The language, for the shell's direction (NFR-09): same query, no extra round trip.
+      settings: { select: { defaultLocale: true } },
       _count: { select: { memberships: true, employeeProfiles: true, users: true } },
     },
   });

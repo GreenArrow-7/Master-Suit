@@ -19,7 +19,7 @@ import RequirementCard from './RequirementCard';
 import InterestsCard from './InterestsCard';
 import MessageCard, { type LeadMessaging } from './MessageCard';
 import ShareCard, { type LeadShareRow } from './ShareCard';
-import CallLogDialog, { useAfterDial } from '../CallLogDialog';
+import CallLogDialog, { useAfterDial, type CallLogLead } from '../CallLogDialog';
 import StageReason, { asksBeforeMove, type StageMove } from '@/components/workspace/StageReason';
 import { sendOrQueue } from '@/lib/offline';
 
@@ -258,8 +258,12 @@ export default function LeadDetail({
   const [showMore, setShowMore] = useState(false);
 
   // -- The call log (PROP-02.2): from its button, or on return from dialling --
-  const [logging, setLogging] = useState(false);
-  const openLog = useCallback(() => setLogging(true), []);
+  const [logging, setLogging] = useState<CallLogLead | null>(null);
+  const openLog = useCallback(
+    // Back from dialling it carries the time away (M20-06).
+    (from?: CallLogLead) => setLogging({ id: lead.id, fullName: lead.fullName, dial: from?.dial }),
+    [lead.id, lead.fullName],
+  );
   const dialled = useAfterDial(openLog);
 
   function withBusy(fn: () => Promise<void>) {
@@ -492,7 +496,7 @@ export default function LeadDetail({
                 Phone
               </button>
               {canLog && (
-                <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={openLog}>
+                <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => openLog()}>
                   Log call
                 </button>
               )}
@@ -757,9 +761,9 @@ export default function LeadDetail({
       </div>
       {logging && (
         <CallLogDialog
-          lead={lead}
+          lead={logging}
           timeZone={timeZone}
-          onClose={() => setLogging(false)}
+          onClose={() => setLogging(null)}
           onLogged={() => router.refresh()}
         />
       )}

@@ -20,12 +20,12 @@
      adds the inset; an earlier revision replaced the gutter with the inset,
      which is 0 in a browser, so content sat on the screen edge. */
   .lf-app-frame {
-    padding-left: env(safe-area-inset-left, 0px);
-    padding-right: env(safe-area-inset-right, 0px);
+    padding-inline-start: env(safe-area-inset-left, 0px);
+    padding-inline-end: env(safe-area-inset-right, 0px);
   }
   .lf-page-main {
-    padding-left: calc(var(--lf-page-gutter) + env(safe-area-inset-left, 0px));
-    padding-right: calc(var(--lf-page-gutter) + env(safe-area-inset-right, 0px));
+    padding-inline-start: calc(var(--lf-page-gutter) + env(safe-area-inset-left, 0px));
+    padding-inline-end: calc(var(--lf-page-gutter) + env(safe-area-inset-right, 0px));
   }
 }
 
@@ -47,14 +47,14 @@
   html:not([data-theme='dark']):not([data-theme='glass'])
     .lf-app-frame[data-lf-surface='workspace']
     .lf-area-tabs::before {
-    margin-left: 0;
-    margin-right: -18px;
+    margin-inline-start: 0;
+    margin-inline-end: -18px;
   }
   html:not([data-theme='dark']):not([data-theme='glass'])
     .lf-app-frame[data-lf-surface='workspace']
     .lf-area-tabs::after {
-    margin-right: 0;
-    margin-left: -18px;
+    margin-inline-end: 0;
+    margin-inline-start: -18px;
   }
   .lf-area-tabs {
     scroll-padding-inline: 24px;
@@ -90,7 +90,7 @@
   background: var(--lf-surface);
   color: var(--lf-ink);
   box-shadow: var(--lf-shadow-2);
-  text-align: left;
+  text-align: start;
 }
 .lf-colmenu__scrim {
   display: none;
@@ -129,13 +129,13 @@
   flex: none;
 }
 .lf-colmenu__note {
-  margin-left: auto;
+  margin-inline-start: auto;
   font-size: var(--lf-text-2xs);
 }
 .lf-colmenu__move {
   display: flex;
   gap: 2px;
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 .lf-colmenu__move .lf-btn--icon {
   width: 40px;

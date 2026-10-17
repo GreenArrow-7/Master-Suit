@@ -87,6 +87,7 @@ export const PATCH = route(
     action: 'EDIT',
     params: z.object({ id: z.string() }),
     body,
+    auditEvent: 'RECORD_UPDATED',
   },
   async ({ ctx, params, body }) => {
     await withTx(ctx.tenantId, async (tx) => {

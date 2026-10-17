@@ -191,10 +191,25 @@ Node 22 or newer (CI uses 24).
   through the route's `auditEvent`, or `audit(ctx, …)`
   (`src/lib/security/audit.ts`) where the route cannot say enough. A write no
   person makes (a webhook, a worker) calls `audit({ tenantId, source }, …)` and
-  shows as System. A date or a list in a value is stored as one. Not all
-  existing writes do yet; the known gaps are listed in
-  `changes/2026-10-11-report-export-audit.md`. A file out of the building needs
-  EXPORT, not VIEW, and writes `EXPORT_REQUESTED`.
+  shows as System. A date or a list in a value is stored as one.
+  `tests/unit/mutation-audit.spec.ts` gates it: every POST, PATCH, PUT and
+  DELETE handler declares `auditEvent`, audits in its handler, or is listed
+  there with the file that audits it or why nothing is recorded (a draft, the
+  caller's own preferences); a new mutation route fails until it says which. A
+  file out of the building needs EXPORT, not VIEW, and writes `EXPORT_REQUESTED`.
+- **Offline.** The phone app is a web view of the site, so its outbox is the
+  site's (`src/lib/offline.ts`, the notice in `OfflineBanner`): a change made
+  with no connection waits on the device and is sent when it returns, each with
+  its own `Idempotency-Key`, so a repeated send is replayed, not doubled. The
+  lead page, the call log (list and lead page), the Follow-ups list (complete,
+  reschedule, cancel, reopen, a new follow-up) and Cold Data's call outcome go
+  through it; a write whose answer the screen needs (opening what it created)
+  still needs the connection.
+- **Direction.** A workspace's language (`OrganizationSetting.defaultLocale`,
+  Company profile) sets the shell's `dir`: Arabic lays it out right to left,
+  the words still English. Stylesheets use logical properties
+  (`margin-inline-start`, `inset-inline-end`, `text-align: start`), physical
+  ones only where the side is the point (centring, a compass); new CSS follows.
 - **Attendance is not HR.** Check-in, the attendance record and attendance
   requests work in every workspace; everything else in HR needs HRMS.
 - **Lead scores** move by event, each a LeadScoreHistory row and an audit row

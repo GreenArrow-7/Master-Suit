@@ -15,7 +15,9 @@ import {
  * Lead-Eagle-only workspace: from the lead list, a logged call with a due
  * follow-up takes at most three clicks — Log call on the row, the outcome,
  * Log call in the dialog — at desktop width and on a 390 px phone card. Back
- * from a `tel:` call, the dialog opens for that lead by itself. Pressing Log call
+ * from a `tel:` call, the dialog opens for that lead by itself, the minutes
+ * estimated from the time away and, back within 8 seconds, No answer picked
+ * (M20-06). Pressing Log call
  * again after an error logs the call once. The lead page opens the dialog from
  * its own button and back from dialling another of its numbers, pages its
  * timeline, and shows the follow-up and the follow-up once done (M4-47).
@@ -133,6 +135,9 @@ test.describe('Logging a call from the lead list', () => {
       });
       const dialog = page.getByRole('dialog', { name: `Log call · ${BACK}` });
       await expect(dialog).toBeVisible();
+      // Back within 8 seconds: nobody answered (M20-06), and the agent can say otherwise.
+      await expect(dialog.getByLabel('No answer', { exact: true })).toBeChecked();
+      await expect(dialog.getByLabel('Minutes on the call')).toHaveValue('0');
       await dialog.getByLabel('Connected', { exact: true }).click();
       await dialog.getByRole('button', { name: 'Log call', exact: true }).click();
       await expect(dialog).toBeHidden();
@@ -205,9 +210,17 @@ test.describe('Logging a call from the lead list', () => {
           document.dispatchEvent(new Event('visibilitychange'));
         };
         set('hidden');
+        // Two minutes and five seconds in the phone app.
+        const real = Date.now;
+        Date.now = () => real() + 125_000;
         set('visible');
+        Date.now = real;
       });
       await expect(dialog).toBeVisible();
+      // The minutes come from the time away, to be corrected; the outcome is the agent's (M20-06).
+      await expect(dialog.getByLabel('Minutes on the call')).toHaveValue('2');
+      await expect(dialog.getByText('Estimated from your time in the phone app')).toBeVisible();
+      await expect(dialog.getByRole('radio', { checked: true })).toHaveCount(0);
       await dialog.getByRole('button', { name: 'Cancel' }).click();
       await expect(dialog).toBeHidden();
 

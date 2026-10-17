@@ -8,6 +8,12 @@
  *   PERF_100K=yes npx vitest run --config vitest.perf.mts -t sql       the list's own SELECTs in Postgres (app role, RLS on)
  *   PERF_100K=yes npx vitest run --config vitest.perf.mts -t cleanup   deletes every perf100k-* tenant and its identities
  *
+ *   PERF_100K=yes npx vitest run --config vitest.perf.mts -t more      the Follow-ups API and the Source to Booking report
+ *
+ * PERF_LEADS sets the size (default 100,000; NFR-10 ran it at 1,000,000). The
+ * seed writes the leads, and a follow-up on every fifth, in SQL as the app role
+ * (row-level security on), one statement each.
+ *
  * Each timing is 5 warm-up runs, then 50 timed: p50 and p95, as an
  * ORGANIZATION administrator and as an OWN agent. The tenant's ids are kept in
  * the OS temp folder between cases. Nothing printed names a database URL.
@@ -32,13 +38,15 @@ vi.mock('next/headers', () => ({
 
 import { prisma } from '@/lib/db';
 import { GET as listLeads } from '@/app/api/v1/leads/route';
+import { GET as listFollowUps } from '@/app/api/v1/follow-ups/route';
 import LeadsPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/page';
+import ReportsPage from '@/app/(workspace)/[workspaceSlug]/sales/reports/page';
 import { createWorkspaceUser, grantPermissions, type Grants } from '../helpers/fixtures';
 import { get } from '../helpers/request';
 import { createSessionToken } from '../helpers/session';
 
 const STATE = path.join(tmpdir(), 'lead-list-100k.json');
-const TOTAL = 100_000;
+const TOTAL = Number(process.env.PERF_LEADS ?? 100_000);
 const AGENTS = 5;
 type State = { tenantId: string; adminId: string; agentId: string; seedSeconds: number };
 /** Results go to stdout (the vitest log). */
@@ -58,7 +66,7 @@ async function time(fn: () => Promise<unknown>) {
   return { p50: +runs[24]!.toFixed(1), p95: +runs[47]!.toFixed(1), max: +runs[49]!.toFixed(1) };
 }
 
-describe.runIf(process.env.PERF_100K === 'yes')('M4-20: the lead list at 100,000 leads', () => {
+describe.runIf(process.env.PERF_100K === 'yes')('M4-20, NFR-10, NFR-11: the lead lists at scale', () => {
   it('seed', { timeout: 1_800_000 }, async () => {
     const suffix = Date.now().toString(36);
     const { id: tenantId } = await prisma.tenant.create({
@@ -81,6 +89,7 @@ describe.runIf(process.env.PERF_100K === 'yes')('M4-20: the lead list at 100,000
       ['leads', 'VIEW_SENSITIVE_FIELDS'],
       ['tasks', 'VIEW'],
       ['tasks', 'CREATE'],
+      ['reports', 'VIEW'],
     ];
     const role = async (key: string, scope: 'OWN' | 'ORGANIZATION') => {
       const row = await prisma.role.create({
@@ -103,41 +112,54 @@ describe.runIf(process.env.PERF_100K === 'yes')('M4-20: the lead list at 100,000
       );
     }
 
-    const now = Date.now();
-    const year = 365 * 86_400_000;
-    // Deterministic spread: a lead's age and last touch from its index.
-    const rand = (n: number) => (((Math.sin(n * 12.9898) * 43758.5453) % 1) + 1) % 1;
     const started = performance.now();
-    for (let from = 0; from < TOTAL; from += 1_000) {
-      const data = [];
-      for (let i = from; i < Math.min(TOTAL, from + 1_000); i++) {
-        const createdAt = new Date(now - rand(i) * year);
-        const updatedAt = new Date(createdAt.getTime() + rand(i + 1) * (now - createdAt.getTime()));
-        const digits = String(1_000_000 + i).slice(-7);
-        data.push({
-          tenantId,
-          reference: `PF-${String(i).padStart(6, '0')}`,
-          fullName: `Perf Lead ${i}`,
-          phone: `+97150${digits}`,
-          phoneNormalized: `+97150${digits}`,
-          email: `lead${i}@perf.test`,
-          stageId: stages[i % stages.length]!,
-          ownerId: agents[i % AGENTS]!.id,
-          score: Math.floor(rand(i + 2) * 100),
-          tags: i % 7 === 0 ? ['vip'] : [],
-          // About 3% closed out and 1% deleted, as a working book has.
-          status: i % 33 === 0 ? 'ARCHIVED' : null,
-          deletedAt: i % 100 === 1 ? updatedAt : null,
-          createdAt,
-          updatedAt,
-        });
-      }
-      await prisma.lead.createMany({ data });
+    // One statement each, as the app role with the tenant set (row-level security
+    // on). Deterministic spread: a lead's age over a year and its last touch from
+    // its index; about 3% closed out and 1% deleted, as a working book has; the
+    // sources in turn; a follow-up on every fifth lead, a third of them done.
+    const sql = new Client({ connectionString: process.env.DATABASE_URL });
+    await sql.connect();
+    try {
+      await sql.query('BEGIN');
+      await sql.query(`select set_config('app.tenant_id', $1, true)`, [tenantId]);
+      await sql.query(
+        `insert into "Lead" (id, "tenantId", reference, "fullName", phone, "phoneNormalized", email, "stageId",
+           "ownerId", score, tags, status, "deletedAt", source, "createdAt", "updatedAt")
+         select 'c' || substr(md5($1 || i), 1, 24), $1, 'PF-' || lpad(i::text, 7, '0'), 'Perf Lead ' || i,
+           '+9715' || lpad(i::text, 8, '0'), '+9715' || lpad(i::text, 8, '0'), 'lead' || i || '@perf.test',
+           ($2::text[])[1 + i % 6], ($3::text[])[1 + i % ${AGENTS}], (i * 37) % 100,
+           case when i % 7 = 0 then array['vip'] else array[]::text[] end,
+           case when i % 33 = 0 then 'ARCHIVED' end,
+           case when i % 100 = 1 then t.updated end,
+           (enum_range(null::"RecordSource"))[1 + i % 14], t.created, t.updated
+         from generate_series(0, $4::int - 1) i,
+           lateral (select now() - ((i::bigint * 7919) % 525600) * interval '1 minute' as created) c,
+           lateral (select c.created as created,
+             c.created + ((i::bigint * 104729) % 1000) / 1000.0 * (now() - c.created) as updated) t`,
+        [tenantId, stages, agents.map((a) => a.id), TOTAL],
+      );
+      await sql.query(
+        `insert into "FollowUpTask" (id, "tenantId", "leadId", "ownerId", title, "dueAt", status, "completedAt",
+           "createdAt", "updatedAt")
+         select 'c' || substr(md5('f' || id), 1, 24), "tenantId", id, "ownerId", 'Call back',
+           now() + (((hashtext(id) % 60) + 60) % 60 - 30) * interval '1 day',
+           case when hashtext(id) % 3 = 0 then 'COMPLETED'::"TaskStatus" else 'OPEN'::"TaskStatus" end,
+           case when hashtext(id) % 3 = 0 then now() end, "createdAt", "updatedAt"
+         from "Lead" where "tenantId" = $1 and "deletedAt" is null and abs(hashtext(id || 'f')) % 5 = 0`,
+        [tenantId],
+      );
+      await sql.query('COMMIT');
+    } finally {
+      await sql.end();
     }
+    const vacuum = new Client({ connectionString: process.env.MIGRATION_DATABASE_URL });
+    await vacuum.connect();
+    await vacuum.query('ANALYZE "Lead"; ANALYZE "FollowUpTask"');
+    await vacuum.end();
     const seedSeconds = Math.round((performance.now() - started) / 1000);
     writeFileSync(STATE, JSON.stringify({ tenantId, adminId: admin.id, agentId: agents[0]!.id, seedSeconds }));
     print(JSON.stringify({ seeded: TOTAL, seedSeconds }));
-    expect(await prisma.lead.count({ where: { tenantId } })).toBeGreaterThan(98_000);
+    expect(await prisma.lead.count({ where: { tenantId } })).toBeGreaterThan(TOTAL * 0.98);
   });
 
   it('timing', { timeout: 1_800_000 }, async () => {
@@ -170,6 +192,36 @@ describe.runIf(process.env.PERF_100K === 'yes')('M4-20: the lead list at 100,000
         'grid page 1': await time(() => grid({})),
         'grid page 200 (keyset, after=)': await time(() => grid({ page: '200', after })),
         'grid page 200 (old ?page=200 link, offset)': await time(() => grid({ page: '200' })),
+      };
+    }
+    print(JSON.stringify(results, null, 2));
+  });
+
+  it('more', { timeout: 1_800_000 }, async () => {
+    const { tenantId, adminId, agentId } = state();
+    const results: Record<string, unknown> = { at: new Date().toISOString(), leads: TOTAL };
+    // The Reports screen's own permission, for a tenant seeded before the seed granted it.
+    for (const role of await prisma.role.findMany({ where: { tenantId }, select: { id: true, defaultScope: true } })) {
+      await grantPermissions(tenantId, role.id, [['reports', 'VIEW']], role.defaultScope).catch(() => {});
+    }
+    for (const [who, userId] of [
+      ['ORGANIZATION admin', adminId],
+      ['OWN agent', agentId],
+    ] as const) {
+      const cookie = await createSessionToken(tenantId, userId);
+      const followUps = async (query: string) => {
+        const res = await get(listFollowUps, `/api/v1/follow-ups${query}`, cookie);
+        if (res.status !== 200) throw new Error(`GET /follow-ups ${res.status}`);
+      };
+      const report = async () => {
+        cookieJar.value = cookie;
+        // The page's own default period: the first of the month two months back to now.
+        await ReportsPage({ searchParams: Promise.resolve({ report: 'source-to-booking' }) });
+      };
+      results[who] = {
+        'GET /api/v1/follow-ups (open)': await time(() => followUps('')),
+        'GET /api/v1/follow-ups?due=overdue': await time(() => followUps('?due=overdue')),
+        'Source to Booking report (default period)': await time(report),
       };
     }
     print(JSON.stringify(results, null, 2));
@@ -225,6 +277,9 @@ describe.runIf(process.env.PERF_100K === 'yes')('M4-20: the lead list at 100,000
     try {
       const tenants = (await client.query(`select id from "Tenant" where slug like 'perf100k-%'`)).rows;
       for (const { id } of tenants) {
+        // The follow-ups first: their cascade from Lead finds them by leadId,
+        // which no index leads with, so each lead deleted scanned the table.
+        await client.query(`delete from "FollowUpTask" where "tenantId" = $1`, [id]);
         const batch = `delete from "Lead" where id in (select id from "Lead" where "tenantId" = $1 limit 10000)`;
         while ((await client.query(batch, [id])).rowCount) {
           /* next batch */
@@ -232,7 +287,8 @@ describe.runIf(process.env.PERF_100K === 'yes')('M4-20: the lead list at 100,000
         await client.query(`delete from "Tenant" where id = $1`, [id]);
       }
       await client.query(`delete from "PlatformUser" where email like '%@perf100k-%.test'`);
-      await client.query('VACUUM ANALYZE "Lead"');
+      // No parallel workers: Docker's 64 MB /dev/shm cannot hold them after a 1M-row delete.
+      await client.query('VACUUM (ANALYZE, PARALLEL 0) "Lead"');
       const { rows } = await client.query(`select pg_size_pretty(pg_database_size(current_database())) as size`);
       print(JSON.stringify({ tenantsDeleted: tenants.length, databaseSize: rows[0].size }));
       expect((await client.query(`select 1 from "Tenant" where slug like 'perf100k-%'`)).rowCount).toBe(0);

@@ -28,7 +28,7 @@
   min-height: 36px;
 }
 .lf-input::-webkit-date-and-time-value {
-  text-align: left;
+  text-align: start;
   min-height: 1.2em;
 }
 .lf-form-section .lf-field,
@@ -239,6 +239,6 @@
     display: none;
   }
   .lf-funnel .lf-grid tbody td.lf-num {
-    text-align: right !important;
+    text-align: end !important;
   }
 }

@@ -13,6 +13,7 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
+import { textDirection } from '@/lib/locale';
 import { PATCH as settingsPatch } from '@/app/api/v1/workspaces/[workspaceSlug]/settings/[section]/route';
 import { createSessionToken } from '../helpers/session';
 import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
@@ -109,6 +110,26 @@ describe('company profile', () => {
       at('company').params,
     );
     expect(res.status).toBe(422);
+  });
+
+  it('sets the workspace language; Arabic lays the workspace out right to left (NFR-09)', async () => {
+    const res = await patch(settingsPatch, at('company').path, { locale: 'ar-AE' }, adminCookie, at('company').params);
+    expect(res.status).toBe(200);
+    expect(res.body.locale).toBe('ar-AE');
+    const setting = await prisma.organizationSetting.findUniqueOrThrow({ where: { tenantId } });
+    expect(setting.defaultLocale).toBe('ar-AE');
+    expect(textDirection(setting.defaultLocale)).toBe('rtl');
+    expect(textDirection('en-AE')).toBe('ltr');
+
+    const refused = await patch(
+      settingsPatch,
+      at('company').path,
+      { locale: 'xx-YY' },
+      adminCookie,
+      at('company').params,
+    );
+    expect(refused.status).toBe(422);
+    await patch(settingsPatch, at('company').path, { locale: 'en-AE' }, adminCookie, at('company').params);
   });
 
   it('refuses someone who may read settings but not configure them', async () => {

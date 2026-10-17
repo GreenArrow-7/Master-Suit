@@ -12,7 +12,7 @@ const addBody = z
   .strict();
 
 export const POST = route(
-  { module: 'campaigns', productModule: 'SALES', action: 'EDIT', params, body: addBody },
+  { module: 'campaigns', productModule: 'SALES', action: 'EDIT', params, body: addBody, auditEvent: 'RECORD_UPDATED' },
   async ({ ctx, params, body }) => {
     return prisma.campaignMember.upsert({
       where: { tenantId: ctx.tenantId, campaignId_userId: { campaignId: params.id, userId: body.userId } },

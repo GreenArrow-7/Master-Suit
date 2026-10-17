@@ -3,6 +3,7 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { requireWorkspace } from '@/lib/workspace';
+import { WORKSPACE_LOCALES, type WorkspaceLocale } from '@/lib/locale';
 
 /**
  * Company administration that a company administrator can actually perform.
@@ -31,6 +32,8 @@ const companyBody = z.object({
   companyPhone: z.string().max(40).nullable().optional().or(z.literal('')),
   companyAddress: z.string().max(500).nullable().optional().or(z.literal('')),
   logoUrl: z.string().url().nullable().optional().or(z.literal('')),
+  /** The workspace's language; Arabic lays it out right to left (NFR-09). */
+  locale: z.enum(WORKSPACE_LOCALES.map((l) => l.value) as [WorkspaceLocale, ...WorkspaceLocale[]]).optional(),
 });
 
 const securityBody = z.object({
@@ -81,7 +84,13 @@ export const PATCH = route(
 
     if (params.section === 'company') {
       const input = companyBody.parse(body);
-      return prisma.tenant.update({
+      if (input.locale) {
+        await prisma.organizationSetting.updateMany({
+          where: { tenantId: ctx.tenantId },
+          data: { defaultLocale: input.locale },
+        });
+      }
+      const company = await prisma.tenant.update({
         where: { id: ctx.tenantId },
         data: {
           displayName: input.displayName,
@@ -105,8 +114,11 @@ export const PATCH = route(
           companyEmail: true,
           companyPhone: true,
           logoUrl: true,
+          settings: { select: { defaultLocale: true } },
         },
       });
+      const { settings, ...rest } = company;
+      return { ...rest, locale: settings?.defaultLocale ?? null };
     }
 
     const input = securityBody.parse(body);
