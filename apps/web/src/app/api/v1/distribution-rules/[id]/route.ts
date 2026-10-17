@@ -39,7 +39,10 @@ export const PATCH = route(
         updatedById: ctx.actor.id,
       },
     });
-    return prisma.distributionRule.findFirstOrThrow({ where: { tenantId: ctx.tenantId, id: params.id }, select: RULE_FIELDS });
+    return prisma.distributionRule.findFirstOrThrow({
+      where: { tenantId: ctx.tenantId, id: params.id },
+      select: RULE_FIELDS,
+    });
   },
 );
 
