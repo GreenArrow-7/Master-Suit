@@ -9,7 +9,7 @@ import { redis } from '@/lib/redis';
 import { audit } from '@/lib/security/audit';
 import { assertAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitlements';
 import { consume, limits } from '@/lib/security/ratelimit';
-import { assertPermission, type Ctx } from '@/lib/security/rbac';
+import { assertPermission, can, type Ctx } from '@/lib/security/rbac';
 import { assertLeadInScope, leadScope } from '@/lib/security/record-scope';
 import { fillTemplate, sendableTemplate, sendWhatsAppTemplate, whatsAppSender } from '@/services/conversations/send';
 import { placeholdersOf } from '@/services/meta/templates';
@@ -70,6 +70,15 @@ const refuse = (code: string, message: string, field = 'lead') => Invalid([{ fie
  * as Meta names a thread, the E.164 digits. Email: its address. A lead whose
  * consent is withdrawn has opted out of both, as campaigns and the dialer read it.
  */
+/** The lead's numbers as a send names them ("main", or a LeadPhone id), each with its number where marked as on WhatsApp. */
+function whatsAppNumbers(lead: LeadContact) {
+  const main = lead.phone && lead.phoneIsWhatsapp ? (lead.phoneNormalized ?? normalizePhone(lead.phone)) : null;
+  return [
+    { id: 'main', number: main },
+    ...lead.phones.map((p) => ({ id: p.id, number: p.isWhatsapp ? p.normalized : null })),
+  ];
+}
+
 export function recipientOf(lead: LeadContact, channel: MessageChannel, to?: string): string {
   if (lead.consentStatus === 'WITHDRAWN') {
     throw refuse('opted_out', `${lead.fullName} has withdrawn consent to be contacted.`);
@@ -80,11 +89,7 @@ export function recipientOf(lead: LeadContact, channel: MessageChannel, to?: str
     return lead.email;
   }
   if (lead.whatsappOptOut) throw refuse('opted_out', `${lead.fullName} has opted out of WhatsApp.`);
-  const main = lead.phone && lead.phoneIsWhatsapp ? (lead.phoneNormalized ?? normalizePhone(lead.phone)) : null;
-  const numbers = [
-    { id: 'main', number: main },
-    ...lead.phones.map((p) => ({ id: p.id, number: p.isWhatsapp ? p.normalized : null })),
-  ];
+  const numbers = whatsAppNumbers(lead);
   const chosen = to ? numbers.find((n) => n.id === to) : numbers.find((n) => n.number);
   if (to && !chosen?.number) throw refuse('not_whatsapp', 'That number is not marked as on WhatsApp.', 'to');
   if (!chosen?.number) throw refuse('no_whatsapp_number', `${lead.fullName} has no number marked as on WhatsApp.`);
@@ -122,6 +127,43 @@ export interface SendInput {
   variables?: string[];
   /** The bulk send it belongs to: a job run again finds its message and sends nothing. */
   batchId?: string;
+}
+
+/**
+ * Whether this sender may send the lead a WhatsApp template, decided as
+ * `sendLeadMessage` would, before it is tried (the post-call composer, M10-01).
+ * Null where the sender may not message the lead at all (no
+ * `communications:CREATE`, or the lead beyond its `leads:EDIT` reach); else
+ * why it cannot go (opted out, no number marked, not connected), or null, and
+ * `to`: the number of the thread found (`thread`, as Meta names it, the E.164
+ * digits) where it is still marked as on WhatsApp, so the template reopens
+ * that thread; null for the send's own default.
+ */
+export async function whatsAppTemplateBlock(
+  ctx: Ctx,
+  leadId: string,
+  thread?: string | null,
+): Promise<{ blocked: string | null; to: string | null } | null> {
+  if (!can(ctx, 'communications', 'CREATE')) return null;
+  const reached = await assertLeadInScope(ctx, leadId, prisma, 'EDIT').then(
+    () => true,
+    (err) => {
+      if (err instanceof AppError && (err.status === 403 || err.status === 404)) return false;
+      throw err;
+    },
+  );
+  if (!reached) return null;
+  const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId: ctx.tenantId, id: leadId }, select: CONTACT });
+  const to =
+    (thread && whatsAppNumbers(lead).find((n) => n.number && n.number.replace(/\D/g, '') === thread)?.id) || null;
+  try {
+    recipientOf(lead, 'WHATSAPP', to ?? undefined);
+    await whatsAppSender(ctx.tenantId);
+    return { blocked: null, to };
+  } catch (err) {
+    if (!(err instanceof AppError)) throw err;
+    return { blocked: err.errors[0]?.message ?? err.message, to };
+  }
 }
 
 export async function sendLeadMessage(ctx: Ctx, leadId: string, input: SendInput) {

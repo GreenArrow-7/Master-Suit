@@ -28,6 +28,7 @@ import { invalidateEntitlements } from '@/lib/security/entitlements';
 import { POST as sendToLead } from '@/app/api/v1/leads/[id]/messages/route';
 import { GET as readTimeline } from '@/app/api/v1/leads/[id]/timeline/route';
 import { POST as replyInInbox } from '@/app/api/v1/conversations/[id]/messages/route';
+import { POST as draftWhatsApp } from '@/app/api/v1/calls/[id]/follow-up-whatsapp/route';
 import { GET as listThreads } from '@/app/api/v1/conversations/route';
 import { clear, consume, limits } from '@/lib/security/ratelimit';
 import {
@@ -829,5 +830,146 @@ describe('whose thread, whose timeline, and what else stops a send (M4-28)', () 
     } finally {
       await clear(day);
     }
+  });
+});
+
+describe('the post-call WhatsApp composer starts the thread with a template (M10-01)', () => {
+  it('offers the lead’s template send where no free-form message can go, and only to whom the send would take', async () => {
+    const calls: Grants = [
+      ['leads', 'VIEW'],
+      ['leads', 'EDIT'],
+      ['calls', 'VIEW'],
+      ['calls', 'EDIT'],
+    ];
+    const closer = await roleUser(
+      'closer',
+      [...calls, ['communications', 'VIEW'], ['communications', 'CREATE']],
+      'OWN',
+    );
+    // Works every call and lead, but may not message anyone.
+    const listener = await roleUser('listener', calls, 'ORGANIZATION');
+    const omar = await newLead({
+      firstName: 'Omar',
+      fullName: 'Omar Haddad',
+      phone: '+971501110001',
+      phoneNormalized: '+971501110001',
+      ownerId: closer.id,
+    });
+    const call = await prisma.call.create({ data: { tenantId, callerId: closer.id, leadId: omar.id } });
+    const draft = (as: string) =>
+      post(draftWhatsApp, `/api/v1/calls/${call.id}/follow-up-whatsapp`, {}, as, { id: call.id });
+
+    // No thread yet: the composer offers the lead's own send, which starts one.
+    const first = await draft(closer.cookie);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    expect(first.body).toMatchObject({
+      conversationId: null,
+      windowOpen: false,
+      template: { leadId: omar.id, fullName: 'Omar Haddad' },
+      reason: 'No WhatsApp conversation with this lead yet: it starts with an approved template.',
+    });
+    // Not to a role that may not send.
+    expect((await draft(listener.cookie)).body).toMatchObject({ template: null, conversationId: null });
+
+    const sent = await send(closer.cookie, omar.id, {
+      channel: 'WHATSAPP',
+      templateKey: TEMPLATE,
+      variables: ['', '', 'Marina Gate'],
+    });
+    expect(sent.body.message).toMatchObject({ status: 'SENT' });
+    // The thread is open, but no reply yet: free-form still cannot go, a template still can.
+    const opened = await draft(closer.cookie);
+    expect(opened.body.conversationId).toEqual(expect.any(String));
+    expect(opened.body).toMatchObject({
+      windowOpen: false,
+      template: { leadId: omar.id },
+      reason: 'The 24-hour service window has closed: an approved template reopens it. Or copy the draft.',
+    });
+    const timeline = await get(readTimeline, `/api/v1/leads/${omar.id}/timeline`, closer.cookie, { id: omar.id });
+    expect(timeline.body.entries[0]).toMatchObject({ kind: 'message', title: 'WhatsApp sent', by: 'The closer' });
+
+    // Opted out: nothing offered, and why.
+    await prisma.lead.updateMany({ where: { tenantId, id: omar.id }, data: { whatsappOptOut: true } });
+    expect((await draft(closer.cookie)).body).toMatchObject({
+      template: null,
+      reason: 'Omar Haddad has opted out of WhatsApp.',
+    });
+    await prisma.lead.updateMany({ where: { tenantId, id: omar.id }, data: { whatsappOptOut: false } });
+
+    // They reply: the window is open, the follow-up goes free-form, no template offered.
+    await prisma.communication.create({
+      data: {
+        tenantId,
+        conversationId: opened.body.conversationId,
+        channel: 'WHATSAPP',
+        direction: 'INBOUND',
+        status: 'DELIVERED',
+        leadId: omar.id,
+        fromAddress: '971501110001',
+        toAddress: 'business',
+        body: 'Yes, Saturday works.',
+      },
+    });
+    expect((await draft(closer.cookie)).body).toMatchObject({ windowOpen: true, template: null, reason: null });
+  });
+
+  it('reopens the thread it found: the template goes to that thread’s number, not the main one', async () => {
+    const layla = await newLead({
+      firstName: 'Layla',
+      fullName: 'Layla Nasser',
+      phone: '+971501110002',
+      phoneNormalized: '+971501110002',
+      ownerId: adminId,
+    });
+    const office = await prisma.leadPhone.create({
+      data: {
+        tenantId,
+        leadId: layla.id,
+        raw: '+971551110002',
+        normalized: '+971551110002',
+        label: 'Office',
+        isWhatsapp: true,
+      },
+    });
+    const call = await prisma.call.create({ data: { tenantId, callerId: adminId, leadId: layla.id } });
+    const draft = () => post(draftWhatsApp, `/api/v1/calls/${call.id}/follow-up-whatsapp`, {}, admin, { id: call.id });
+    const template = (to?: string) =>
+      send(admin, layla.id, { channel: 'WHATSAPP', templateKey: TEMPLATE, to, variables: ['', '', 'Marina Gate'] });
+
+    // Earlier, from the lead page, a template to the Office number; the client replied there two days ago.
+    expect((await template(office.id)).body.message).toMatchObject({ status: 'SENT' });
+    const thread = await prisma.conversation.findFirstOrThrow({
+      where: { tenantId, leadId: layla.id, channel: 'WHATSAPP' },
+    });
+    expect(thread.externalId).toBe('971551110002');
+    await prisma.communication.create({
+      data: {
+        tenantId,
+        conversationId: thread.id,
+        channel: 'WHATSAPP',
+        direction: 'INBOUND',
+        status: 'DELIVERED',
+        leadId: layla.id,
+        fromAddress: '971551110002',
+        toAddress: 'business',
+        body: 'Thanks, will look.',
+        createdAt: new Date(Date.now() - 2 * 86_400_000),
+      },
+    });
+
+    // The window has closed: the offer names the thread's number, and the send to it lands in that thread.
+    const closed = await draft();
+    expect(closed.body).toMatchObject({
+      conversationId: thread.id,
+      windowOpen: false,
+      template: { leadId: layla.id, to: office.id },
+      reason: 'The 24-hour service window has closed: an approved template reopens it. Or copy the draft.',
+    });
+    expect((await template(closed.body.template.to)).status).toBe(200);
+    expect(await prisma.conversation.count({ where: { tenantId, leadId: layla.id, channel: 'WHATSAPP' } })).toBe(1);
+
+    // That number no longer on WhatsApp: the send's own default (main first), named by nobody.
+    await prisma.leadPhone.updateMany({ where: { tenantId, id: office.id }, data: { isWhatsapp: false } });
+    expect((await draft()).body.template).toEqual({ leadId: layla.id, fullName: 'Layla Nasser', to: null });
   });
 });

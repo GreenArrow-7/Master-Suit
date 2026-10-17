@@ -51,6 +51,7 @@ import { POST as draftFollowUp, PUT as sendFollowUp } from '@/app/api/v1/calls/[
 import { POST as startPractice } from '@/app/api/v1/practice/route';
 import { POST as practiceTurn, PATCH as finishPractice } from '@/app/api/v1/practice/[id]/route';
 import { GET as coachingDashboard } from '@/app/api/v1/coaching/route';
+import { GET as readTimeline } from '@/app/api/v1/leads/[id]/timeline/route';
 
 let fixture: Fixture;
 let callId: string;
@@ -260,6 +261,14 @@ describe('ingest → transcribe → analyse → follow-up', () => {
       where: { tenantId: fixture.a.tenantId, leadId, type: { key: 'email' } },
     });
     expect(activity).not.toBeNull();
+
+    // One email, one entry on the lead's timeline: the activity, not the message beside it as well (M10-10).
+    const timeline = await get(readTimeline, `/api/v1/leads/${leadId}/timeline`, fixture.a.cookie, { id: leadId });
+    expect(timeline.status).toBe(200);
+    const entries = (timeline.body.entries as { kind: string; notes: string | null }[]).filter((e) =>
+      e.notes?.includes('Following up on our call'),
+    );
+    expect(entries.map((e) => e.kind)).toEqual(['activity']);
   });
 
   it('surfaces the call on the coaching dashboard with its numbers', async () => {
