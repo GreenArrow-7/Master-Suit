@@ -555,7 +555,14 @@ describe('making a lead of a called record', () => {
     expect((await callsOn(record.id)).map((c) => c.leadId)).toEqual([theirs.id]);
     expect(
       await prisma.auditLog.findFirst({
-        where: { tenantId, event: 'RECORD_UPDATED', objectType: 'lead', recordId: theirs.id },
+        // The lead also gets an "enquired again" row; ask for this one by its action.
+        where: {
+          tenantId,
+          event: 'RECORD_UPDATED',
+          objectType: 'lead',
+          recordId: theirs.id,
+          metadata: { path: ['action'], equals: 'lead.cold_calls_attached' },
+        },
       }),
     ).toMatchObject({ actorUserId: agent.id, metadata: { action: 'lead.cold_calls_attached', calls: 1 } });
   });

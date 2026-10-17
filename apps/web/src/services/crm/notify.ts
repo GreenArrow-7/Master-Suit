@@ -48,6 +48,8 @@ export type CrmEventKey =
   | 'lead.recycled'
   /** A known person enquired again through a portal or ad. See leads/intake.ts. */
   | 'lead.enquiry'
+  /** First contact overdue; to the owner's manager. See sla/checkLeadFirstContact.ts. */
+  | 'lead.sla_breached'
   | 'follow_up.due'
   | 'call.scheduled'
   | 'call.reminder'
@@ -82,6 +84,7 @@ const PUSHED: ReadonlySet<CrmEventKey> = new Set<CrmEventKey>([
   'call.reminder',
   'lead.assigned',
   'call.missed',
+  'lead.sla_breached',
 ]);
 
 export interface CrmNotification {

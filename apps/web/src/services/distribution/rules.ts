@@ -16,6 +16,15 @@ export const ruleBody = z
     position: z.number().int().min(0).max(1000).optional(),
     reassignAfterMins: z.number().int().min(5).max(10_080).nullable().optional(),
     escalateAfterMins: z.number().int().min(5).max(10_080).nullable().optional(),
+    /** Route only leads that match (audit M7-03); empty lists match everything. */
+    conditions: z
+      .object({
+        sourceIds: z.array(z.string().min(1)).max(100).optional(),
+        cities: z.array(z.string().min(1).max(80)).max(100).optional(),
+        projectIds: z.array(z.string().min(1)).max(100).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -27,6 +36,7 @@ export const RULE_FIELDS = {
   candidatePool: true,
   reassignAfterMins: true,
   escalateAfterMins: true,
+  conditions: true,
   updatedAt: true,
 } as const;
 

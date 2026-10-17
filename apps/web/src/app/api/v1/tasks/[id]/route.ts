@@ -1,3 +1,4 @@
+import { nextDue } from '@/lib/tasks/recurrence';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
@@ -90,6 +91,29 @@ export const PATCH = route(
         data,
         include: { type: true, owner: { select: { fullName: true } } },
       });
+
+      // A repeating task, just completed, books its next occurrence (M8-10).
+      const due =
+        task.recurrenceRule && body.status === 'COMPLETED' && task.status !== 'COMPLETED'
+          ? nextDue(updated.dueAt, task.recurrenceRule)
+          : null;
+      if (due) {
+        await tx.task.create({
+          data: {
+            tenantId: ctx.tenantId,
+            typeId: updated.typeId,
+            title: updated.title,
+            description: updated.description,
+            leadId: updated.leadId,
+            ownerId: updated.ownerId,
+            priority: updated.priority,
+            dueAt: due,
+            recurrenceRule: task.recurrenceRule,
+            parentTaskId: task.parentTaskId ?? task.id,
+            createdById: ctx.actor.id,
+          },
+        });
+      }
 
       for (const leadId of locked) await recomputeNextFollowUp(tx, ctx.tenantId, leadId);
       return updated;
