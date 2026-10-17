@@ -82,6 +82,39 @@ export async function rulePool(tenantId: string, candidatePool: unknown): Promis
   return members.map((member) => member.id);
 }
 
+/** What a rule may route on (audit M7-03). An empty or absent list matches any lead. */
+export interface RuleConditions {
+  sourceIds?: string[];
+  cities?: string[];
+  projectIds?: string[];
+}
+
+export function ruleMatches(
+  conditions: unknown,
+  lead: { sourceId: string | null; city: string | null; projectIds: string[] },
+): boolean {
+  const c = (conditions ?? {}) as RuleConditions;
+  if (c.sourceIds?.length && !(lead.sourceId && c.sourceIds.includes(lead.sourceId))) return false;
+  if (c.cities?.length && !(lead.city && c.cities.some((city) => city.toLowerCase() === lead.city!.toLowerCase())))
+    return false;
+  if (c.projectIds?.length && !lead.projectIds.some((id) => c.projectIds!.includes(id))) return false;
+  return true;
+}
+
+/** The first active round-robin rule, by position, whose conditions the lead meets. */
+async function ruleForLead(
+  tenantId: string,
+  lead: { sourceId: string | null; city: string | null; projectInterests: { projectId: string }[] },
+) {
+  const rules = await prisma.distributionRule.findMany({
+    where: { tenantId, objectType: 'LEAD', isActive: true, method: 'ROUND_ROBIN', deletedAt: null },
+    orderBy: { position: 'asc' },
+    select: { ...RULE_SELECT, conditions: true },
+  });
+  const facts = { sourceId: lead.sourceId, city: lead.city, projectIds: lead.projectInterests.map((p) => p.projectId) };
+  return rules.find((rule) => ruleMatches(rule.conditions, facts)) ?? null;
+}
+
 /**
  * The pool in rotation order, starting after whoever was assigned last — so an
  * ineligible person is passed over rather than stopping every later enquiry
@@ -95,12 +128,21 @@ function rotationOrder(pool: string[], lastAssignedUserId: string | null): strin
 export async function assignLead(tenantId: string, leadId: string, now = new Date()): Promise<AssignOutcome> {
   const lead = await prisma.lead.findFirst({
     where: { tenantId, id: leadId, deletedAt: null },
-    select: { id: true, ownerId: true, teamId: true, fullName: true, reference: true },
+    select: {
+      id: true,
+      ownerId: true,
+      teamId: true,
+      fullName: true,
+      reference: true,
+      sourceId: true,
+      city: true,
+      projectInterests: { select: { projectId: true } },
+    },
   });
   if (!lead) return { outcome: 'gone', leadId };
   if (lead.ownerId) return { outcome: 'already-assigned', leadId };
 
-  const rule = await activeRule(tenantId);
+  const rule = await ruleForLead(tenantId, lead);
 
   // No rule at all. Previously a silent return; now an administrative exception
   // somebody is accountable for, which is the whole point of P1-1.
