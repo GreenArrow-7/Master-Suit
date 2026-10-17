@@ -1,7 +1,11 @@
 import { prisma, withTx } from '@/lib/db';
 import type { Ctx } from '@/lib/security/rbac';
-import { updateRecordField, addTag, type AutomationObjectType } from './records';
+import { updateRecordField, addTag, loadRecord, type AutomationObjectType } from './records';
+import { postWebhook } from './webhook';
 import { withRecompute } from '@/services/leads/nextFollowUp';
+import { updateLead } from '@/services/leads/updateLead';
+import { sendLeadMessage, type MessageChannel } from '@/services/leads/leadMessages';
+import { assignLead } from '@/services/distribution/assignLead';
 
 export interface ActionContext {
   ctx: Ctx;
@@ -13,8 +17,9 @@ export interface ActionContext {
 /**
  * The action groups from docs/04-AUTOMATION-ENGINE.md §5 that are wired up. The
  * doc lists ~20 (distribute, opportunity/ticket creation, messaging, lists,
- * webhooks, sub-automations); this registry covers the record/task actions that
- * don't need a second integration (email/SMS/webhook providers) to be real.
+ * webhooks, sub-automations); this registry covers the record and task actions,
+ * and for a lead: assign, send a template (WhatsApp or email, through the
+ * lead's own send) and a signed webhook (audit M7-12).
  * ponytail: add a case here per action as it's needed — throwing on an unknown
  * action fails the node loudly instead of silently no-opping.
  */
@@ -54,6 +59,39 @@ export async function runAction({ ctx, objectType, recordId, spec }: ActionConte
       return;
     }
 
+    // A named person (checked as a hand-over by the automation's author), or
+    // for a lead nobody holds, the next in turn under the assignment rules.
+    case 'assign':
+      if (objectType !== 'LEAD') throw new Error('Only a lead can be assigned.');
+      if (spec.userId) await updateLead(ctx, recordId, { ownerId: spec.userId as string });
+      else await assignLead(ctx.tenantId, recordId);
+      return;
+
+    case 'send_template':
+      if (objectType !== 'LEAD') throw new Error('A template is sent to a lead.');
+      await sendLeadMessage(ctx, recordId, {
+        channel: spec.channel as MessageChannel,
+        templateKey: spec.templateKey as string,
+      });
+      return;
+
+    // Who and what, never the lead's numbers or email: the receiver reads more through the API.
+    case 'webhook': {
+      const record = await loadRecord(ctx.tenantId, objectType, recordId);
+      if (!record) return;
+      await postWebhook(spec as { url: string; secret: string }, {
+        event: 'automation',
+        objectType,
+        recordId,
+        reference: record.reference ?? null,
+        name: record.fullName ?? record.name ?? null,
+        ownerId: record.ownerId ?? null,
+        stageId: record.stageId ?? null,
+        occurredAt: new Date().toISOString(),
+      });
+      return;
+    }
+
     case 'notify_manager':
     case 'notify_owner': {
       const record = await (prisma as any)[objectType.toLowerCase()].findFirst({
@@ -61,6 +99,16 @@ export async function runAction({ ctx, objectType, recordId, spec }: ActionConte
         select: { ownerId: true },
       });
       if (!record?.ownerId) return;
+      // The manager is the owner's (User.managerId); it used to notify the owner too.
+      let userId: string = record.ownerId;
+      if (spec.action === 'notify_manager') {
+        const owner = await prisma.user.findFirst({
+          where: { tenantId: ctx.tenantId, id: record.ownerId },
+          select: { managerId: true },
+        });
+        if (!owner?.managerId) return;
+        userId = owner.managerId;
+      }
       /**
        * No `actionUrl`: the destination is resolved on read, from `objectType`
        * and `recordId`, by `src/lib/nav/entityRoute.ts`. `objectType` here is
@@ -72,7 +120,7 @@ export async function runAction({ ctx, objectType, recordId, spec }: ActionConte
       await prisma.notification.create({
         data: {
           tenantId: ctx.tenantId,
-          userId: record.ownerId,
+          userId,
           kind: 'AUTOMATION',
           title: (spec.template as string) ?? 'Automation notification',
           objectType,

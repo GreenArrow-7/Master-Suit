@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import CallLink, { dialable } from '@/components/workspace/CallLink';
-import { callNumber } from '@/lib/leads/callLog';
+import { callNumber, FOLLOW_UP_KIND_LABELS, type FollowUpKind } from '@/lib/leads/callLog';
 import FollowUpRowActions from '@/app/(workspace)/[workspaceSlug]/sales/follow-ups/FollowUpRowActions';
 import type { GridObject } from '@/lib/grid/columns';
 
@@ -353,6 +353,9 @@ export function renderCell(object: GridObject, key: string, row: GridRow, timeZo
           return row.canAct === false ? null : <FollowUpRowActions id={String(row.id)} status={String(row.status)} />;
         case 'lead':
           return row.lead ? link(`/leads/${row.lead.id}`, row.lead.fullName) : dash;
+        case 'kind':
+          // A follow-up is a call unless it was booked as something else.
+          return FOLLOW_UP_KIND_LABELS[(row.kind as FollowUpKind) ?? 'CALL'] ?? FOLLOW_UP_KIND_LABELS.CALL;
         case 'owner':
           /**
            * A tag, because this column only appears on a list spanning several

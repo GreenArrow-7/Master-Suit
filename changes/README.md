@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-18 | [A manager sees their whole line; quotas, languages, availability and shares steer assignment; Lead Eagle writes its own automations](2026-10-18-assignment-followups.md) | #206 | Lead Eagle, allocation, automation, follow-ups |
 | 2026-10-17 | [Automatic assignment can be switched on, and is on for new Lead Eagle workspaces](2026-10-17-assignment-rules.md) | #194 | Lead Eagle, allocation, feature |
 | 2026-10-17 | [Teams can be created, with a manager and members](2026-10-17-teams.md) | — | Admin, scope, feature |
 | 2026-10-17 | [An untouched lead at its SLA tells the manager, and can be handed on](2026-10-17-sla-escalation.md) | — | Lead Eagle, allocation, feature |

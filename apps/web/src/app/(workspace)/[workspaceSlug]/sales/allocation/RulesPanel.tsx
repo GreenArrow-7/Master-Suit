@@ -12,7 +12,15 @@ export interface RuleRow {
   people: string[];
   /** A short description of the rule's conditions, or null when it takes every lead. */
   routes: string | null;
+  /** Who takes more than one turn a round ("Sara ×2"), or null for even turns (audit M7-02). */
+  shares: string | null;
 }
+
+const list = (raw: FormDataEntryValue | null) =>
+  String(raw ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
 
 /**
  * Automatic assignment rules (audit M7-01). New leads go round-robin through the
@@ -30,6 +38,8 @@ export default function RulesPanel({
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The people picked for a new rule, each with a share (audit M7-02).
+  const [picked, setPicked] = useState<string[]>([]);
 
   async function send(url: string, method: string, body?: unknown) {
     setBusy(true);
@@ -52,15 +62,20 @@ export default function RulesPanel({
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const userIds = form.getAll('userIds').map(String);
-    const cities = String(form.get('cities') ?? '')
-      .split(',')
-      .map((city) => city.trim())
-      .filter(Boolean);
+    // Only shares above one are sent: everyone else takes one turn a round.
+    const weights = Object.fromEntries(
+      userIds.map((id) => [id, Number(form.get(`share-${id}`)) || 1] as const).filter(([, share]) => share > 1),
+    );
     await send('/api/v1/distribution-rules', 'POST', {
       name: String(form.get('name') ?? ''),
       everyone: userIds.length === 0,
       userIds,
-      conditions: { sourceIds: form.getAll('sourceIds').map(String), cities },
+      weights,
+      conditions: {
+        sourceIds: form.getAll('sourceIds').map(String),
+        cities: list(form.get('cities')),
+        languages: list(form.get('languages')),
+      },
     });
   }
 
@@ -82,6 +97,7 @@ export default function RulesPanel({
           <strong>{rule.name}</strong>
           <span style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
             {rule.everyone ? 'Everyone' : rule.people.join(', ') || 'Nobody'}
+            {rule.shares && ` (${rule.shares})`}
             {' · '}
             {rule.routes ?? 'every lead'}
           </span>
@@ -112,7 +128,14 @@ export default function RulesPanel({
         </label>
         <label className="lf-field">
           <span className="lf-label">People (none selected = everyone)</span>
-          <select id="rule-people" className="lf-input" name="userIds" multiple size={6}>
+          <select
+            id="rule-people"
+            className="lf-input"
+            name="userIds"
+            multiple
+            size={6}
+            onChange={(event) => setPicked(Array.from(event.target.selectedOptions, (option) => option.value))}
+          >
             {agents.map((agent) => (
               <option key={agent.id} value={agent.id}>
                 {agent.fullName}
@@ -120,6 +143,19 @@ export default function RulesPanel({
             ))}
           </select>
         </label>
+        {picked.length > 0 && (
+          <fieldset className="lf-field" style={{ border: 0, padding: 0, margin: 0 }}>
+            <legend className="lf-label">Turns per round (2 = twice as many leads as a 1)</legend>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
+              {picked.map((id) => (
+                <label key={id} style={{ display: 'grid', gap: 4, fontSize: 'var(--lf-text-sm)' }}>
+                  {agents.find((agent) => agent.id === id)?.fullName ?? 'Member'}
+                  <input className="lf-input" type="number" name={`share-${id}`} min={1} max={10} defaultValue={1} />
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
         <label className="lf-field">
           <span className="lf-label">Only leads from these sources (none selected = any source)</span>
           <select id="rule-sources" className="lf-input" name="sourceIds" multiple size={5}>
@@ -133,6 +169,13 @@ export default function RulesPanel({
         <label className="lf-field">
           <span className="lf-label">Only leads in these cities (comma-separated, blank = any city)</span>
           <input id="rule-cities" className="lf-input" name="cities" maxLength={500} />
+        </label>
+        <label className="lf-field">
+          <span className="lf-label">Only leads tagged with these languages (comma-separated, blank = any)</span>
+          <input id="rule-languages" className="lf-input" name="languages" maxLength={300} placeholder="Arabic" />
+          <span className="lf-field__hint">
+            Such a lead goes only to the people whose languages (Admin → Users) include one of them.
+          </span>
         </label>
         <p style={{ margin: 0, fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
           A lead goes to the first rule that is on and whose conditions it meets.

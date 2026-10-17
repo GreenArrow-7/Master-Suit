@@ -15,6 +15,7 @@ import { names } from '@/services/leadership/rollups';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { mergeWhere } from '@/lib/api/where';
 import {
+  FOLLOW_UP_KINDS,
   FOLLOW_UP_KIND_LABELS,
   OPEN_FOLLOW_UP,
   followUpDueWhere,
@@ -77,10 +78,9 @@ export default async function FollowUpsPage({
     ),
     { deletedAt: null },
   );
-  const narrowed = [
-    isDayKey(params.date) && `due ${onDay(params.date)}`,
-    isFollowUpKind(params.kind) && `${FOLLOW_UP_KIND_LABELS[params.kind].toLowerCase()}s only`,
-  ].filter(Boolean);
+  // The kind has its own row of filters below (M8-01).
+  const narrowed = [isDayKey(params.date) && `due ${onDay(params.date)}`].filter(Boolean);
+  const kind = isFollowUpKind(params.kind) ? params.kind : '';
 
   const rows = await prisma.followUpTask.findMany({ where, orderBy: { dueAt: 'asc' }, take: 100 });
 
@@ -122,9 +122,13 @@ export default async function FollowUpsPage({
       ? [configured[0]!, { key: 'owner', label: 'Owner', hideMobile: true }, ...configured.slice(1)]
       : configured;
 
-  // A filter keeps the view, and the view keeps the filter.
-  const href = (due: string, mine: boolean) => {
-    const query = new URLSearchParams([...(mine ? [['view', 'mine']] : []), ...(due ? [['due', due]] : [])]);
+  // A filter keeps the view and the kind, and the view keeps the filters.
+  const href = (due: string, mine: boolean, type = kind) => {
+    const query = new URLSearchParams([
+      ...(mine ? [['view', 'mine']] : []),
+      ...(due ? [['due', due]] : []),
+      ...(type ? [['kind', type]] : []),
+    ]);
     return query.toString() ? `/follow-ups?${query}` : '/follow-ups';
   };
 
@@ -157,6 +161,22 @@ export default async function FollowUpsPage({
             {label}
           </SalesLink>
         ))}
+      </nav>
+
+      <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="Type filter">
+        {[['', 'All types'] as const, ...FOLLOW_UP_KINDS.map((k) => [k, FOLLOW_UP_KIND_LABELS[k]] as const)].map(
+          ([key, label]) => (
+            <SalesLink
+              key={label}
+              className="lf-tab"
+              href={href(params.due ?? '', params.view === 'mine', key)}
+              aria-selected={kind === key}
+              role="tab"
+            >
+              {label}
+            </SalesLink>
+          ),
+        )}
       </nav>
 
       {narrowed.length > 0 && (

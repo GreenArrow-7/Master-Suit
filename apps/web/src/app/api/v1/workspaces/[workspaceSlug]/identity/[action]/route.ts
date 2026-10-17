@@ -17,6 +17,7 @@ import {
 } from '@/services/identity/accounts';
 import { inviteUser, listInvitations, resendInvitation, revokeInvitation } from '@/services/identity/invitations';
 import { removeTotpFor } from '@/services/identity/twoFactor';
+import { leadSettingsBody, setLeadSettings } from '@/services/distribution/agentSettings';
 
 /**
  * Administering *other people's* accounts. Everything here needs
@@ -47,6 +48,7 @@ const paramsSchema = z.object({
     'account-create',
     'account-delete',
     'account-work',
+    'account-lead-settings',
   ]),
 });
 
@@ -155,6 +157,9 @@ export const POST = route(
         const input = z.object({ employeeId: id, managerEmployeeId: id.optional().or(z.literal('')) }).parse(body);
         return setManager(ctx, input.employeeId, input.managerEmployeeId || null);
       }
+      // Reports to, daily lead quota, languages, available for new leads (M1-12, M7-04, M7-06, M7-07).
+      case 'account-lead-settings':
+        return setLeadSettings(ctx, leadSettingsBody.parse(body));
       case 'sessions-revoke': {
         const input = z.object({ userId: id }).parse(body);
         return revokeUserSessions(ctx, input.userId);

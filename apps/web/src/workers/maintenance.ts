@@ -9,6 +9,7 @@ import { sweepStaleTriage, sweepTriageDeadlines, sweepTriageNotifications } from
 import { deliverOutbox } from '@/services/notifications/outbox';
 import { sweepDriftCanary } from '@/services/leads/nextFollowUpReconcile';
 import { sweepAccountDeletions } from '@/services/identity/accountDeletion';
+import { sweepTimeTriggers } from '@/services/automation/engine';
 
 /**
  * The `maintenance` queue: scheduled sweeps, one at a time (see startWorker).
@@ -118,6 +119,15 @@ export const MAINTENANCE_JOBS = {
     return result;
   },
   /**
+   * Automations that fire some time after a lead arrives (audit M7-11): each
+   * lead enrolls once, so an overlapping or repeated run enrolls nothing twice.
+   */
+  'automation-time': async () => {
+    const result = await sweepTimeTriggers();
+    logger.info(result, 'automation time-trigger sweep complete');
+    return result;
+  },
+  /**
    * Erasure of accounts whose owner asked for it.
    *
    * Every fifteen minutes rather than daily: this is a person exercising a deletion
@@ -154,6 +164,7 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
     { id: 'retention-daily', pattern: DAILY_PATTERN, name: 'retention' },
     { id: 'reminders-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'reminders' },
     { id: 'lead-triage-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'triage-sweep' },
+    { id: 'automation-time-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'automation-time' },
     // 03:20, after retention has settled: the canary reads what the night left.
     { id: 'follow-up-drift-daily', pattern: '20 3 * * *', name: 'follow-up-drift' },
     { id: 'account-deletions-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'account-deletions' },

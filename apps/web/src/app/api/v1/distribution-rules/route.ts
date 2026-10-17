@@ -28,6 +28,7 @@ export const POST = route(
         isActive: body.isActive ?? true,
         position: body.position ?? 0,
         candidatePool: await poolOf(ctx, body),
+        weights: body.weights ?? {},
         reassignAfterMins: body.reassignAfterMins ?? null,
         escalateAfterMins: body.escalateAfterMins ?? null,
         conditions: body.conditions ?? {},

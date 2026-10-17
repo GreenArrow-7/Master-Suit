@@ -19,8 +19,9 @@
  *
  * ── Leave, honestly ─────────────────────────────────────────────────────────
  *
- * `User.onLeaveUntil` and `User.isAvailable` are read by the old headroom check
- * and are written by **nothing in the application** — only by the seed. Approving
+ * `User.onLeaveUntil` and `User.isAvailable` are read by the old headroom check.
+ * `isAvailable` is now the person's own switch (profile, or Admin → Users; audit
+ * M7-07); `onLeaveUntil` is still written by nothing but the seed. Approving
  * leave in the HR module never touched them, so "on leave" in the allocator has
  * never meant "on leave" in the HRMS.
  *
@@ -91,11 +92,10 @@ export interface Ineligibility {
  * would sit in a JSON column that anybody with queue access can read, and a
  * redaction applied only at render time is one somebody eventually forgets.
  */
-const HR_SOURCED: ReadonlySet<IneligibilityCode> = new Set([
-  'ON_APPROVED_LEAVE',
-  'EMPLOYMENT_ENDED',
-  'MARKED_UNAVAILABLE',
-]);
+// Not MARKED_UNAVAILABLE: that is the person's own "available for new leads"
+// switch (profile, or Admin → Users; audit M7-07), not an HR record, and the
+// sentence on the lead says it as it is.
+const HR_SOURCED: ReadonlySet<IneligibilityCode> = new Set(['ON_APPROVED_LEAVE', 'EMPLOYMENT_ENDED']);
 
 /**
  * What a Sales viewer is allowed to be told.
@@ -299,7 +299,7 @@ export async function assessEligibility(
         });
       } else if (u.onLeaveUntil && u.onLeaveUntil > now) {
         // The denormalised column, honoured as a manual override where a
-        // workspace sets it. See the header: nothing writes it today.
+        // workspace sets it. See the header: only the seed writes it.
         blockers.push({
           code: 'ON_APPROVED_LEAVE',
           detail: `marked on leave until ${u.onLeaveUntil.toISOString().slice(0, 10)}`,

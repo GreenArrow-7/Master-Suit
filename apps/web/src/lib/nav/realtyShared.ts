@@ -71,6 +71,8 @@ function foldersCarrying(root: string): readonly string[] {
   if ((REALTY_SHARED_ROOTS as readonly string[]).includes(root)) return ['sales', 'realty'];
   // Lead Eagle's board and properties are Real Estate's pages, re-exported.
   if (root === 'dashboard' || root === 'properties') return ['realty', 'lead-eagle'];
+  // Automation is Sales' page, re-exported for Lead Eagle (M7-11).
+  if (root === 'automation') return ['sales', 'lead-eagle'];
   return [];
 }
 

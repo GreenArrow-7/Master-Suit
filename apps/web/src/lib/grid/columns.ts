@@ -219,6 +219,8 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
      */
     { key: 'owner', label: 'Owner', hideMobile: true },
     { key: 'lead', label: 'Lead', byDefault: true, hideMobile: true },
+    // Call, meeting, site visit or other (M8-01); the list filters on it.
+    { key: 'kind', label: 'Type', byDefault: true, hideMobile: true },
     { key: 'dueAt', label: 'Due', byDefault: true },
     { key: 'priority', label: 'Priority', byDefault: true, hideMobile: true },
     { key: 'status', label: 'Status', byDefault: true },

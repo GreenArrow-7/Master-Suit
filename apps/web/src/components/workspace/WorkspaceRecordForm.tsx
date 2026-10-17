@@ -89,7 +89,12 @@ export default function WorkspaceRecordForm({
                 ))}
               </select>
             ) : field.type === 'select' ? (
-              <select className="lf-input" name={field.name} required={field.required}>
+              <select
+                className="lf-input"
+                name={field.name}
+                required={field.required}
+                defaultValue={field.defaultValue}
+              >
                 <option value="">Select…</option>
                 {field.options?.map((option) => (
                   <option value={option.value} key={option.value}>

@@ -14,6 +14,8 @@ export const ruleBody = z
     everyone: z.boolean().optional(),
     userIds: z.array(z.string().min(1)).max(200).optional(),
     position: z.number().int().min(0).max(1000).optional(),
+    /** Uneven shares (audit M7-02): {userId: 1..10}; anyone not named takes one turn a round. */
+    weights: z.record(z.string().min(1), z.number().int().min(1).max(10)).optional(),
     reassignAfterMins: z.number().int().min(5).max(10_080).nullable().optional(),
     escalateAfterMins: z.number().int().min(5).max(10_080).nullable().optional(),
     /** Route only leads that match (audit M7-03); empty lists match everything. */
@@ -22,6 +24,8 @@ export const ruleBody = z
         sourceIds: z.array(z.string().min(1)).max(100).optional(),
         cities: z.array(z.string().min(1).max(80)).max(100).optional(),
         projectIds: z.array(z.string().min(1)).max(100).optional(),
+        /** Leads tagged with one of these, for people who speak it (audit M7-04). */
+        languages: z.array(z.string().min(1).max(40)).max(20).optional(),
       })
       .strict()
       .optional(),
@@ -34,6 +38,7 @@ export const RULE_FIELDS = {
   isActive: true,
   position: true,
   candidatePool: true,
+  weights: true,
   reassignAfterMins: true,
   escalateAfterMins: true,
   conditions: true,

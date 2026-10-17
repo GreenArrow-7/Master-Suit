@@ -726,10 +726,19 @@ async function loadActor(userId: string, tenantId: string): Promise<Actor> {
     if (assignment.scopeType === 'REGION' && assignment.scopeId) grantedRegionIds.add(assignment.scopeId);
   }
 
-  const managed = await prisma.user.findMany({
-    where: { tenantId: user.tenantId, managerId: user.id },
-    select: { id: true },
-  });
+  // Everyone below this person on the reporting line, not only direct reports
+  // (audit M1-12): a director at TEAM scope sees the reps of the managers who
+  // report to them. Cycle-safe — anyone already reached is not walked again.
+  // ponytail: one query per level, ten levels deep; a recursive CTE if lines run deeper.
+  const managed: string[] = [];
+  for (let level = 0, frontier = [user.id]; level < 10 && frontier.length > 0; level++) {
+    const below = await prisma.user.findMany({
+      where: { tenantId: user.tenantId, managerId: { in: frontier } },
+      select: { id: true },
+    });
+    frontier = below.map((row) => row.id).filter((id) => id !== user.id && !managed.includes(id));
+    managed.push(...frontier);
+  }
 
   return {
     id: user.id,
@@ -744,7 +753,7 @@ async function loadActor(userId: string, tenantId: string): Promise<Actor> {
     grantedBranchIds: [...grantedBranchIds],
     grantedRegionIds: [...grantedRegionIds],
     teamIds: user.teams.map((t) => t.teamId),
-    managedUserIds: managed.map((m) => m.id),
+    managedUserIds: managed,
     permissions,
   };
 }
