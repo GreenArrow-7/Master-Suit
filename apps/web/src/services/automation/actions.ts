@@ -1,6 +1,8 @@
 import { prisma, withTx } from '@/lib/db';
+import { AppError } from '@/lib/errors';
 import type { Ctx } from '@/lib/security/rbac';
-import { updateRecordField, addTag, loadRecord, type AutomationObjectType } from './records';
+import { assertLeadInScope, assertRecordInScope } from '@/lib/security/record-scope';
+import { updateRecordField, addTag, loadRecord, RECORD_MODULE, type AutomationObjectType } from './records';
 import { postWebhook } from './webhook';
 import { withRecompute } from '@/services/leads/nextFollowUp';
 import { updateLead } from '@/services/leads/updateLead';
@@ -12,6 +14,23 @@ export interface ActionContext {
   objectType: AutomationObjectType;
   recordId: string;
   spec: Record<string, unknown>;
+}
+
+/**
+ * The record as the automation's author may VIEW it, or null. Anything that
+ * leaves the platform goes through here: the engine runs as the author, and a
+ * webhook must not carry a record their role could not open.
+ */
+async function viewableRecord(ctx: Ctx, objectType: AutomationObjectType, recordId: string) {
+  try {
+    if (objectType === 'LEAD') return await assertLeadInScope(ctx, recordId, prisma, 'VIEW');
+    const record = await loadRecord(ctx.tenantId, objectType, recordId);
+    if (record) await assertRecordInScope(ctx, RECORD_MODULE[objectType], record, prisma, 'VIEW', objectType);
+    return record;
+  } catch (err) {
+    if (err instanceof AppError && err.status === 404) return null;
+    throw err;
+  }
 }
 
 /**
@@ -77,7 +96,7 @@ export async function runAction({ ctx, objectType, recordId, spec }: ActionConte
 
     // Who and what, never the lead's numbers or email: the receiver reads more through the API.
     case 'webhook': {
-      const record = await loadRecord(ctx.tenantId, objectType, recordId);
+      const record = await viewableRecord(ctx, objectType, recordId);
       if (!record) return;
       await postWebhook(spec as { url: string; secret: string }, {
         event: 'automation',

@@ -245,3 +245,76 @@ it('webhook posts the event signed with a secret shown once, and refuses an addr
       .status,
   ).toBe(422);
 });
+
+it('webhook sends only what its author may see: authoring needs VIEW on the record, and each run checks the record', async () => {
+  // An IT administrator manages automations but holds no lead or contact access.
+  const itRole = await prisma.role.create({
+    data: { tenantId, key: `it-${suffix}`, name: 'IT', rank: 30, defaultScope: 'ORGANIZATION' },
+  });
+  await grantPermissions(tenantId, itRole.id, [
+    ['automation', 'VIEW'],
+    ['automation', 'MANAGE_AUTOMATION'],
+  ]);
+  const it = await createWorkspaceUser({ tenantId, roleId: itRole.id, email: `it@${slug}.test`, fullName: 'IT' });
+  const itCookie = await createSessionToken(tenantId, it.id);
+  for (const objectType of ['LEAD', 'CONTACT']) {
+    const refused = await post(
+      createAutomation,
+      '/api/v1/automations',
+      {
+        name: 'Export',
+        objectType,
+        event: 'created',
+        activate: true,
+        actionSpec: { action: 'webhook', url: 'https://93.184.215.14/x' },
+      },
+      itCookie,
+    );
+    expect(refused.status).toBe(403);
+  }
+
+  // A seller who sees only their own leads may author one; it carries their own leads only.
+  const ownRole = await prisma.role.create({
+    data: { tenantId, key: `own-${suffix}`, name: 'Seller', rank: 50, defaultScope: 'OWN' },
+  });
+  await grantPermissions(tenantId, ownRole.id, [['automation', 'MANAGE_AUTOMATION']]);
+  await grantPermissions(tenantId, ownRole.id, [['leads', 'VIEW']], 'OWN');
+  const seller = await createWorkspaceUser({
+    tenantId,
+    roleId: ownRole.id,
+    email: `seller@${slug}.test`,
+    fullName: 'Seller',
+  });
+  const created = await post(
+    createAutomation,
+    '/api/v1/automations',
+    {
+      name: 'Mine',
+      objectType: 'LEAD',
+      event: 'created',
+      actionSpec: { action: 'webhook', url: 'https://93.184.215.14/x' },
+    },
+    await createSessionToken(tenantId, seller.id),
+  );
+  expect(created.status).toBe(200);
+  const spec = await storedAction(created.body.id);
+
+  const sent = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+  const sellerCtx = await ctxForUser(seller.id, tenantId, `auto-own-${suffix}`);
+  const someoneElses = await newLead({ ownerId: people.agent });
+  await runAction({ ctx: sellerCtx, objectType: 'LEAD', recordId: someoneElses.id, spec });
+  expect(sent).not.toHaveBeenCalled();
+  const theirs = await newLead({ ownerId: seller.id });
+  await runAction({ ctx: sellerCtx, objectType: 'LEAD', recordId: theirs.id, spec });
+  expect(sent).toHaveBeenCalledTimes(1);
+
+  // A webhook stored before (or whose author has since lost access) still sends nothing.
+  sent.mockClear();
+  const itCtx = await ctxForUser(it.id, tenantId, `auto-it-${suffix}`);
+  await runAction({ ctx: itCtx, objectType: 'LEAD', recordId: theirs.id, spec });
+  const contact = await prisma.contact.create({
+    data: { tenantId, reference: `CT-${suffix}`, fullName: 'Omar Haddad' },
+  });
+  await runAction({ ctx: itCtx, objectType: 'CONTACT', recordId: contact.id, spec });
+  expect(sent).not.toHaveBeenCalled();
+});

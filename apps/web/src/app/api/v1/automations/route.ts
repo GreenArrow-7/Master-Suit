@@ -1,10 +1,13 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
+import { Forbidden } from '@/lib/errors';
+import { can } from '@/lib/security/rbac';
 import { filterTreeSchema } from '@/lib/api/filterTree';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { assertAssignableUser } from '@/lib/security/record-scope';
 import { automationGraph } from '@/services/automation/graph';
+import { RECORD_MODULE } from '@/services/automation/records';
 import { newWebhookSecret } from '@/services/automation/webhook';
 import { sendableTemplate } from '@/services/conversations/send';
 
@@ -109,6 +112,8 @@ export const POST = route(
       await sendableTemplate(ctx.tenantId, body.actionSpec.channel, body.actionSpec.templateKey);
     }
     if (body.actionSpec.action === 'webhook') {
+      // It sends records out of the platform: only ones the author may open (each run checks the record too).
+      if (!can(ctx, RECORD_MODULE[body.objectType], 'VIEW')) throw Forbidden('You cannot see these records.');
       const secret = newWebhookSecret();
       webhookSecret = secret.plain;
       spec = { ...body.actionSpec, secret: secret.sealed };
