@@ -69,6 +69,17 @@ export async function leadSourceIdFor(db: Db, tenantId: string, key: string): Pr
   return entry?.id ?? null;
 }
 
+/** The active entry with this name, in any case (a tracking number's tag, M9-06), or null. */
+export async function leadSourceNamed(db: Db, tenantId: string, name: string): Promise<string | null> {
+  await ensureLeadSources(db, tenantId);
+  const entry = await db.leadSource.findFirst({
+    where: { tenantId, isActive: true, name: { equals: name, mode: 'insensitive' } },
+    orderBy: { position: 'asc' },
+    select: { id: true },
+  });
+  return entry?.id ?? null;
+}
+
 /** A lead's `sourceId` from a body: the workspace's own entry, or 404 like a missing id. */
 export async function assertLeadSource(db: Db, tenantId: string, id: string): Promise<void> {
   const entry = await db.leadSource.findFirst({ where: { tenantId, id }, select: { id: true } });

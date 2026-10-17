@@ -37,6 +37,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 | 2026-10-18 | [The check-in screen shows today's target; absence and standing shifts feed assignment; Face Activity and the objection playbook in every workspace; Lead Eagle opens on its board](2026-10-18-le-attendance-ai.md) | #212 | Attendance, allocation, Lead Eagle, live calls |
 | 2026-10-18 | [Lead settings: required custom fields on Add lead, the lead form layout, holidays in assignment, brand colours on the QR page, a paged Audit Log, and the OpenAPI document](2026-10-18-le-settings-api.md) | #214 | Lead Eagle, admin, allocation, audit, API |
 | 2026-10-18 | [Project, site-visit and call reports; reports regroup by user, month, project or lead; any report can be emailed on a schedule](2026-10-18-reports-new.md) | #204 | Reports, Lead Eagle, feature |
+| 2026-10-18 | [A provider's calls on the lead's timeline, a call report per agent, missed-call notices and tracking numbers](2026-10-18-le-calls.md) | #205 | Lead Eagle, calls, telephony |
 | 2026-10-17 | [The phone apps carry the push plugin](2026-10-17-native-push-plugin.md) | — | Mobile, build |
 | 2026-10-17 | [Each person chooses phone and email copies of their notifications](2026-10-17-notification-prefs.md) | — | Notifications, feature |
 | 2026-10-17 | [Automatic assignment can be switched on, and is on for new Lead Eagle workspaces](2026-10-17-assignment-rules.md) | #194 | Lead Eagle, allocation, feature |

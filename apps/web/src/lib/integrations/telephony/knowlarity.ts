@@ -118,6 +118,7 @@ export class KnowlarityProvider implements TelephonyProvider {
       event,
       occurredAt: startTime && !Number.isNaN(Date.parse(startTime)) ? new Date(startTime) : new Date(),
       durationSecs: num(p.call_duration),
+      answered: status === 'answered',
       recordingUrl: recordingUrl && /^https:\/\//i.test(recordingUrl) ? recordingUrl : undefined,
       deliveryId: `${externalCallId}:${status}`,
       from: typeof p.caller_id === 'string' ? p.caller_id : undefined,

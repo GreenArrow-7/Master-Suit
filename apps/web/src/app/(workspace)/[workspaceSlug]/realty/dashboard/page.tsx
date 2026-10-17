@@ -2,6 +2,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { boardFilterOptions, rememberedBoardFilter } from '@/lib/leads/boardFilter';
+import { can } from '@/lib/security/rbac';
 import { realtyDashboard, type RealtyDashboard, type Tile as Linked } from '@/services/realty/dashboard';
 import { onDay } from '@/lib/leads/followUpDue';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -335,6 +336,15 @@ export default async function RealtyDashboardPage({
                 <strong className="lf-num">{talkTime(board.calls.seconds)}</strong> talk time
               </SalesLink>
             </div>
+            {/* Each agent's calls, connected calls and time (M9-05). */}
+            {can(ctx, 'reports', 'VIEW') && (
+              <SalesLink
+                href="/reports?report=call-performance"
+                style={{ display: 'inline-block', marginTop: 'var(--lf-space-3)', fontSize: 'var(--lf-text-sm)' }}
+              >
+                Call performance by agent
+              </SalesLink>
+            )}
           </Panel>
         )}
 

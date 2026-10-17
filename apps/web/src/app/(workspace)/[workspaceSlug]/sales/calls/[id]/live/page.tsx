@@ -11,6 +11,7 @@ import { resolveTelephony } from '@/lib/integrations/telephony/resolve';
 import { liveAudioMode } from '@/lib/integrations/telephony/liveAudio';
 import { loadFieldRules } from '@/lib/security/fieldSecurity';
 import { asLeadPhone } from '@/services/leads/createLead';
+import { workspaceTimezone } from '@/services/hr/attendance';
 import LiveCallWorkspace from './LiveCallWorkspace';
 
 export const metadata = { title: 'Live Call' };
@@ -82,6 +83,7 @@ export default async function LiveCallPage({
       consented={consented}
       context={context}
       hasGemini={Boolean(credential?.key)}
+      timeZone={await workspaceTimezone(ctx)}
     />
   );
 }

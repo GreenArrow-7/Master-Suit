@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { audit } from '@/lib/security/audit';
-import { notifyCrm } from '@/services/crm/notify';
+import { notifyAboutCall, notifyCrm } from '@/services/crm/notify';
 import { assessEligibility, lockAndVerify, policyFromRule, redactForSales, type Eligibility } from './eligibility';
 import { openTriageEntry, resolveTriageEntry, type TriageDetail, type TriageReason } from './triage';
 
@@ -234,6 +234,17 @@ export async function assignLead(tenantId: string, leadId: string, now = new Dat
             priority: 'HIGH',
           },
         );
+        // M9-08: the client rang and nobody answered before the lead had an
+        // owner, so the bell went to whoever the call is recorded against; the
+        // agent is the one to call back.
+        const missed = await prisma.call.findFirst({
+          where: { tenantId, leadId: lead.id, direction: 'INBOUND', status: 'MISSED', deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, leadId: true, callerId: true, recipientNumber: true, direction: true },
+        });
+        if (missed) {
+          await notifyAboutCall({ tenantId, actor: { id: 'distribution' } }, missed, 'call.missed', 'Missed call from');
+        }
       }
       return placed.result;
     }

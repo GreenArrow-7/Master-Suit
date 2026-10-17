@@ -14,6 +14,7 @@
  * guess.
  */
 import { prisma } from '@/lib/db';
+import { normalizePhone } from '@/services/leads/normalizePhone';
 import { connectionCredentials } from '../connection';
 import { telephonyProvider } from './index';
 import { TELEPHONY_VENDORS, TelephonyConfigError } from './types';
@@ -49,6 +50,25 @@ export function telephonySettings(metadata: unknown): TelephonySettings {
     consentRequired: m.consentRequired !== false,
     country: typeof m.country === 'string' ? m.country : undefined,
   };
+}
+
+/**
+ * The connection's tracking numbers (M9-06), normalised, each to its tag: the
+ * source a call to that line came from, typed on the connection as
+ * `+97144000001 = Google Ads; +97144000002 = Marina launch` (`;` or a new line
+ * between entries). An entry without a number or a tag is skipped.
+ */
+// ponytail: one 500-character setting holds about a dozen lines; a table of its own when a workspace runs more.
+export function trackingNumbers(metadata: unknown): Map<string, string> {
+  const raw = (metadata as Record<string, unknown> | null)?.trackingNumbers;
+  const map = new Map<string, string>();
+  for (const entry of typeof raw === 'string' ? raw.split(/[;\n]/) : []) {
+    const at = entry.indexOf('=');
+    const number = at > 0 ? normalizePhone(entry.slice(0, at)) : null;
+    const tag = entry.slice(at + 1).trim();
+    if (number && tag) map.set(number, tag);
+  }
+  return map;
 }
 
 /** Connected telephony vendors for a tenant, newest first. Never returns secrets. */

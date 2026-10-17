@@ -91,6 +91,12 @@ const REPORTS = [
         title: 'Call Report',
         desc: 'Calls, connected calls and talk time, by agent, lead or month.',
       },
+      {
+        key: 'call-performance',
+        icon: '📞',
+        title: 'Call Performance',
+        desc: 'Calls, connected calls, time on calls and talk time, by agent.',
+      },
     ],
   },
   {

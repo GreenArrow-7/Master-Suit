@@ -16,9 +16,10 @@ import { csvHeader, csvRow, type CsvColumn } from '@/lib/csv';
 import { Invalid, NotFound } from '@/lib/errors';
 import { mergeWhere } from '@/lib/api/where';
 import { conversion, funnel, names, rank, subtree, throughLead, type Range } from './rollups';
-import type { Ctx } from '@/lib/security/rbac';
+import { can, type Ctx } from '@/lib/security/rbac';
 import { hasAnyModuleEntitlement, SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { callScope } from '@/lib/security/record-scope';
+import { visibilityWhere } from '@/lib/security/visibility';
 import { LEAD_SOURCES } from '@/lib/integrations/leadSources';
 import {
   boardQuery,
@@ -68,6 +69,7 @@ export const REPORT_KEYS = [
   'project-report',
   'site-visits',
   'call-report',
+  'call-performance',
 ] as const;
 export type ReportKey = (typeof REPORT_KEYS)[number];
 
@@ -164,6 +166,12 @@ export interface Report {
 }
 
 const pct = (n: number | null) => (n === null ? null : `${n}%`);
+
+/** 0:01:30, as the board shows talk time. */
+const clock = (seconds: number) =>
+  [Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60), Math.round(seconds % 60)]
+    .map((part, i) => (i === 0 ? String(part) : String(part).padStart(2, '0')))
+    .join(':');
 
 const aed = (amount: Prisma.Decimal | null, currency = 'AED') =>
   amount === null ? null : `${currency} ${Number(amount.toString()).toLocaleString('en-GB')}`;
@@ -732,6 +740,89 @@ export async function runReport(
             };
           })
           .sort((a, b) => Number(b.leads) - Number(a.leads)),
+      };
+    }
+
+    case 'call-performance': {
+      // Who called, who got through and for how long (M9-05): the calls placed
+      // through the provider and those logged by hand, as the board counts them,
+      // under the calls scope as well as the reports one.
+      const byPerson = (field: string) => (userIds.length === 0 ? {} : { [field]: { in: userIds } });
+      const mayCalls = can(ctx, 'calls', 'VIEW');
+      const [callsWhere, logWhere] = await Promise.all([
+        callScope(ctx, 'VIEW'),
+        mayCalls
+          ? visibilityWhere(ctx, 'calls', 'VIEW', { ownerField: 'ownerId' })
+          : { tenantId, ownerId: ctx.actor.id },
+      ]);
+      const [placed, logged] = await Promise.all([
+        prismaRead.call.groupBy({
+          by: ['callerId', 'status', 'outcome'],
+          where: mergeWhere(callsWhere, callTab('placed').where, byPerson('callerId'), viaLead, {
+            deletedAt: null,
+            createdAt: within,
+          }) as Prisma.CallWhereInput,
+          _count: { _all: true },
+          _sum: { durationSecs: true, talkSecs: true },
+        }),
+        prismaRead.activity.groupBy({
+          by: ['ownerId', 'outcome'],
+          where: mergeWhere(logWhere, LOGGED_CALL, byPerson('ownerId'), viaLead, {
+            occurredAt: within,
+          }) as Prisma.ActivityWhereInput,
+          _count: { _all: true },
+          _sum: { durationSecs: true },
+        }),
+      ]);
+      const by = new Map<
+        string,
+        { calls: number; connected: number; secs: number; connectedSecs: number; talk: number | null }
+      >();
+      const add = (userId: string | null, count: number, secs: number, connected: boolean, talk: number | null) => {
+        if (!userId) return;
+        const row = by.get(userId) ?? { calls: 0, connected: 0, secs: 0, connectedSecs: 0, talk: null };
+        row.calls += count;
+        row.secs += secs;
+        if (connected) {
+          row.connected += count;
+          row.connectedSecs += secs;
+        }
+        if (talk !== null) row.talk = (row.talk ?? 0) + talk;
+        by.set(userId, row);
+      };
+      for (const r of placed) {
+        const connected = r.status === 'COMPLETED' && !!r.outcome && CONNECTED_CALL_OUTCOMES.includes(r.outcome);
+        add(r.callerId, r._count._all, r._sum.durationSecs ?? 0, connected, r._sum.talkSecs);
+      }
+      for (const r of logged) {
+        const connected = !!r.outcome && CONNECTED_LOG_OUTCOMES.includes(r.outcome);
+        add(r.ownerId, r._count._all, r._sum.durationSecs ?? 0, connected, null);
+      }
+      const who = await names(tenantId, [...by.keys()]);
+      return {
+        key,
+        title: 'Call performance',
+        columns: [
+          { key: 'agent', label: 'Agent' },
+          { key: 'calls', label: 'Calls', align: 'right' },
+          { key: 'connected', label: 'Connected', align: 'right' },
+          { key: 'rate', label: 'Connect rate', align: 'right' },
+          { key: 'total', label: 'Time on calls', align: 'right' },
+          { key: 'average', label: 'Average connected call', align: 'right' },
+          { key: 'talk', label: 'Talk time', align: 'right' },
+        ],
+        rows: [...by]
+          .map(([userId, r]) => ({
+            agent: who.get(userId) ?? 'Removed user',
+            calls: r.calls,
+            connected: r.connected,
+            rate: r.calls === 0 ? null : `${Math.round((r.connected / r.calls) * 100)}%`,
+            total: clock(r.secs),
+            average: r.connected === 0 ? null : clock(Math.round(r.connectedSecs / r.connected)),
+            talk: r.talk === null ? null : clock(r.talk),
+          }))
+          .sort((a, b) => b.calls - a.calls || a.agent.localeCompare(b.agent)),
+        note: 'Calls placed through the telephony provider and calls logged by hand, by when they were made. Talk time is what the provider reports, without the ring; blank where it reports none.',
       };
     }
 

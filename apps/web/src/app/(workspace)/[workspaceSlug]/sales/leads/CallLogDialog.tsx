@@ -36,15 +36,19 @@ export function useAfterDial(open: (lead: CallLogLead) => void) {
  * minutes, and the next follow-up — tomorrow at 10:00 on the workspace's clock
  * unless changed — sent as one POST. A native modal dialog, which brings focus,
  * Escape and the backdrop with it. Kept on the device and sent later when there
- * is no connection, as the timeline's own log is.
+ * is no connection, as the timeline's own log is. With `callId` (a provider
+ * call that just ended, M9-02) it records that call's outcome: the provider
+ * timed it, so there are no minutes to type.
  */
 export default function CallLogDialog({
   lead,
+  callId,
   timeZone,
   onClose,
   onLogged,
 }: {
   lead: CallLogLead;
+  callId?: string;
   timeZone: string;
   onClose: () => void;
   onLogged: () => void;
@@ -75,8 +79,9 @@ export default function CallLogDialog({
       'POST',
       {
         outcome,
+        ...(callId && { callId }),
         ...(notes.trim() && { notes: notes.trim() }),
-        ...(minutes && { durationMins: Number(minutes) }),
+        ...(minutes && !callId && { durationMins: Number(minutes) }),
         ...(book && followUpAt && { followUpAt }),
         requestKey,
         occurredAt: new Date().toISOString(),
@@ -129,18 +134,20 @@ export default function CallLogDialog({
             onChange={(e) => setNotes(e.target.value)}
           />
         </Field>
-        <Field label="Minutes on the call" htmlFor={`${id}-minutes`}>
-          <input
-            id={`${id}-minutes`}
-            className="lf-input"
-            type="number"
-            min={0}
-            max={600}
-            inputMode="numeric"
-            value={minutes}
-            onChange={(e) => setMinutes(e.target.value)}
-          />
-        </Field>
+        {!callId && (
+          <Field label="Minutes on the call" htmlFor={`${id}-minutes`}>
+            <input
+              id={`${id}-minutes`}
+              className="lf-input"
+              type="number"
+              min={0}
+              max={600}
+              inputMode="numeric"
+              value={minutes}
+              onChange={(e) => setMinutes(e.target.value)}
+            />
+          </Field>
+        )}
         <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
           <input type="checkbox" checked={book} onChange={(e) => setBook(e.target.checked)} />
           Book the next follow-up

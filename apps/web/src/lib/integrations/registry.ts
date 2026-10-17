@@ -62,6 +62,13 @@ const TELEPHONY_SETTINGS: SettingField[] = [
     toggle: true,
     hint: 'A call, answered or missed, from a number no lead, contact or colleague holds becomes a lead for your distribution rule, the call on it. On unless switched off.',
   },
+  {
+    key: 'trackingNumbers',
+    label: 'Tracking numbers',
+    secret: false,
+    setting: true,
+    hint: 'One per campaign: +97144000001 = Google Ads; +97144000002 = Marina launch. A new caller to a number becomes a lead from the source of that name (Settings → Sources).',
+  },
 ];
 
 const TELEPHONY_LABELS: Record<string, { label: string; description: string; unsigned?: boolean }> = {
