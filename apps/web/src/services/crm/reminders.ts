@@ -23,6 +23,7 @@
  */
 import { withPlatformTx } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { enqueue } from '@/lib/queue';
 
 /**
  * How far ahead to look.
@@ -226,6 +227,19 @@ async function writeReminders(
       }),
     }),
   );
+
+  // The phone and email copies (M8-03, M17-06), each person's preferences applied by the worker.
+  for (const row of rows) {
+    const { title, body } = render(row);
+    await enqueue('notifications', 'record-push', {
+      tenantId: row.tenantId,
+      userIds: [row.userId],
+      title,
+      body: body ?? '',
+      objectType: row.objectType,
+      recordId: row.recordId,
+    });
+  }
 
   logger.info({ kind, count: rows.length }, 'reminder sweep wrote notifications');
   return rows.length;

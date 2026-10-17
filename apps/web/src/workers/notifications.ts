@@ -3,6 +3,8 @@ import { prisma } from '@/lib/db';
 import { sendMail } from '@/lib/mailer';
 import { entityRoute } from '@/lib/nav/entityRoute';
 import { pushConfigured, sendPush } from '@/lib/push/send';
+import { readPrefs } from '@/lib/notificationPrefs';
+import { env } from '@/lib/env';
 
 interface HrEventJob {
   tenantId: string;
@@ -44,16 +46,43 @@ interface RecordPushJob {
  * better one than nothing.
  */
 export async function pushRecord(data: RecordPushJob) {
+  // Each person's choices (M17-11): push unless turned off, email only if turned on.
+  const people = await prisma.user.findMany({
+    where: { tenantId: data.tenantId, id: { in: data.userIds }, status: 'ACTIVE', deletedAt: null },
+    select: { id: true, email: true, notificationPrefs: true },
+  });
+  const pushTo = people.filter((p) => readPrefs(p.notificationPrefs).push).map((p) => p.id);
+  const emailTo = people.filter((p) => readPrefs(p.notificationPrefs).email).map((p) => p.email);
+
+  let emailed = 0;
+  if (emailTo.length) {
+    try {
+      emailed = await emailRecord(data, emailTo);
+    } catch (error) {
+      logger.warn({ err: error }, 'notification email failed');
+    }
+  }
   try {
-    return await deliverPush(data);
+    return { ...(await deliverPush({ ...data, userIds: pushTo })), emailed };
   } catch (error) {
     logger.warn({ err: error }, 'push notification failed');
-    return { pushed: 0 };
+    return { pushed: 0, emailed };
   }
 }
 
+/** The email copy (M17-03): the notification's title and text, and a link to the record. */
+async function emailRecord(data: RecordPushJob, to: string[]) {
+  const tenant = await prisma.tenant.findUnique({ where: { id: data.tenantId }, select: { slug: true } });
+  if (!tenant) return 0;
+  const path = entityRoute(data.objectType, data.recordId, tenant.slug) ?? `/${tenant.slug}/notifications`;
+  const base = env.APP_URL.replace(/\/$/, '');
+  const text = [data.body, `Open it: ${base}${path}`].filter(Boolean).join('\n\n');
+  for (const address of to) await sendMail(address, data.title, text);
+  return to.length;
+}
+
 async function deliverPush(data: RecordPushJob) {
-  if (!pushConfigured()) return { pushed: 0 };
+  if (!pushConfigured() || data.userIds.length === 0) return { pushed: 0 };
 
   const [devices, tenant] = await Promise.all([
     prisma.deviceToken.findMany({
