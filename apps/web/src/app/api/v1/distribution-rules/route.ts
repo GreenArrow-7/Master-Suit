@@ -30,6 +30,7 @@ export const POST = route(
         candidatePool: await poolOf(ctx, body),
         reassignAfterMins: body.reassignAfterMins ?? null,
         escalateAfterMins: body.escalateAfterMins ?? null,
+        conditions: body.conditions ?? {},
         createdById: ctx.actor.id,
         updatedById: ctx.actor.id,
       },
