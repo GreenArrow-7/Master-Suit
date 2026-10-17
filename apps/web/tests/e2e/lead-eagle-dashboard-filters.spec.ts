@@ -141,12 +141,11 @@ test.describe('The Lead Eagle board’s filters', () => {
     });
 
     await test.step('Clear forgets the choice', async () => {
-      // Let the ?clear=1 request finish first; a goto racing it aborts (ERR_ABORTED).
-      await Promise.all([
-        page.waitForResponse((response) => response.url().includes('clear=1')),
-        page.getByRole('link', { name: 'Clear' }).click(),
-      ]);
-      await page.goto(at('/lead-eagle/dashboard'));
+      // ?clear=1 saves the empty choice and redirects to the bare board; wait for
+      // that redirect to land, then reload, rather than racing it with a goto.
+      await page.getByRole('link', { name: 'Clear' }).click();
+      await expect(page).toHaveURL(new RegExp(`${at('/lead-eagle/dashboard')}$`));
+      await page.reload();
       await expect(page).toHaveURL(new RegExp(`${at('/lead-eagle/dashboard')}$`));
       await expect(callFigure(page, 'made').locator('strong')).toHaveText('2');
     });
