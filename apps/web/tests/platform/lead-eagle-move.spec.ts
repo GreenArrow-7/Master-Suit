@@ -11,13 +11,17 @@ vi.mock('next/headers', () => ({
   }),
 }));
 
+import type { Client } from 'pg';
 import { prisma } from '@/lib/db';
 import { moveCompany, type LeadEagleCompany } from '@/services/platform/leadEagleMove';
 import CollectionsPage from '@/app/(workspace)/[workspaceSlug]/sales/collections/page';
 import LeadDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
 import ColdDataPage from '@/app/(workspace)/[workspaceSlug]/sales/cold-data/page';
+import { GET as readTimeline } from '@/app/api/v1/leads/[id]/timeline/route';
+import { readCompany } from '../../scripts/move-lead-eagle';
 import { grantPermissions, seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { pageText } from '../helpers/render';
+import { get } from '../helpers/request';
 
 /**
  * Moving a standalone Lead Eagle company into a workspace (Lead Eagle plan,
@@ -519,8 +523,10 @@ describe('moving a Lead Eagle company', () => {
       expect.arrayContaining([
         'ghost@nowhere.test owns 2 records but has no account here; they move unowned.',
         '1 records are owned by people no longer in Lead Eagle; they move unowned.',
-        '2 activities were logged by someone without an account here; they move without who logged them.',
-        '1 stage changes were made by someone without an account here; they move without who made them.',
+        // Named, so the operator can invite them before the commit (MIG-05).
+        'ghost@nowhere.test logged 1 activities but has no account here; they move without who logged them.',
+        '1 activities were logged by people no longer in Lead Eagle; they move without who logged them.',
+        'ghost@nowhere.test made 1 stage changes but has no account here; they move without who made them.',
         '4 activities and enquiries are on merged duplicates, deleted records or no record; they stay behind.',
         '1 follow-ups are on merged duplicates or deleted leads; they stay behind.',
         '1 units are on projects that did not move; they stay behind.',
@@ -547,11 +553,11 @@ describe('moving a Lead Eagle company', () => {
         expect.stringContaining('owed to Outside referrer'),
         'Booking BK-ME-b-3 was confirmed but names no unit; it moves as a draft.',
         'Booking BK-ME-b-5 is on nothing that moved (its listing stayed behind); it is not moved.',
-        '1 stage changes were made by someone without an account here; they move without who made them.',
+        'ghost@nowhere.test made 1 stage changes but has no account here; they move without who made them.',
       ]),
     );
     // Nothing else in this book is left behind or loses its person.
-    expect(report.problems.filter((p) => /stays? behind\.$|no longer in Lead Eagle|logged by/.test(p))).toEqual([]);
+    expect(report.problems.filter((p) => /stays? behind\.$|no longer in Lead Eagle| logged /.test(p))).toEqual([]);
 
     const [aisha, omar] = await moved();
     expect(aisha).toMatchObject({
@@ -711,5 +717,97 @@ describe('moving a Lead Eagle company', () => {
       /was already moved into this workspace \(audit record of \d{4}-\d{2}-\d{2}\)/,
     );
     expect(await prisma.dataRecord.count({ where: { tenantId, fullName: 'Cold Only Record' } })).toBe(1);
+  });
+
+  it('shows all 60 stage changes of a moved lead on its timeline, each with who made it (MIG-08)', async () => {
+    const snap = snapshot();
+    const changes = Array.from({ length: 60 }, (_, i) => ({
+      ...snap.activities[2]!,
+      leadId: 'l-busy',
+      userId: 'u-agent',
+      fromStatusId: i % 2 ? 's-lost' : 's-new',
+      toStatusId: i % 2 ? 's-new' : 's-lost',
+      occurredAt: new Date(Date.UTC(2026, 7, 1, 9, i)).toISOString(),
+    }));
+    await moveCompany(
+      tenantId,
+      {
+        ...snap,
+        company: { id: 'le-company-3', slug: 'busy', name: 'Busy' },
+        leads: [
+          {
+            ...snap.leads[0]!,
+            id: 'l-busy',
+            reference: 'LE-0060',
+            email: null,
+            primaryPhone: '0501110060',
+            phones: [],
+            projectIds: [],
+          },
+        ],
+        activities: changes,
+        enquiries: [],
+        followUps: [],
+        dataRecords: [],
+        captureLinks: [],
+        projects: [],
+        units: [],
+        listings: [],
+        bookings: [],
+        commissions: [],
+      },
+      { commit: true },
+    );
+    const { id } = await prisma.lead.findFirstOrThrow({
+      where: { tenantId, customData: { path: ['leadEagle', 'company'], equals: 'le-company-3' } },
+      select: { id: true },
+    });
+    // The lead page opens on the first page; Show older pages the rest (GET …/timeline?cursor=).
+    const stages: { by: string | null }[] = [];
+    let cursor: string | null = null;
+    do {
+      const query: string = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+      const res = await get(readTimeline, `/api/v1/leads/${id}/timeline${query}`, fixture.a.cookie, { id });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const page = res.body as { entries: { kind: string; by: string | null }[]; next: string | null };
+      stages.push(...page.entries.filter((e) => e.kind === 'stage'));
+      cursor = page.next;
+    } while (cursor);
+    expect(stages).toHaveLength(60);
+    const { fullName } = await prisma.user.findFirstOrThrow({
+      where: { tenantId, id: fixture.a.userId },
+      select: { fullName: true },
+    });
+    expect(new Set(stages.map((s) => s.by))).toEqual(new Set([fullName]));
+  });
+});
+
+describe('reading a Lead Eagle company', () => {
+  it('counts every table holding the company’s rows that the move leaves behind', async () => {
+    // The standalone's catalogue, as a stand-in database answers it: two tables the move reads,
+    // two that mean nothing elsewhere, and four it leaves behind.
+    const tables = [
+      'Lead',
+      'Activity',
+      'Session',
+      'IdempotencyKey',
+      'Team',
+      'Branch',
+      'CustomFieldValue',
+      'MediaAsset',
+    ];
+    const db = {
+      query: async (sql: string) => ({
+        rows: sql.includes('from "Tenant"')
+          ? [{ id: 'le-company-9', slug: 'meridian', name: 'Meridian' }]
+          : sql.includes('information_schema')
+            ? tables.map((name) => ({ name }))
+            : sql.includes('count(*)')
+              ? [{ n: 2, merged: 0 }]
+              : [],
+      }),
+    } as unknown as Client;
+    const snap = await readCompany(db, 'meridian');
+    expect(snap.notMoved).toEqual({ Team: 2, Branch: 2, CustomFieldValue: 2, MediaAsset: 2 });
   });
 });
