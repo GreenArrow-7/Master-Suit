@@ -48,6 +48,7 @@ interface DueRow {
 export interface ReminderSweepResult {
   followUps: number;
   calls: number;
+  visits: number;
 }
 
 /**
@@ -55,8 +56,8 @@ export interface ReminderSweepResult {
  * than "ok".
  */
 export async function runReminderSweep(): Promise<ReminderSweepResult> {
-  const [followUps, calls] = await Promise.all([sweepDueTasks(), sweepDueCallFollowUps()]);
-  return { followUps, calls };
+  const [followUps, calls, visits] = await Promise.all([sweepDueTasks(), sweepDueCallFollowUps(), sweepDueVisits()]);
+  return { followUps, calls, visits };
 }
 
 /**
@@ -148,6 +149,46 @@ async function sweepDueCallFollowUps(): Promise<number> {
 
   return writeReminders(rows, 'call.reminder', (row) => ({
     title: `Call follow-up due: ${row.title}`,
+    body: null,
+  }));
+}
+
+/**
+ * Site visits about to start (audit M8-13), to the agent taking them. Only
+ * REQUESTED or APPROVED visits: one already checked in, done or cancelled needs
+ * no reminder. Points at the lead where there is one, like the sweeps above.
+ */
+async function sweepDueVisits(): Promise<number> {
+  const rows = await withPlatformTx((tx) =>
+    tx.$queryRawUnsafe<DueRow[]>(
+      `SELECT v."tenantId",
+              v."ownerId"                                   AS "userId",
+              COALESCE(v."leadId", v.id)                    AS "recordId",
+              CASE WHEN v."leadId" IS NULL THEN 'site_visit' ELSE 'lead' END AS "objectType",
+              COALESCE(l."fullName", 'a client')            AS title,
+              NULL::text                                    AS body
+         FROM "SiteVisit" v
+         LEFT JOIN "Lead" l
+                ON l.id = v."leadId" AND l."tenantId" = v."tenantId" AND l."deletedAt" IS NULL
+        WHERE v."deletedAt" IS NULL
+          AND v.status IN ('REQUESTED', 'APPROVED')
+          AND v."scheduledAt" >= now()
+          AND v."scheduledAt" < now() + ($1 || ' minutes')::interval
+          AND NOT EXISTS (
+                SELECT 1 FROM "Notification" n
+                 WHERE n."tenantId" = v."tenantId"
+                   AND n."userId"   = v."ownerId"
+                   AND n.kind       = 'visit.reminder'
+                   AND n."recordId" = COALESCE(v."leadId", v.id)
+                   AND n."createdAt" > now() - ($2 || ' hours')::interval)
+        LIMIT 500`,
+      String(LOOKAHEAD_MINUTES),
+      String(ALREADY_TOLD_HOURS),
+    ),
+  );
+
+  return writeReminders(rows, 'visit.reminder', (row) => ({
+    title: `Site visit soon: ${row.title}`,
     body: null,
   }));
 }
