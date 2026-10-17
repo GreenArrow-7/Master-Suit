@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { pendingLeadWork, startOfLocalDay, validatePunch } from '@/services/hr/attendance';
+import { pendingLeadWork, preflight, startOfLocalDay, validatePunch } from '@/services/hr/attendance';
 import { DEFAULT_POLICY } from '@/services/hr/settings';
-import { dailyTargetShortfall } from '@/services/targets/dailyBoard';
+import { dailyTargetProgress, dailyTargetShortfall } from '@/services/targets/dailyBoard';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import { createWorkspaceUser } from '../helpers/fixtures';
 
@@ -127,6 +127,9 @@ describe('work-gated check-out', () => {
       },
     });
     expect(await dailyTargetShortfall(ctx(), userId), 'two leads to call, none called').toBe(2);
+    // OWN-05: the check-in screen shows the quota and the recorded progress, before the punch.
+    expect(await dailyTargetProgress(ctx(), userId)).toEqual({ target: 2, called: 0 });
+    expect(await preflight(ctx(), 'CHECK_OUT', position)).toMatchObject({ dailyTarget: { target: 2, called: 0 } });
     await expect(validatePunch(ctx(), employee, 'CHECK_OUT', position, true, targeted)).rejects.toMatchObject({
       code: 'WORK_PENDING',
     });
@@ -153,6 +156,7 @@ describe('work-gated check-out', () => {
       data: { tenantId, callerId: userId, leadId: leads[1]!.id, status: 'COMPLETED', outcome: 'NO_ANSWER' },
     });
     expect(await dailyTargetShortfall(ctx(), userId)).toBe(0);
+    expect(await preflight(ctx(), 'CHECK_OUT', position)).toMatchObject({ dailyTarget: { target: 2, called: 2 } });
     await expect(validatePunch(ctx(), employee, 'CHECK_OUT', position, true, targeted)).resolves.toBeTruthy();
     // Off by default: the same check-out never consults the target.
     await expect(validatePunch(ctx(), employee, 'CHECK_OUT', position, true, DEFAULT_POLICY)).resolves.toBeTruthy();

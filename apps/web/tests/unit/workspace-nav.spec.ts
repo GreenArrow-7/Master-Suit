@@ -364,12 +364,15 @@ describe('Lead Eagle: its own menu only where it is the whole CRM', () => {
       'Follow-ups',
       'Tasks',
       'Calls',
+      'Playbook',
       'Site Visits',
       'Requirements',
       'Allocation',
       'QR Capture',
       'Cold Data',
     ]);
+    // The objection cards the live coach cites (M21-01).
+    expect(at(nav, `/${SLUG}/lead-eagle/playbook`)).toBe('le-leads / Playbook');
     // The calendar is its own menu entry: on it the menu marks Calendar, not Leads.
     expect(at(nav, `/${SLUG}/lead-eagle/calendar`)).toBe('le-calendar / Calendar');
     expect(tabsOf(nav, 'le-reports')).toEqual(['Reports', 'Targets']);

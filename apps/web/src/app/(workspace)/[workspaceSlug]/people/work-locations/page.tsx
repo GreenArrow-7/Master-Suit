@@ -227,13 +227,13 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
 
       {hr && (
         <section>
-          <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Check-out rules</h2>
+          <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Check-in and check-out rules</h2>
           <HrPolicyForm
             endpoint={`${base}/actions`}
             groups={[
               {
                 key: 'checkout',
-                label: 'Check-out',
+                label: 'Check-in and check-out',
                 definitions: HR_SETTINGS.filter((setting) => CHECKOUT_RULE_KEYS.includes(setting.key)),
               },
             ]}

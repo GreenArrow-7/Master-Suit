@@ -131,3 +131,43 @@ describe('self check-in: the navigation offers it to every workspace, once', () 
     expect(offeredIn(nav)).toEqual([]);
   });
 });
+
+/**
+ * OWN-03.3: a refused face is recorded for review in every workspace. The list
+ * of refused and flagged punches (Face Activity) lived under people/, behind
+ * HRMS, so a Lead-Eagle-only administrator could not see who tried. It is
+ * re-exported at the workspace root like Attendance and its Requests, and the
+ * page admits any module; its permission and HR-admin check are unchanged.
+ */
+describe('face activity: reachable without People', () => {
+  const page = join(workspaceRoot, 'people', 'face-activity', 'page.tsx');
+  const outside = join(workspaceRoot, 'attendance', 'face-activity', 'page.tsx');
+
+  it('is re-exported outside the People folder', () => {
+    expect(readFileSync(outside, 'utf8')).toMatch(
+      /^export \{ default, metadata \} from '\.\.\/\.\.\/people\/face-activity\/page';$/m,
+    );
+  });
+
+  it('admits any module, behind the same permission', () => {
+    const source = readFileSync(page, 'utf8');
+    expect(gatesAModule(source)).toBe(false);
+    expect(source).toMatch(/module: PRODUCT_MODULE_KEYS,\s*permission: \['employee', 'VIEW'\]/);
+    expect(source).toContain('isHrAdmin(ctx)');
+  });
+
+  const offered = (modules: NavInput['modules']) =>
+    buildNavigation({ slug: 'ws', modules, permitted: NAV_PERMISSIONS, peopleOversight: true })
+      .flatMap((section) => section.areas)
+      .flatMap((area) => area.tabs)
+      .filter((tab) => tab.label === 'Face Activity')
+      .map((tab) => tab.href);
+
+  it.each([
+    ['Lead Eagle only', ['LEAD_EAGLE'], '/ws/attendance/face-activity'],
+    ['Sales only', ['SALES'], '/ws/attendance/face-activity'],
+    ['with People', ['LEAD_EAGLE', 'HRMS'], '/ws/people/face-activity'],
+  ] as const)('%s offers it once', (_label, modules, href) => {
+    expect(offered([...modules])).toEqual([href]);
+  });
+});

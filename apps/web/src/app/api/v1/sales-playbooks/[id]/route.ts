@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { withTx } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
+import { assertPlaybookEditor } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -22,9 +24,17 @@ const patchBody = z
   .strict();
 
 export const PATCH = route(
-  { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: patchBody, auditEvent: 'RECORD_UPDATED' },
-  async ({ ctx, params, body }) =>
-    withTx(ctx.tenantId, async (tx) => {
+  {
+    module: 'calls',
+    productModule: LEAD_MODULES,
+    action: 'EDIT',
+    params,
+    body: patchBody,
+    auditEvent: 'RECORD_UPDATED',
+  },
+  async ({ ctx, params, body }) => {
+    assertPlaybookEditor(ctx, 'EDIT');
+    return withTx(ctx.tenantId, async (tx) => {
       const existing = await tx.salesPlaybook.findFirst({
         where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
         select: { id: true },
@@ -42,14 +52,16 @@ export const PATCH = route(
         where: { id: params.id, tenantId: ctx.tenantId },
         data: { ...body, updatedById: ctx.actor.id },
       });
-    }),
+    });
+  },
 );
 
 /** Soft: a retired playbook is still what old calls were coached against. */
 export const DELETE = route(
-  { module: 'calls', productModule: 'SALES', action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
-  async ({ ctx, params }) =>
-    withTx(ctx.tenantId, async (tx) => {
+  { module: 'calls', productModule: LEAD_MODULES, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  async ({ ctx, params }) => {
+    assertPlaybookEditor(ctx, 'DELETE');
+    return withTx(ctx.tenantId, async (tx) => {
       const existing = await tx.salesPlaybook.findFirst({
         where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
         select: { id: true },
@@ -60,5 +72,6 @@ export const DELETE = route(
         data: { deletedAt: new Date(), isActive: false, isDefault: false, updatedById: ctx.actor.id },
         select: { id: true, deletedAt: true },
       });
-    }),
+    });
+  },
 );

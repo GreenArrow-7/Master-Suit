@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
+import { assertPlaybookEditor } from '@/lib/security/record-scope';
 
 /**
  * The objection playbook: what this workspace considers an objection, and what
@@ -25,8 +27,9 @@ const createBody = z
   .strict();
 
 export const POST = route(
-  { module: 'calls', productModule: 'SALES', action: 'CREATE', body: createBody, auditEvent: 'RECORD_CREATED' },
+  { module: 'calls', productModule: LEAD_MODULES, action: 'CREATE', body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, body }) => {
+    assertPlaybookEditor(ctx, 'CREATE');
     return prisma.objection.create({
       data: { tenantId: ctx.tenantId, createdById: ctx.actor.id, updatedById: ctx.actor.id, ...body },
     });
@@ -42,7 +45,7 @@ const listQuery = z
   .strict();
 
 export const GET = route(
-  { module: 'calls', productModule: 'SALES', action: 'VIEW', query: listQuery },
+  { module: 'calls', productModule: LEAD_MODULES, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     const where: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };
     if (query.active === 'true') where.isActive = true;

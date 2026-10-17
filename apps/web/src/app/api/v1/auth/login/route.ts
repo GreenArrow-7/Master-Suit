@@ -27,6 +27,7 @@ import { toResponse } from '@/lib/api/handler';
 import { consumeTotp } from '@/lib/auth/totp-consume';
 import { consumeRecoveryCode } from '@/services/identity/twoFactor';
 import { platformAudit } from '@/lib/security/audit';
+import { workspaceLanding } from '@/lib/security/entitlements';
 
 /**
  * Two shapes, one endpoint.
@@ -513,7 +514,13 @@ async function signedIn(
       // password. The other is the workspace's `maxAgeDays`, which was typed on
       // PasswordPolicy and read by nothing.
       mustChangePassword,
-      destination: destinationFor(user.platformRole, credentialPurpose, activeMembership, mustChangePassword),
+      destination: destinationFor(
+        user.platformRole,
+        credentialPurpose,
+        activeMembership,
+        mustChangePassword,
+        activeMembership ? await workspaceLanding(activeMembership.tenantId, activeMembership.tenant.slug) : null,
+      ),
       expiresAt: session.expiresAt,
     },
     { headers: { 'x-request-id': info.requestId } },
@@ -529,11 +536,13 @@ function destinationFor(
   credentialPurpose: CredentialPurpose | null,
   activeMembership: { tenant: { slug: string } } | null,
   mustChangePassword: boolean,
+  /** The workspace's landing (`workspaceLanding`): its summary, or the Lead Eagle board. */
+  landing: string | null,
 ): string {
   if (credentialPurpose === 'MONITORING') return '/monitoring';
   if (credentialPurpose === 'PLATFORM_ADMIN') return platformRole === 'OWNER' ? '/platform' : '/monitoring';
   if (mustChangePassword && activeMembership) return `/${activeMembership.tenant.slug}/profile/security`;
-  if (activeMembership) return `/${activeMembership.tenant.slug}/dashboard`;
+  if (activeMembership) return landing ?? `/${activeMembership.tenant.slug}/dashboard`;
   return '/login';
 }
 

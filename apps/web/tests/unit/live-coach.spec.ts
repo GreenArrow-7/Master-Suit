@@ -4,7 +4,7 @@
  * that stages post-call CRM updates. Pure functions, no database, no provider.
  */
 import { describe, it, expect } from 'vitest';
-import { nextBestQuestion, heuristicHints } from '@/lib/ai/liveCoach';
+import { nextBestQuestion, heuristicHints, playbookHint } from '@/lib/ai/liveCoach';
 import { extractRequirement, parseAmounts } from '@/lib/ai/simulated';
 
 describe('nextBestQuestion', () => {
@@ -66,5 +66,49 @@ describe('extractRequirement', () => {
 
   it('returns null when nothing was stated', () => {
     expect(extractRequirement('Agent: Hello?\nCustomer: Wrong number, sorry.')).toBeNull();
+  });
+});
+
+/** M21-01: the workspace's own objection cards, cited by the live coach. */
+describe('playbookHint', () => {
+  const cards = [
+    {
+      id: 'c1',
+      name: 'Price',
+      triggerPhrases: ['too expensive'],
+      recommendedResponses: ['Compare it per square foot.'],
+    },
+    { id: 'c2', name: 'Spouse', triggerPhrases: ['ask my wife'], recommendedResponses: [] },
+  ];
+
+  it('answers what the customer said with the card that names it, citing the card', () => {
+    expect(playbookHint('Agent: Here is the price.\nCustomer: Honestly it is too expensive.', cards)).toEqual({
+      objectionId: 'c1',
+      kind: 'OBJECTION',
+      text: 'Price',
+      say: 'Compare it per square foot.',
+      why: 'From your playbook: Price',
+      source: 'playbook',
+    });
+  });
+
+  it('ignores the agent saying the phrase, a card already cited, and a window no card names', () => {
+    expect(playbookHint('Agent: Some say it is too expensive.', cards)).toBeNull();
+    expect(playbookHint('Customer: It is too expensive.', cards, new Set(['c1']))).toBeNull();
+    expect(playbookHint('Customer: Is there parking?', cards)).toBeNull();
+  });
+
+  it('answers the objection just raised, not an earlier one, and gives way when the latest line names no card', () => {
+    const answered = 'Customer: Honestly it is too expensive.\nAgent: Per square foot it is below the community.\n';
+    expect(playbookHint(`${answered}Customer: I need to ask my wife.`, cards)).toMatchObject({ objectionId: 'c2' });
+    expect(playbookHint(`${answered}Customer: Also the handover date is too late.`, cards)).toBeNull();
+    // The customer's latest line counts even when the agent has spoken since.
+    expect(playbookHint(`${answered}Customer: I need to ask my wife.\nAgent: Of course.`, cards)).toMatchObject({
+      objectionId: 'c2',
+    });
+  });
+
+  it('cites a card with no response yet without inventing one', () => {
+    expect(playbookHint('Customer: I need to ask my wife.', cards)).toMatchObject({ text: 'Spouse', say: undefined });
   });
 });

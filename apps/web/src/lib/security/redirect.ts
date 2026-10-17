@@ -46,7 +46,8 @@ export function loginPathFor(path: string | null | undefined, search = ''): stri
  *
  * The requested page wins only when all of these hold, so it can never skip a step
  * the server requires or leave the person's own workspaces:
- *  - the server's destination is an ordinary workspace landing (`/{slug}/dashboard`)
+ *  - the server's destination is an ordinary workspace landing (`/{slug}/dashboard`,
+ *    or `/{slug}/lead-eagle/dashboard` for a Lead-Eagle-only workspace)
  *    — not a forced password change, enrolment, monitoring or the platform console;
  *  - the requested path is same-site (see `safeReturnTo`) and not the sign-in page;
  *  - its first segment is a workspace this account belongs to.
@@ -58,7 +59,7 @@ export function signInLanding(
   workspaceSlugs: readonly string[],
 ): string {
   if (!next || next.length > MAX_RETURN_TO || /[\r\n]/.test(next)) return destination;
-  if (!/^\/[^/?#]+\/dashboard$/.test(destination)) return destination;
+  if (!/^\/[^/?#]+\/(lead-eagle\/)?dashboard$/.test(destination)) return destination;
   if (safeReturnTo(next, '') === '') return destination;
   const slug = next.slice(1).split(/[/?#]/)[0];
   if (!slug || slug === 'login' || !workspaceSlugs.includes(slug)) return destination;

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { resolvePlatformCtx } from '@/lib/auth/session';
 import { isPlatformOwner } from '@/lib/auth/platform-policy';
 import { isSupportRole } from '@/lib/auth/support-actor';
+import { workspaceLanding } from '@/lib/security/entitlements';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +26,7 @@ export default async function Root() {
         where: { id: ctx.activeTenantId },
         select: { slug: true },
       });
-      if (workspace) destination = `/${workspace.slug}/dashboard`;
+      if (workspace) destination = await workspaceLanding(ctx.activeTenantId, workspace.slug);
     } else if (ctx.credentialPurpose === 'MONITORING') {
       // The password chose the mode; the role does not override it.
       destination = '/monitoring';

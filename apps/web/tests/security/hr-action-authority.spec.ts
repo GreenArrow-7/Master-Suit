@@ -95,6 +95,10 @@ beforeAll(async () => {
   await actor('recruiter', [['recruitment', 'EDIT']]);
   await actor('performanceLead', [['performance', 'APPROVE']]);
   await actor('employeeEditor', [['employee', 'EDIT']]);
+  await actor('distributionAdmin', [
+    ['employee', 'EDIT'],
+    ['distribution', 'MANAGE_CONFIGURATION'],
+  ]);
 
   await prisma.hrLeaveType.create({
     data: { tenantId, name: 'Annual', code: `ANN-${suffix}`, annualAllowance: 30, paid: true },
@@ -185,6 +189,16 @@ describe('nothing else was widened', () => {
 
   it('the preparer cannot reach an unrelated category', async () => {
     expect((await act('officer', 'settings-update', { workWeek: [1, 2, 3, 4, 5] })).status).toBe(403);
+  });
+
+  it('HR alone cannot move the check-in cut-off, which decides who automatic assignment passes over', async () => {
+    expect((await act('employeeEditor', 'settings-update', { assignmentCheckInBy: '00:00' })).status).toBe(403);
+    // The HR form posts every field: an unchanged cut-off does not block HR's own settings.
+    expect((await act('employeeEditor', 'settings-update', { assignmentCheckInBy: '' })).status).toBe(200);
+    const set = await act('distributionAdmin', 'settings-update', { assignmentCheckInBy: '10:00' });
+    expect(set.status, JSON.stringify(set.body)).toBe(200);
+    expect((await act('employeeEditor', 'settings-update', { assignmentCheckInBy: '10:00' })).status).toBe(200);
+    expect((await act('distributionAdmin', 'settings-update', { assignmentCheckInBy: '' })).status).toBe(200);
   });
 
   it('a payroll holder cannot approve leave', async () => {

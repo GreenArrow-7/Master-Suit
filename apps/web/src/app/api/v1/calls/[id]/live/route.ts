@@ -4,9 +4,9 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Invalid } from '@/lib/errors';
-import { demoScript, coachTick, heuristicHints, nextBestQuestion, detectStage } from '@/lib/ai/liveCoach';
+import { demoScript, coachTick, heuristicHints, nextBestQuestion, detectStage, playbookHint } from '@/lib/ai/liveCoach';
 import { leadCallContext, contextPromptBlock, budgetMatchHint } from '@/services/leads/callContext';
-import { analyseAndAudit } from '@/services/shared/callIntelligence';
+import { activeObjections, analyseAndAudit } from '@/services/shared/callIntelligence';
 import { liveChannel } from '@/lib/integrations/telephony/stream';
 import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
@@ -104,11 +104,14 @@ export const GET = route(
 
     // The lead context is loaded once per session and carried on every coach
     // tick — the AI never operates without CRM context when context exists.
-    const [context, agent, tenant] = await Promise.all([
+    const [context, agent, tenant, cards] = await Promise.all([
       call.leadId ? leadCallContext(ctx.tenantId, call.leadId).catch(() => null) : null,
       prisma.user.findFirst({ where: { tenantId: ctx.tenantId, id: call.callerId }, select: { fullName: true } }),
       prisma.tenant.findUnique({ where: { id: ctx.tenantId }, select: { displayName: true } }),
+      activeObjections(ctx.tenantId),
     ]);
+    // Each objection card is cited once per call (M21-01).
+    const cited = new Set<string>();
     const lead = context?.lead ?? null;
     const contextBlock = context ? contextPromptBlock(context) : undefined;
 
@@ -236,6 +239,12 @@ export const GET = route(
               }
               const instant = heuristicHints(turn.text);
               for (const hint of instant) send({ type: 'coach', ...hint, at });
+              const card = playbookHint(`Customer: ${turn.text}`, cards, cited);
+              if (card) {
+                const { objectionId, ...hint } = card;
+                cited.add(objectionId);
+                send({ type: 'coach', ...hint, at });
+              }
               // A budget just stated re-queries the live book on the spot; once
               // per call, or the same recommendation nags every restatement.
               if (!budgetHinted) {
