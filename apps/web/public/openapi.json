@@ -1351,7 +1351,9 @@
         "summary": "automation:MANAGE_AUTOMATION",
         "x-permission": "automation:MANAGE_AUTOMATION",
         "x-product-modules": [
-          "SALES"
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
         ],
         "security": [
           {
@@ -1399,8 +1401,14 @@
                     "type": "string",
                     "enum": [
                       "created",
-                      "updated"
+                      "updated",
+                      "time"
                     ]
+                  },
+                  "afterMinutes": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "maximum": 43200
                   },
                   "condition": {
                     "anyOf": [
@@ -1432,29 +1440,8 @@
                                       "type": "array",
                                       "items": {
                                         "anyOf": [
-                                          {
-                                            "type": "object",
-                                            "properties": {
-                                              "op": {},
-                                              "children": {}
-                                            },
-                                            "required": [
-                                              "op",
-                                              "children"
-                                            ]
-                                          },
-                                          {
-                                            "type": "object",
-                                            "properties": {
-                                              "field": {},
-                                              "cmp": {},
-                                              "value": {}
-                                            },
-                                            "required": [
-                                              "field",
-                                              "cmp"
-                                            ]
-                                          }
+                                          {},
+                                          {}
                                         ]
                                       },
                                       "minItems": 1,
@@ -1648,6 +1635,64 @@
                           "action",
                           "field"
                         ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "const": "assign"
+                          },
+                          "userId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          }
+                        },
+                        "required": [
+                          "action"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "const": "send_template"
+                          },
+                          "channel": {
+                            "type": "string",
+                            "enum": [
+                              "WHATSAPP",
+                              "EMAIL"
+                            ]
+                          },
+                          "templateKey": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "channel",
+                          "templateKey"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "const": "webhook"
+                          },
+                          "url": {
+                            "type": "string",
+                            "format": "uri",
+                            "maxLength": 500
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "url"
+                        ]
                       }
                     ]
                   },
@@ -1677,7 +1722,9 @@
         "summary": "automation:MANAGE_AUTOMATION",
         "x-permission": "automation:MANAGE_AUTOMATION",
         "x-product-modules": [
-          "SALES"
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
         ],
         "security": [
           {
@@ -8419,6 +8466,14 @@
                     "minimum": 0,
                     "maximum": 1000
                   },
+                  "weights": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10
+                    }
+                  },
                   "reassignAfterMins": {
                     "anyOf": [
                       {
@@ -8473,6 +8528,15 @@
                           "minLength": 1
                         },
                         "maxItems": 100
+                      },
+                      "languages": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "maxItems": 20
                       }
                     },
                     "additionalProperties": false
@@ -8558,6 +8622,14 @@
                     "minimum": 0,
                     "maximum": 1000
                   },
+                  "weights": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10
+                    }
+                  },
                   "reassignAfterMins": {
                     "anyOf": [
                       {
@@ -8612,6 +8684,15 @@
                           "minLength": 1
                         },
                         "maxItems": 100
+                      },
+                      "languages": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "maxItems": 20
                       }
                     },
                     "additionalProperties": false
@@ -12058,6 +12139,9 @@
                       "Wrong number"
                     ]
                   },
+                  "callId": {
+                    "type": "string"
+                  },
                   "notes": {
                     "type": "string",
                     "maxLength": 2000
@@ -13727,6 +13811,16 @@
             }
           },
           {
+            "name": "bedroomsMax",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 50
+            }
+          },
+          {
             "name": "furnishing",
             "in": "query",
             "required": false,
@@ -13935,6 +14029,24 @@
                   "description": {
                     "type": "string",
                     "maxLength": 8000
+                  },
+                  "permitNumber": {
+                    "type": "string",
+                    "maxLength": 60
+                  },
+                  "permitExpiry": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "community": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 120
+                  },
+                  "city": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 80
                   }
                 },
                 "required": [
@@ -14184,6 +14296,28 @@
                       {
                         "type": "string",
                         "maxLength": 8000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "permitNumber": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 60
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "permitExpiry": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time"
                       },
                       {
                         "type": "null"
@@ -14530,22 +14664,10 @@
                     "type": "string",
                     "maxLength": 200
                   },
-                  "storageKey": {
-                    "type": "string",
-                    "maxLength": 500
-                  },
                   "externalUrl": {
                     "type": "string",
                     "format": "uri",
                     "maxLength": 1000
-                  },
-                  "mimeType": {
-                    "type": "string",
-                    "maxLength": 100
-                  },
-                  "sizeBytes": {
-                    "type": "integer",
-                    "exclusiveMinimum": 0
                   },
                   "position": {
                     "type": "integer",
@@ -14643,6 +14765,44 @@
           },
           {
             "name": "mediaId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/listings/{id}/media/upload": {
+      "post": {
+        "tags": [
+          "listings"
+        ],
+        "summary": "listings:EDIT",
+        "x-permission": "listings:EDIT",
+        "x-product-modules": [
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "operationId": "postListingsIdMediaUpload",
+        "parameters": [
+          {
+            "name": "id",
             "in": "path",
             "required": true,
             "schema": {
@@ -14761,6 +14921,101 @@
                 ]
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/listings/views": {
+      "post": {
+        "tags": [
+          "listings"
+        ],
+        "summary": "listings:VIEW",
+        "x-permission": "listings:VIEW",
+        "x-product-modules": [
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "operationId": "postListingsViews",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "params": {
+                    "type": "object",
+                    "additionalProperties": {},
+                    "default": {}
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "listings"
+        ],
+        "summary": "listings:VIEW",
+        "x-permission": "listings:VIEW",
+        "x-product-modules": [
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "operationId": "deleteListingsViews",
+        "parameters": [
+          {
+            "name": "viewId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
           }
         }
       }
@@ -17435,6 +17690,34 @@
                   "launchedAt": {
                     "type": "string",
                     "format": "date-time"
+                  },
+                  "developerName": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 120
+                  },
+                  "community": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 120
+                  },
+                  "city": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 80
+                  },
+                  "amenityNames": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
                   }
                 },
                 "required": [
@@ -17918,22 +18201,10 @@
                     "type": "string",
                     "maxLength": 200
                   },
-                  "storageKey": {
-                    "type": "string",
-                    "maxLength": 500
-                  },
                   "externalUrl": {
                     "type": "string",
                     "format": "uri",
                     "maxLength": 1000
-                  },
-                  "mimeType": {
-                    "type": "string",
-                    "maxLength": 100
-                  },
-                  "sizeBytes": {
-                    "type": "integer",
-                    "exclusiveMinimum": 0
                   },
                   "position": {
                     "type": "integer",
@@ -18032,6 +18303,225 @@
           {
             "name": "mediaId",
             "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/media/upload": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "projects:EDIT",
+        "x-permission": "projects:EDIT",
+        "x-product-modules": [
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "operationId": "postProjectsIdMediaUpload",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/payment-plans": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "projects:VIEW",
+        "x-permission": "projects:VIEW",
+        "x-product-modules": [
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "operationId": "getProjectsIdPaymentPlans",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "projects:EDIT",
+        "x-permission": "projects:EDIT",
+        "x-product-modules": [
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "operationId": "postProjectsIdPaymentPlans",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "milestones": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "label": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 80
+                            },
+                            "percent": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 100
+                            }
+                          },
+                          "required": [
+                            "label",
+                            "percent"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20
+                      },
+                      {
+                        "type": "string",
+                        "maxLength": 1000
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "milestones"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "projects:EDIT",
+        "x-permission": "projects:EDIT",
+        "x-product-modules": [
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "operationId": "deleteProjectsIdPaymentPlans",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "planId",
+            "in": "query",
             "required": true,
             "schema": {
               "type": "string"
@@ -18587,6 +19077,101 @@
             "schema": {
               "type": "boolean",
               "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/views": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "projects:VIEW",
+        "x-permission": "projects:VIEW",
+        "x-product-modules": [
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "operationId": "postProjectsViews",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "params": {
+                    "type": "object",
+                    "additionalProperties": {},
+                    "default": {}
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "projects:VIEW",
+        "x-permission": "projects:VIEW",
+        "x-product-modules": [
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "operationId": "deleteProjectsViews",
+        "parameters": [
+          {
+            "name": "viewId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -19736,7 +20321,11 @@
                 "source-analysis",
                 "lead-quality",
                 "follow-up-adherence",
-                "source-to-booking"
+                "source-to-booking",
+                "project-report",
+                "site-visits",
+                "call-report",
+                "call-performance"
               ]
             }
           },
@@ -19807,6 +20396,20 @@
             }
           },
           {
+            "name": "by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "month",
+                "project",
+                "lead"
+              ]
+            }
+          },
+          {
             "name": "format",
             "in": "query",
             "required": false,
@@ -19817,6 +20420,170 @@
                 "csv"
               ],
               "default": "json"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/reports/schedules": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "reports:EXPORT",
+        "x-permission": "reports:EXPORT",
+        "x-product-modules": [
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "operationId": "getReportsSchedules",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "reports:EXPORT",
+        "x-permission": "reports:EXPORT",
+        "x-product-modules": [
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "operationId": "postReportsSchedules",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "report": {
+                    "type": "string",
+                    "enum": [
+                      "lead-conversion",
+                      "pipeline-summary",
+                      "activity-log",
+                      "revenue-forecast",
+                      "team-performance",
+                      "rep-activity",
+                      "lead-assignment",
+                      "campaign-performance",
+                      "source-analysis",
+                      "lead-quality",
+                      "follow-up-adherence",
+                      "source-to-booking",
+                      "project-report",
+                      "site-visits",
+                      "call-report",
+                      "call-performance"
+                    ]
+                  },
+                  "by": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "month",
+                      "project",
+                      "lead"
+                    ]
+                  },
+                  "cadence": {
+                    "type": "string",
+                    "enum": [
+                      "DAILY",
+                      "WEEKLY",
+                      "MONTHLY"
+                    ]
+                  },
+                  "recipients": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "email"
+                    },
+                    "minItems": 1,
+                    "maxItems": 10
+                  }
+                },
+                "required": [
+                  "report",
+                  "cadence",
+                  "recipients"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/schedules/{id}": {
+      "delete": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "reports:EXPORT",
+        "x-permission": "reports:EXPORT",
+        "x-product-modules": [
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "operationId": "deleteReportsSchedulesId",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
             }
           }
         ],
@@ -24202,7 +24969,8 @@
                 "invitation-revoke",
                 "account-create",
                 "account-delete",
-                "account-work"
+                "account-work",
+                "account-lead-settings"
               ]
             }
           },
@@ -24273,7 +25041,8 @@
                 "invitation-revoke",
                 "account-create",
                 "account-delete",
-                "account-work"
+                "account-work",
+                "account-lead-settings"
               ]
             }
           }
@@ -24346,7 +25115,8 @@
                 "invitation-revoke",
                 "account-create",
                 "account-delete",
-                "account-work"
+                "account-work",
+                "account-lead-settings"
               ]
             }
           },
@@ -24444,7 +25214,8 @@
                 "two-factor-recovery-regenerate",
                 "account-deletion-status",
                 "account-deletion-request",
-                "account-deletion-cancel"
+                "account-deletion-cancel",
+                "lead-availability"
               ]
             }
           }
@@ -24499,7 +25270,8 @@
                 "two-factor-recovery-regenerate",
                 "account-deletion-status",
                 "account-deletion-request",
-                "account-deletion-cancel"
+                "account-deletion-cancel",
+                "lead-availability"
               ]
             }
           }
