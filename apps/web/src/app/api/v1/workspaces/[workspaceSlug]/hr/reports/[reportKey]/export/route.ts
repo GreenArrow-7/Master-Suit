@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
+import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
+import { assertModuleEntitlement } from '@/lib/security/entitlements';
 import { requireWorkspace } from '@/lib/workspace';
-import { exportReportCsv } from '@/services/hr/reports';
+import { EVERY_WORKSPACE_REPORT, exportReportCsv } from '@/services/hr/reports';
 
 /**
  * A report as a CSV.
@@ -18,12 +20,16 @@ import { exportReportCsv } from '@/services/hr/reports';
  * `employee:VIEW` — so it is asserted per report inside, where the definition
  * is. Checking a fixed permission here would be the weaker of the two and would
  * read as if it were the whole check.
+ *
+ * Attendance is not HR (M16-10): check-in and its record work in every
+ * workspace, so the attendance summary exports without HRMS, as the
+ * attendance screen shows it; every other report still needs HRMS.
  */
 export const GET = route(
   {
     module: 'reports',
     action: 'EXPORT',
-    productModule: 'HRMS',
+    productModule: PRODUCT_MODULE_KEYS,
     sessionOnly: true,
     // `exportReportCsv` decides it per report, as above.
     permissionInHandler: true,
@@ -31,6 +37,7 @@ export const GET = route(
   },
   async ({ ctx, params: { workspaceSlug, reportKey }, req }) => {
     await requireWorkspace(ctx, workspaceSlug);
+    if (reportKey !== EVERY_WORKSPACE_REPORT) await assertModuleEntitlement(ctx.tenantId, 'HRMS');
 
     const url = new URL(req.url);
     const date = (key: string) => {

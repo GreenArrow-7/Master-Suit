@@ -1,16 +1,14 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
-import { withTx } from '@/lib/db';
-import { BOARD_RANGES, rememberedBoardFilter, type BoardFilter } from '@/lib/leads/boardFilter';
-import { can, scopeFor, type Ctx } from '@/lib/security/rbac';
-import { assignableUserWhere } from '@/lib/security/record-scope';
+import { boardFilterOptions, rememberedBoardFilter } from '@/lib/leads/boardFilter';
 import { realtyDashboard, type RealtyDashboard, type Tile as Linked } from '@/services/realty/dashboard';
 import { onDay } from '@/lib/leads/followUpDue';
 import ListHeader from '@/components/workspace/ListHeader';
 import MetricCard from '@/components/ui/MetricCard';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
+import BoardFilterBar from '@/components/workspace/BoardFilterBar';
 
 export const metadata = { title: 'Real Estate' };
 
@@ -178,141 +176,6 @@ function ReceivedVsWorked({ trend }: { trend: RealtyDashboard['trend'] }) {
   );
 }
 
-const RANGE_LABELS: Record<keyof typeof BOARD_RANGES, string> = {
-  today: 'Today',
-  '7d': 'Last 7 days',
-  '30d': 'Last 30 days',
-  '90d': 'Last 90 days',
-};
-
-type Option = { id: string; name: string };
-
-/**
- * What the filters offer this viewer, each within what they may see: the
- * people their `leads` reach covers and the teams with someone of theirs in
- * it (none at OWN, whose board is their own), the catalogue's top-level
- * sources, and the workspace's projects where they may read projects. One
- * transaction, one connection.
- */
-function filterOptions(ctx: Ctx) {
-  const ranks = scopeFor(ctx, 'leads', 'VIEW') !== 'OWN';
-  return withTx(ctx.tenantId, async (tx) => {
-    const people = ranks
-      ? await tx.user.findMany({
-          where: await assignableUserWhere(ctx, 'leads', 'VIEW', tx),
-          select: { id: true, fullName: true },
-          orderBy: { fullName: 'asc' },
-        })
-      : [];
-    const teams = ranks
-      ? await tx.team.findMany({
-          where: {
-            tenantId: ctx.tenantId,
-            deletedAt: null,
-            members: { some: { userId: { in: people.map((person) => person.id) } } },
-          },
-          select: { id: true, name: true },
-          orderBy: { name: 'asc' },
-        })
-      : [];
-    const sources = await tx.leadSource.findMany({
-      where: { tenantId: ctx.tenantId, parentId: null },
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
-    });
-    const projects = can(ctx, 'projects', 'VIEW')
-      ? await tx.project.findMany({
-          where: { tenantId: ctx.tenantId, deletedAt: null },
-          select: { id: true, name: true },
-          orderBy: { name: 'asc' },
-          take: 200,
-        })
-      : [];
-    return {
-      people: people.map((person) => ({ id: person.id, name: person.fullName })),
-      teams,
-      sources,
-      projects,
-    } satisfies Record<string, Option[]>;
-  });
-}
-
-/**
- * The filter bar (M3-16, M3-17): a plain GET form, so the choice is the URL
- * and the page remembers it. Folded behind a summary naming what is applied,
- * so it takes one line on a phone.
- */
-function FilterBar({ filter, options }: { filter: BoardFilter; options: Awaited<ReturnType<typeof filterOptions>> }) {
-  const named = (list: Option[], id?: string) => list.find((item) => item.id === id)?.name;
-  const short = { day: '2-digit', month: 'short' } as const;
-  const applied = [
-    filter.range
-      ? RANGE_LABELS[filter.range]
-      : filter.from && filter.to
-        ? `${onDay(filter.from, short)} – ${onDay(filter.to, short)}`
-        : undefined,
-    named(options.people, filter.owner),
-    named(options.teams, filter.team),
-    named(options.sources, filter.source),
-    named(options.projects, filter.project),
-  ].filter(Boolean);
-  const select = (name: 'owner' | 'team' | 'source' | 'project', label: string, list: Option[]) =>
-    list.length > 0 && (
-      <label className="lf-boardfilter__field">
-        <span>{label}</span>
-        <select className="lf-input" name={name} defaultValue={filter[name] ?? ''}>
-          <option value="">All</option>
-          {list.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name}
-            </option>
-          ))}
-        </select>
-      </label>
-    );
-  return (
-    <details className="lf-boardfilter">
-      <summary>
-        <span>Filters</span>
-        <span className="lf-hint">{applied.length > 0 ? applied.join(' · ') : 'All time, everyone'}</span>
-      </summary>
-      <form method="get" className="lf-boardfilter__body">
-        <label className="lf-boardfilter__field">
-          <span>Period</span>
-          <select className="lf-input" name="range" defaultValue={filter.range ?? ''}>
-            <option value="">All time, or these dates</option>
-            {Object.entries(RANGE_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="lf-boardfilter__field">
-          <span>From</span>
-          <input className="lf-input" type="date" name="from" defaultValue={filter.from ?? ''} />
-        </label>
-        <label className="lf-boardfilter__field">
-          <span>To</span>
-          <input className="lf-input" type="date" name="to" defaultValue={filter.to ?? ''} />
-        </label>
-        {select('owner', 'Person', options.people)}
-        {select('team', 'Team', options.teams)}
-        {select('source', 'Source', options.sources)}
-        {select('project', 'Project', options.projects)}
-        <div className="lf-boardfilter__actions">
-          <button type="submit" className="lf-btn lf-btn--sm">
-            Apply
-          </button>
-          <a className="lf-btn lf-btn--secondary lf-btn--sm" href="?clear=1">
-            Clear
-          </a>
-        </div>
-      </form>
-    </details>
-  );
-}
-
 export default async function RealtyDashboardPage({
   searchParams,
 }: {
@@ -330,7 +193,7 @@ export default async function RealtyDashboardPage({
   const remembered = await rememberedBoardFilter(ctx, (await searchParams) ?? {});
   if (remembered.redirectTo !== null) redirect(`${pathname}${remembered.redirectTo}`);
   const board = await realtyDashboard(ctx, new Date(), remembered.filter);
-  const options = await filterOptions(ctx);
+  const options = await boardFilterOptions(ctx);
   const { conversion } = board.pipeline;
   const week = { day: '2-digit', month: 'short' } as const;
   const lastWeek = `${onDay(board.period.from, week)} – ${onDay(board.period.to, week)}`;
@@ -343,7 +206,7 @@ export default async function RealtyDashboardPage({
         description={leadEagle ? 'Your leads today, and where they stand.' : 'Your brokerage day, and where it stands.'}
       />
 
-      <FilterBar filter={board.filter} options={options} />
+      <BoardFilterBar filter={board.filter} options={options} />
 
       <section aria-labelledby="realty-today">
         <h2 id="realty-today" className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-2)' }}>
