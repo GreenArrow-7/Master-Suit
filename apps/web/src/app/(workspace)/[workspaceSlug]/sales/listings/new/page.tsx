@@ -2,8 +2,6 @@ import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
-import EmptyState from '@/components/ui/EmptyState';
-import SalesLink from '@/components/workspace/SalesLink';
 import { FURNISHINGS, LISTING_TYPES, PROPERTY_TYPES, RENT_FREQUENCIES } from '@/lib/inventory/listings';
 
 export const metadata = { title: 'New listing' };
@@ -39,19 +37,29 @@ export default async function NewListingPage() {
     }),
   ]);
 
+  // No owner yet: record one here (Lead-Eagle-only workspaces have no Owners
+  // screen). The form refreshes the page, which then offers the listing form.
   if (owners.length === 0) {
     return (
-      <div className="lf-card">
-        <EmptyState
-          title="Record the property owner first"
-          description="Every listing belongs to a landlord or vendor, and the mandate is signed with them. Add the owner, then come back."
+      <>
+        <header style={{ marginBottom: 'var(--lf-space-4)' }}>
+          <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)' }}>
+            Record the property owner first
+          </h1>
+          <p style={{ margin: '2px 0 0', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
+            Every listing belongs to a landlord or vendor, and the mandate is signed with them.
+          </p>
+        </header>
+        <WorkspaceRecordForm
+          endpoint="/api/v1/owners"
+          submitLabel="Add owner"
+          fields={[
+            { name: 'fullName', label: 'Owner name', required: true },
+            { name: 'phone', label: 'Phone' },
+            { name: 'email', label: 'Email', type: 'email' },
+          ]}
         />
-        <div style={{ padding: '0 18px 18px' }}>
-          <SalesLink className="lf-btn lf-btn--sm" href="/listings">
-            Back to listings
-          </SalesLink>
-        </div>
-      </div>
+      </>
     );
   }
 
