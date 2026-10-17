@@ -14823,6 +14823,10 @@
                   },
                   "email": {
                     "type": "boolean"
+                  },
+                  "digest": {
+                    "type": "boolean",
+                    "default": false
                   }
                 },
                 "required": [
@@ -14930,7 +14934,9 @@
         "summary": "calls:VIEW",
         "x-permission": "calls:VIEW",
         "x-product-modules": [
-          "SALES"
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
         ],
         "security": [
           {
@@ -14989,7 +14995,9 @@
         "summary": "calls:CREATE",
         "x-permission": "calls:CREATE",
         "x-product-modules": [
-          "SALES"
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
         ],
         "security": [
           {
@@ -15077,7 +15085,9 @@
         "summary": "calls:VIEW",
         "x-permission": "calls:VIEW",
         "x-product-modules": [
-          "SALES"
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
         ],
         "security": [
           {
@@ -15114,7 +15124,9 @@
         "summary": "calls:EDIT",
         "x-permission": "calls:EDIT",
         "x-product-modules": [
-          "SALES"
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
         ],
         "security": [
           {
@@ -15210,7 +15222,9 @@
         "summary": "calls:DELETE",
         "x-permission": "calls:DELETE",
         "x-product-modules": [
-          "SALES"
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
         ],
         "security": [
           {
@@ -19727,12 +19741,25 @@
             }
           },
           {
-            "name": "from",
+            "name": "range",
             "in": "query",
             "required": false,
             "schema": {
               "type": "string",
-              "format": "date-time"
+              "enum": [
+                "today",
+                "7d",
+                "30d",
+                "90d"
+              ]
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           },
           {
@@ -19740,8 +19767,43 @@
             "in": "query",
             "required": false,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "owner",
+            "in": "query",
+            "required": false,
+            "schema": {
               "type": "string",
-              "format": "date-time"
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "team",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "project",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
             }
           },
           {
@@ -20272,7 +20334,9 @@
         "summary": "calls:VIEW",
         "x-permission": "calls:VIEW",
         "x-product-modules": [
-          "SALES"
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
         ],
         "security": [
           {
@@ -20299,7 +20363,9 @@
         "summary": "calls:CREATE",
         "x-permission": "calls:CREATE",
         "x-product-modules": [
-          "SALES"
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
         ],
         "security": [
           {
@@ -20407,7 +20473,9 @@
         "summary": "calls:EDIT",
         "x-permission": "calls:EDIT",
         "x-product-modules": [
-          "SALES"
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
         ],
         "security": [
           {
@@ -20550,7 +20618,9 @@
         "summary": "calls:DELETE",
         "x-permission": "calls:DELETE",
         "x-product-modules": [
-          "SALES"
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
         ],
         "security": [
           {
@@ -23923,7 +23993,10 @@
         "summary": "reports:EXPORT",
         "x-permission": "reports:EXPORT",
         "x-product-modules": [
-          "HRMS"
+          "HRMS",
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
         ],
         "security": [
           {
