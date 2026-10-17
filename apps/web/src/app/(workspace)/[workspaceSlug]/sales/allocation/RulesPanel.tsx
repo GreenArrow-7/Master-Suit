@@ -1,0 +1,125 @@
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/auth/client';
+
+export interface RuleRow {
+  id: string;
+  name: string;
+  isActive: boolean;
+  everyone: boolean;
+  people: string[];
+}
+
+/**
+ * Automatic assignment rules (audit M7-01). New leads go round-robin through the
+ * first active rule's people; with no active rule they wait under "Waiting".
+ */
+export default function RulesPanel({
+  rules,
+  agents,
+}: {
+  rules: RuleRow[];
+  agents: { id: string; fullName: string }[];
+}) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function send(url: string, method: string, body?: unknown) {
+    setBusy(true);
+    setError(null);
+    const response = await authFetch(url, {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    setBusy(false);
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      setError(data.detail ?? data.title ?? 'The rule could not be saved.');
+      return;
+    }
+    router.refresh();
+  }
+
+  async function create(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const userIds = form.getAll('userIds').map(String);
+    await send('/api/v1/distribution-rules', 'POST', {
+      name: String(form.get('name') ?? ''),
+      everyone: userIds.length === 0,
+      userIds,
+    });
+  }
+
+  return (
+    <section className="lf-card" style={{ padding: 'var(--lf-space-4)', display: 'grid', gap: 'var(--lf-space-3)' }}>
+      <h2 className="lf-h2" style={{ margin: 0 }}>
+        Automatic assignment
+      </h2>
+      <p style={{ margin: 0, fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
+        New leads are handed out in turn to the people of the first rule that is on. Leave, quotas and working hours are
+        respected.
+      </p>
+      {rules.length === 0 && <p style={{ margin: 0 }}>No rule yet — every new lead waits to be handed out by hand.</p>}
+      {rules.map((rule) => (
+        <div
+          key={rule.id}
+          style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--lf-space-2)', alignItems: 'center' }}
+        >
+          <strong>{rule.name}</strong>
+          <span style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
+            {rule.everyone ? 'Everyone' : rule.people.join(', ') || 'Nobody'}
+          </span>
+          <button
+            type="button"
+            className="lf-btn lf-btn--sm"
+            disabled={busy}
+            onClick={() => send(`/api/v1/distribution-rules/${rule.id}`, 'PATCH', { isActive: !rule.isActive })}
+          >
+            {rule.isActive ? 'On — turn off' : 'Off — turn on'}
+          </button>
+          <button
+            type="button"
+            className="lf-btn lf-btn--secondary lf-btn--sm"
+            disabled={busy}
+            onClick={() => send(`/api/v1/distribution-rules/${rule.id}`, 'DELETE')}
+          >
+            Delete
+          </button>
+        </div>
+      ))}
+      <form onSubmit={create} style={{ display: 'grid', gap: 'var(--lf-space-2)' }}>
+        <label className="lf-field">
+          <span className="lf-label" data-required="">
+            New rule name
+          </span>
+          <input id="rule-name" className="lf-input" name="name" required minLength={2} maxLength={120} />
+        </label>
+        <label className="lf-field">
+          <span className="lf-label">People (none selected = everyone)</span>
+          <select id="rule-people" className="lf-input" name="userIds" multiple size={6}>
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.fullName}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div>
+          <button type="submit" className="lf-btn lf-btn--sm" disabled={busy}>
+            Add rule
+          </button>
+        </div>
+      </form>
+      {error && (
+        <p role="alert" style={{ margin: 0, color: 'var(--lf-danger)' }}>
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
