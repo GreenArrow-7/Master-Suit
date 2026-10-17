@@ -784,14 +784,21 @@ export async function moveCompany(
         }
 
         // A payment plan moves with its project (M11-02).
-        const plans = snap.paymentPlans.filter((plan) => projectMap.has(plan.projectId));
+        const plans = snap.paymentPlans
+          .filter((plan) => projectMap.has(plan.projectId))
+          .map((plan) => ({ ...plan, read: readMilestones(plan.milestones) }));
+        for (const plan of plans) {
+          if (!plan.read.length && Array.isArray(plan.milestones) && plan.milestones.length) {
+            problems.push(`Payment plan ${plan.name} has milestones that could not be read; it moves with none.`);
+          }
+        }
         if (plans.length) {
           await tx.paymentPlan.createMany({
             data: plans.map((plan) => ({
               tenantId,
               projectId: projectMap.get(plan.projectId)!,
               name: plan.name,
-              milestones: readMilestones(plan.milestones),
+              milestones: plan.read,
             })),
             skipDuplicates: true,
           });

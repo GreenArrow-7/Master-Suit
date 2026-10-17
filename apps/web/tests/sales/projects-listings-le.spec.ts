@@ -8,6 +8,14 @@ vi.mock('next/headers', () => ({
     },
   }),
 }));
+// The filter bars are client components: called directly, they read the address from here.
+const nav = vi.hoisted(() => ({ query: '' }));
+vi.mock('next/navigation', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('next/navigation')>()),
+  useRouter: () => ({ push: () => {} }),
+  usePathname: () => '/x',
+  useSearchParams: () => new URLSearchParams(nav.query),
+}));
 
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -21,7 +29,10 @@ import { GET as listPlans, POST as addPlan } from '@/app/api/v1/projects/[id]/pa
 import { POST as uploadProjectMedia } from '@/app/api/v1/projects/[id]/media/upload/route';
 import { POST as uploadListingMedia } from '@/app/api/v1/listings/[id]/media/upload/route';
 import { POST as registerProjectMedia } from '@/app/api/v1/projects/[id]/media/route';
+import { DELETE as deleteListingMedia, POST as registerListingMedia } from '@/app/api/v1/listings/[id]/media/route';
+import { PUT as saveRequirement } from '@/app/api/v1/leads/[id]/requirement/route';
 import { GET as projectMediaFile } from '@/app/api/v1/projects/[id]/media/[mediaId]/file/route';
+import { GET as listingMediaFile } from '@/app/api/v1/listings/[id]/media/[mediaId]/file/route';
 import { POST as createProject } from '@/app/api/v1/projects/route';
 import { GET as facets } from '@/app/api/v1/projects/facets/route';
 import { POST as addUnitPlan } from '@/app/api/v1/projects/[id]/plans/route';
@@ -34,13 +45,16 @@ import { POST as createMandate } from '@/app/api/v1/listings/[id]/mandate/route'
 import { POST as createOwner } from '@/app/api/v1/owners/route';
 import ProjectDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/projects/[id]/page';
 import ProjectsPage from '@/app/(workspace)/[workspaceSlug]/sales/projects/page';
+import ProjectFilters from '@/app/(workspace)/[workspaceSlug]/sales/projects/ProjectFilters';
+import ListingsPage from '@/app/(workspace)/[workspaceSlug]/sales/listings/page';
+import ListingFilters from '@/app/(workspace)/[workspaceSlug]/sales/listings/ListingFilters';
 import ListingDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/listings/[id]/page';
 import LeadDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
 import LeadsPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/page';
 import { createWorkspaceUser, grantPermissions, type Grants } from '../helpers/fixtures';
 import { createSessionToken } from '../helpers/session';
 import { pageText } from '../helpers/render';
-import { del, get, patch, post } from '../helpers/request';
+import { del, get, patch, post, put } from '../helpers/request';
 
 /**
  * Projects and listings in a Lead-Eagle-only workspace (audit rows M11-01–04,
@@ -145,6 +159,23 @@ async function upload(
   return { status: res.status, body: await res.json().catch(() => null) };
 }
 
+/** The first element in a rendered tree that passes `test`. */
+function find(node: unknown, test: (el: any) => boolean, seen = new Set<unknown>()): any {
+  if (!node || typeof node !== 'object' || seen.has(node)) return undefined;
+  seen.add(node);
+  if ('props' in node && test(node)) return node;
+  const next = Array.isArray(node)
+    ? node
+    : 'props' in node
+      ? [(node as { props: unknown }).props]
+      : Object.values(node);
+  for (const child of next) {
+    const hit = find(child, test, seen);
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
 /** What a page renders, as this viewer. */
 async function render(cookie: string, tree: () => Promise<unknown>) {
   cookieJar.value = cookie;
@@ -230,6 +261,36 @@ describe('payment plans (M11-02)', () => {
       404,
     );
   });
+
+  it('keeps a comma inside a label when the milestones are split by semicolons, and takes a 0% stage', async () => {
+    const res = await post(
+      addPlan,
+      url(projectId),
+      {
+        name: '20/80 four years',
+        milestones: '20 On booking; 0 During construction; 40 On handover; 40 Post-handover, 4 years',
+      },
+      a.admin,
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.milestones).toEqual([
+      { label: 'On booking', percent: 20 },
+      { label: 'During construction', percent: 0 },
+      { label: 'On handover', percent: 40 },
+      { label: 'Post-handover, 4 years', percent: 40 },
+    ]);
+    const lines = await post(
+      addPlan,
+      url(projectId),
+      { name: 'One per line', milestones: '30 On booking\n70 Post-handover, 2 years' },
+      a.admin,
+    );
+    expect(lines.status, JSON.stringify(lines.body)).toBe(200);
+    expect(lines.body.milestones).toEqual([
+      { label: 'On booking', percent: 30 },
+      { label: 'Post-handover, 2 years', percent: 70 },
+    ]);
+  });
 });
 
 describe('uploading photos and brochures (M11-03, M12-02)', () => {
@@ -294,14 +355,37 @@ describe('uploading photos and brochures (M11-03, M12-02)', () => {
     expect(await prisma.projectMedia.count({ where: { tenantId: a.id, projectId } })).toBe(before);
   });
 
-  it('registers only a key under the workspace media prefix', async () => {
-    const res = await post(
-      registerProjectMedia,
-      `/api/v1/projects/${projectId}/media`,
-      { kind: 'BROCHURE', storageKey: `documents/t-${b.id}/booking-x/receipt.pdf` },
-      a.admin,
+  it('registers a linked video or tour only, so no caller names a hosted file or its type', async () => {
+    const register = (body: Record<string, unknown>) =>
+      post(registerProjectMedia, `/api/v1/projects/${projectId}/media`, body, a.admin);
+    expect((await register({ kind: 'BROCHURE', storageKey: `documents/t-${b.id}/booking-x/receipt.pdf` })).status).toBe(
+      422,
     );
-    expect(res.status).toBe(422);
+    // A PDF that is also a page: stored as a PDF, it must never be re-registered as HTML.
+    const polyglot = Buffer.from('%PDF-1.4\n<script>document.title="owned"</script>\n%%EOF\n');
+    const up = await upload(uploadProjectMedia, projectPath(projectId), projectId, a.admin, polyglot, {
+      kind: 'BROCHURE',
+    });
+    expect(up.status, JSON.stringify(up.body)).toBe(200);
+    const { storageKey } = await prisma.projectMedia.findFirstOrThrow({ where: { tenantId: a.id, id: up.body.id } });
+    expect((await register({ kind: 'BROCHURE', storageKey, mimeType: 'text/html' })).status).toBe(422);
+    expect((await register({ kind: 'BROCHURE', storageKey })).status).toBe(422);
+    const tour = await register({ kind: 'VR_TOUR', title: 'Tour', externalUrl: 'https://my.matterport.com/show/?m=x' });
+    expect(tour.status, JSON.stringify(tour.body)).toBe(200);
+
+    // A row stored before this rule with a type that runs script is served as a download, never as a page.
+    const old = await prisma.projectMedia.create({
+      data: { tenantId: a.id, projectId, kind: 'BROCHURE', storageKey, mimeType: 'text/html' },
+    });
+    const file = await projectMediaFile(
+      new Request(`http://localhost/api/v1/projects/${projectId}/media/${old.id}/file`, {
+        headers: { cookie: viewer },
+      }),
+      { params: Promise.resolve({ id: projectId, mediaId: old.id }) },
+    );
+    expect(file.status).toBe(200);
+    expect(file.headers.get('content-type')).toBe('application/octet-stream');
+    expect(file.headers.get('content-disposition')).toMatch(/^attachment;/);
   });
 });
 
@@ -324,11 +408,23 @@ describe('a developer, community and amenities typed on the project form (M11-01
       a.admin,
     );
     expect(second.status).toBe(200);
+    // Typed another way, still the same developer and community.
+    const third = await post(
+      createProject,
+      '/api/v1/projects',
+      { name: 'Hills Crest', code: `HC-${suffix}`, developerName: 'EMAAR', community: 'dubai  hills', city: 'dubai' },
+      a.admin,
+    );
+    expect(third.status, JSON.stringify(third.body)).toBe(200);
 
-    const developers = await prisma.developer.findMany({ where: { tenantId: a.id, name: 'Emaar' } });
-    const communities = await prisma.micromarket.findMany({ where: { tenantId: a.id, name: 'Dubai Hills' } });
-    expect(developers).toHaveLength(1);
-    expect(communities).toHaveLength(1);
+    const developers = await prisma.developer.findMany({
+      where: { tenantId: a.id, name: { equals: 'emaar', mode: 'insensitive' } },
+    });
+    const communities = await prisma.micromarket.findMany({
+      where: { tenantId: a.id, name: { startsWith: 'dubai', mode: 'insensitive' } },
+    });
+    expect(developers.map((d) => d.name)).toEqual(['Emaar']);
+    expect(communities.map((c) => c.name)).toEqual(['Dubai Hills']);
     expect(
       (await prisma.amenity.findMany({ where: { tenantId: a.id }, orderBy: { key: 'asc' } })).map((x) => x.key),
     ).toEqual(['gym', 'swimming-pool']);
@@ -337,13 +433,19 @@ describe('a developer, community and amenities typed on the project form (M11-01
       prisma.project
         .findMany({ where: catalogueWhere(a.id, catalogueFilters.parse(filters)), orderBy: { name: 'asc' } })
         .then((rows) => rows.map((r) => r.name));
-    expect(await named({ developer: developers[0]!.id })).toEqual(['Hills Grove', 'Hills Park']);
-    expect(await named({ micromarket: communities[0]!.id })).toEqual(['Hills Grove', 'Hills Park']);
+    expect(await named({ developer: developers[0]!.id })).toEqual(['Hills Crest', 'Hills Grove', 'Hills Park']);
+    expect(await named({ micromarket: communities[0]!.id })).toEqual(['Hills Crest', 'Hills Grove', 'Hills Park']);
     expect(await named({ amenity: 'swimming-pool' })).toEqual(['Hills Park']);
 
     // The facet counts the filter bar shows.
     const counted = await get(facets, '/api/v1/projects/facets', a.admin);
-    expect(counted.body.developer).toEqual([{ value: developers[0]!.id, label: 'Emaar', count: 2 }]);
+    expect(counted.body.developer).toEqual([{ value: developers[0]!.id, label: 'Emaar', count: 3 }]);
+    // On the catalogue itself: the page hands its counts to the filter bar, which shows them.
+    cookieJar.value = a.admin;
+    const page = await ProjectsPage({ searchParams: Promise.resolve({}) });
+    const bar = find(page, (el) => el.type === ProjectFilters);
+    nav.query = '';
+    expect(await pageText(ProjectFilters(bar.props))).toContain('Emaar (3)');
   });
 });
 
@@ -419,6 +521,65 @@ describe('the catalogue pages, and each person keeps views (M11-08, M12-05)', ()
       viewer,
     );
     expect(listing.body.href).toBe(`/listings?bedroomsMin=2&bedroomsMax=3&saved=${listing.body.id}`);
+  });
+
+  it('reaches the 51st listing on the next page, and a saved listing view reopens narrowed', async () => {
+    await prisma.listing.createMany({
+      data: Array.from({ length: 51 }, (_, i) => ({
+        tenantId: a.id,
+        reference: `BK-${suffix}-${i}`,
+        title: `Book ${String(i).padStart(2, '0')}`,
+        listingType: 'SALE' as const,
+        price: 1_000_000,
+        bedrooms: i % 2 ? 2 : 5,
+        updatedAt: new Date(Date.UTC(2020, 0, 1 + i)),
+      })),
+    });
+    const first = await render(a.admin, () => ListingsPage({ searchParams: Promise.resolve({ q: 'Book' }) }));
+    const second = await render(a.admin, () =>
+      ListingsPage({ searchParams: Promise.resolve({ q: 'Book', page: '2' }) }),
+    );
+    expect(first).toContain('Book 50');
+    expect(first).not.toContain('Book 00');
+    expect(second).toContain('Book 00');
+    expect(second).not.toContain('Book 50');
+
+    const view = await post(
+      saveListingView,
+      '/api/v1/listings/views',
+      { name: 'Book two-beds', params: { q: 'Book', bedroomsMin: '2', bedroomsMax: '3' } },
+      a.admin,
+    );
+    expect(view.status, JSON.stringify(view.body)).toBe(200);
+    const opened = Object.fromEntries(new URL(view.body.href, 'http://localhost').searchParams);
+    const narrowed = await render(a.admin, () => ListingsPage({ searchParams: Promise.resolve(opened) }));
+    expect(narrowed).toContain('Book 49');
+    expect(narrowed).not.toContain('Book 48');
+  });
+
+  it('a view opened from its chip refills the typed filters, so leaving one does not undo the view', () => {
+    // The chip is a client-side navigation: the bar stays mounted, and an input
+    // React keeps would still hold the old value. Its key follows the address.
+    const input = (tree: unknown, label: string) => find(tree, (el) => el.props?.label === label).props.children;
+    nav.query = '';
+    const before = ListingFilters({ micromarkets: [] });
+    nav.query = 'bedroomsMin=2&bedroomsMax=3&saved=v1';
+    const after = ListingFilters({ micromarkets: [] });
+    for (const [label, value] of [
+      ['Beds from', '2'],
+      ['Beds up to', '3'],
+    ]) {
+      expect(input(after, label!).props.defaultValue).toBe(value);
+      expect(input(after, label!).key).not.toBe(input(before, label!).key);
+    }
+    const counts = { micromarket: {}, developer: {}, status: {}, possession: {} };
+    nav.query = '';
+    const plain = ProjectFilters({ micromarkets: [], developers: [], amenities: [], counts });
+    nav.query = 'q=Hills&maxPrice=2000000&saved=v2';
+    const viewed = ProjectFilters({ micromarkets: [], developers: [], amenities: [], counts });
+    for (const label of ['Search', 'Budget up to']) {
+      expect(input(viewed, label).key).not.toBe(input(plain, label).key);
+    }
   });
 
   it('filters listings by beds up to and price from', () => {
@@ -510,6 +671,48 @@ describe('a listing’s permit, status, photo and a pocket listing (M12-02, M12-
     expect((await upload(uploadListingMedia, path, listingId, agent, PNG, { kind: 'IMAGE' }, 'x.png')).status).toBe(
       404,
     );
+    const photo = await listingMediaFile(
+      new Request(`http://localhost/api/v1/listings/${listingId}/media/${res.body.id}/file`, {
+        headers: { cookie: viewer },
+      }),
+      { params: Promise.resolve({ id: listingId, mediaId: res.body.id }) },
+    );
+    expect(photo.headers.get('content-type')).toBe('image/png');
+    expect(photo.headers.get('content-disposition')).toMatch(/^inline;/);
+  });
+
+  it('keeps the JSON media routes to the listings the caller may edit', async () => {
+    const mediaPath = `/api/v1/listings/${listingId}/media`;
+    const tour = { kind: 'VIDEO', externalUrl: 'https://www.youtube.com/watch?v=x' };
+    expect((await post(registerListingMedia, mediaPath, tour, agent)).status).toBe(404);
+    const photo = await prisma.listingMedia.findFirstOrThrow({ where: { tenantId: a.id, listingId, kind: 'IMAGE' } });
+    expect((await del(deleteListingMedia, `${mediaPath}?mediaId=${photo.id}`, agent)).status).toBe(404);
+    expect(await prisma.listingMedia.count({ where: { tenantId: a.id, id: photo.id } })).toBe(1);
+    // Their own listing is theirs to add to.
+    expect((await post(registerListingMedia, mediaPath, tour, a.admin)).status).toBe(200);
+  });
+
+  it('warns of an expired permit only once its last day has passed in the workspace time zone', async () => {
+    // Eleven hours behind UTC: the workspace's today has always begun after midnight UTC of the same date.
+    await prisma.tenant.update({ where: { id: b.id }, data: { timezone: 'Pacific/Pago_Pago' } });
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Pago_Pago' }).format(new Date());
+    const listed = async (expiry: Date) => {
+      const row = await prisma.listing.create({
+        data: {
+          tenantId: b.id,
+          reference: `PE-${randomBytes(4).toString('hex')}`,
+          title: 'Permit check',
+          listingType: 'SALE',
+          price: 1_000_000,
+          permitNumber: 'TRK-1',
+          permitExpiry: expiry,
+        },
+      });
+      return render(b.admin, () => ListingDetailPage({ params: Promise.resolve({ id: row.id, workspaceSlug: 'x' }) }));
+    };
+    const lastDay = new Date(`${today}T00:00:00Z`);
+    expect(await listed(lastDay)).not.toContain('The advertising permit has expired.');
+    expect(await listed(new Date(lastDay.getTime() - 86_400_000))).toContain('The advertising permit has expired.');
   });
 });
 
@@ -536,20 +739,27 @@ describe('the units and listings a lead matches, on its own page (M12-06), and t
     });
     await unit('R-103', { unitPlanId: two.id, price: 3_000_000 });
     await unit('R-104', { unitPlanId: one.id, price: 1_500_000 });
+    // The same unit in another community.
+    const elsewhere = await prisma.micromarket.create({
+      data: { tenantId: a.id, name: `Jumeirah Golf ${suffix}`, city: 'Dubai' },
+    });
+    const golf = (await project(a.id, 'Golf Heights', { micromarketId: elsewhere.id })).id;
+    await prisma.unitInventory.create({
+      data: { tenantId: a.id, projectId: golf, unitNumber: 'G-1', price: 2_000_000 },
+    });
 
     const lead = await prisma.lead.create({
       data: { tenantId: a.id, reference: `UM-${suffix}`, fullName: 'Unit Buyer', stageId: a.stageId },
     });
-    await prisma.clientRequirement.create({
-      data: {
-        tenantId: a.id,
-        leadId: lead.id,
-        purpose: 'BUY',
-        micromarketIds: [hills.id],
-        bedroomsMin: 2,
-        budgetMax: 2_500_000,
-      },
-    });
+    // Saved as the lead page's composer saves it: the area typed, in any case.
+    const saved = await put(
+      saveRequirement,
+      `/api/v1/leads/${lead.id}/requirement`,
+      { purpose: 'BUY', bedroomsMin: 2, budgetMax: 2_500_000, locations: [`arabian ranches ${suffix}`, 'Nowhere'] },
+      a.admin,
+    );
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect(saved.body.micromarketIds).toEqual([hills.id]);
     await prisma.leadProject.create({ data: { tenantId: a.id, leadId: lead.id, projectId: ranch } });
 
     cookieJar.value = a.admin;

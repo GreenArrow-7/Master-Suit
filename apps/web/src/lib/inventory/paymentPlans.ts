@@ -5,21 +5,26 @@
  *
  * The form types the milestones on one line ("20 On booking, 80 On handover");
  * the API also takes them as a list. Both arrive here, and only a plan whose
- * shares add up to 100 leaves.
+ * shares add up to 100 leaves. A stage with nothing due ("0 During
+ * construction") is a milestone too: plans are read out that way.
  */
 import { z } from 'zod';
 
 const milestone = z.object({
   label: z.string().trim().min(1).max(80),
-  percent: z.coerce.number().positive().max(100),
+  percent: z.coerce.number().min(0).max(100),
 });
 
 export type Milestone = z.infer<typeof milestone>;
 
-/** "20 On booking, 80% on handover" → [{ label: 'On booking', percent: 20 }, …]. */
+/**
+ * "20 On booking, 80% on handover" → [{ label: 'On booking', percent: 20 }, …].
+ * Once the text has a semicolon or a line break, those alone separate, so a
+ * label keeps its comma: "20 On booking; 80 Post-handover, 2 years".
+ */
 function parseLine(text: string): unknown[] {
   return text
-    .split(/[,\n;]/)
+    .split(/[;\n]/.test(text) ? /[;\n]/ : ',')
     .map((part) => part.trim())
     .filter(Boolean)
     .map((part) => {

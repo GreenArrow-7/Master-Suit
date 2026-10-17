@@ -42,6 +42,9 @@ export default function ProjectFilters({
     router.push(`${pathname}?${next.toString()}`);
   }
 
+  // A typed input is keyed on its own value: opening a saved view or clearing
+  // the filters keeps this bar mounted, and a kept input would show, and on
+  // blur re-send, the value it had before.
   const value = (key: string) => params.get(key) ?? '';
   const n = (facet: keyof typeof counts, key: string) => (counts[facet][key] ? ` (${counts[facet][key]})` : '');
   // Facets other than the search: the count the sheet trigger shows.
@@ -55,6 +58,7 @@ export default function ProjectFilters({
           className="lf-input"
           type="search"
           placeholder="Project name"
+          key={value('q')}
           defaultValue={value('q')}
           // Committed on blur or Enter rather than per keystroke: each change is
           // a server round trip and a history entry.
@@ -150,6 +154,7 @@ export default function ProjectFilters({
               min={0}
               step={100000}
               placeholder="Any"
+              key={value('maxPrice')}
               defaultValue={value('maxPrice')}
               onBlur={(e) => set('maxPrice', e.target.value || null)}
             />

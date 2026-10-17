@@ -8,6 +8,7 @@ import { can } from '@/lib/security/rbac';
 import { maskOwner } from '@/lib/inventory/listings';
 import { expireLapsedMandates } from '@/services/inventory/mandates';
 import { requirementsWanting } from '@/services/inventory/demand';
+import { workspaceTimezone } from '@/services/hr/attendance';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import MandatePanel from './MandatePanel';
@@ -67,6 +68,9 @@ export default async function ListingDetailPage({
   const canEdit = can(ctx, 'listings', 'EDIT');
   const now = new Date();
   const hasLiveMandate = listing.mandates.some((m) => m.status === 'ACTIVE' && m.expiresAt > now);
+  // A permit is good through its expiry day, read in the workspace's time zone.
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: await workspaceTimezone(ctx) }).format(now);
+  const permitExpired = !!listing.permitExpiry && listing.permitExpiry.toISOString().slice(0, 10) < today;
   const canSeeContact = can(ctx, 'listings', 'VIEW_SENSITIVE_FIELDS');
   const gallery = listing.media.filter((m) => m.kind === 'IMAGE');
   const documents = listing.media.filter(
@@ -173,7 +177,7 @@ export default async function ListingDetailPage({
             />
           </dl>
         )}
-        {listing.permitExpiry && listing.permitExpiry < now && (
+        {permitExpired && (
           <p className="lf-hint" style={{ margin: '8px 0 0', color: 'var(--lf-vermillion)' }}>
             The advertising permit has expired.
           </p>

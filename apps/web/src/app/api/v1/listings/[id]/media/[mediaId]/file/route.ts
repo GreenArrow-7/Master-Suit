@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Invalid, NotFound } from '@/lib/errors';
+import { mediaFileHeaders } from '@/lib/inventory/media';
 import { getObject } from '@/lib/storage';
 
 const params = z.object({ id: z.string().cuid(), mediaId: z.string().cuid() });
@@ -30,13 +31,11 @@ export const GET = route(
     }
 
     const body = await getObject(media.storageKey);
-    const filename = (media.title ?? media.kind.toLowerCase()).replace(/["\\]/g, '');
 
     return new Response(new Uint8Array(body), {
       headers: {
-        'content-type': media.mimeType ?? 'application/octet-stream',
+        ...mediaFileHeaders(media.mimeType, media.title ?? media.kind.toLowerCase()),
         'content-length': String(body.byteLength),
-        'content-disposition': `inline; filename="${filename}"`,
         'cache-control': 'private, max-age=300',
       },
     });

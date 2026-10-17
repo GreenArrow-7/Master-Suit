@@ -11,28 +11,20 @@ const createBody = z
   .object({
     kind: z.enum(MEDIA_KINDS),
     title: z.string().max(200).optional(),
-    /** An object already in our bucket. */
-    storageKey: z.string().max(500).optional(),
     /** A developer-hosted walkthrough or Matterport tour. */
     externalUrl: z.string().url().max(1000).optional(),
-    mimeType: z.string().max(100).optional(),
-    sizeBytes: z.number().int().positive().optional(),
     position: z.number().int().min(0).max(999).default(0),
   })
   .strict();
 
 /**
- * Registers a piece of project media.
+ * Links a video or VR tour to a project.
  *
  * Video and VR are `externalUrl` and nothing else: a 4 GB Matterport tour is
  * the developer's to host, to update and to take down, and copying it would
- * make us responsible for all three. Everything else is an object key in our
- * own bucket, so brochures and creatives keep the access control and the
- * signed-URL expiry that vendor links do not have.
- *
- * This registers media, it does not receive bytes: a browser upload goes
- * through `media/upload`, which scans and stores the file under the
- * workspace's media prefix — the only keys this route accepts.
+ * make us responsible for all three. Everything else is a file in our own
+ * bucket, and its row comes from `media/upload`, which recognises the type by
+ * its bytes — so no caller names a key or a type here.
  */
 export const POST = route(
   {
@@ -52,7 +44,7 @@ export const POST = route(
 
     // Shared with the listing media route: the embed-versus-hosted rule is the
     // same in both places, and two copies of it is how they come to disagree.
-    assertMediaSource(body, ctx.tenantId);
+    assertMediaSource(body);
 
     return prisma.projectMedia.create({
       data: { tenantId: ctx.tenantId, projectId: project.id, createdById: ctx.actor.id, ...body },

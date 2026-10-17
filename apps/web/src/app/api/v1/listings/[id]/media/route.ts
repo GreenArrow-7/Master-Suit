@@ -4,6 +4,8 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { MEDIA_KINDS, assertMediaSource } from '@/lib/inventory/media';
+import { assertRecordInScope } from '@/lib/security/record-scope';
+import type { Ctx } from '@/lib/security/rbac';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -11,21 +13,26 @@ const createBody = z
   .object({
     kind: z.enum(MEDIA_KINDS),
     title: z.string().max(200).optional(),
-    storageKey: z.string().max(500).optional(),
     externalUrl: z.string().url().max(1000).optional(),
-    mimeType: z.string().max(100).optional(),
-    sizeBytes: z.number().int().positive().optional(),
     position: z.number().int().min(0).max(999).default(0),
   })
   .strict();
 
+/** A listing is its agent's: like PATCH and the upload, one outside the caller's edit scope answers 404. */
+async function editableListing(ctx: Ctx, id: string) {
+  const listing = await prisma.listing.findFirst({
+    where: { id, tenantId: ctx.tenantId, deletedAt: null },
+    select: { id: true, tenantId: true, ownerId: true },
+  });
+  if (!listing) throw NotFound('Listing');
+  await assertRecordInScope(ctx, 'listings', listing, prisma, 'EDIT', 'Listing');
+  return listing;
+}
+
 /**
- * Registers a photograph, floor plan, brochure or tour against a listing.
- *
- * Same contract as project media, and the embed-versus-hosted rule is literally
- * the same function. As there, this registers media rather than receiving bytes:
- * browser upload needs a multipart handler outside the JSON kernel — copy
- * `hr/documents/upload/route.ts` when somebody needs to drag a photo in.
+ * Links a video or tour to a listing. Same contract as project media, and the
+ * rule is literally the same function: a photo, floor plan or brochure arrives
+ * through `media/upload`, which recognises its type by its bytes.
  */
 export const POST = route(
   {
@@ -37,13 +44,8 @@ export const POST = route(
     auditEvent: 'RECORD_CREATED',
   },
   async ({ ctx, params, body }) => {
-    const listing = await prisma.listing.findFirst({
-      where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!listing) throw NotFound('Listing');
-
-    assertMediaSource(body, ctx.tenantId);
+    const listing = await editableListing(ctx, params.id);
+    assertMediaSource(body);
 
     return prisma.listingMedia.create({
       data: { tenantId: ctx.tenantId, listingId: listing.id, createdById: ctx.actor.id, ...body },
@@ -63,8 +65,9 @@ export const DELETE = route(
     auditEvent: 'RECORD_DELETED',
   },
   async ({ ctx, params, query }) => {
+    const listing = await editableListing(ctx, params.id);
     const { count } = await prisma.listingMedia.deleteMany({
-      where: { id: query.mediaId, tenantId: ctx.tenantId, listingId: params.id },
+      where: { id: query.mediaId, tenantId: ctx.tenantId, listingId: listing.id },
     });
     if (count === 0) throw NotFound('Media');
     // The object stays in the bucket for the retention job, so an accidental

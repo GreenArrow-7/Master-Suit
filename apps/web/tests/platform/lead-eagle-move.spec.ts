@@ -320,9 +320,12 @@ const snapshot = (): LeadEagleCompany => ({
     {
       projectId: 'p-1',
       name: '20/80 post-handover',
+      // The standalone's own seed: a stage with nothing due, and a comma in a label.
       milestones: [
         { label: 'On booking', percent: 20 },
-        { label: 'Post-handover', percent: 80 },
+        { label: 'During construction', percent: 0 },
+        { label: 'On handover', percent: 40 },
+        { label: 'Post-handover, 4 years', percent: 40 },
       ],
     },
   ],
@@ -524,7 +527,11 @@ describe('moving a Lead Eagle company', () => {
         followUps: [...snap.followUps, { ...snap.followUps[0]!, leadId: 'l-merged' }],
         // On a deleted project, and on a booking that stays behind (its listing has no price).
         units: [...snap.units, { ...snap.units[0]!, id: 'un-2', projectId: 'p-deleted' }],
-        paymentPlans: [...snap.paymentPlans, { ...snap.paymentPlans[0]!, projectId: 'p-deleted' }],
+        paymentPlans: [
+          ...snap.paymentPlans,
+          { ...snap.paymentPlans[0]!, projectId: 'p-deleted' },
+          { projectId: 'p-1', name: 'Unreadable', milestones: [{ label: 'On booking', percent: 'soon' }] },
+        ],
         commissions: [...snap.commissions, { ...snap.commissions[0]!, bookingId: 'b-5' }],
       },
       { commit: false },
@@ -540,6 +547,7 @@ describe('moving a Lead Eagle company', () => {
         '1 units are on projects that did not move; they stay behind.',
         '1 interest links are on projects that did not move; they stay behind.',
         '1 payment plans are on projects that did not move; they stay behind.',
+        'Payment plan Unreadable has milestones that could not be read; it moves with none.',
         'A commission of AED 70000.00 is on booking BK-ME-b-5, which did not move; it stays behind.',
       ]),
     );
@@ -547,7 +555,7 @@ describe('moving a Lead Eagle company', () => {
     expect(report.counts['follow-ups']).toEqual({ source: 3, moved: 2 });
     expect(report.counts.units).toEqual({ source: 2, moved: 1 });
     expect(report.counts['interest links']).toEqual({ source: 3, moved: 2 });
-    expect(report.counts['payment plans']).toEqual({ source: 2, moved: 1 });
+    expect(report.counts['payment plans']).toEqual({ source: 3, moved: 2 });
     expect(await moved()).toHaveLength(0);
   });
 
@@ -663,7 +671,9 @@ describe('moving a Lead Eagle company', () => {
         name: '20/80 post-handover',
         milestones: [
           { label: 'On booking', percent: 20 },
-          { label: 'Post-handover', percent: 80 },
+          { label: 'During construction', percent: 0 },
+          { label: 'On handover', percent: 40 },
+          { label: 'Post-handover, 4 years', percent: 40 },
         ],
       }),
     ]);

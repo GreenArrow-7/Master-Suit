@@ -18,13 +18,7 @@ export const EMBED_KINDS: readonly MediaKind[] = ['VIDEO', 'VR_TOUR'];
 /** What the upload routes store in our own bucket. */
 export const HOSTED_KINDS = ['IMAGE', 'FLOOR_PLAN', 'BROCHURE', 'CREATIVE'] as const;
 
-/**
- * Where a workspace's project and listing media live in the bucket. Only the
- * upload routes write under it, and a key registered by hand must be under it
- * too — otherwise registering another workspace's key, or a receipt's, and
- * opening it through the media file route would read a file the caller has no
- * right to.
- */
+/** Where a workspace's project and listing media live in the bucket; only the upload routes write under it. */
 export const mediaPrefix = (tenantId: string) => `inventory/t-${tenantId}/`;
 
 /** The file types media may be, recognised by their first bytes rather than their name. */
@@ -54,32 +48,32 @@ export function sniffMediaType(kind: (typeof HOSTED_KINDS)[number], bytes: Buffe
   return type;
 }
 
-export function assertMediaSource(
-  input: { kind: MediaKind; storageKey?: string; externalUrl?: string },
-  tenantId: string,
-) {
-  const isEmbed = EMBED_KINDS.includes(input.kind);
-  if (input.storageKey && !input.storageKey.startsWith(mediaPrefix(tenantId))) {
-    throw Invalid([
-      { field: 'storageKey', code: 'invalid', message: 'Upload the file through Add photo or Add file.' },
-    ]);
+/**
+ * The JSON media routes link a video or tour and nothing else. A hosted file
+ * gets its row from the upload route, which stores the type it recognised; a
+ * key or type named by a caller would let a stored PDF be re-registered as
+ * `text/html` and served as a page on our own origin.
+ */
+export function assertMediaSource(input: { kind: MediaKind; externalUrl?: string }) {
+  if (!EMBED_KINDS.includes(input.kind)) {
+    throw Invalid([{ field: 'kind', code: 'invalid', message: 'Upload the file through Add photo or Add file.' }]);
   }
-
-  if (isEmbed && !input.externalUrl) {
+  if (!input.externalUrl) {
     throw Invalid([{ field: 'externalUrl', code: 'required', message: 'A video or tour needs its URL.' }]);
   }
-  if (!isEmbed && !input.storageKey) {
-    throw Invalid([
-      { field: 'storageKey', code: 'required', message: 'Upload the file first, then register its key.' },
-    ]);
-  }
-  if (input.storageKey && input.externalUrl) {
-    throw Invalid([
-      {
-        field: 'externalUrl',
-        code: 'conflict',
-        message: 'Media is either hosted by us or linked from elsewhere, not both.',
-      },
-    ]);
-  }
+}
+
+/**
+ * The headers a hosted file is served with. Only a type the upload route
+ * recognises renders in the browser; anything else, such as a row stored before
+ * that rule, is a download.
+ */
+export function mediaFileHeaders(mimeType: string | null, title: string) {
+  const known = SIGNATURES.some((s) => s.type === mimeType);
+  return {
+    'content-type': known ? mimeType! : 'application/octet-stream',
+    // `inline` so a gallery image renders and a brochure previews, with a
+    // filename so a download keeps a sensible name.
+    'content-disposition': `${known ? 'inline' : 'attachment'}; filename="${title.replace(/["\\]/g, '')}"`,
+  };
 }

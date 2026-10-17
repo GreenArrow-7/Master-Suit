@@ -338,7 +338,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                     label: 'Milestones',
                     required: true,
                     placeholder: '20 On booking, 80 Post-handover',
-                    hint: 'A share and a label each, adding up to 100.',
+                    hint: 'A share and a label each, adding up to 100. Separate them with semicolons when a label has a comma.',
                   },
                 ]}
               />
