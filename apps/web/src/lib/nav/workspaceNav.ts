@@ -1222,6 +1222,7 @@ function definitions(slug: string): SectionDef[] {
               aliases: [p('/users')],
               keywords: 'invite members',
             },
+            { label: 'Teams', href: a('/teams'), permission: 'users', keywords: 'team manager members hierarchy' },
             {
               label: 'Roles',
               href: a('/roles'),
