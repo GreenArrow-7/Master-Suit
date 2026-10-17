@@ -28,6 +28,7 @@ const EMPTY = (typeId: string) => ({
   priority: 'MEDIUM',
   ownerId: '',
   description: '',
+  repeat: '',
 });
 
 export default function TaskComposer({
@@ -71,6 +72,7 @@ export default function TaskComposer({
           priority: form.priority,
           ...(form.ownerId ? { ownerId: form.ownerId } : {}),
           ...(form.description ? { description: form.description } : {}),
+          ...(form.repeat ? { repeat: form.repeat } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -170,6 +172,15 @@ export default function TaskComposer({
             <option value="MEDIUM">Medium</option>
             <option value="HIGH">High</option>
             <option value="URGENT">Urgent</option>
+          </select>
+        </Field>
+
+        <Field label="Repeat" htmlFor="t-repeat">
+          <select id="t-repeat" className="lf-input" value={form.repeat} onChange={set('repeat')}>
+            <option value="">Does not repeat</option>
+            <option value="DAILY">Every day</option>
+            <option value="WEEKLY">Every week</option>
+            <option value="MONTHLY">Every month</option>
           </select>
         </Field>
 

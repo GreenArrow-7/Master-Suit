@@ -58,16 +58,22 @@ export default async function AllocationPage({ searchParams }: { searchParams: P
   ]);
 
   // Leaders configure automatic assignment here (audit M7-01).
-  const [rules, assignable] = isLeader
+  const [rules, assignable, sources] = isLeader
     ? await Promise.all([
         prisma.distributionRule.findMany({
           where: { tenantId: ctx.tenantId, objectType: 'LEAD', deletedAt: null },
           orderBy: { position: 'asc' },
-          select: { id: true, name: true, isActive: true, candidatePool: true },
+          select: { id: true, name: true, isActive: true, candidatePool: true, conditions: true },
         }),
         assignableUsers(ctx, 'leads', 'ASSIGN'),
+        prisma.leadSource.findMany({
+          where: { tenantId: ctx.tenantId },
+          orderBy: [{ position: 'asc' }, { name: 'asc' }],
+          select: { id: true, name: true },
+        }),
       ])
-    : [[], []];
+    : [[], [], []];
+  const sourceName = new Map(sources.map((source) => [source.id, source.name]));
 
   const roomBy = new Map(room.map((r) => [r.userId, r]));
   const nameBy = new Map(agents.map((a) => [a.id, a.fullName]));
@@ -94,14 +100,21 @@ export default async function AllocationPage({ searchParams }: { searchParams: P
         <div style={{ marginBottom: 'var(--lf-space-4)' }}>
           <RulesPanel
             agents={assignable}
+            sources={sources}
             rules={rules.map((rule) => {
               const pool = (rule.candidatePool ?? {}) as { everyone?: boolean; userIds?: string[] };
+              const when = (rule.conditions ?? {}) as { sourceIds?: string[]; cities?: string[] };
+              const routes = [
+                ...(when.sourceIds ?? []).map((id) => sourceName.get(id) ?? 'a removed source'),
+                ...(when.cities ?? []),
+              ].join(', ');
               return {
                 id: rule.id,
                 name: rule.name,
                 isActive: rule.isActive,
                 everyone: !!pool.everyone,
                 people: (pool.userIds ?? []).map((id) => nameBy.get(id) ?? 'A former member'),
+                routes: routes ? `only ${routes}` : null,
               };
             })}
           />
