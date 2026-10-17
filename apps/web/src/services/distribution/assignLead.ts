@@ -49,6 +49,7 @@ const RULE_SELECT = {
   candidatePool: true,
   lastAssignedUserId: true,
   escalateAfterMins: true,
+  reassignAfterMins: true,
   fallbackTeamId: true,
   fallbackUserId: true,
   respectLeave: true,
