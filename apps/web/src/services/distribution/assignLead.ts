@@ -66,6 +66,22 @@ export const activeRule = (tenantId: string, db: Pick<TxClient, 'distributionRul
   });
 
 /**
+ * The rule's people. `{ everyone: true }` is every active member, in a stable
+ * order — the default rule a new Lead Eagle workspace starts with, so leads are
+ * handed out before anyone has configured a pool (audit M7-01).
+ */
+export async function rulePool(tenantId: string, candidatePool: unknown): Promise<string[]> {
+  const pool = (candidatePool ?? {}) as { userIds?: string[]; everyone?: boolean };
+  if (!pool.everyone) return pool.userIds ?? [];
+  const members = await prisma.user.findMany({
+    where: { tenantId, deletedAt: null, status: 'ACTIVE' },
+    select: { id: true },
+    orderBy: { id: 'asc' },
+  });
+  return members.map((member) => member.id);
+}
+
+/**
  * The pool in rotation order, starting after whoever was assigned last — so an
  * ineligible person is passed over rather than stopping every later enquiry
  * until somebody edits the rule.
@@ -91,7 +107,7 @@ export async function assignLead(tenantId: string, leadId: string, now = new Dat
     return queue(tenantId, lead, null, 'NO_RULE', {}, now);
   }
 
-  const pool = (rule.candidatePool as { userIds?: string[] })?.userIds ?? [];
+  const pool = await rulePool(tenantId, rule.candidatePool);
   if (pool.length === 0) {
     return queue(tenantId, lead, rule, 'EMPTY_POOL', { ruleName: rule.name }, now);
   }
@@ -343,7 +359,7 @@ export async function nextDistributionOwner(
   const rule = await activeRule(tenantId);
   if (!rule) return { userId: null, note: 'No matching distribution rule.' };
 
-  const pool = (rule.candidatePool as { userIds?: string[] })?.userIds ?? [];
+  const pool = await rulePool(tenantId, rule.candidatePool);
   if (pool.length === 0) return { userId: null, note: `No members in ${rule.name}.` };
 
   const policy = policyFromRule(rule);
