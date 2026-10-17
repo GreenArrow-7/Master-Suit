@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { Conflict } from '@/lib/errors';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { maskOwner } from '@/lib/inventory/listings';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 
 const listQuery = z
   .object({
@@ -36,7 +37,7 @@ const SAFE_SELECT = {
  * nothing the caller did not already type.
  */
 export const GET = route(
-  { module: 'listings', productModule: 'SALES', action: 'VIEW', query: listQuery },
+  { module: 'listings', productModule: LEAD_MODULES, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     const normalized = query.phone ? normalizePhone(query.phone) : null;
 
@@ -70,7 +71,7 @@ const createBody = z
 export const POST = route(
   {
     module: 'listings',
-    productModule: 'SALES',
+    productModule: LEAD_MODULES,
     action: 'CREATE',
     body: createBody,
     auditEvent: 'RECORD_CREATED',

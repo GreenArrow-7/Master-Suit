@@ -34,6 +34,7 @@ import { GET as opportunitiesList } from '@/app/api/v1/opportunities/route';
 import { GET as receiptsList } from '@/app/api/v1/collections/receipts/route';
 import { POST as createProposal } from '@/app/api/v1/proposals/route';
 import { GET as eventsList } from '@/app/api/v1/events/route';
+import { GET as ownersList, POST as createOwner } from '@/app/api/v1/owners/route';
 import SalesLayout from '@/app/(workspace)/[workspaceSlug]/sales/layout';
 import RealtyLayout from '@/app/(workspace)/[workspaceSlug]/realty/layout';
 import PeopleLayout from '@/app/(workspace)/[workspaceSlug]/people/layout';
@@ -84,6 +85,8 @@ async function makeWorkspace(
     ['opportunities', 'VIEW'],
     ['collections', 'VIEW'],
     ['requirements', 'CREATE'],
+    ['listings', 'VIEW'],
+    ['listings', 'CREATE'],
     ['settings', 'MANAGE_CONFIGURATION'],
   ];
   await grantPermissions(tenant.id, adminRole.id, grants);
@@ -239,6 +242,12 @@ describe('Lead Eagle reaches lead work, and neither Sales-only nor money registe
     const body = { title: 'A few places', listingIds: ['not-a-listing'] };
     expect((await post(createProposal, '/api/v1/proposals', body, leadEagleOnly.cookie)).status).toBe(403);
     expect((await post(createProposal, '/api/v1/proposals', body, realtyOnly.cookie)).status).not.toBe(403);
+  });
+
+  it('a Lead-Eagle-only workspace records a property owner, so it can create a listing (PLAT-12)', async () => {
+    const created = await post(createOwner, '/api/v1/owners', { fullName: 'Owner One' }, leadEagleOnly.cookie);
+    expect(created.status).toBe(200);
+    expect((await get(ownersList, '/api/v1/owners', leadEagleOnly.cookie)).status).toBe(200);
   });
 });
 
