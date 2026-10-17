@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-/** A JSON write that throws the server's own sentence; nothing is saved when it cannot be reached. */
-export async function send(url: string, method: string, body?: unknown) {
+/** A JSON write that throws the server's own sentence; nothing is saved when it cannot be reached. Answers its JSON. */
+export async function send(url: string, method: string, body?: unknown): Promise<unknown> {
   const res = await fetch(url, {
     method,
     headers: { 'content-type': 'application/json' },
@@ -15,6 +15,7 @@ export async function send(url: string, method: string, body?: unknown) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.errors?.[0]?.message ?? data.detail ?? `Request failed (${res.status})`);
   }
+  return res.json().catch(() => null);
 }
 
 /**

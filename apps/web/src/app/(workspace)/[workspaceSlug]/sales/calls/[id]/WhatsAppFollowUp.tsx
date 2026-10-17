@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import TemplateSendDialog from '../../leads/TemplateSendDialog';
 
 interface Draft {
   body: string;
@@ -10,6 +11,8 @@ interface Draft {
   optedOut: boolean;
   conversationId: string | null;
   windowOpen: boolean;
+  /** The lead, where this viewer may start the thread with an approved template (M10-01); `to`, the thread's number. */
+  template: { leadId: string; fullName: string; to: string | null } | null;
   reason: string | null;
 }
 
@@ -17,7 +20,8 @@ interface Draft {
  * The post-call WhatsApp follow-up: draft → edit → send into the lead's
  * existing WhatsApp thread. The send goes through the conversation reply
  * route, so the Meta service window is enforced server-side; when it is closed
- * the draft is still useful — copy it, or reopen with a template from Inbox.
+ * the draft is still useful to copy, and an approved template (the lead's own
+ * send) starts or reopens the thread.
  */
 export default function WhatsAppFollowUp({ callId }: { callId: string }) {
   const router = useRouter();
@@ -26,6 +30,8 @@ export default function WhatsAppFollowUp({ callId }: { callId: string }) {
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [picking, setPicking] = useState<Draft['template']>(null);
+  const [templateSent, setTemplateSent] = useState(false);
 
   async function requestDraft() {
     setBusy(true);
@@ -90,6 +96,11 @@ export default function WhatsAppFollowUp({ callId }: { callId: string }) {
           Sent into the WhatsApp thread.
         </div>
       )}
+      {templateSent && (
+        <div role="status" style={{ color: 'var(--lf-viridian)', fontSize: 'var(--lf-text-sm)', marginBottom: 8 }}>
+          Template sent. It is on the lead&apos;s timeline; once they reply, a follow-up can go from here.
+        </div>
+      )}
 
       {!draft ? (
         <button className="lf-btn lf-btn--secondary" onClick={requestDraft} disabled={busy}>
@@ -118,7 +129,12 @@ export default function WhatsAppFollowUp({ callId }: { callId: string }) {
           {draft.reason && (
             <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-brass, #a16207)' }}>{draft.reason}</div>
           )}
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {draft.template && (
+              <button type="button" className="lf-btn" onClick={() => setPicking(draft.template)} disabled={busy}>
+                Send a template
+              </button>
+            )}
             {draft.conversationId && draft.windowOpen && !draft.optedOut && (
               <button type="button" className="lf-btn" onClick={send} disabled={busy || !draft.body.trim()}>
                 {busy ? 'Sending…' : 'Send'}
@@ -132,6 +148,25 @@ export default function WhatsAppFollowUp({ callId }: { callId: string }) {
             </button>
           </div>
         </div>
+      )}
+      {picking && (
+        <TemplateSendDialog
+          channel="WHATSAPP"
+          // The thread's own number where one was found, so the template reopens it; else the
+          // send picks the lead's WhatsApp number, main first, as from the lead page.
+          target={{
+            leadId: picking.leadId,
+            fullName: picking.fullName,
+            numbers: picking.to ? [{ id: picking.to, label: 'The thread’s number' }] : [],
+          }}
+          onClose={() => setPicking(null)}
+          onSent={() => {
+            setTemplateSent(true);
+            setSent(false);
+            setDraft(null);
+            router.refresh();
+          }}
+        />
       )}
     </section>
   );
