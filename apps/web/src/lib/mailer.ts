@@ -15,11 +15,18 @@ import { logger } from './logger';
  * and a log pipeline is a place those outlive the thirty minutes they are meant
  * to. The mock provider keeps messages in memory instead so a test can read one.
  */
+export interface MailAttachment {
+  filename: string;
+  content: string;
+  contentType?: string;
+}
+
 export interface SentMail {
   to: string;
   subject: string;
   body: string;
   replyTo?: string;
+  attachments?: MailAttachment[];
   at: Date;
 }
 
@@ -45,17 +52,39 @@ function smtpTransport(): Transporter {
   return transport;
 }
 
-/** `replyTo`: where an answer goes, when not to the platform's own address (a lead answering its agent). */
-export async function sendMail(to: string, subject: string, body: string, { replyTo }: { replyTo?: string } = {}) {
+/**
+ * `replyTo`: where an answer goes, when not to the platform's own address (a lead answering its agent).
+ * `attachments`: files sent with it (a scheduled report's CSV).
+ */
+export async function sendMail(
+  to: string,
+  subject: string,
+  body: string,
+  { replyTo, attachments }: { replyTo?: string; attachments?: MailAttachment[] } = {},
+) {
   if (env.EMAIL_PROVIDER === 'mock') {
-    outbox.push({ to, subject, body, ...(replyTo && { replyTo }), at: new Date() });
+    outbox.push({
+      to,
+      subject,
+      body,
+      ...(replyTo && { replyTo }),
+      ...(attachments && { attachments }),
+      at: new Date(),
+    });
     if (outbox.length > OUTBOX_LIMIT) outbox.shift();
     logger.info({ to, subject, provider: 'mock' }, 'email captured (not sent)');
     return;
   }
 
   if (env.EMAIL_PROVIDER === 'smtp') {
-    await smtpTransport().sendMail({ from: env.EMAIL_FROM, to, subject, text: body, ...(replyTo && { replyTo }) });
+    await smtpTransport().sendMail({
+      from: env.EMAIL_FROM,
+      to,
+      subject,
+      text: body,
+      ...(replyTo && { replyTo }),
+      ...(attachments && { attachments }),
+    });
     logger.info({ to, subject, provider: 'smtp' }, 'email sent');
     return;
   }

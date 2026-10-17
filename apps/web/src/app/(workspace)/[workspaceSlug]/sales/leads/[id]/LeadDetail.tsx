@@ -1199,6 +1199,14 @@ function TimelineTab({
         </button>
       </div>
 
+      {/* The Call Report's figures for this lead (M16-09). */}
+      {!!lead.timeline.calls?.calls && (
+        <p style={{ margin: '0 0 var(--lf-space-4)', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
+          {lead.timeline.calls.calls} {lead.timeline.calls.calls === 1 ? 'call' : 'calls'} ·{' '}
+          {lead.timeline.calls.connected} connected · {lead.timeline.calls.minutes} min talk time
+        </p>
+      )}
+
       {showForm && (
         <form
           onSubmit={handleSubmit}

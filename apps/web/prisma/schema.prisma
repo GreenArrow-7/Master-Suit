@@ -642,6 +642,7 @@ model Tenant {
   leadShares          LeadShare[]
   captureLinks        CaptureLink[]
   dataRecords         DataRecord[]
+  reportSchedules     ReportSchedule[]
 
   @@index([status])
 }
@@ -3521,6 +3522,37 @@ model LeadProject {
 
   @@id([leadId, projectId])
   @@index([tenantId, projectId])
+}
+
+/// A report emailed on a cadence (M16-16). The maintenance sweep runs it as its
+/// creator, at their scope and only while they hold reports:EXPORT, for the
+/// period the cadence covers, and mails the CSV to the recipients still active
+/// in the workspace. `nextRunAt` is claimed by conditional update, so two
+/// sweeps send once (services/leadership/reportSchedules.ts).
+model ReportSchedule {
+  id          String        @id @default(cuid())
+  tenantId    String
+  /// A REPORT_KEYS entry, and one of its PIVOTS when grouped.
+  reportKey   String
+  by          String?
+  cadence     ReportCadence
+  /// Lower-cased addresses of workspace members, checked when saved and again when sent.
+  recipients  String[]
+  nextRunAt   DateTime
+  lastRunAt   DateTime?
+  createdById String
+  createdAt   DateTime      @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([nextRunAt])
+  @@index([tenantId, createdById])
+}
+
+enum ReportCadence {
+  DAILY
+  WEEKLY
+  MONTHLY
 }
 
 /// A listing a lead asked about (M4-06), alongside LeadProject.

@@ -139,6 +139,8 @@ test.describe('Each module opens and does its job', () => {
         ['lead-conversion', 'Lead conversion rate'],
         ['source-analysis', 'Source analysis'],
         ['team-performance', 'Team performance'],
+        ['site-visits', 'Site visits'],
+        ['call-report', 'Call report'],
       ] as const) {
         await page.goto(at(`/reports?report=${key}`));
         // These links used to omit the workspace slug and 404.
@@ -150,6 +152,11 @@ test.describe('Each module opens and does its job', () => {
       expect(csv.headers()['content-type']).toContain('text/csv');
       // Every cell is quoted since the export moved onto the shared encoder.
       expect(await csv.text()).toContain('"Source","Leads"');
+
+      // Regrouped by month (M16-13), the file follows.
+      const byMonth = await page.request.get('/api/v1/reports?report=call-report&by=month&format=csv');
+      expect(byMonth.status()).toBe(200);
+      expect(await byMonth.text()).toContain('"Month","Calls","Connected","Talk time (min)"');
     });
 
     await test.step('M11 — somebody posts to the feed and reacts to it', async () => {

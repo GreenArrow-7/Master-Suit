@@ -3,11 +3,21 @@ import { requirePageAccess } from '@/lib/workspace-page';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { can } from '@/lib/security/rbac';
 import { boardFilterOptions } from '@/lib/leads/boardFilter';
-import { offeredReports, reportParams, runReport, REPORT_KEYS, type ReportKey } from '@/services/leadership/reports';
+import {
+  offeredReports,
+  PIVOTS,
+  reportParams,
+  runReport,
+  REPORT_KEYS,
+  type Pivot,
+  type ReportKey,
+} from '@/services/leadership/reports';
+import { listSchedules } from '@/services/leadership/reportSchedules';
 import EmptyState from '@/components/ui/EmptyState';
 import ListHeader from '@/components/workspace/ListHeader';
 import SalesLink from '@/components/workspace/SalesLink';
 import BoardFilterBar from '@/components/workspace/BoardFilterBar';
+import { ScheduleForm, ScheduleList } from './ReportSchedules';
 
 export const metadata = { title: 'Reports' };
 
@@ -33,6 +43,12 @@ const REPORTS = [
         icon: '💰',
         title: 'Revenue Forecast',
         desc: 'Open pipeline weighted by each deal’s probability.',
+      },
+      {
+        key: 'project-report',
+        icon: '🏗️',
+        title: 'Projects',
+        desc: 'Units and availability, the leads each project drew, its visits and bookings.',
       },
     ],
   },
@@ -62,6 +78,18 @@ const REPORTS = [
         icon: '🔀',
         title: 'Lead Assignment Report',
         desc: 'Who received leads, and how they were assigned.',
+      },
+      {
+        key: 'site-visits',
+        icon: '🚗',
+        title: 'Site Visits',
+        desc: 'Visits scheduled, done and missed, and the show rate, by agent, project or month.',
+      },
+      {
+        key: 'call-report',
+        icon: '📞',
+        title: 'Call Report',
+        desc: 'Calls, connected calls and talk time, by agent, lead or month.',
       },
     ],
   },
@@ -96,6 +124,8 @@ const REPORTS = [
   },
 ] as const;
 
+const PIVOT_LABEL: Record<Pivot, string> = { user: 'agent', month: 'month', project: 'project', lead: 'lead' };
+
 const isReportKey = (value: string | undefined): value is ReportKey =>
   value !== undefined && (REPORT_KEYS as readonly string[]).includes(value);
 
@@ -127,9 +157,13 @@ export default async function ReportsPage({
   const asked = [params.report].flat()[0];
   const selected = isReportKey(asked) ? asked : null;
   if (selected && !offered.includes(selected)) notFound();
+  // A regrouping the report offers (M16-13), its default first.
+  const pivots = (selected && PIVOTS[selected]) || [];
+  const by = pivots.find((p) => p === [params.by].flat()[0]);
   const [report, options] = selected
-    ? await Promise.all([runReport(ctx, selected, range, filter), boardFilterOptions(ctx, 'reports')])
+    ? await Promise.all([runReport(ctx, selected, range, { ...filter, by }), boardFilterOptions(ctx, 'reports')])
     : [null, null];
+  const mayExport = can(ctx, 'reports', 'EXPORT');
 
   const day = (at: Date) => at.toLocaleDateString('en-GB', { dateStyle: 'medium', timeZone: zone });
   const period = `${day(range.from)} to ${day(range.to)}`;
@@ -143,10 +177,10 @@ export default async function ReportsPage({
           description={period}
           actions={
             <>
-              {can(ctx, 'reports', 'EXPORT') && (
+              {mayExport && (
                 <a
                   className="lf-btn lf-btn--secondary lf-btn--sm"
-                  href={`/api/v1/reports?report=${report.key}${carried}&format=csv`}
+                  href={`/api/v1/reports?report=${report.key}${carried}${by ? `&by=${by}` : ''}&format=csv`}
                 >
                   Export CSV
                 </a>
@@ -161,11 +195,26 @@ export default async function ReportsPage({
         <BoardFilterBar
           filter={filter}
           options={options}
-          hidden={{ report: report.key }}
-          clearHref={`?report=${report.key}`}
+          hidden={{ report: report.key, ...(by && { by }) }}
+          clearHref={`?report=${report.key}${by ? `&by=${by}` : ''}`}
           idle="The default period, everyone"
           noPeriod="The default period, or these dates"
         />
+
+        {pivots.length > 0 && (
+          <nav className="lf-chips" aria-label="Group by" style={{ marginBottom: 'var(--lf-space-3)' }}>
+            {pivots.map((pivot) => (
+              <SalesLink
+                key={pivot}
+                className="lf-chip"
+                href={`/reports?report=${report.key}${carried}&by=${pivot}`}
+                aria-current={(by ?? pivots[0]) === pivot ? 'page' : undefined}
+              >
+                {`By ${PIVOT_LABEL[pivot]}`}
+              </SalesLink>
+            ))}
+          </nav>
+        )}
 
         {report.note && (
           <p className="lf-hint" style={{ marginBottom: 'var(--lf-space-3)' }}>
@@ -212,13 +261,30 @@ export default async function ReportsPage({
             </table>
           </div>
         )}
+
+        {mayExport && <ScheduleForm report={report.key} by={by} email={ctx.actor.email} />}
       </>
     );
   }
 
+  const schedules = mayExport ? await listSchedules(ctx) : [];
+  const titles = new Map<string, string>(REPORTS.flatMap((g) => g.items.map((r) => [r.key, r.title] as const)));
+
   return (
     <>
       <ListHeader title="Reports" description={`Pre-built reports · ${period}`} />
+
+      {schedules.length > 0 && (
+        <ScheduleList
+          schedules={schedules.map((s) => ({
+            id: s.id,
+            title: `${titles.get(s.report) ?? s.report}${s.by ? ` by ${PIVOT_LABEL[s.by as Pivot]}` : ''}`,
+            cadence: s.cadence,
+            recipients: s.recipients,
+            next: s.nextRunAt.toLocaleString('en-GB', { timeZone: zone, dateStyle: 'medium', timeStyle: 'short' }),
+          }))}
+        />
+      )}
 
       {REPORTS.map((group) => ({
         ...group,
