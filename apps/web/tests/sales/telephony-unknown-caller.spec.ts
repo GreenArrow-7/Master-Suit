@@ -313,6 +313,12 @@ describe('the agent distribution gives a caller’s lead to', () => {
     });
     expect(told).toMatchObject({ title: 'Lead assigned: Unknown caller', objectType: 'lead', priority: 'HIGH' });
     expect(told.channels).toContain('push');
+    // The caller rang and nobody answered before the lead had an owner: the agent is the one to call back (M9-08).
+    const missed = await prisma.notification.findFirstOrThrow({
+      where: { tenantId: ws.tenantId, userId: agent.id, recordId: lead!.id, kind: 'call.missed' },
+    });
+    expect(missed).toMatchObject({ title: 'Missed call from Unknown caller', objectType: 'lead', priority: 'HIGH' });
+    expect(missed.channels).toContain('push');
   });
 });
 

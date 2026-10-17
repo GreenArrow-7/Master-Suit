@@ -5,7 +5,7 @@ import { env } from '@/lib/env';
 import { wrapCredentials } from '@/lib/integrations/connection';
 import { callbackSecrets } from '@/lib/integrations/telephony';
 import { POST as telephonyWebhook } from '@/app/api/v1/webhooks/telephony/[key]/route';
-import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
+import { createWorkspaceUser, seedTwoTenants, type Fixture } from '../helpers/fixtures';
 
 /**
  * The call lifecycle, driven through the real webhook route with vendor-shaped,
@@ -303,6 +303,70 @@ describe('a call progresses through its vendor callbacks', () => {
     });
   });
 
+  it('counts a Twilio call connected when its answered callback arrives after the completed one (PROP-05)', async () => {
+    const sid = 'CAlateanswer';
+    await prisma.call.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        callerId: fixture.a.userId,
+        status: 'RINGING',
+        direction: 'OUTBOUND',
+        providerName: 'twilio',
+        externalCallId: sid,
+      },
+    });
+    await deliver(
+      webhookKey,
+      twilioRequest(webhookKey, { CallSid: sid, CallStatus: 'completed', CallDuration: '60', SequenceNumber: '3' }),
+    );
+    await deliver(
+      webhookKey,
+      twilioRequest(webhookKey, { CallSid: sid, CallStatus: 'in-progress', SequenceNumber: '2' }),
+    );
+    const late = await prisma.call.findFirstOrThrow({ where: { tenantId: fixture.a.tenantId, externalCallId: sid } });
+    expect(late).toMatchObject({ status: 'COMPLETED', outcome: 'CONNECTED' });
+    expect(late.answeredAt).not.toBeNull();
+  });
+
+  it('counts a Knowlarity call its end-of-call callback says was answered as connected (PROP-05)', async () => {
+    const knowlarity = await prisma.integrationConnection.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        provider: 'knowlarity',
+        status: 'CONNECTED',
+        credentials: wrapCredentials({ srNumber: '+911111111112', apiKey: 'k', authToken: 't' }),
+      },
+    });
+    const knowlarityCall = (sid: string, dispatch_status: string) =>
+      prisma.call
+        .create({
+          data: {
+            tenantId: fixture.a.tenantId,
+            callerId: fixture.a.userId,
+            status: 'RINGING',
+            providerName: 'knowlarity',
+            externalCallId: sid,
+          },
+        })
+        .then(async () => {
+          const { urlToken } = callbackSecrets(knowlarity.webhookKey);
+          const url = `${env.APP_URL.replace(/\/$/, '')}/api/v1/webhooks/telephony/${knowlarity.webhookKey}?token=${urlToken}`;
+          const res = await deliver(
+            knowlarity.webhookKey,
+            new Request(url, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ call_id: sid, dispatch_status, call_duration: 50 }),
+            }),
+          );
+          expect(res.status).toBe(200);
+          return prisma.call.findFirstOrThrow({ where: { tenantId: fixture.a.tenantId, externalCallId: sid } });
+        });
+    expect(await knowlarityCall('KNanswered', 'answered')).toMatchObject({ status: 'COMPLETED', outcome: 'CONNECTED' });
+    // Their "completed" says nothing of an answer: not connected on its own.
+    expect(await knowlarityCall('KNcompleted', 'completed')).toMatchObject({ status: 'COMPLETED', outcome: null });
+  });
+
   it('refuses an Exotel callback that arrives without its URL token', async () => {
     const url = `${env.APP_URL.replace(/\/$/, '')}/api/v1/webhooks/telephony/${exotelKey}`;
     const res = await deliver(
@@ -446,8 +510,69 @@ describe('inbound calls', () => {
     }
     const call = await prisma.call.findFirstOrThrow({ where: { tenantId: fixture.a.tenantId, externalCallId: sid } });
     expect(call.leadId).not.toBeNull();
-    const [told] = await missed(fixture.a.tenantId, call.leadId!);
-    expect(told).toMatchObject({ userId: call.callerId, title: 'Missed call from Unknown caller', priority: 'HIGH' });
+    // The call is theirs; the lead may not be theirs to see, so it is not named (distribution names it to its agent).
+    const [told] = await missed(fixture.a.tenantId, call.id);
+    expect(told).toMatchObject({
+      userId: call.callerId,
+      title: 'Missed call from an unassigned lead',
+      objectType: 'call',
+      priority: 'HIGH',
+    });
+  });
+
+  it('does not name a lead nobody owns to the owner of a contact with the same number (M9-08)', async () => {
+    const tenantId = fixture.a.tenantId;
+    const leadId = fixture.a.leadIds[3]!;
+    const number = '+971507770003';
+    await prisma.lead.update({
+      where: { tenantId, id: leadId },
+      data: { phone: number, phoneNormalized: number, ownerId: null },
+    });
+    const role = await prisma.role.create({
+      data: { tenantId, key: `service-${Date.now()}`, name: 'Service', rank: 70 },
+    });
+    const colleague = await createWorkspaceUser({
+      tenantId,
+      roleId: role.id,
+      email: `service-${Date.now()}@flow.test`,
+      fullName: 'Service Agent',
+    });
+    await prisma.contact.create({
+      data: {
+        tenantId,
+        reference: `C-${Date.now()}`,
+        fullName: 'Shared Number',
+        phone: number,
+        phoneNormalized: number,
+        ownerId: colleague.id,
+      },
+    });
+    const sid = `${INBOUND_ID}c`;
+    for (const [status, seq] of [
+      ['ringing', '1'],
+      ['no-answer', '2'],
+    ]) {
+      await deliver(
+        webhookKey,
+        twilioRequest(webhookKey, {
+          CallSid: sid,
+          CallStatus: status!,
+          Direction: 'inbound',
+          From: number,
+          SequenceNumber: seq!,
+        }),
+      );
+    }
+    const call = await prisma.call.findFirstOrThrow({ where: { tenantId, externalCallId: sid } });
+    expect(call).toMatchObject({ leadId, callerId: colleague.id });
+    const told = await prisma.notification.findMany({ where: { tenantId, userId: colleague.id, kind: 'call.missed' } });
+    expect(told).toHaveLength(1);
+    expect(told[0]).toMatchObject({
+      title: 'Missed call from an unassigned lead',
+      objectType: 'call',
+      recordId: call.id,
+      priority: 'HIGH',
+    });
   });
 
   it('does not create a call for an outbound callback it cannot find', async () => {

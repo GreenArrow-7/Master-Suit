@@ -59,7 +59,7 @@ const CALL_OUTCOME: Partial<Record<CallEventKind, string>> = {
  */
 // ponytail: Twilio's click-to-call reports the agent's leg, so its "answered" is the agent picking up; the client's own leg (<Dial action>) when that misleads.
 const connected = (call: { answeredAt: Date | null }, event: CallEvent) =>
-  event.talkSecs != null ? event.talkSecs > 0 : call.answeredAt != null;
+  event.talkSecs != null ? event.talkSecs > 0 : call.answeredAt != null || event.answered === true;
 
 /**
  * Callbacks arrive out of order often enough that it cannot be treated as an
@@ -304,7 +304,14 @@ async function createInboundCall(
 
 /** The call's status after the event. */
 async function applyCallEvent(
-  call: { id: string; tenantId: string; status: string; outcome: string | null; answeredAt: Date | null },
+  call: {
+    id: string;
+    tenantId: string;
+    status: string;
+    outcome: string | null;
+    answeredAt: Date | null;
+    talkSecs: number | null;
+  },
   event: CallEvent,
 ): Promise<string> {
   const nextStatus = CALL_STATUS[event.event];
@@ -312,15 +319,19 @@ async function applyCallEvent(
 
   if (nextStatus && (RANK[nextStatus] ?? 0) >= (RANK[call.status] ?? 0)) {
     data.status = nextStatus;
-    if (event.event === 'CALL_CONNECTED') data.answeredAt = event.occurredAt;
     if (TERMINAL_EVENTS.includes(event.event)) data.endedAt = event.occurredAt;
   }
+  // Whenever it lands: an answered callback overtaken by the completed one still says the call was answered.
+  if (event.event === 'CALL_CONNECTED' && !call.answeredAt) data.answeredAt = event.occurredAt;
+  // ...and so decides a call that already ended, where no talk time did (PROP-05).
+  const answeredLate = data.answeredAt !== undefined && call.status === 'COMPLETED' && call.talkSecs == null;
 
   if (event.durationSecs != null) data.durationSecs = event.durationSecs;
   if (event.talkSecs != null) data.talkSecs = event.talkSecs;
 
   const outcome =
-    CALL_OUTCOME[event.event] ?? (event.event === 'CALL_COMPLETED' && connected(call, event) ? 'CONNECTED' : undefined);
+    CALL_OUTCOME[event.event] ??
+    ((event.event === 'CALL_COMPLETED' && connected(call, event)) || answeredLate ? 'CONNECTED' : undefined);
   if (outcome && !call.outcome) data.outcome = outcome;
 
   if (Object.keys(data).length === 0) return call.status;

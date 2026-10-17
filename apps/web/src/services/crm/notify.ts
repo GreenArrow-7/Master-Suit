@@ -222,9 +222,20 @@ export async function notifyAboutCall(
       })
     : null;
   // An inbound call's `callerId` is whoever it is recorded against: the lead's
-  // owner, else the most senior user until distribution names one (M9-08). Its
-  // `recipientNumber` is the workspace's own line, never the caller's name.
+  // owner, else a contact's owner with that number, else the most senior user
+  // (M9-08). Its `recipientNumber` is the workspace's own line, never the caller's name.
   const inbound = call.direction === 'INBOUND';
+  // The lead by name and as the link, except an inbound call on a lead nobody
+  // owns yet: its recipient may not see that lead, so the call (theirs) instead.
+  // Distribution tells the agent it picks (assignLead).
+  const named = lead && (lead.ownerId || !inbound) ? lead : null;
+  const who = named
+    ? named.fullName
+    : inbound
+      ? lead
+        ? 'an unassigned lead'
+        : 'a number with no lead'
+      : (call.recipientNumber ?? 'an unknown number');
 
   return notifyCrm(ctx, {
     event,
@@ -232,10 +243,10 @@ export async function notifyAboutCall(
     // The dialler hears about their own missed call only when somebody else owns
     // the lead and the two are different people.
     alsoNotify: inbound ? [] : [call.callerId],
-    title: `${verb} ${lead ? lead.fullName : inbound ? 'a number with no lead' : (call.recipientNumber ?? 'an unknown number')}`,
+    title: `${verb} ${who}`,
     body,
-    objectType: lead ? 'lead' : 'call',
-    recordId: lead ? lead.id : call.id,
+    objectType: named ? 'lead' : 'call',
+    recordId: named ? named.id : call.id,
     priority: event === 'call.missed' ? 'HIGH' : 'MEDIUM',
   });
 }

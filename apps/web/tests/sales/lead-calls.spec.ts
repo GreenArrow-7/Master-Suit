@@ -102,6 +102,7 @@ beforeAll(async () => {
       recording: {
         create: { tenantId, storageKey: `recordings/${tenantId}/x.mp3`, storageBucket: null, mimeType: 'audio/mpeg' },
       },
+      consent: { create: { tenantId, consentGiven: true } },
     })
   ).id;
   ids.missed = (await call({ leadId, callerId: agentA, status: 'MISSED', outcome: 'NO_ANSWER' })).id;
@@ -162,6 +163,21 @@ describe('the Calls list (M9-03, M9-07)', () => {
     const { rows } = await callsListed({ lead: 'not-an-id' });
     expect(rows).toHaveLength(4);
   });
+
+  it('leaves out a recording whose consent was withdrawn, which the media route refuses to play', async () => {
+    const withdrawn = await call({
+      leadId,
+      callerId: ws.userId,
+      status: 'COMPLETED',
+      recording: {
+        create: { tenantId, storageKey: `recordings/${tenantId}/w.mp3`, storageBucket: null, mimeType: 'audio/mpeg' },
+      },
+      consent: { create: { tenantId, consentGiven: true, withdrawnAt: new Date() } },
+    });
+    expect((await callsListed({ tab: 'recorded' })).rows).toEqual([ids.recorded]);
+    const page = await leadTimeline(await ctxFrom(ws.cookie), leadId);
+    expect(page.entries.find((e) => e.key === `call:${withdrawn.id}`)?.link?.label).toBe('Open call');
+  });
 });
 
 describe('the post-call log on a provider call (M9-02)', () => {
@@ -186,8 +202,9 @@ describe('the post-call log on a provider call (M9-02)', () => {
     });
     expect(await prisma.activity.count({ where: { tenantId, leadId } })).toBe(before);
     const followUp = await prisma.followUpTask.findFirstOrThrow({ where: { tenantId, leadId } });
-    // 09:30 in Dubai.
+    // 09:30 in Dubai, and on the call's page as booked from it.
     expect(followUp.dueAt.toISOString()).toBe('2027-01-11T05:30:00.000Z');
+    expect(followUp.callId).toBe(placed.id);
     expect(
       await prisma.auditLog.count({
         where: { tenantId, objectType: 'call', recordId: placed.id, event: 'RECORD_UPDATED' },
@@ -197,6 +214,38 @@ describe('the post-call log on a provider call (M9-02)', () => {
     // The same send again is the same log.
     expect((await post(logCall, url(leadId), body, ws.cookie)).status).toBe(200);
     expect(await prisma.followUpTask.count({ where: { tenantId, leadId } })).toBe(1);
+  });
+
+  it('keeps the notes taken during the call, the dialog’s note after them', async () => {
+    const placed = await call({ leadId, callerId: ws.userId, status: 'COMPLETED', notes: 'Budget 2M, spouse decides' });
+    const res = await post(
+      logCall,
+      url(leadId),
+      { callId: placed.id, outcome: 'Interested', notes: 'Call Tuesday' },
+      ws.cookie,
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((await prisma.call.findFirstOrThrow({ where: { tenantId, id: placed.id } })).notes).toBe(
+      'Budget 2M, spouse decides\nCall Tuesday',
+    );
+  });
+
+  it('refuses a role without calls:EDIT, even on its own call, writing nothing', async () => {
+    const role = await prisma.role.create({ data: { tenantId, key: `rep-${tag()}`, name: 'Rep', rank: 60 } });
+    await grantPermissions(tenantId, role.id, [
+      ['leads', 'VIEW'],
+      ['leads', 'EDIT'],
+    ]);
+    const rep = await createWorkspaceUser({ tenantId, roleId: role.id, email: `${tag()}@calls.test`, fullName: 'Rep' });
+    const own = await call({ leadId, callerId: rep.id, direction: 'INBOUND', status: 'MISSED', outcome: 'NO_ANSWER' });
+    const res = await post(
+      logCall,
+      url(leadId),
+      { callId: own.id, outcome: 'Interested' },
+      await createSessionToken(tenantId, rep.id),
+    );
+    expect(res.status).toBe(404);
+    expect((await prisma.call.findFirstOrThrow({ where: { tenantId, id: own.id } })).outcome).toBe('NO_ANSWER');
   });
 
   it("refuses a call that is not this lead's, writing nothing", async () => {

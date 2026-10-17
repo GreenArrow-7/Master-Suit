@@ -219,6 +219,7 @@ export async function leadTimeline(
           notes: true,
           callerId: true,
           recording: { select: { storageBucket: true } },
+          consent: { select: { consentGiven: true, withdrawnAt: true } },
         },
       }),
       tx.communication.findMany({
@@ -373,10 +374,14 @@ export async function leadTimeline(
             .join(' · ') || null,
         notes: c.notes,
         by: person(c.callerId),
-        // Playable once ingested: until then its media is only at the vendor (storageBucket 'provider').
+        // Playable once ingested (until then its media is only at the vendor, storageBucket
+        // 'provider') and while consent stands, as the media route plays it.
         link: {
           href: `/calls/${c.id}`,
-          label: c.recording && c.recording.storageBucket !== 'provider' ? 'Play recording' : 'Open call',
+          label:
+            c.recording && c.recording.storageBucket !== 'provider' && c.consent?.consentGiven && !c.consent.withdrawnAt
+              ? 'Play recording'
+              : 'Open call',
         },
       }),
     ),

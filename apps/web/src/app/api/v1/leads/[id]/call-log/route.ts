@@ -4,6 +4,7 @@ import { route } from '@/lib/api/handler';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { assertCallInScope, assertLeadInScope } from '@/lib/security/record-scope';
+import { can } from '@/lib/security/rbac';
 import { NotFound } from '@/lib/errors';
 import { CALL_LOG_OUTCOMES, CALL_OUTCOME_OF, FOLLOW_UP_TITLE } from '@/lib/leads/callLog';
 import { reachedOut, touchLead } from '@/services/leads/touch';
@@ -93,18 +94,22 @@ export const POST = route(
 
     // 404 outside the caller's scope before anything else, a replay included.
     await assertLeadInScope(ctx, leadId, prisma, 'EDIT');
+    // A write to a call takes calls:EDIT, as PATCH /calls/:id does: callScope's
+    // own-calls fallback is for reading a call under `leads`, not changing it.
+    if (callId && !can(ctx, 'calls', 'EDIT')) throw NotFound('Call');
     const placed = callId ? await assertCallInScope(ctx, callId, 'EDIT') : null;
     if (placed && placed.leadId !== leadId) throw NotFound('Call');
     const replay = key ? await findReplay<{ activity: { id: string; occurredAt: string } }>(key) : null;
     if (replay) return replay.result;
 
-    /** The next follow-up, the caller's, on the lead, audited with what it follows. */
+    /** The next follow-up, the caller's, on the lead (and the call it follows), audited with what it follows. */
     async function bookFollowUp(tx: TxClient, follows: Record<string, string>) {
       const followUp = await withRecompute(tx, ctx.tenantId, [leadId], () =>
         tx.followUpTask.create({
           data: {
             tenantId: ctx.tenantId,
             leadId,
+            callId: placed?.id ?? null,
             ownerId: ctx.actor.id,
             createdById: ctx.actor.id,
             title: FOLLOW_UP_TITLE,
@@ -126,7 +131,11 @@ export const POST = route(
       const result = await withTx(ctx.tenantId, async (tx) => {
         await tx.call.updateMany({
           where: { tenantId: ctx.tenantId, id: placed.id },
-          data: { outcome: CALL_OUTCOME_OF[outcome], ...(notes && { notes }) },
+          // After what the live screen saved during the call, never over it.
+          data: {
+            outcome: CALL_OUTCOME_OF[outcome],
+            ...(notes && { notes: [placed.notes, notes].filter(Boolean).join('\n') }),
+          },
         });
         await audit(
           ctx,
