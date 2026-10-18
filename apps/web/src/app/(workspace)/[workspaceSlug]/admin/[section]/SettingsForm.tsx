@@ -54,7 +54,7 @@ export default function SettingsForm({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setMessage({ tone: 'error', text: data.detail ?? 'That change was refused.' });
+        setMessage({ tone: 'error', text: data.errors?.[0]?.message ?? data.detail ?? 'That change was refused.' });
         return;
       }
       setMessage({ tone: 'ok', text: 'Saved.' });

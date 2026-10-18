@@ -163,6 +163,12 @@ beforeEach(async () => {
 afterEach(async () => {
   await clearRows('PlatformAuditEvent');
   await clearRows('AuditLog');
+  await withPlatformTx((tx) =>
+    tx.$executeRawUnsafe(
+      `DELETE FROM "OrganizationSetting" WHERE "tenantId" = ANY($1::text[])`,
+      tenants.map((t) => t.id),
+    ),
+  );
 });
 
 describe('with no policy set', () => {
@@ -248,6 +254,44 @@ describe('with a policy set', () => {
 
     expect(result.auditSummary.AuditLog).toBe(503);
     expect(result.truncated).toBe(false);
+  });
+
+  it("keeps a row a workspace's longer window still wants, and deletes the other workspace's (M18-11)", async () => {
+    // The deployment keeps 90 days; the first workspace keeps 500. Its 400-day-old
+    // row survives, the second workspace's goes, and the recent rows stay in both.
+    await prisma.organizationSetting.create({
+      data: { tenantId: tenants[0]!.id, retentionPolicy: { auditLog: 500 } },
+    });
+    windows.audit = 90;
+
+    const dry = await runRetentionCleanup(true);
+    expect(dry.auditSummary.AuditLog).toBe(1);
+    expect(await auditRows()).toBe(4);
+
+    const result = await runRetentionCleanup();
+    expect(result.auditSummary.AuditLog).toBe(1);
+    const survivors = await withPlatformTx((tx) =>
+      tx.$queryRawUnsafe<{ tenantId: string; objectType: string }[]>(
+        `SELECT "tenantId", "objectType" FROM "AuditLog" WHERE "objectType" LIKE $1`,
+        `%${suffix}%`,
+      ),
+    );
+    expect(survivors.filter((row) => row.tenantId === tenants[0]!.id)).toHaveLength(2);
+    expect(survivors.filter((row) => row.tenantId === tenants[1]!.id).map((row) => row.objectType)).toEqual([
+      `recent-${suffix}`,
+    ]);
+  });
+
+  it("never shortens the deployment's window: a shorter workspace value keeps the deployment's", async () => {
+    // A value stored before the deployment chose a longer window does not delete early.
+    await prisma.organizationSetting.create({
+      data: { tenantId: tenants[0]!.id, retentionPolicy: { auditLog: 30 } },
+    });
+    windows.audit = 500;
+
+    const result = await runRetentionCleanup();
+    expect(result.auditSummary.AuditLog).toBe(0);
+    expect(await auditRows()).toBe(4);
   });
 
   it('deletes the capture before the punch row that points at it', async () => {

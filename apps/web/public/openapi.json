@@ -25973,7 +25973,8 @@
               "type": "string",
               "enum": [
                 "company",
-                "security"
+                "security",
+                "retention"
               ]
             }
           }

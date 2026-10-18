@@ -269,6 +269,7 @@ test.describe('Work-area navigation', () => {
         ['/admin/modules', 'Settings', 'Modules'],
         ['/admin/subscription', 'Settings', 'Subscription'],
         ['/admin/security', 'Settings', 'Security Policy'],
+        ['/admin/retention', 'Settings', 'Data Retention'],
         ['/sales/people', 'Settings', 'Teams'],
         ['/dashboard', 'My Workspace', 'Workspace Summary'],
       ];

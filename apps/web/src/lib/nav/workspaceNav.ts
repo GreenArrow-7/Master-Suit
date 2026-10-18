@@ -1223,6 +1223,12 @@ function definitions(slug: string): SectionDef[] {
             },
             { label: 'Security Policy', href: a('/security'), permission: 'settings', keywords: 'mfa password policy' },
             {
+              label: 'Data Retention',
+              href: a('/retention'),
+              permission: 'settings',
+              keywords: 'retention audit log attendance punches ai events keep delete days',
+            },
+            {
               label: 'Lead Stages',
               href: a('/lead-stages'),
               permission: 'settings',
