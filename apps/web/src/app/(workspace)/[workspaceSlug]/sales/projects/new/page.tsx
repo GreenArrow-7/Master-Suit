@@ -68,6 +68,10 @@ export default async function NewProjectPage() {
             type: 'select',
             options: developers.map((d) => ({ value: d.id, label: d.name })),
           },
+          // Typed when the list lacks it (M11-01): found by name or added.
+          { name: 'developerName', label: 'Or a new developer', placeholder: 'Emaar' },
+          { name: 'community', label: 'Or a new community', placeholder: 'Dubai Hills' },
+          { name: 'city', label: 'City of the new community', placeholder: 'Dubai' },
           {
             name: 'status',
             label: 'Status',
@@ -93,6 +97,7 @@ export default async function NewProjectPage() {
             type: 'multiselect',
             options: amenities.map((a) => ({ value: a.key, label: a.label })),
           },
+          { name: 'amenityNames', label: 'Other amenities', placeholder: 'Pool, Gym', hint: 'Comma-separated.' },
         ]}
       />
     </>

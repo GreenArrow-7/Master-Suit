@@ -17,12 +17,12 @@ production-supported architecture is chosen. Do not submit them to a store.
 | Server | `MOBILE_SERVER_URL` at sync time — an https origin only (enforced) |
 | Navigation | The server origin only; every other host opens in the system browser (no `allowNavigation`) |
 | Session | The web app's httpOnly session cookie, first-party in the WebView; no passwords or tokens stored by the app |
-| Permissions | Android: `INTERNET`, `CAMERA` (Take photo on lead documents). iOS: `NSCameraUsageDescription` |
+| Permissions | Android: `INTERNET`, `CAMERA`, `ACCESS_COARSE_LOCATION`/`ACCESS_FINE_LOCATION`, `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`. iOS: camera, location when in use and microphone usage descriptions (`ios/App/App/Info.plist`) |
 | Backup | Android backup and device transfer disabled (the WebView cookie store holds the session) |
 | FileProvider | Limited to the camera capture folder (`external-files-path` `Pictures/`) |
-| Push | **Not included.** The plugin is removed until FCM/APNs credentials exist (see below) |
-| Location, microphone | **Not declared.** Face check-in, the site-visit GPS punch and any audio feature cannot work in this build |
-| Identifiers | iOS bundle id `com.youhan.one`; Android `applicationId` `com.youhan.one1` (namespace `com.youhan.one`); label "YOUHAN ONE Dev", version `0.1.0-dev-poc` |
+| Push | `@capacitor/push-notifications` 8.1.2 is in the build; it stays off until the owner's Firebase file and APNs key exist (`changes/2026-10-17-native-push-plugin.md`) |
+| Offline | The site's own outbox (`apps/web/src/lib/offline.ts`): a logged call, a follow-up, a lead edit or a cold call made with no signal waits on the phone and is sent once when it is back; opening a screen still needs the server |
+| Identifiers | iOS bundle id `com.youhan.one`; Android `applicationId` `com.youhan.one1` (namespace `com.youhan.one`); label "YOUHAN ONE", version 1.2.0 (Android version code 11) |
 
 ## Android: build the development APK
 
@@ -124,23 +124,20 @@ adaptive foreground on midnight `#020817`), the Android splash images, the iOS
 1024 app icon and the iOS splash image, using the Playwright Chromium already
 installed for `apps/web`.
 
-## Push notifications (not in this build)
+## Push notifications (in the build, off until credentials exist)
 
 The server side exists: `apps/web/src/lib/push/send.ts` speaks FCM HTTP v1 and
 APNs token auth, and `apps/web/src/lib/pwa/nativePush.ts` registers a device when
-the plugin is present (and does nothing when it is not). To add it back:
+the plugin is present. `@capacitor/push-notifications` is installed and synced
+(`changes/2026-10-17-native-push-plugin.md`). What turns it on is the owner's:
 
-1. `npm install @capacitor/push-notifications` here, then sync.
-2. Android: `google-services.json` from the Firebase project into `android/app/`
-   (git-ignored), and declare `POST_NOTIFICATIONS`.
-3. iOS: Push Notifications capability with a team; APNs auth key. The two delegate
-   callbacks are already in `AppDelegate.swift`.
-4. Server: the `FCM_*` and `APNS_*` variables (`.env.example`); `APNS_BUNDLE_ID`
+1. Android: `google-services.json` from the Firebase project into `android/app/`
+   (git-ignored; the build applies the plugin only when the file is present).
+2. iOS: Push Notifications capability on the App ID, a regenerated profile, then
+   an `aps-environment` entitlement; APNs auth key. The two delegate callbacks are
+   already in `AppDelegate.swift`.
+3. Server: the `FCM_*` and `APNS_*` variables (`.env.example`); `APNS_BUNDLE_ID`
    must equal `appId`.
-
-Without Firebase configured, the Android plugin's `register()` calls
-`FirebaseMessaging.getInstance()` with no Firebase app, which is why it is not
-shipped in a build that has no credentials.
 
 ## Before any release build
 

@@ -25,11 +25,14 @@ export default function LeadFilters({
   stages,
   owners,
   sources,
+  projects,
 }: {
   params: LeadListParams;
   stages: { id: string; name: string }[];
   owners: { id: string; fullName: string }[];
   sources: { id: string; name: string; parentId: string | null }[];
+  /** The projects a lead may be interested in (M11-07); empty where the viewer sees no projects. */
+  projects: { id: string; name: string }[];
 }) {
   const sourceName = (id: string) => {
     const entry = sources.find((source) => source.id === id);
@@ -50,7 +53,9 @@ export default function LeadFilters({
   if (params.source) chips.push([`Source: ${sourceName(params.source)}`, ['source']]);
   // The Lead Eagle board's team and project, carried by its links.
   if (params.team) chips.push(['Team', ['team']]);
-  if (params.project) chips.push(['Project', ['project']]);
+  if (params.project) {
+    chips.push([`Project: ${projects.find((p) => p.id === params.project)?.name ?? 'Unknown'}`, ['project']]);
+  }
   if (params.from || params.to)
     chips.push([`${DATE_LABEL[params.date ?? 'created']}: ${range}`, ['date', 'from', 'to']]);
   const without = (keys: (keyof LeadListParams)[]) =>
@@ -97,6 +102,18 @@ export default function LeadFilters({
               ))}
             </select>
           </Field>
+          {projects.length > 0 && (
+            <Field label="Interested in" htmlFor="lf-filter-project">
+              <select id="lf-filter-project" name="project" className="lf-input" defaultValue={params.project ?? ''}>
+                <option value="">Any project</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
           <Field label="Date" htmlFor="lf-filter-date">
             <select id="lf-filter-date" name="date" className="lf-input" defaultValue={params.date ?? 'created'}>
               <option value="created">Created</option>

@@ -7,17 +7,18 @@ import { recalculateProjectRollups } from '@/services/inventory/rollups';
 
 const params = z.object({ id: z.string().cuid() });
 
+// Numbers coerced: the project page's forms post them as strings (M11-04).
 const createBody = z
   .object({
     name: z.string().min(1).max(120),
     unitType: z.string().min(1).max(40),
-    bedrooms: z.number().int().min(0).max(20).optional(),
-    bathrooms: z.number().int().min(0).max(20).optional(),
-    carpetAreaSqft: z.number().int().positive().max(1_000_000).optional(),
-    builtUpAreaSqft: z.number().int().positive().max(1_000_000).optional(),
-    price: z.number().nonnegative().optional(),
+    bedrooms: z.coerce.number().int().min(0).max(20).optional(),
+    bathrooms: z.coerce.number().int().min(0).max(20).optional(),
+    carpetAreaSqft: z.coerce.number().int().positive().max(1_000_000).optional(),
+    builtUpAreaSqft: z.coerce.number().int().positive().max(1_000_000).optional(),
+    price: z.coerce.number().nonnegative().optional(),
     floorPlanKey: z.string().max(500).optional(),
-    position: z.number().int().min(0).max(999).default(0),
+    position: z.coerce.number().int().min(0).max(999).default(0),
   })
   .strict();
 

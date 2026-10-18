@@ -23,11 +23,17 @@ export default function ListingFilters({
     // fresh server render per field. Same value → no navigation.
     if ((params.get(key) ?? '') === (value ?? '')) return;
     const next = new URLSearchParams(params.toString());
+    // A changed filter starts at its first page, and is no longer the saved view.
+    next.delete('page');
+    next.delete('saved');
     if (value) next.set(key, value);
     else next.delete(key);
     router.push(`${pathname}?${next.toString()}`);
   }
 
+  // A typed input is keyed on its own value: opening a saved view or clearing
+  // the filters keeps this bar mounted, and a kept input would show, and on
+  // blur re-send, the value it had before.
   const value = (key: string) => params.get(key) ?? '';
   const active = [...params.keys()].filter((k) => params.get(k)).length > 0;
 
@@ -39,6 +45,7 @@ export default function ListingFilters({
             className="lf-input"
             type="search"
             placeholder="Listing title"
+            key={value('q')}
             defaultValue={value('q')}
             onBlur={(e) => set('q', e.target.value.trim() || null)}
             onKeyDown={(e) => e.key === 'Enter' && set('q', (e.target as HTMLInputElement).value.trim() || null)}
@@ -124,8 +131,37 @@ export default function ListingFilters({
             max={50}
             style={{ width: 100 }}
             placeholder="Any"
+            key={value('bedroomsMin')}
             defaultValue={value('bedroomsMin')}
             onBlur={(e) => set('bedroomsMin', e.target.value || null)}
+          />
+        </Field>
+
+        <Field label="Beds up to">
+          <input
+            className="lf-input"
+            type="number"
+            min={0}
+            max={50}
+            style={{ width: 100 }}
+            placeholder="Any"
+            key={value('bedroomsMax')}
+            defaultValue={value('bedroomsMax')}
+            onBlur={(e) => set('bedroomsMax', e.target.value || null)}
+          />
+        </Field>
+
+        <Field label="Price from">
+          <input
+            className="lf-input"
+            type="number"
+            min={0}
+            step={50000}
+            style={{ width: 140 }}
+            placeholder="Any"
+            key={value('minPrice')}
+            defaultValue={value('minPrice')}
+            onBlur={(e) => set('minPrice', e.target.value || null)}
           />
         </Field>
 
@@ -137,6 +173,7 @@ export default function ListingFilters({
             step={50000}
             style={{ width: 140 }}
             placeholder="Any"
+            key={value('maxPrice')}
             defaultValue={value('maxPrice')}
             onBlur={(e) => set('maxPrice', e.target.value || null)}
           />

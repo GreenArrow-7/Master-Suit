@@ -40,6 +40,8 @@ import { normalizePhone } from '@/services/leads/normalizePhone';
 import { NOTE_ACTIVITY } from '@/services/leads/touch';
 import { nextReference } from '@/services/shared/reference';
 import { dayBounds } from '@/services/targets/dailyBoard';
+import { readMilestones } from '@/lib/inventory/paymentPlans';
+import { recalculateProjectRollups } from '@/services/inventory/rollups';
 
 type Id = string;
 type When = string | Date;
@@ -165,11 +167,21 @@ export interface LeadEagleCompany {
     unitNumber: string;
     floor: number | null;
     view: string | null;
+    /** Kept on a unit plan per (type, bedrooms) of its project (M11-09): a unit here has no type of its own. */
+    type: PropertyType;
+    bedrooms: number | null;
+    bathrooms: number | null;
     price: string | null;
     sizeSqft: number | null;
     status: 'AVAILABLE' | 'HELD' | 'BOOKED' | 'SOLD';
     heldById: Id | null;
     heldUntil: When | null;
+  }[];
+  /** A project's payment plans (M11-02): milestones as `[{ label, percent }]`. */
+  paymentPlans: {
+    projectId: Id;
+    name: string;
+    milestones: unknown;
   }[];
   listings: {
     id: Id;
@@ -779,6 +791,56 @@ export async function moveCompany(
           );
         }
 
+        // A payment plan moves with its project (M11-02).
+        const plans = snap.paymentPlans
+          .filter((plan) => projectMap.has(plan.projectId))
+          .map((plan) => ({ ...plan, read: readMilestones(plan.milestones) }));
+        for (const plan of plans) {
+          if (!plan.read.length && Array.isArray(plan.milestones) && plan.milestones.length) {
+            problems.push(`Payment plan ${plan.name} has milestones that could not be read; it moves with none.`);
+          }
+        }
+        if (plans.length) {
+          await tx.paymentPlan.createMany({
+            data: plans.map((plan) => ({
+              tenantId,
+              projectId: projectMap.get(plan.projectId)!,
+              name: plan.name,
+              milestones: plan.read,
+            })),
+            skipDuplicates: true,
+          });
+        }
+        tally('payment plans', snap.paymentPlans.length, plans.length);
+        if (plans.length < snap.paymentPlans.length) {
+          problems.push(
+            `${snap.paymentPlans.length - plans.length} payment plans are on projects that did not move; they stay behind.`,
+          );
+        }
+
+        // A unit's type and bedrooms live on a unit plan here (M11-09): one per
+        // (project, type, bedrooms), named as an agent would say it.
+        const planIds = new Map<string, Id>();
+        const unitPlanId = async (projectId: Id, u: LeadEagleCompany['units'][number]) => {
+          const type = u.type.charAt(0) + u.type.slice(1).toLowerCase();
+          const key = `${projectId}|${u.type}|${u.bedrooms ?? ''}`;
+          if (!planIds.has(key)) {
+            const plan = await tx.unitPlan.create({
+              data: {
+                tenantId,
+                projectId,
+                name: u.bedrooms == null ? type : u.bedrooms === 0 ? `Studio ${type}` : `${u.bedrooms} bed ${type}`,
+                unitType: u.bedrooms == null ? type : u.bedrooms === 0 ? 'Studio' : `${u.bedrooms}BR`,
+                bedrooms: u.bedrooms,
+                bathrooms: u.bathrooms,
+              },
+              select: { id: true },
+            });
+            planIds.set(key, plan.id);
+          }
+          return planIds.get(key)!;
+        };
+
         const unitMap = new Map<Id, Id>();
         for (const u of snap.units) {
           const projectId = projectMap.get(u.projectId);
@@ -788,6 +850,7 @@ export async function moveCompany(
             data: {
               tenantId,
               projectId,
+              unitPlanId: await unitPlanId(projectId, u),
               unitNumber: u.unitNumber,
               floor: u.floor,
               facing: u.view,
@@ -802,6 +865,11 @@ export async function moveCompany(
           unitMap.set(u.id, created.id);
         }
         tally('units', snap.units.length, unitMap.size);
+        tally('unit plans', planIds.size, planIds.size);
+        // The catalogue's availability and unit types for what moved, keeping the band each project brought.
+        for (const projectId of new Set(projectMap.values())) {
+          await recalculateProjectRollups(tx, tenantId, projectId, { countsOnly: true });
+        }
         if (unitMap.size < snap.units.length) {
           problems.push(
             `${snap.units.length - unitMap.size} units are on projects that did not move; they stay behind.`,

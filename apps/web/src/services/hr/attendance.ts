@@ -108,7 +108,7 @@ async function loadAssignments(ctx: Ctx, employeeId: string) {
  * does not know ("Dubai", "GMT+4") throws a RangeError in every screen that
  * formats a date with it, so one reads as the default.
  */
-export async function workspaceTimezone(ctx: Ctx) {
+export async function workspaceTimezone(ctx: Pick<Ctx, 'tenantId'>) {
   const tenant = await prisma.tenant.findFirst({ where: { id: ctx.tenantId }, select: { timezone: true } });
   return knownTimeZone(tenant?.timezone);
 }

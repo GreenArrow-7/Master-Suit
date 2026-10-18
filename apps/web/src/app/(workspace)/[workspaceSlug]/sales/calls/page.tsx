@@ -29,8 +29,10 @@ const PAGE_SIZE = 50;
 
 /** The tabs on the bar; Placed and Completed are reached from the Lead Eagle board. */
 const SHOWN_TABS = CALL_TABS.filter((tab) => !['placed', 'completed'].includes(tab.key));
-/** The board's filters a tab keeps. */
-const KEPT = ['logged', 'from', 'to', 'owner', 'team', 'source', 'project'] as const;
+/** The board's filters a tab keeps, and the lead the list is narrowed to (M9-03). */
+const KEPT = ['logged', 'from', 'to', 'owner', 'team', 'source', 'project', 'lead'] as const;
+/** A record id; anything else in `lead` is ignored. */
+const RECORD_ID = /^[a-z0-9]{20,40}$/;
 
 type CallParams = { tab?: string; page?: string; logged?: string } & Record<string, string | undefined>;
 
@@ -38,6 +40,8 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
   const params = await searchParams;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['calls', 'VIEW'] });
   const page = Math.max(1, Number(params.page) || 1);
+  // One lead's calls, from its page (M9-03): only narrows what the scope already shows.
+  const leadId = RECORD_ID.test(params.lead ?? '') ? params.lead! : null;
 
   // Role scope, not just own calls: a manager sees the team's history here the
   // same way the audits page already does.
@@ -46,19 +50,29 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
   // The Lead Eagle board's calls: a period, person, team, source and project,
   // and (`logged=1`) the calls logged by hand beside the provider's (M3-18).
   const timeZone = await workspaceTimezone(ctx);
-  const where = mergeWhere(scope, tab.where, { deletedAt: null }, await boardListWhere(ctx, params, 'call', timeZone));
+  const where = mergeWhere(
+    scope,
+    tab.where,
+    { deletedAt: null },
+    leadId ? { leadId } : null,
+    await boardListWhere(ctx, params, 'call', timeZone),
+  );
   const loggedWhere =
     params.logged === '1' && tab.logged
       ? mergeWhere(
           await visibilityWhere(ctx, 'calls', 'VIEW', { ownerField: 'ownerId' }),
           LOGGED_CALL,
           tab.logged,
+          leadId ? { leadId } : null,
           await boardListWhere(ctx, params, 'log', timeZone),
         )
       : null;
-  const kept = new URLSearchParams(KEPT.filter((key) => params[key]).map((key) => [key, params[key]!]));
-  const tabHref = (key: string) => {
+  const kept = new URLSearchParams(
+    KEPT.filter((key) => params[key] && (key !== 'lead' || leadId)).map((key) => [key, params[key]!]),
+  );
+  const tabHref = (key: string, withLead = true) => {
     const query = new URLSearchParams(kept);
+    if (!withLead) query.delete('lead');
     if (key) query.set('tab', key);
     return query.size ? `/calls?${query}` : '/calls';
   };
@@ -121,7 +135,8 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
         prisma.activity.count({ where: loggedWhere }),
       ])
     : [null, null, null];
-  const loggedLeads = await leadsInScope(ctx, logged?.map((row) => row.leadId) ?? []);
+  const loggedLeads = await leadsInScope(ctx, [...(logged?.map((row) => row.leadId) ?? []), leadId]);
+  const narrowedTo = leadId ? loggedLeads.get(leadId) : undefined;
 
   const hasMore = rows.length > PAGE_SIZE;
   // A call to a lead or contact holds their number (the one dialled, or an
@@ -222,6 +237,14 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
           </SalesLink>
         ))}
       </nav>
+
+      {leadId && (
+        <p className="lf-hint" data-lead-filter style={{ marginBottom: 'var(--lf-space-3)' }}>
+          Calls with{' '}
+          {narrowedTo ? <SalesLink href={`/leads/${narrowedTo.id}`}>{narrowedTo.fullName}</SalesLink> : 'one lead'} ·{' '}
+          <SalesLink href={tabHref(tab.key, false)}>All calls</SalesLink>
+        </p>
+      )}
 
       {logged && (
         <p className="lf-hint" style={{ marginBottom: 'var(--lf-space-3)' }}>

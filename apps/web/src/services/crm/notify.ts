@@ -286,8 +286,15 @@ export async function ringNewOwner(
  * the call. `verb` is the start of it, "Missed call from".
  */
 export async function notifyAboutCall(
-  ctx: Ctx,
-  call: { id: string; leadId: string | null; callerId: string | null; recipientNumber: string | null },
+  // Who acted: a person, or the telephony webhook (`{ id: 'telephony' }`).
+  ctx: Pick<Ctx, 'tenantId'> & { actor: Pick<Ctx['actor'], 'id'> },
+  call: {
+    id: string;
+    leadId: string | null;
+    callerId: string | null;
+    recipientNumber: string | null;
+    direction?: string;
+  },
   event: Extract<CrmEventKey, 'call.scheduled' | 'call.missed' | 'call.completed'>,
   verb: string,
   body?: string,
@@ -298,17 +305,32 @@ export async function notifyAboutCall(
         select: { id: true, ownerId: true, fullName: true },
       })
     : null;
+  // An inbound call's `callerId` is whoever it is recorded against: the lead's
+  // owner, else a contact's owner with that number, else the most senior user
+  // (M9-08). Its `recipientNumber` is the workspace's own line, never the caller's name.
+  const inbound = call.direction === 'INBOUND';
+  // The lead by name and as the link, except an inbound call on a lead nobody
+  // owns yet: its recipient may not see that lead, so the call (theirs) instead.
+  // Distribution tells the agent it picks (assignLead).
+  const named = lead && (lead.ownerId || !inbound) ? lead : null;
+  const who = named
+    ? named.fullName
+    : inbound
+      ? lead
+        ? 'an unassigned lead'
+        : 'a number with no lead'
+      : (call.recipientNumber ?? 'an unknown number');
 
   return notifyCrm(ctx, {
     event,
-    ownerId: lead?.ownerId,
+    ownerId: lead?.ownerId ?? (inbound ? call.callerId : undefined),
     // The dialler hears about their own missed call only when somebody else owns
     // the lead and the two are different people.
-    alsoNotify: [call.callerId],
-    title: `${verb} ${lead ? lead.fullName : (call.recipientNumber ?? 'an unknown number')}`,
+    alsoNotify: inbound ? [] : [call.callerId],
+    title: `${verb} ${who}`,
     body,
-    objectType: lead ? 'lead' : 'call',
-    recordId: lead ? lead.id : call.id,
+    objectType: named ? 'lead' : 'call',
+    recordId: named ? named.id : call.id,
     priority: event === 'call.missed' ? 'HIGH' : 'MEDIUM',
   });
 }

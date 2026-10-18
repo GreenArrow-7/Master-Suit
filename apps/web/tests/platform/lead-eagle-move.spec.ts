@@ -310,11 +310,27 @@ const snapshot = (): LeadEagleCompany => ({
       unitNumber: 'V-12',
       floor: null,
       view: 'Park',
+      type: 'VILLA',
+      bedrooms: 4,
+      bathrooms: 5,
       price: '3500000.00',
       sizeSqft: 3200,
       status: 'SOLD',
       heldById: null,
       heldUntil: null,
+    },
+  ],
+  paymentPlans: [
+    {
+      projectId: 'p-1',
+      name: '20/80 post-handover',
+      // The standalone's own seed: a stage with nothing due, and a comma in a label.
+      milestones: [
+        { label: 'On booking', percent: 20 },
+        { label: 'During construction', percent: 0 },
+        { label: 'On handover', percent: 40 },
+        { label: 'Post-handover, 4 years', percent: 40 },
+      ],
     },
   ],
   listings: [
@@ -515,6 +531,11 @@ describe('moving a Lead Eagle company', () => {
         followUps: [...snap.followUps, { ...snap.followUps[0]!, leadId: 'l-merged' }],
         // On a deleted project, and on a booking that stays behind (its listing has no price).
         units: [...snap.units, { ...snap.units[0]!, id: 'un-2', projectId: 'p-deleted' }],
+        paymentPlans: [
+          ...snap.paymentPlans,
+          { ...snap.paymentPlans[0]!, projectId: 'p-deleted' },
+          { projectId: 'p-1', name: 'Unreadable', milestones: [{ label: 'On booking', percent: 'soon' }] },
+        ],
         commissions: [...snap.commissions, { ...snap.commissions[0]!, bookingId: 'b-5' }],
       },
       { commit: false },
@@ -531,6 +552,8 @@ describe('moving a Lead Eagle company', () => {
         '1 follow-ups are on merged duplicates or deleted leads; they stay behind.',
         '1 units are on projects that did not move; they stay behind.',
         '1 interest links are on projects that did not move; they stay behind.',
+        '1 payment plans are on projects that did not move; they stay behind.',
+        'Payment plan Unreadable has milestones that could not be read; it moves with none.',
         'A commission of AED 70000.00 is on booking BK-ME-b-5, which did not move; it stays behind.',
       ]),
     );
@@ -538,6 +561,7 @@ describe('moving a Lead Eagle company', () => {
     expect(report.counts['follow-ups']).toEqual({ source: 3, moved: 2 });
     expect(report.counts.units).toEqual({ source: 2, moved: 1 });
     expect(report.counts['interest links']).toEqual({ source: 3, moved: 2 });
+    expect(report.counts['payment plans']).toEqual({ source: 3, moved: 2 });
     expect(await moved()).toHaveLength(0);
   });
 
@@ -632,12 +656,33 @@ describe('moving a Lead Eagle company', () => {
 
     const project = await prisma.project.findFirstOrThrow({ where: { tenantId, name: 'Sidra Villas' } });
     expect(project).toMatchObject({ code: 'LE-SIDRAVILLAS', status: 'READY', possessionStatus: 'READY_TO_MOVE' });
+    // Its catalogue counters follow the units that moved, and its price band stays its own.
+    expect(project).toMatchObject({ totalUnits: 1, availableUnits: 0, soldUnits: 1, unitTypes: ['4BR'] });
+    expect(project.minPrice?.toString()).toBe('3000000');
     // Aisha's interest in it is a link the project page lists (M4-06).
     expect(await prisma.leadProject.findMany({ where: { tenantId, projectId: project.id } })).toEqual([
       expect.objectContaining({ leadId: aisha!.id }),
     ]);
     expect(report.counts['interest links']).toEqual({ source: 1, moved: 1 });
     expect(await prisma.unitInventory.count({ where: { tenantId, projectId: project.id, status: 'SOLD' } })).toBe(1);
+    // The unit keeps its type and bedrooms, on a plan of its project (M11-09).
+    const unit = await prisma.unitInventory.findFirstOrThrow({
+      where: { tenantId, projectId: project.id, unitNumber: 'V-12' },
+      include: { unitPlan: true },
+    });
+    expect(unit.unitPlan).toMatchObject({ name: '4 bed Villa', unitType: '4BR', bedrooms: 4, bathrooms: 5 });
+    // Its payment plan moves with it (M11-02).
+    expect(await prisma.paymentPlan.findMany({ where: { tenantId, projectId: project.id } })).toEqual([
+      expect.objectContaining({
+        name: '20/80 post-handover',
+        milestones: [
+          { label: 'On booking', percent: 20 },
+          { label: 'During construction', percent: 0 },
+          { label: 'On handover', percent: 40 },
+          { label: 'Post-handover, 4 years', percent: 40 },
+        ],
+      }),
+    ]);
     const listing = await prisma.listing.findFirstOrThrow({ where: { tenantId, reference: 'LS-ME-1' } });
     expect(listing).toMatchObject({ listingType: 'RENT', ownerId: fixture.a.userId });
     expect(listing.propertyOwnerId).not.toBeNull();
@@ -704,6 +749,7 @@ describe('moving a Lead Eagle company', () => {
       captureLinks: [],
       projects: [],
       units: [],
+      paymentPlans: [],
       listings: [],
       bookings: [],
       commissions: [],

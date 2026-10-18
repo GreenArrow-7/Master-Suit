@@ -10,7 +10,7 @@ const body = z
   .strict();
 
 export const POST = route(
-  { module: 'leads', productModule: 'SALES', action: 'EDIT', body },
+  { module: 'leads', productModule: 'SALES', action: 'EDIT', body, auditEvent: 'TARGET_UPDATED' },
   async ({ ctx, body: { targetId, increment } }) => {
     const dateKey = new Date().toISOString().slice(0, 10);
 

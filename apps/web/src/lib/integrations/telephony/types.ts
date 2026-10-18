@@ -94,6 +94,8 @@ export interface CallEvent {
   durationSecs?: number;
   /** Conversation time excluding ring, where the vendor reports it. */
   talkSecs?: number;
+  /** The end-of-call event says the call was answered (Knowlarity's "answered"): a vendor with no connected callback. */
+  answered?: boolean;
   /** Vendor-hosted media. Fetched into our own bucket; never shown to a user. */
   recordingUrl?: string;
   /**

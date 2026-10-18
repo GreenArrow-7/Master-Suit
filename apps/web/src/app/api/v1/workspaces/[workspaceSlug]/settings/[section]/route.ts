@@ -3,6 +3,7 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { requireWorkspace } from '@/lib/workspace';
+import { WORKSPACE_LOCALES, type WorkspaceLocale } from '@/lib/locale';
 
 /**
  * Company administration that a company administrator can actually perform.
@@ -39,6 +40,10 @@ const companyBody = z.object({
   /** The colours the workspace's public pages draw with (M18-09): `#RRGGBB`. */
   primaryColor: hex.optional(),
   accentColor: hex.optional(),
+  /** The brokerage's RERA ORN (M12-04): portal feeds, shared pages and proposals print it. */
+  reraOrn: z.string().trim().max(40).nullable().optional(),
+  /** The workspace's language; Arabic lays it out right to left (NFR-09). */
+  locale: z.enum(WORKSPACE_LOCALES.map((l) => l.value) as [WorkspaceLocale, ...WorkspaceLocale[]]).optional(),
 });
 
 const securityBody = z.object({
@@ -89,16 +94,19 @@ export const PATCH = route(
 
     if (params.section === 'company') {
       const input = companyBody.parse(body);
-      // The brand colours live on the settings row, which the public pages read (agencyOf).
-      const colours = {
+      // The brand colours, the ORN and the language live on the settings row, which the
+      // public pages (agencyOf) and the workspace frame (its `dir`) read.
+      const settings = {
         ...(input.primaryColor && { primaryColor: input.primaryColor }),
         ...(input.accentColor && { accentColor: input.accentColor }),
+        ...(input.reraOrn !== undefined && { reraOrn: input.reraOrn || null }),
+        ...(input.locale && { defaultLocale: input.locale }),
       };
-      const brand = await prisma.organizationSetting.upsert({
+      const { defaultLocale, ...brand } = await prisma.organizationSetting.upsert({
         where: { tenantId: ctx.tenantId },
-        create: { tenantId: ctx.tenantId, ...colours },
-        update: colours,
-        select: { primaryColor: true, accentColor: true },
+        create: { tenantId: ctx.tenantId, ...settings },
+        update: settings,
+        select: { primaryColor: true, accentColor: true, reraOrn: true, defaultLocale: true },
       });
       const company = await prisma.tenant.update({
         where: { id: ctx.tenantId },
@@ -126,7 +134,7 @@ export const PATCH = route(
           logoUrl: true,
         },
       });
-      return { ...company, ...brand };
+      return { ...company, ...brand, locale: defaultLocale };
     }
 
     const input = securityBody.parse(body);

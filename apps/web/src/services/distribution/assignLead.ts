@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { audit } from '@/lib/security/audit';
-import { notifyCrm } from '@/services/crm/notify';
+import { notifyAboutCall, notifyCrm } from '@/services/crm/notify';
 import { assessEligibility, lockAndVerify, policyFromRule, redactForSales, type Eligibility } from './eligibility';
 import { openTriageEntry, resolveTriageEntry, type TriageDetail, type TriageReason } from './triage';
 
@@ -32,7 +32,9 @@ import { openTriageEntry, resolveTriageEntry, type TriageDetail, type TriageReas
  * re-verified under a row lock inside the assignment transaction, because a
  * read outside the transaction is a guess by the time the transaction commits.
  *
- * `DistributionMethod` still supports only ROUND_ROBIN. The other methods are a
+ * `DistributionMethod` still supports only ROUND_ROBIN. A rule's `weights` make
+ * it a weighted rotation (audit M7-02) and its `languages` condition narrows the
+ * pool to the people who speak one (M7-04); the other methods are a
  * `switch (rule.method)` here when a workspace needs one; the eligibility gate
  * and the triage fallback are method-independent and will not need rewriting.
  */
@@ -48,6 +50,8 @@ const RULE_SELECT = {
   name: true,
   candidatePool: true,
   lastAssignedUserId: true,
+  weights: true,
+  rotationSlot: true,
   escalateAfterMins: true,
   reassignAfterMins: true,
   fallbackTeamId: true,
@@ -82,36 +86,91 @@ export async function rulePool(tenantId: string, candidatePool: unknown): Promis
   return members.map((member) => member.id);
 }
 
-/** What a rule may route on (audit M7-03). An empty or absent list matches any lead. */
+/** What a rule may route on (audit M7-03, M7-04). An empty or absent list matches any lead. */
 export interface RuleConditions {
   sourceIds?: string[];
   cities?: string[];
   projectIds?: string[];
+  /** Matched against the lead's tags ("Arabic"), and only people who speak one take it. */
+  languages?: string[];
+}
+
+/** The rule's languages the lead is tagged with, in lower case. */
+export function leadLanguages(conditions: unknown, tags: readonly string[] = []): string[] {
+  const tagged = new Set(tags.map((tag) => tag.toLowerCase()));
+  const wanted = ((conditions ?? {}) as RuleConditions).languages ?? [];
+  return wanted.map((language) => language.toLowerCase()).filter((language) => tagged.has(language));
 }
 
 export function ruleMatches(
   conditions: unknown,
-  lead: { sourceId: string | null; city: string | null; projectIds: string[] },
+  lead: { sourceId: string | null; city: string | null; projectIds: string[]; tags?: string[] },
 ): boolean {
   const c = (conditions ?? {}) as RuleConditions;
   if (c.sourceIds?.length && !(lead.sourceId && c.sourceIds.includes(lead.sourceId))) return false;
   if (c.cities?.length && !(lead.city && c.cities.some((city) => city.toLowerCase() === lead.city!.toLowerCase())))
     return false;
   if (c.projectIds?.length && !lead.projectIds.some((id) => c.projectIds!.includes(id))) return false;
+  if (c.languages?.length && leadLanguages(c, lead.tags).length === 0) return false;
   return true;
+}
+
+/**
+ * A language rule hands the lead only to the people who speak one of the
+ * languages it was routed on (`User.languages`, set under Admin → Users).
+ * ponytail: the lead's language is read from its tags; a language field on the lead if tags prove too loose.
+ */
+async function speakers(tenantId: string, pool: string[], languages: string[]): Promise<string[]> {
+  const users = await prisma.user.findMany({
+    where: { tenantId, id: { in: pool } },
+    select: { id: true, languages: true },
+  });
+  const speaks = new Set(
+    users.filter((u) => u.languages.some((l) => languages.includes(l.toLowerCase()))).map((u) => u.id),
+  );
+  return pool.filter((id) => speaks.has(id));
+}
+
+/**
+ * Where a language rule's speakers are in their turn. The rule's one pointer is
+ * shared by every language, so read alone it restarted one language's speakers
+ * from the first whenever the last lead went to another language's (review of
+ * PR #206); their place is read back from the rule's own assignments to them.
+ * ponytail: a weighted language rule takes its slot from how many of those
+ * there are, so a person passed over loses that turn; a pointer per language
+ * on the rule if that matters.
+ */
+async function speakersTurn(tenantId: string, rule: { id: string; weights: unknown }, pool: string[]) {
+  const where = { tenantId, ruleId: rule.id, toOwnerId: { in: pool } };
+  const last = await prisma.leadAssignmentHistory.findFirst({
+    where,
+    orderBy: { createdAt: 'desc' },
+    select: { toOwnerId: true },
+  });
+  const weighted = Object.keys((rule.weights ?? {}) as object).length > 0;
+  return {
+    weights: rule.weights,
+    lastAssignedUserId: last?.toOwnerId ?? null,
+    rotationSlot: weighted ? await prisma.leadAssignmentHistory.count({ where }) : 0,
+  };
 }
 
 /** The first active round-robin rule, by position, whose conditions the lead meets. */
 async function ruleForLead(
   tenantId: string,
-  lead: { sourceId: string | null; city: string | null; projectInterests: { projectId: string }[] },
+  lead: { sourceId: string | null; city: string | null; tags: string[]; projectInterests: { projectId: string }[] },
 ) {
   const rules = await prisma.distributionRule.findMany({
     where: { tenantId, objectType: 'LEAD', isActive: true, method: 'ROUND_ROBIN', deletedAt: null },
     orderBy: { position: 'asc' },
     select: { ...RULE_SELECT, conditions: true },
   });
-  const facts = { sourceId: lead.sourceId, city: lead.city, projectIds: lead.projectInterests.map((p) => p.projectId) };
+  const facts = {
+    sourceId: lead.sourceId,
+    city: lead.city,
+    tags: lead.tags,
+    projectIds: lead.projectInterests.map((p) => p.projectId),
+  };
   return rules.find((rule) => ruleMatches(rule.conditions, facts)) ?? null;
 }
 
@@ -125,6 +184,42 @@ function rotationOrder(pool: string[], lastAssignedUserId: string | null): strin
   return pool.map((_, step) => pool[(lastIndex + step + 1) % pool.length]!);
 }
 
+/**
+ * Weighted turns (audit M7-02): `weights` {userId: n} gives a person n slots in
+ * each round, spread across it — weights {A: 2} over A, B, C turn A, B, C, A.
+ * Everyone not named weighs 1; a share is 1 to 10.
+ */
+export function weightedSlots(pool: string[], weights: unknown): string[] {
+  const named = (weights ?? {}) as Record<string, unknown>;
+  const share = (id: string) => Math.max(1, Math.min(10, Math.round(Number(named[id]) || 1)));
+  const slots: string[] = [];
+  for (let round = 0, rounds = Math.max(...pool.map(share)); round < rounds; round++) {
+    for (const id of pool) if (share(id) > round) slots.push(id);
+  }
+  return slots;
+}
+
+/**
+ * Who is next, in order, and for a weighted rule the slot to resume from once
+ * each of them is chosen. An unweighted rule turns on the person assigned last.
+ */
+function turns(pool: string[], rule: { lastAssignedUserId: string | null; weights: unknown; rotationSlot: number }) {
+  const next = new Map<string, number>();
+  if (Object.keys((rule.weights ?? {}) as object).length === 0) {
+    return { order: rotationOrder(pool, rule.lastAssignedUserId), next };
+  }
+  const slots = weightedSlots(pool, rule.weights);
+  const order: string[] = [];
+  for (let step = 0; step < slots.length; step++) {
+    const index = (rule.rotationSlot + step) % slots.length;
+    const id = slots[index]!;
+    if (next.has(id)) continue;
+    order.push(id);
+    next.set(id, index + 1);
+  }
+  return { order, next };
+}
+
 export async function assignLead(tenantId: string, leadId: string, now = new Date()): Promise<AssignOutcome> {
   const lead = await prisma.lead.findFirst({
     where: { tenantId, id: leadId, deletedAt: null },
@@ -136,6 +231,7 @@ export async function assignLead(tenantId: string, leadId: string, now = new Dat
       reference: true,
       sourceId: true,
       city: true,
+      tags: true,
       projectInterests: { select: { projectId: true } },
     },
   });
@@ -150,7 +246,9 @@ export async function assignLead(tenantId: string, leadId: string, now = new Dat
     return queue(tenantId, lead, null, 'NO_RULE', {}, now);
   }
 
-  const pool = await rulePool(tenantId, rule.candidatePool);
+  const languages = leadLanguages(rule.conditions, lead.tags);
+  const everyone = await rulePool(tenantId, rule.candidatePool);
+  const pool = languages.length ? await speakers(tenantId, everyone, languages) : everyone;
   if (pool.length === 0) {
     return queue(tenantId, lead, rule, 'EMPTY_POOL', { ruleName: rule.name }, now);
   }
@@ -159,7 +257,7 @@ export async function assignLead(tenantId: string, leadId: string, now = new Dat
   const verdicts = await assessEligibility(tenantId, pool, policy, now);
   const by = new Map(verdicts.map((v) => [v.userId, v]));
 
-  const order = rotationOrder(pool, rule.lastAssignedUserId);
+  const { order, next } = turns(pool, languages.length ? await speakersTurn(tenantId, rule, pool) : rule);
 
   /**
    * Redacted before it is written, not before it is rendered.
@@ -217,6 +315,7 @@ export async function assignLead(tenantId: string, leadId: string, now = new Dat
       policy,
       now,
       why(rule.name, order, userId, detail, people),
+      next.get(userId),
     );
     if (placed.outcome !== 'retry') {
       // The agent hears the lead is theirs, in the bell and on the phone, as a
@@ -234,6 +333,17 @@ export async function assignLead(tenantId: string, leadId: string, now = new Dat
             priority: 'HIGH',
           },
         );
+        // M9-08: the client rang and nobody answered before the lead had an
+        // owner, so the bell went to whoever the call is recorded against; the
+        // agent is the one to call back.
+        const missed = await prisma.call.findFirst({
+          where: { tenantId, leadId: lead.id, direction: 'INBOUND', status: 'MISSED', deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, leadId: true, callerId: true, recipientNumber: true, direction: true },
+        });
+        if (missed) {
+          await notifyAboutCall({ tenantId, actor: { id: 'distribution' } }, missed, 'call.missed', 'Missed call from');
+        }
       }
       return placed.result;
     }
@@ -289,6 +399,8 @@ async function tryAssign(
   policy: ReturnType<typeof policyFromRule>,
   now: Date,
   note: string,
+  /** A weighted rule's slot to resume from, after this person. */
+  rotationSlot?: number,
 ): Promise<TryResult> {
   return withTx(tenantId, async (tx) => {
     const verdict = await lockAndVerify(tx, tenantId, userId, policy, now);
@@ -339,7 +451,7 @@ async function tryAssign(
     // turned out to be taken would skip somebody's turn.
     await tx.distributionRule.updateMany({
       where: { tenantId, id: rule.id },
-      data: { lastAssignedUserId: userId },
+      data: { lastAssignedUserId: userId, ...(rotationSlot === undefined ? {} : { rotationSlot }) },
     });
 
     /**

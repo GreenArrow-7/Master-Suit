@@ -4,9 +4,23 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useHydrated } from '@/lib/useHydrated';
 import { DateTimeInput } from '@/components/forms/DateInput';
+import { sendOrQueue } from '@/lib/offline';
 
-/** Complete / reschedule a follow-up in place, against PATCH /api/v1/follow-ups/[id]. */
-export default function FollowUpRowActions({ id, status }: { id: string; status: string }) {
+/**
+ * Complete / reschedule a follow-up in place, against PATCH /api/v1/follow-ups/[id].
+ * Without a connection the change waits on the device (lib/offline.ts) and the
+ * offline notice says so; it is sent when the phone is back online.
+ */
+export default function FollowUpRowActions({
+  id,
+  status,
+  title = 'Follow-up',
+}: {
+  id: string;
+  status: string;
+  /** Names the change in the offline notice. */
+  title?: string;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   // Until React has attached, these buttons are painted but inert; a tap would be
@@ -16,18 +30,12 @@ export default function FollowUpRowActions({ id, status }: { id: string; status:
   const [rescheduling, setRescheduling] = useState(false);
   const [dueAt, setDueAt] = useState('');
 
-  async function patch(body: Record<string, unknown>) {
+  async function patch(body: Record<string, unknown>, label: string) {
     setBusy(true);
     try {
-      const res = await fetch(`/api/v1/follow-ups/${id}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (res.ok) {
-        setRescheduling(false);
-        router.refresh();
-      }
+      const res = await sendOrQueue(`/api/v1/follow-ups/${id}`, 'PATCH', body, `${title}: ${label}`);
+      if (res === 'queued' || res.ok) setRescheduling(false);
+      if (res !== 'queued' && res.ok) router.refresh();
     } finally {
       setBusy(false);
     }
@@ -39,7 +47,7 @@ export default function FollowUpRowActions({ id, status }: { id: string; status:
         type="button"
         className="lf-btn lf-btn--secondary lf-btn--sm"
         disabled={blocked}
-        onClick={() => patch({ status: 'OPEN' })}
+        onClick={() => patch({ status: 'OPEN' }, 'reopened')}
       >
         Reopen
       </button>
@@ -56,7 +64,7 @@ export default function FollowUpRowActions({ id, status }: { id: string; status:
           type="button"
           className="lf-btn lf-btn--sm"
           disabled={blocked || !dueAt}
-          onClick={() => patch({ dueAt: new Date(dueAt).toISOString() })}
+          onClick={() => patch({ dueAt: new Date(dueAt).toISOString() }, 'rescheduled')}
         >
           Save
         </button>
@@ -78,7 +86,7 @@ export default function FollowUpRowActions({ id, status }: { id: string; status:
         type="button"
         className="lf-btn lf-btn--sm"
         disabled={blocked}
-        onClick={() => patch({ status: 'COMPLETED' })}
+        onClick={() => patch({ status: 'COMPLETED' }, 'completed')}
       >
         Complete
       </button>
@@ -94,7 +102,7 @@ export default function FollowUpRowActions({ id, status }: { id: string; status:
         type="button"
         className="lf-btn lf-btn--secondary lf-btn--sm"
         disabled={blocked}
-        onClick={() => patch({ status: 'CANCELLED' })}
+        onClick={() => patch({ status: 'CANCELLED' }, 'cancelled')}
       >
         Cancel
       </button>

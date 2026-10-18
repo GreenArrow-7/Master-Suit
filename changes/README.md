@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-18 | [Round 3 batch B review: reports read a visit's and a booking's own project, Call Report reads under the calls scope, call reports mail only to those who may see the calls](2026-10-18-round3-b-report-review.md) | #217 | Reports, Lead Eagle, fix |
 | 2026-10-18 | [The board-filters test reads the board at the moment its data was made](2026-10-18-dashboard-filters-one-clock.md) | — | Test, CI |
 | 2026-10-18 | [The Lead Eagle move tool counts every table it leaves behind and names every author it loses](2026-10-18-move-tool-every-table.md) | #208 | Lead Eagle, data migration, fix |
 | 2026-10-18 | [A call's WhatsApp follow-up starts the thread with a template; a listing or project is shared from its own page and the share is on the lead's timeline](2026-10-18-le-comms.md) | #209 | Lead Eagle, calls, messaging |
@@ -36,6 +37,11 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 | 2026-10-18 | [A morning summary email; lead hand-overs tell the new owner; an untouched lead escalates after any hand-over](2026-10-18-notify-digest.md) | #211 | Notifications, Lead Eagle, feature |
 | 2026-10-18 | [The check-in screen shows today's target; absence and standing shifts feed assignment; Face Activity and the objection playbook in every workspace; Lead Eagle opens on its board](2026-10-18-le-attendance-ai.md) | #212 | Attendance, allocation, Lead Eagle, live calls |
 | 2026-10-18 | [Lead settings: required custom fields on Add lead, the lead form layout, holidays in assignment, brand colours on the QR page, a paged Audit Log, and the OpenAPI document](2026-10-18-le-settings-api.md) | #214 | Lead Eagle, admin, allocation, audit, API |
+| 2026-10-18 | [Project, site-visit and call reports; reports regroup by user, month, project or lead; any report can be emailed on a schedule](2026-10-18-reports-new.md) | #204 | Reports, Lead Eagle, feature |
+| 2026-10-18 | [A provider's calls on the lead's timeline, a call report per agent, missed-call notices and tracking numbers](2026-10-18-le-calls.md) | #205 | Lead Eagle, calls, telephony |
+| 2026-10-18 | [A manager sees their whole line; quotas, languages, availability and shares steer assignment; Lead Eagle writes its own automations](2026-10-18-assignment-followups.md) | #206 | Lead Eagle, allocation, automation, follow-ups |
+| 2026-10-18 | [Projects and listings for every lead module: payment plans, uploads, units from the page, paging and views, permits, pocket listings, unit matches](2026-10-18-le-projects-listings.md) | #207 | Lead Eagle, projects, listings, feature |
+| 2026-10-18 | [Offline follow-ups and cold calls on the phone; the call log estimates the call; every write is audited or says why not; an Arabic workspace reads right to left; the lead lists measured at 1,000,000 leads](2026-10-18-mobile-offline-rtl-audit.md) | #215 | Mobile, offline, audit, RTL, performance |
 | 2026-10-17 | [The phone apps carry the push plugin](2026-10-17-native-push-plugin.md) | — | Mobile, build |
 | 2026-10-17 | [Each person chooses phone and email copies of their notifications](2026-10-17-notification-prefs.md) | — | Notifications, feature |
 | 2026-10-17 | [Automatic assignment can be switched on, and is on for new Lead Eagle workspaces](2026-10-17-assignment-rules.md) | #194 | Lead Eagle, allocation, feature |

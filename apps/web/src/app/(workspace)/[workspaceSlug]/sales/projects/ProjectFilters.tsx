@@ -16,9 +16,14 @@ import FilterSheet from '@/components/workspace/FilterSheet';
 export default function ProjectFilters({
   micromarkets,
   developers,
+  amenities,
+  counts,
 }: {
   micromarkets: { id: string; name: string; city: string }[];
   developers: { id: string; name: string }[];
+  amenities: { key: string; label: string }[];
+  /** How many projects the current filters leave under each value (M11-08); a value with none shows no number. */
+  counts: Record<'micromarket' | 'developer' | 'status' | 'possession', Record<string, number>>;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -29,14 +34,21 @@ export default function ProjectFilters({
     // fresh server render per field. Same value → no navigation.
     if ((params.get(key) ?? '') === (value ?? '')) return;
     const next = new URLSearchParams(params.toString());
+    // A changed filter starts at its first page, and is no longer the saved view.
+    next.delete('page');
+    next.delete('saved');
     if (value) next.set(key, value);
     else next.delete(key);
     router.push(`${pathname}?${next.toString()}`);
   }
 
+  // A typed input is keyed on its own value: opening a saved view or clearing
+  // the filters keeps this bar mounted, and a kept input would show, and on
+  // blur re-send, the value it had before.
   const value = (key: string) => params.get(key) ?? '';
+  const n = (facet: keyof typeof counts, key: string) => (counts[facet][key] ? ` (${counts[facet][key]})` : '');
   // Facets other than the search: the count the sheet trigger shows.
-  const facets = [...params.keys()].filter((k) => k !== 'q' && params.get(k)).length;
+  const facets = [...params.keys()].filter((k) => k !== 'q' && k !== 'saved' && k !== 'page' && params.get(k)).length;
   const active = facets > 0 || Boolean(params.get('q'));
 
   return (
@@ -46,6 +58,7 @@ export default function ProjectFilters({
           className="lf-input"
           type="search"
           placeholder="Project name"
+          key={value('q')}
           defaultValue={value('q')}
           // Committed on blur or Enter rather than per keystroke: each change is
           // a server round trip and a history entry.
@@ -68,7 +81,7 @@ export default function ProjectFilters({
               <option value="">Any</option>
               {micromarkets.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.name}, {m.city}
+                  {`${m.name}, ${m.city}${n('micromarket', m.id)}`}
                 </option>
               ))}
             </select>
@@ -83,7 +96,7 @@ export default function ProjectFilters({
               <option value="">Any</option>
               {developers.map((d) => (
                 <option key={d.id} value={d.id}>
-                  {d.name}
+                  {`${d.name}${n('developer', d.id)}`}
                 </option>
               ))}
             </select>
@@ -98,7 +111,7 @@ export default function ProjectFilters({
               <option value="">Any</option>
               {POSSESSION_STATUSES.map((p) => (
                 <option key={p} value={p}>
-                  {title(p)}
+                  {`${title(p)}${n('possession', p)}`}
                 </option>
               ))}
             </select>
@@ -113,7 +126,22 @@ export default function ProjectFilters({
               <option value="">Any</option>
               {PROJECT_STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {title(s)}
+                  {`${title(s)}${n('status', s)}`}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Amenity">
+            <select
+              className="lf-select"
+              value={value('amenity')}
+              onChange={(e) => set('amenity', e.target.value || null)}
+            >
+              <option value="">Any</option>
+              {amenities.map((a) => (
+                <option key={a.key} value={a.key}>
+                  {a.label}
                 </option>
               ))}
             </select>
@@ -126,6 +154,7 @@ export default function ProjectFilters({
               min={0}
               step={100000}
               placeholder="Any"
+              key={value('maxPrice')}
               defaultValue={value('maxPrice')}
               onBlur={(e) => set('maxPrice', e.target.value || null)}
             />

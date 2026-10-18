@@ -87,7 +87,15 @@ test.describe('Follow-up work on a phone', () => {
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       );
       expect(overflowOpen, 'no horizontal scrolling with the reschedule controls open').toBeLessThanOrEqual(0);
+      // Wait for the save to land before reloading: a reload that cuts the request
+      // off counts as a lost connection, and the offline outbox (lib/offline.ts)
+      // keeps the change on the device to send again, naming it in its notice.
+      const rescheduled = page.waitForResponse(
+        (r) => r.url().includes('/api/v1/follow-ups/') && r.request().method() === 'PATCH',
+      );
       await page.getByRole('button', { name: 'Save' }).first().click();
+      const rescheduleRes = await rescheduled;
+      expect(rescheduleRes.status(), `reschedule: ${await rescheduleRes.text()}`).toBeLessThan(300);
 
       // The persisted outcome, not the optimistic one: reload and look again.
       await page.reload();

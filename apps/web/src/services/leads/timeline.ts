@@ -5,6 +5,7 @@ import { callScope } from '@/lib/security/record-scope';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { applyFieldSecurity, loadFieldRules } from '@/lib/security/fieldSecurity';
 import { workspaceTimezone } from '@/services/hr/attendance';
+import { leadCallTotals } from '@/services/leadership/reports';
 import { names } from '@/services/leadership/rollups';
 import { LEAD_SENSITIVE_FIELDS } from './createLead';
 import { leadFields } from './customFields';
@@ -34,12 +35,16 @@ export interface TimelineEntry {
   notes: string | null;
   /** Who did it, by name; null for the system. */
   by: string | null;
+  /** Where it opens, under the module's base: a call's own page, which plays its recording (M9-03). */
+  link?: { href: string; label: string };
 }
 
 export interface TimelinePage {
   entries: TimelineEntry[];
   /** Where the next, older page starts; null at the end. */
   next: string | null;
+  /** The lead's calls as the Call Report counts them, all time (M16-09): on the first page only. */
+  calls?: { calls: number; connected: number; minutes: number };
 }
 
 /** The lead fields an edit shows, by the audit row's `fieldKey`: the rest are bookkeeping or have their own entry. */
@@ -164,7 +169,7 @@ export async function leadTimeline(
   // pinned queries (lib/db.ts runPinned) they asked the pool for six at once,
   // on top of the lead page's own reads, and the page outran the pool: P2028.
   // Only `tx` inside: the global client there runs without the tenant.
-  const [activities, stages, edits, assignments, calls, messages] = await withTx(tenantId, (tx) =>
+  const [activities, stages, edits, assignments, calls, messages, callTotals] = await withTx(tenantId, (tx) =>
     Promise.all([
       tx.activity.findMany({
         where: {
@@ -229,6 +234,8 @@ export async function leadTimeline(
           durationSecs: true,
           notes: true,
           callerId: true,
+          recording: { select: { storageBucket: true } },
+          consent: { select: { consentGiven: true, withdrawnAt: true } },
         },
       }),
       tx.communication.findMany({
@@ -252,6 +259,7 @@ export async function leadTimeline(
           createdById: true,
         },
       }),
+      cursor ? undefined : leadCallTotals(tx, tenantId, leadId, callWhere as Prisma.CallWhereInput),
     ]),
   );
 
@@ -383,6 +391,15 @@ export async function leadTimeline(
             .join(' · ') || null,
         notes: c.notes,
         by: person(c.callerId),
+        // Playable once ingested (until then its media is only at the vendor, storageBucket
+        // 'provider') and while consent stands, as the media route plays it.
+        link: {
+          href: `/calls/${c.id}`,
+          label:
+            c.recording && c.recording.storageBucket !== 'provider' && c.consent?.consentGiven && !c.consent.withdrawnAt
+              ? 'Play recording'
+              : 'Open call',
+        },
       }),
     ),
     ...messages.map((m) =>
@@ -405,5 +422,6 @@ export async function leadTimeline(
   return {
     entries: shownRows.map((row) => row.entry),
     next: rows.length > limit && last ? `${last.entry.at}~${last.entry.kind}~${last.id}` : null,
+    ...(callTotals && { calls: callTotals }),
   };
 }

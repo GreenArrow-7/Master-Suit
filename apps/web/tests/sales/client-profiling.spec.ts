@@ -196,6 +196,13 @@ describe('testimonials', () => {
     });
     expect(submitted.status).toBe('SUBMITTED');
     expect(submitted.consentToPublish).toBe(true);
+    // Audited as the link, not a person (NFR-05).
+    expect(
+      await prisma.auditLog.findFirst({
+        where: { tenantId: fixture.a.tenantId, recordId: testimonial.id, event: 'STAGE_CHANGED' },
+        select: { actorType: true, newValue: true },
+      }),
+    ).toMatchObject({ actorType: 'SYSTEM', newValue: { status: 'SUBMITTED', consentToPublish: true } });
   });
 
   it('refuses a token from another tenant', async () => {

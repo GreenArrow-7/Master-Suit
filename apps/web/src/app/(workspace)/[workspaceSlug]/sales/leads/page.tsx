@@ -158,6 +158,17 @@ export default async function LeadsPage({
     workspaceTimezone(ctx),
   ]);
   const projects = await bookableProjects(ctx, stages);
+  // The Project filter (M11-07): the catalogue the viewer may see, the visit picker's when it has one.
+  const projectOptions =
+    projects.length || !can(ctx, 'projects', 'VIEW')
+      ? projects
+      : await prisma.project.findMany({
+          where: { tenantId: ctx.tenantId, deletedAt: null },
+          select: { id: true, name: true },
+          orderBy: { name: 'asc' },
+          // ponytail: the first 500 by name, as the visit picker; a search picker when a catalogue outgrows it.
+          take: 500,
+        });
 
   // The workspace's custom fields can be columns too (M4-13), in a saved view as well.
   const customColumnDefs = await customColumns(ctx.tenantId);
@@ -350,7 +361,7 @@ export default async function LeadsPage({
       </div>
 
       <div className="lf-lead-bar">
-        <LeadFilters params={params} stages={stages} owners={owners} sources={sources} />
+        <LeadFilters params={params} stages={stages} owners={owners} sources={sources} projects={projectOptions} />
         <nav className="lf-chips lf-layout-switch" aria-label="Layout">
           <SalesLink
             className="lf-chip"

@@ -199,6 +199,7 @@ export default async function ColdDataPage({
                     <td data-label="Outcome">
                       <RecordActions
                         id={record.id}
+                        name={record.fullName}
                         status={record.status}
                         convertedLeadId={
                           record.convertedLeadId && openable.has(record.convertedLeadId) ? record.convertedLeadId : null

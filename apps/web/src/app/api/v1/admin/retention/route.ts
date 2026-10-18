@@ -5,6 +5,7 @@ import { requirePlatformOwner } from '@/lib/auth/platform';
 import { runRetentionCleanup } from '@/lib/jobs/retention';
 import { readJsonBody } from '@/lib/api/read-body';
 import { bareRoute } from '@/lib/api/handler';
+import { platformAudit } from '@/lib/security/audit';
 
 const body = z.object({ dryRun: z.boolean().default(true) }).strict();
 
@@ -19,8 +20,16 @@ const body = z.object({ dryRun: z.boolean().default(true) }).strict();
  * single tenant an all-tenant delete. Owner-only closes that latent hole.
  */
 export const POST = bareRoute('/api/v1/admin/retention', async (req, requestId) => {
-  await requirePlatformOwner(req, requestId);
+  const ctx = await requirePlatformOwner(req, requestId);
   const { dryRun } = await readJsonBody(req, body).catch(() => ({ dryRun: true }));
   const result = await runRetentionCleanup(dryRun);
+  // A sweep that deletes in every workspace leaves a trail; a dry run deletes nothing.
+  if (!dryRun) {
+    await platformAudit(ctx, {
+      event: 'RETENTION_CLEANUP_RUN',
+      objectType: 'retention',
+      metadata: JSON.parse(JSON.stringify(result)),
+    });
+  }
   return NextResponse.json(result);
 });

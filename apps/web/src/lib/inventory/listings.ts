@@ -37,6 +37,7 @@ export const listingFilters = z.object({
   minPrice: z.coerce.number().nonnegative().optional(),
   maxPrice: z.coerce.number().nonnegative().optional(),
   bedroomsMin: z.coerce.number().int().min(0).max(50).optional(),
+  bedroomsMax: z.coerce.number().int().min(0).max(50).optional(),
   furnishing: z.enum(FURNISHINGS).optional(),
   /** Only what the agency may actually show today. */
   marketableOnly: z.coerce.boolean().default(false),
@@ -58,7 +59,12 @@ export function listingWhere(tenantId: string, f: ListingFilters, actorId?: stri
   if (f.amenity?.length) where.amenityKeys = { hasSome: f.amenity };
   if (f.mandateType?.length) where.mandateType = { in: f.mandateType as never };
   if (f.furnishing) where.furnishing = f.furnishing;
-  if (f.bedroomsMin != null) where.bedrooms = { gte: f.bedroomsMin };
+  if (f.bedroomsMin != null || f.bedroomsMax != null) {
+    where.bedrooms = {
+      ...(f.bedroomsMin != null ? { gte: f.bedroomsMin } : {}),
+      ...(f.bedroomsMax != null ? { lte: f.bedroomsMax } : {}),
+    };
+  }
   if (f.mine && actorId) where.ownerId = actorId;
 
   // Marketable means "has a live mandate and is on the market", which is two

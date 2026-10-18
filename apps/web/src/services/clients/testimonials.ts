@@ -149,6 +149,18 @@ export async function submitTestimonial(input: SubmitInput) {
         submittedAt: new Date(),
       },
     });
+    // The client is nobody's account: the row names the link, not a person.
+    await audit(
+      { tenantId: claim.tenantId, source: 'testimonial-link' },
+      {
+        event: 'STAGE_CHANGED',
+        objectType: 'testimonials',
+        recordId: existing.id,
+        previousValue: { status: existing.status },
+        newValue: { status: 'SUBMITTED', rating: input.rating, consentToPublish: input.consentToPublish },
+      },
+      tx,
+    );
 
     return testimonial;
   });

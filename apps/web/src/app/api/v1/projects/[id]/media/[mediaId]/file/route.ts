@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Invalid, NotFound } from '@/lib/errors';
+import { mediaFileHeaders } from '@/lib/inventory/media';
 import { getObject } from '@/lib/storage';
 
 const params = z.object({ id: z.string().cuid(), mediaId: z.string().cuid() });
@@ -34,16 +35,11 @@ export const GET = route(
     }
 
     const body = await getObject(media.storageKey);
-    const filename = (media.title ?? media.kind.toLowerCase()).replace(/["\\]/g, '');
 
     return new Response(new Uint8Array(body), {
       headers: {
-        'content-type': media.mimeType ?? 'application/octet-stream',
+        ...mediaFileHeaders(media.mimeType, media.title ?? media.kind.toLowerCase()),
         'content-length': String(body.byteLength),
-        // `inline` so a gallery image renders and a brochure previews, but with
-        // a filename so a download keeps a sensible name. Images are the whole
-        // point of the gallery, so `attachment` here would break the page.
-        'content-disposition': `inline; filename="${filename}"`,
         // Marketing material changes rarely; the access check still runs every
         // time because the cache is private to the browser that passed it.
         'cache-control': 'private, max-age=300',

@@ -119,6 +119,16 @@ describe('renderCell', () => {
   });
 });
 
+describe('the Follow-ups list', () => {
+  const text = (node: ReactNode) => renderToStaticMarkup(createElement(Fragment, null, node)).replace(/<[^>]+>/g, '');
+
+  it('shows each follow-up’s kind by default (M8-01)', () => {
+    expect(GRID_COLUMNS.FOLLOWUP.find((column) => column.key === 'kind')).toMatchObject({ byDefault: true });
+    expect(text(renderCell('FOLLOWUP', 'kind', { id: 'x', kind: 'SITE_VISIT' }))).toBe('Site visit');
+    expect(text(renderCell('FOLLOWUP', 'kind', { id: 'x' }))).toBe('Call');
+  });
+});
+
 describe('dates on the workspace’s clock', () => {
   // New York is behind UTC: a day picked in a date input is stored as that day's
   // UTC midnight, which is the evening before there.

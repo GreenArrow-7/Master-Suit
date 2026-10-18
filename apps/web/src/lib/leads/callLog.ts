@@ -16,6 +16,18 @@ export const CALL_LOG_OUTCOMES = [
   'Wrong number',
 ] as const;
 
+/** The dialog's outcome as a provider call's own, when the log is of that call (M9-02). */
+export const CALL_OUTCOME_OF: Record<(typeof CALL_LOG_OUTCOMES)[number], CallOutcome> = {
+  Connected: 'CONNECTED',
+  Interested: 'INTERESTED',
+  'Not interested': 'NOT_INTERESTED',
+  'Call back later': 'CALLBACK_REQUESTED',
+  'No answer': 'NO_ANSWER',
+  Busy: 'BUSY',
+  'Switched off': 'NO_ANSWER',
+  'Wrong number': 'WRONG_NUMBER',
+};
+
 /** A call that reached someone, as the Calls list's Connected tab reads a call's outcome. */
 export const CONNECTED_CALL_OUTCOMES: readonly CallOutcome[] = [
   'CONNECTED',
@@ -49,6 +61,19 @@ export function tomorrowAtTen(timeZone: string, now = new Date()): string {
   const today = new Intl.DateTimeFormat('en-CA', { timeZone }).format(now);
   const [y, m, d] = today.split('-').map(Number);
   return `${new Date(Date.UTC(y!, m! - 1, d! + 1)).toISOString().slice(0, 10)}T10:00`;
+}
+
+/**
+ * Back from the phone's dialler (M20-06): the time away as the call's estimate,
+ * shown in the call log for the agent to correct — the phone's own call log
+ * cannot be read (never on iOS; on Android only with READ_CALL_LOG, which the
+ * stores refuse a CRM). Under 8 seconds nobody answered.
+ */
+export function afterDial(leftAt: number, now: number): { minutes: number; outcome?: 'No answer' } {
+  const seconds = (now - leftAt) / 1000;
+  if (seconds < 8) return { minutes: 0, outcome: 'No answer' };
+  // 600: the most the call log accepts (`durationMins`).
+  return { minutes: Math.min(600, Math.max(1, Math.round(seconds / 60))) };
 }
 
 /**

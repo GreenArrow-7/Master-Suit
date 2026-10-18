@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import SalesLink, { useModuleBase } from '@/components/workspace/SalesLink';
 import { STATUS_LABEL } from '@/lib/leads/coldDataStatus';
+import { sendOrQueue } from '@/lib/offline';
 
 async function send(url: string, body?: unknown, method = 'POST') {
   const res = await fetch(url, {
@@ -25,12 +26,15 @@ async function send(url: string, body?: unknown, method = 'POST') {
  */
 export function RecordActions({
   id,
+  name = 'Cold record',
   status,
   convertedLeadId,
   canEdit,
   canConvert,
 }: {
   id: string;
+  /** Names the call in the offline notice. */
+  name?: string;
   status: keyof typeof STATUS_LABEL;
   convertedLeadId: string | null;
   canEdit: boolean;
@@ -43,11 +47,11 @@ export function RecordActions({
   // Held here, so the pick shows at once rather than snapping back until the refresh lands.
   const [outcome, setOutcome] = useState<string>(status);
   const [attached, setAttached] = useState(false);
-  const [logged, setLogged] = useState(false);
+  const [logged, setLogged] = useState<string | null>(null);
   const run = async (write: () => Promise<void>) => {
     setBusy(true);
     setError(null);
-    setLogged(false);
+    setLogged(null);
     try {
       await write();
     } catch (err) {
@@ -57,15 +61,20 @@ export function RecordActions({
   };
   const log = (next: string) =>
     run(async () => {
-      try {
-        await send(`/api/v1/cold-data/${id}`, { status: next }, 'PATCH');
-      } catch (err) {
+      // A call made with no signal waits on the device and is sent, once, when
+      // the phone is back online (lib/offline.ts); the offline notice counts it.
+      // ponytail: it counts toward the day it is sent, as a lead's offline call
+      // does (the daily board reads createdAt).
+      const res = await sendOrQueue(`/api/v1/cold-data/${id}`, 'PATCH', { status: next }, `${name}: cold call`);
+      if (res !== 'queued' && !res.ok) {
         setOutcome(status);
-        throw err;
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.errors?.[0]?.message ?? data.detail ?? `Request failed (${res.status})`);
       }
       // Not contacted is the reset, not a call.
-      setLogged(next !== 'NOT_CONTACTED');
-      router.refresh();
+      if (next !== 'NOT_CONTACTED')
+        setLogged(res === 'queued' ? 'Call kept on this phone; sent when online.' : 'Call logged.');
+      if (res !== 'queued') router.refresh();
     });
 
   if (convertedLeadId) return <SalesLink href={`/leads/${convertedLeadId}`}>Converted — open the lead</SalesLink>;
@@ -121,7 +130,7 @@ export function RecordActions({
       )}
       {logged && (
         <span className="lf-hint" role="status">
-          Call logged.
+          {logged}
         </span>
       )}
       {error && (

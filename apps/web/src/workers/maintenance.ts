@@ -11,6 +11,8 @@ import { sweepDriftCanary } from '@/services/leads/nextFollowUpReconcile';
 import { sweepAccountDeletions } from '@/services/identity/accountDeletion';
 import { runDigestSweep } from '@/services/notifications/digest';
 import { sweepFirstContact } from '@/services/sla/checkLeadFirstContact';
+import { runReportSchedules } from '@/services/leadership/reportSchedules';
+import { sweepTimeTriggers } from '@/services/automation/engine';
 
 /**
  * The `maintenance` queue: scheduled sweeps, one at a time (see startWorker).
@@ -136,6 +138,15 @@ export const MAINTENANCE_JOBS = {
     return result;
   },
   /**
+   * Automations that fire some time after a lead arrives (audit M7-11): each
+   * lead enrolls once, so an overlapping or repeated run enrolls nothing twice.
+   */
+  'automation-time': async () => {
+    const result = await sweepTimeTriggers();
+    logger.info(result, 'automation time-trigger sweep complete');
+    return result;
+  },
+  /**
    * Erasure of accounts whose owner asked for it.
    *
    * Every fifteen minutes rather than daily: this is a person exercising a deletion
@@ -151,6 +162,15 @@ export const MAINTENANCE_JOBS = {
   'account-deletions': async (data?: { platformUserIds?: string[] }) => {
     const result = await sweepAccountDeletions(20, data?.platformUserIds);
     logger.info(result, 'account deletion sweep complete');
+    return result;
+  },
+  /**
+   * Scheduled report emails (M16-16), each at 07:00 on its workspace's clock.
+   * A caller that names workspaces gets only theirs, for the reason given above.
+   */
+  'report-schedules': async (data?: { tenantIds?: string[] }) => {
+    const result = await runReportSchedules(new Date(), data?.tenantIds);
+    logger.info(result, 'report schedule sweep complete');
     return result;
   },
 };
@@ -173,6 +193,7 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
     { id: 'reminders-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'reminders' },
     { id: 'lead-triage-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'triage-sweep' },
     { id: 'first-contact-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'first-contact' },
+    { id: 'automation-time-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'automation-time' },
     // 03:20, after retention has settled: the canary reads what the night left.
     { id: 'follow-up-drift-daily', pattern: '20 3 * * *', name: 'follow-up-drift' },
     { id: 'account-deletions-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'account-deletions' },
@@ -185,6 +206,8 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
     { id: 'lead-score-decay-daily', pattern: '40 3 * * *', name: 'lead-score-decay' },
     // Five past every hour: each workspace's 08:00 falls on some hour (or half hour) of UTC.
     { id: 'morning-digest-hourly', pattern: '5 * * * *', name: 'digest' },
+    // A quarter hour is how late a 07:00 report may arrive.
+    { id: 'report-schedules-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'report-schedules' },
   ];
   const queue = new Queue('maintenance', { connection: redis });
   for (const schedule of schedules) {

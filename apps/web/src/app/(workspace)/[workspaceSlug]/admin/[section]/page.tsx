@@ -5,6 +5,7 @@ import { can, type Action } from '@/lib/security/rbac';
 import { inIosApp } from '@/lib/mobile/iosApp';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import SettingsForm, { type SettingsField } from './SettingsForm';
+import { WORKSPACE_LOCALES } from '@/lib/locale';
 
 /**
  * One route serving four administration screens.
@@ -41,9 +42,10 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
 
   switch (section) {
     case 'company': {
-      const brand = await prisma.organizationSetting.findUnique({
+      // One read of the settings row: the brand colours (M18-09), the ORN (M12-04) and the language (NFR-09).
+      const setting = await prisma.organizationSetting.findUnique({
         where: { tenantId: ctx.tenantId },
-        select: { primaryColor: true, accentColor: true },
+        select: { primaryColor: true, accentColor: true, reraOrn: true, defaultLocale: true },
       });
       const fields: SettingsField[] = [
         { name: 'displayName', label: 'Display name', value: workspace.displayName },
@@ -65,10 +67,24 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           name: 'primaryColor',
           label: 'Brand colour',
           type: 'color',
-          value: brand?.primaryColor ?? '#2447C7',
+          value: setting?.primaryColor ?? '#2447C7',
           hint: 'Your QR capture page, shared listings and shortlists draw with it.',
         },
-        { name: 'accentColor', label: 'Accent colour', type: 'color', value: brand?.accentColor ?? '#0E7C66' },
+        { name: 'accentColor', label: 'Accent colour', type: 'color', value: setting?.accentColor ?? '#0E7C66' },
+        {
+          name: 'reraOrn',
+          label: 'RERA ORN',
+          value: setting?.reraOrn ?? '',
+          hint: 'Your brokerage registration number. Printed on shared pages, proposals and portal feeds.',
+        },
+        {
+          name: 'locale',
+          label: 'Language',
+          type: 'select',
+          value: setting?.defaultLocale ?? 'en-AE',
+          options: WORKSPACE_LOCALES,
+          hint: 'Arabic lays the workspace out right to left for everyone in it.',
+        },
       ];
       return (
         <Shell title="Company profile">

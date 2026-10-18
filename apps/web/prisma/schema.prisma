@@ -597,6 +597,7 @@ model Tenant {
   projects                   Project[]
   projectFavourites          ProjectFavourite[]
   projectMedias              ProjectMedia[]
+  paymentPlans               PaymentPlan[]
   rateLimitCounters          RateLimitCounter[]
   recordings                 Recording[]
   recordingConsents          RecordingConsent[]
@@ -642,6 +643,7 @@ model Tenant {
   leadShares          LeadShare[]
   captureLinks        CaptureLink[]
   dataRecords         DataRecord[]
+  reportSchedules     ReportSchedule[]
 
   @@index([status])
 }
@@ -3523,6 +3525,37 @@ model LeadProject {
   @@index([tenantId, projectId])
 }
 
+/// A report emailed on a cadence (M16-16). The maintenance sweep runs it as its
+/// creator, at their scope and only while they hold reports:EXPORT, for the
+/// period the cadence covers, and mails the CSV to the recipients still active
+/// in the workspace. `nextRunAt` is claimed by conditional update, so two
+/// sweeps send once (services/leadership/reportSchedules.ts).
+model ReportSchedule {
+  id          String        @id @default(cuid())
+  tenantId    String
+  /// A REPORT_KEYS entry, and one of its PIVOTS when grouped.
+  reportKey   String
+  by          String?
+  cadence     ReportCadence
+  /// Lower-cased addresses of workspace members, checked when saved and again when sent.
+  recipients  String[]
+  nextRunAt   DateTime
+  lastRunAt   DateTime?
+  createdById String
+  createdAt   DateTime      @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([nextRunAt])
+  @@index([tenantId, createdById])
+}
+
+enum ReportCadence {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
 /// A listing a lead asked about (M4-06), alongside LeadProject.
 model LeadListing {
   tenantId    String
@@ -4330,6 +4363,8 @@ model DistributionRule {
   escalateAfterMins   Int?
   externalEndpoint    String?
   lastAssignedUserId  String?
+  /// The next slot of a weighted rotation (`weights`, audit M7-02); unweighted rules turn on lastAssignedUserId.
+  rotationSlot        Int                @default(0)
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
   createdById         String?
@@ -6064,6 +6099,8 @@ model Call {
   answeredAt      DateTime?
   endedAt         DateTime?
   durationSecs    Int?
+  /// Conversation time without the ring, where the vendor reports it (PROP-05).
+  talkSecs        Int?
   notes           String?
   followUpAt      DateTime?
   scriptId        String?
@@ -6312,6 +6349,8 @@ model FollowUpTask {
   @@index([tenantId, callId])
   // The derivation reads open obligations per lead; this is the index it uses.
   @@index([tenantId, leadId, status, dueAt])
+  // The Follow-ups list across owners, in due order (NFR-10).
+  @@index([tenantId, dueAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -6733,6 +6772,7 @@ model Project {
   developer   Developer?         @relation(fields: [developerId], references: [id], onDelete: SetNull)
   micromarket Micromarket?       @relation(fields: [micromarketId], references: [id], onDelete: SetNull)
   media       ProjectMedia[]
+  paymentPlans PaymentPlan[]
   unitPlans   UnitPlan[]
   units       UnitInventory[]
   favourites  ProjectFavourite[]
@@ -6788,6 +6828,26 @@ model ProjectMedia {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, projectId, kind, position])
+}
+
+/// A plan a project sells on — "20/80 post-handover" — as milestones
+/// `[{ label, percent }]` that sum to 100 (lib/inventory/paymentPlans.ts).
+/// The standalone Lead Eagle's PaymentPlan, which the move tool carries.
+model PaymentPlan {
+  id          String   @id @default(cuid())
+  tenantId    String
+  projectId   String
+  name        String
+  milestones  Json     @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, name])
+  @@index([tenantId, projectId])
 }
 
 /// A typology — "2 BHK Type A" — not a sellable unit. Catalogue pricing comes

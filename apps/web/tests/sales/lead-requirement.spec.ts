@@ -476,6 +476,7 @@ describe('matching stock on the lead Overview (M4-48)', () => {
       total: 0,
       more: false,
       listings: [],
+      units: [],
     });
 
     expect(

@@ -36,7 +36,7 @@
 .lf-daily-target__input {
   width: 5.5em;
   min-height: 36px;
-  text-align: right;
+  text-align: end;
 }
 .lf-daily-target__error {
   color: var(--lf-vermillion);

@@ -19,7 +19,7 @@ import RequirementCard from './RequirementCard';
 import InterestsCard from './InterestsCard';
 import MessageCard, { type LeadMessaging } from './MessageCard';
 import ShareCard, { type LeadShareRow } from './ShareCard';
-import CallLogDialog, { useAfterDial } from '../CallLogDialog';
+import CallLogDialog, { useAfterDial, type CallLogLead } from '../CallLogDialog';
 import StageReason, { asksBeforeMove, type StageMove } from '@/components/workspace/StageReason';
 import { sendOrQueue } from '@/lib/offline';
 
@@ -144,6 +144,15 @@ interface LeadData {
       bedrooms: number | null;
       community: string | null;
     }[];
+    /** AVAILABLE developer units the requirement matches (M12-06). */
+    units: {
+      id: string;
+      projectId: string;
+      label: string;
+      price: string | null;
+      bedrooms: number | null;
+      community: string | null;
+    }[];
   } | null;
   documents: Doc[];
 }
@@ -174,6 +183,8 @@ interface Props {
   canLog: boolean;
   /** An assisted call can be placed: `calls:CREATE`, which /calls/new asks for. */
   canCall: boolean;
+  /** The Calls list opens for this lead (`calls:VIEW`, which the list asks for). */
+  canViewCalls: boolean;
   /** Send WhatsApp and Send email (M4-28): null without `communications:CREATE` or the lead's `leads:EDIT`. */
   messaging: LeadMessaging | null;
   /** Share a property (M4-30): its links, and wa.me where the lead's WhatsApp number is visible; null where `leads:EDIT` does not reach it. */
@@ -231,6 +242,7 @@ export default function LeadDetail({
   canEdit,
   canLog,
   canCall,
+  canViewCalls,
   messaging,
   sharing,
   canDeleteDocuments,
@@ -261,8 +273,12 @@ export default function LeadDetail({
   const [showMore, setShowMore] = useState(false);
 
   // -- The call log (PROP-02.2): from its button, or on return from dialling --
-  const [logging, setLogging] = useState(false);
-  const openLog = useCallback(() => setLogging(true), []);
+  const [logging, setLogging] = useState<CallLogLead | null>(null);
+  const openLog = useCallback(
+    // Back from dialling it carries the time away (M20-06).
+    (from?: CallLogLead) => setLogging({ id: lead.id, fullName: lead.fullName, dial: from?.dial }),
+    [lead.id, lead.fullName],
+  );
   const dialled = useAfterDial(openLog);
 
   function withBusy(fn: () => Promise<void>) {
@@ -438,6 +454,7 @@ export default function LeadDetail({
               key={lead.timeline.entries[0]?.key ?? 'empty'}
               lead={lead}
               activityTypes={activityTypes}
+              canViewCalls={canViewCalls}
               router={router}
             />
           )}
@@ -496,7 +513,7 @@ export default function LeadDetail({
                 Phone
               </button>
               {canLog && (
-                <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={openLog}>
+                <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => openLog()}>
                   Log call
                 </button>
               )}
@@ -761,9 +778,9 @@ export default function LeadDetail({
       </div>
       {logging && (
         <CallLogDialog
-          lead={lead}
+          lead={logging}
           timeZone={timeZone}
-          onClose={() => setLogging(false)}
+          onClose={() => setLogging(null)}
           onLogged={() => router.refresh()}
         />
       )}
@@ -1123,10 +1140,12 @@ function OtherNumbers({
 function TimelineTab({
   lead,
   activityTypes,
+  canViewCalls,
   router,
 }: {
   lead: Props['lead'];
   activityTypes: ActivityType[];
+  canViewCalls: boolean;
   router: ReturnType<typeof useRouter>;
 }) {
   const [showForm, setShowForm] = useState(false);
@@ -1194,10 +1213,25 @@ function TimelineTab({
         }}
       >
         <div className="lf-eyebrow">Activity timeline</div>
-        <button className="lf-btn lf-btn--sm" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? 'Cancel' : 'Log activity'}
-        </button>
+        <div style={{ display: 'flex', gap: 'var(--lf-space-2)', alignItems: 'center' }}>
+          {canViewCalls && (
+            <SalesLink href={`/calls?lead=${lead.id}`} style={{ fontSize: 'var(--lf-text-sm)' }}>
+              All calls
+            </SalesLink>
+          )}
+          <button className="lf-btn lf-btn--sm" onClick={() => setShowForm((v) => !v)}>
+            {showForm ? 'Cancel' : 'Log activity'}
+          </button>
+        </div>
       </div>
+
+      {/* The Call Report's figures for this lead (M16-09). */}
+      {!!lead.timeline.calls?.calls && (
+        <p style={{ margin: '0 0 var(--lf-space-4)', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
+          {lead.timeline.calls.calls} {lead.timeline.calls.calls === 1 ? 'call' : 'calls'} ·{' '}
+          {lead.timeline.calls.connected} connected · {lead.timeline.calls.minutes} min talk time
+        </p>
+      )}
 
       {showForm && (
         <form
@@ -1312,6 +1346,14 @@ function TimelineTab({
                 >
                   {e.notes}
                 </div>
+              )}
+              {e.link && (
+                <SalesLink
+                  href={e.link.href}
+                  style={{ display: 'inline-block', marginTop: 2, fontSize: 'var(--lf-text-xs)' }}
+                >
+                  {e.link.label}
+                </SalesLink>
               )}
             </div>
           ))}
@@ -1515,8 +1557,8 @@ function MatchingStock({
       </div>
       {!stock.hasRequirement ? (
         <p style={hint}>Add a requirement to see the listings that match.</p>
-      ) : stock.listings.length === 0 ? (
-        <p style={hint}>No live listing matches the requirement yet.</p>
+      ) : stock.listings.length === 0 && stock.units.length === 0 ? (
+        <p style={hint}>No live listing or available unit matches the requirement yet.</p>
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 'var(--lf-space-2)' }}>
           {stock.listings.map((l) => (
@@ -1528,6 +1570,16 @@ function MatchingStock({
                 {[l.reference, l.price, l.bedrooms != null && `${l.bedrooms} bed`, l.community]
                   .filter(Boolean)
                   .join(' · ')}
+              </div>
+            </li>
+          ))}
+          {stock.units.map((u) => (
+            <li key={u.id} style={{ fontSize: 'var(--lf-text-sm)', overflowWrap: 'anywhere' }}>
+              <SalesLink href={`/projects/${u.projectId}`} style={{ fontWeight: 500 }}>
+                {u.label}
+              </SalesLink>
+              <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)', marginTop: 2 }}>
+                {['Unit', u.price, u.bedrooms != null && `${u.bedrooms} bed`, u.community].filter(Boolean).join(' · ')}
               </div>
             </li>
           ))}

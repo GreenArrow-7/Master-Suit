@@ -5,7 +5,15 @@ import { audit } from '@/lib/security/audit';
 import { assertPermission } from '@/lib/security/rbac';
 import { BOARD_RANGES, type BoardRange } from '@/lib/leads/boardFilter';
 import { isDayKey } from '@/lib/leads/followUpDue';
-import { reportParams, runReport, toCsv, REPORT_KEYS } from '@/services/leadership/reports';
+import {
+  PIVOT_KEYS,
+  PIVOTS,
+  reportFileName,
+  reportParams,
+  runReport,
+  toCsv,
+  REPORT_KEYS,
+} from '@/services/leadership/reports';
 import { todayKey } from '@/services/targets/dailyBoard';
 
 /** A day on the workspace's clock (YYYY-MM-DD), or an instant as links carried before. */
@@ -25,12 +33,18 @@ const query = z
     team: id,
     source: id,
     project: id,
+    // A regrouping (M16-13): what the rows are keyed by.
+    by: z.enum(PIVOT_KEYS).optional(),
     format: z.enum(['json', 'csv']).default('json'),
   })
   .strict()
   .refine((v) => !v.from || !v.to || Date.parse(v.to) >= Date.parse(v.from), {
     path: ['to'],
     message: 'The range ends before it starts.',
+  })
+  .refine((v) => !v.by || (PIVOTS[v.report] ?? []).includes(v.by), {
+    path: ['by'],
+    message: 'This report cannot be grouped that way.',
   });
 
 /**
@@ -48,7 +62,7 @@ export const GET = route(
     if (q.format === 'csv') assertPermission(ctx, 'reports', 'EXPORT');
     const { range, filter, zone } = await reportParams(ctx, q);
 
-    const report = await runReport(ctx, q.report, range, filter);
+    const report = await runReport(ctx, q.report, range, { ...filter, by: q.by });
     if (q.format === 'json') return report;
 
     await audit(ctx, {
@@ -58,6 +72,7 @@ export const GET = route(
       metadata: {
         report: q.report,
         ...filter,
+        ...(q.by && { by: q.by }),
         from: range.from.toISOString(),
         to: range.to.toISOString(),
         rows: report.rows.length,
@@ -67,7 +82,7 @@ export const GET = route(
     return new Response(toCsv(report), {
       headers: {
         'content-type': 'text/csv; charset=utf-8',
-        'content-disposition': `attachment; filename="${q.report}-${stamp}.csv"`,
+        'content-disposition': `attachment; filename="${reportFileName(q.report, q.by, stamp)}"`,
         // A report is somebody's live numbers; a cached copy in a shared proxy
         // is both stale and somebody else's data.
         'cache-control': 'no-store',

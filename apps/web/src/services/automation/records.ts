@@ -14,6 +14,14 @@ const MODELS = {
 
 export type AutomationObjectType = keyof typeof MODELS;
 
+/** The permission module that guards each object type (prisma/seed/roles.ts). */
+export const RECORD_MODULE: Record<AutomationObjectType, string> = {
+  LEAD: 'leads',
+  OPPORTUNITY: 'opportunities',
+  ACCOUNT: 'accounts',
+  CONTACT: 'contacts',
+};
+
 export function isAutomationObjectType(v: string): v is AutomationObjectType {
   return v in MODELS;
 }

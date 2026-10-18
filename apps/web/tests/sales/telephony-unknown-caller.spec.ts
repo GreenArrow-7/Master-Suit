@@ -62,6 +62,8 @@ async function ring(tenantId: string, from: string, end?: 'no-answer' | 'complet
   if (end) await twilio(key, { CallSid: sid, CallStatus: end, Direction: 'inbound', From: from, SequenceNumber: '1' });
   return prisma.call.findFirstOrThrow({ where: { tenantId, externalCallId: sid } });
 }
+const noteOn = async (leadId: string) =>
+  (await prisma.activity.findFirstOrThrow({ where: { tenantId: ws.tenantId, leadId } })).notes;
 const leadsWith = (tenantId: string, phoneNormalized: string) =>
   prisma.lead.findMany({ where: { tenantId, phoneNormalized } });
 const setting = (tenantId: string, value: boolean) =>
@@ -233,6 +235,47 @@ describe('a call from a number nobody holds', () => {
   });
 });
 
+describe('a tracking number tagged with its source (M9-06)', () => {
+  const TAGGED = '+97144000001';
+  const tag = (trackingNumbers: string) =>
+    prisma.integrationConnection.update({
+      where: { tenantId_provider: { tenantId: ws.tenantId, provider: 'twilio' } },
+      data: { metadata: { callerNumber: LINE, trackingNumbers } },
+    });
+  afterAll(() => setting(ws.tenantId, true));
+
+  it('gives an unknown caller’s lead the source its number is tagged with, and names the line', async () => {
+    await tag(`${TAGGED} = Google Ads; +97144000002 = Marina launch`);
+    await ring(ws.tenantId, '+971500003311', 'no-answer', '044000001');
+    const [lead] = await leadsWith(ws.tenantId, '+971500003311');
+    const googleAds = await prisma.leadSource.findFirstOrThrow({ where: { tenantId: ws.tenantId, key: 'google_ads' } });
+    expect(lead).toMatchObject({ source: 'TELEPHONY', sourceDetail: `twilio:${TAGGED}`, sourceId: googleAds.id });
+    const note = await noteOn(lead!.id);
+    expect(note).toContain('Enquiry via Telephony · Google Ads');
+  });
+
+  it('keeps a tag no source carries on the lead’s note, the source left as Telephony', async () => {
+    await ring(ws.tenantId, '+971500003312', 'no-answer', '+97144000002');
+    const [lead] = await leadsWith(ws.tenantId, '+971500003312');
+    expect(lead).toMatchObject({ sourceDetail: 'twilio:+97144000002', sourceId: null });
+    expect(await noteOn(lead!.id)).toContain('Enquiry via Telephony · Marina launch');
+  });
+
+  it('puts a known caller’s call to a tagged number on its lead, its first source kept', async () => {
+    const [before] = await leadsWith(ws.tenantId, '+971500003311');
+    const call = await ring(ws.tenantId, '+971500003311', 'completed', '+97144000002');
+    expect(call.leadId).toBe(before!.id);
+    const [after] = await leadsWith(ws.tenantId, '+971500003311');
+    expect(after).toMatchObject({ sourceDetail: `twilio:${TAGGED}`, sourceId: before!.sourceId });
+  });
+
+  it('leaves an untagged line as before', async () => {
+    await ring(ws.tenantId, '+971500003313', 'no-answer', '+97144000009');
+    const [lead] = await leadsWith(ws.tenantId, '+971500003313');
+    expect(lead).toMatchObject({ sourceDetail: `twilio:${LINE}`, sourceId: null });
+  });
+});
+
 describe('the agent distribution gives a caller’s lead to', () => {
   it('is told, in the bell and on the phone', async () => {
     const role = await prisma.role.create({
@@ -270,6 +313,12 @@ describe('the agent distribution gives a caller’s lead to', () => {
     });
     expect(told).toMatchObject({ title: 'Lead assigned: Unknown caller', objectType: 'lead', priority: 'HIGH' });
     expect(told.channels).toContain('push');
+    // The caller rang and nobody answered before the lead had an owner: the agent is the one to call back (M9-08).
+    const missed = await prisma.notification.findFirstOrThrow({
+      where: { tenantId: ws.tenantId, userId: agent.id, recordId: lead!.id, kind: 'call.missed' },
+    });
+    expect(missed).toMatchObject({ title: 'Missed call from Unknown caller', objectType: 'lead', priority: 'HIGH' });
+    expect(missed.channels).toContain('push');
   });
 });
 

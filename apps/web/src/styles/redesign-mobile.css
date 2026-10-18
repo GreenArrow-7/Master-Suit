@@ -19,13 +19,13 @@
   html .lf-app-frame .lf-shell-topbar,
   html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-shell-topbar {
     gap: 2px;
-    padding-left: 56px;
-    padding-right: 8px;
+    padding-inline-start: 56px;
+    padding-inline-end: 8px;
     box-shadow: none;
   }
   .lf-appbar-title {
     font: 600 17px/1.3 var(--lf-font-ui);
-    padding-right: 4px;
+    padding-inline-end: 4px;
   }
   /* The palette trigger is an icon, not a box pretending to be a text field. */
   html .lf-app-frame .lf-cmdk-trigger,
@@ -75,7 +75,7 @@
     padding: 0;
     justify-content: center;
     border-radius: 999px;
-    margin-left: 4px;
+    margin-inline-start: 4px;
     font-size: 22px;
     font-weight: 400;
     line-height: 1;
@@ -109,7 +109,7 @@
     backdrop-filter: none;
     -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
     mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
-    padding-right: 28px;
+    padding-inline-end: 28px;
   }
   html:not(#_) .lf-app-frame .lf-area-tabs::before,
   html:not(#_) .lf-app-frame .lf-area-tabs::after {
@@ -172,7 +172,7 @@
   }
   .lf-toolbar__search .lf-input {
     height: 44px;
-    padding-left: 38px;
+    padding-inline-start: 38px;
     border-radius: 12px;
     border-color: transparent;
     background: var(--lf-surface-2);
@@ -183,7 +183,7 @@
     background: var(--lf-surface);
   }
   .lf-toolbar__search svg {
-    left: 14px;
+    inset-inline-start: 14px;
     width: 16px;
     height: 16px;
   }
@@ -248,7 +248,7 @@
   .lf-grid tbody td.lf-grid__select {
     position: absolute;
     top: 12px;
-    right: 0;
+    inset-inline-end: 0;
     width: 44px;
     height: 44px;
     display: grid;
@@ -260,7 +260,7 @@
     height: 18px;
   }
   .lf-grid tbody td[data-priority='primary'] {
-    padding-right: 48px;
+    padding-inline-end: 48px;
     font-size: 16px;
   }
   .lf-grid tbody td[data-priority='primary'] .lf-avatar {
@@ -288,7 +288,7 @@
   .lf-grid tbody td[data-label='Follow-up'][data-priority='secondary'] {
     width: 100%;
     order: 1;
-    padding-right: 0;
+    padding-inline-end: 0;
     color: var(--lf-ink-2);
     font-size: 13px;
   }
@@ -304,7 +304,7 @@
   .lf-grid tbody td.lf-row-more,
   .lf-table tbody td.lf-row-more {
     order: 0;
-    margin-left: auto;
+    margin-inline-start: auto;
     align-self: center;
   }
 
@@ -327,7 +327,7 @@
     border-top: 0;
   }
   .lf-stat-strip > :nth-child(odd) {
-    padding-left: 0;
+    padding-inline-start: 0;
   }
   .lf-stat-strip .lf-figure {
     font-size: 1.6rem;
@@ -398,8 +398,8 @@
   flex: none;
   width: 7px;
   height: 7px;
-  margin-right: 2px;
-  border-right: 1.5px solid currentColor;
+  margin-inline-end: 2px;
+  border-inline-end: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
   transform: translateY(-2px) rotate(45deg);
   transition: transform 120ms ease;
@@ -612,7 +612,7 @@
    underneath it. Phones dock the button into the tab bar instead. */
 @media (min-width: 761px) {
   .lf-page-main {
-    padding-right: calc(var(--lf-page-gutter) + 56px);
+    padding-inline-end: calc(var(--lf-page-gutter) + 56px);
   }
 }
 

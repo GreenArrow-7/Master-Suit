@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
+import { assignableUsers } from '@/lib/security/record-scope';
 import { prisma } from '@/lib/db';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -17,11 +19,12 @@ const STATE_TONE: Record<string, Tone> = {
 };
 
 export default async function AutomationPage() {
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['automation', 'VIEW'] });
+  // Every lead module (audit M7-11); Lead Eagle re-exports this page.
+  const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['automation', 'VIEW'] });
   if (!can(ctx, 'automation', 'VIEW')) redirect('/home');
 
   const canManage = can(ctx, 'automation', 'MANAGE_AUTOMATION');
-  const [rows, taskTypes] = await Promise.all([
+  const [rows, taskTypes, assignees, templates] = await Promise.all([
     prisma.automation.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
@@ -42,6 +45,14 @@ export default async function AutomationPage() {
           select: { key: true },
         })
       : Promise.resolve([]),
+    canManage ? assignableUsers(ctx, 'leads', 'ASSIGN') : Promise.resolve([]),
+    canManage
+      ? prisma.messageTemplate.findMany({
+          where: { tenantId: ctx.tenantId, deletedAt: null, isActive: true },
+          orderBy: { name: 'asc' },
+          select: { key: true, name: true, channel: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   return (
@@ -50,10 +61,19 @@ export default async function AutomationPage() {
         title="Automation"
         description={
           <>
-            {rows.length} rule{rows.length === 1 ? '' : 's'} · runs when records are created or updated
+            {rows.length} rule{rows.length === 1 ? '' : 's'} · runs when records are created or updated, or some time
+            after a lead arrives
           </>
         }
-        actions={canManage && <AutomationComposer taskTypeKeys={taskTypes.map((t) => t.key)} />}
+        actions={
+          canManage && (
+            <AutomationComposer
+              taskTypeKeys={taskTypes.map((t) => t.key)}
+              assignees={assignees}
+              templates={templates.filter((t) => t.channel === 'EMAIL' || t.channel === 'WHATSAPP')}
+            />
+          )
+        }
       />
 
       {rows.length === 0 ? (

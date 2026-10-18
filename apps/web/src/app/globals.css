@@ -169,7 +169,7 @@ body:has(main[data-embed]) {
   background: var(--lf-surface);
 }
 .lf-shell-actions {
-  margin-left: auto;
+  margin-inline-start: auto;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -203,7 +203,7 @@ body:has(main[data-embed]) {
      same colour arriving by a different route.) */
   background: var(--yh-midnight);
   color: var(--yh-on-midnight);
-  border-right: 1px solid rgb(255 255 255 / 0.06);
+  border-inline-end: 1px solid rgb(255 255 255 / 0.06);
 }
 .lf-workspace-sidebar[data-collapsed='true'] {
   width: 64px;
@@ -432,7 +432,7 @@ body:has(main[data-embed]) {
   min-width: 0;
 }
 .lf-list-header__actions {
-  margin-left: auto;
+  margin-inline-start: auto;
   display: flex;
   align-items: center;
   gap: var(--lf-space-2);
@@ -489,7 +489,7 @@ body:has(main[data-embed]) {
   border-spacing: 0;
 }
 .lf-table th {
-  text-align: left;
+  text-align: start;
 }
 .lf-table tr:last-child td {
   border-bottom: 0;
@@ -554,12 +554,12 @@ body:has(main[data-embed]) {
 .lf-wizard-step {
   position: relative;
   padding: 12px 14px;
-  border-right: 1px solid var(--lf-line);
+  border-inline-end: 1px solid var(--lf-line);
   color: var(--lf-ink-3);
   font-size: 10px;
 }
 .lf-wizard-step:last-child {
-  border-right: 0;
+  border-inline-end: 0;
 }
 .lf-wizard-step strong {
   display: block;
@@ -595,14 +595,14 @@ body:has(main[data-embed]) {
    it would hang off the left edge, so it becomes a sheet pinned to the viewport. */
 .lf-import-panel {
   position: absolute;
-  right: 0;
+  inset-inline-end: 0;
   top: 100%;
   margin-top: 6px;
   z-index: 20;
   width: 340px;
   padding: var(--lf-space-4);
   box-shadow: var(--lf-shadow-2);
-  text-align: left;
+  text-align: start;
 }
 .lf-import-panel[data-wide] {
   width: min(860px, calc(100vw - 32px));
@@ -611,8 +611,8 @@ body:has(main[data-embed]) {
   .lf-import-panel,
   .lf-import-panel[data-wide] {
     position: fixed;
-    left: 16px;
-    right: 16px;
+    inset-inline-start: 16px;
+    inset-inline-end: 16px;
     top: 72px;
     width: auto;
     max-height: calc(100vh - 88px);
@@ -633,7 +633,7 @@ body:has(main[data-embed]) {
 }
 .lf-overflow__menu {
   position: absolute;
-  right: 0;
+  inset-inline-end: 0;
   top: calc(100% + 6px);
   z-index: 50;
   display: grid;
@@ -701,7 +701,7 @@ body:has(main[data-embed]) {
   backdrop-filter: blur(1.5px);
 }
 .lf-sheet__close {
-  margin-left: auto;
+  margin-inline-start: auto;
   display: grid;
   place-items: center;
   width: 40px;
@@ -862,8 +862,8 @@ body:has(main[data-embed]) {
    */
   .lf-overflow__menu {
     position: fixed;
-    left: 8px;
-    right: 8px;
+    inset-inline-start: 8px;
+    inset-inline-end: 8px;
     top: auto;
     bottom: calc(68px + env(safe-area-inset-bottom, 0px));
     z-index: 120;
@@ -906,7 +906,7 @@ body:has(main[data-embed]) {
     /* Home-indicator safe area on iOS, zero elsewhere. */
     padding-bottom: env(safe-area-inset-bottom, 0px);
     /* The assistant button's slot (.lf-ai-fab docks here on a phone). */
-    padding-right: 60px;
+    padding-inline-end: 60px;
   }
   .lf-tabbar__item {
     display: grid;
@@ -1053,6 +1053,11 @@ body:has(main[data-embed]) {
   .lf-workspace-sidebar[data-mobile-open='true'] {
     transform: translateX(0);
   }
+  /* Right to left (an Arabic workspace, NFR-09): the rail sits at the right
+     edge and leaves by it. */
+  [dir='rtl'] .lf-workspace-sidebar:not([data-mobile-open='true']) {
+    transform: translateX(100%);
+  }
   .lf-mobile-scrim {
     display: block;
     position: fixed;
@@ -1065,7 +1070,7 @@ body:has(main[data-embed]) {
     place-items: center;
     position: fixed;
     z-index: 45;
-    left: 8px;
+    inset-inline-start: 8px;
     top: calc(6px + env(safe-area-inset-top, 0px));
     width: 44px;
     height: 44px;
@@ -1103,7 +1108,7 @@ body:has(main[data-embed]) {
     flex-direction: column;
   }
   .lf-list-header__actions {
-    margin-left: 0;
+    margin-inline-start: 0;
   }
   .lf-page-actions {
     justify-content: flex-start;
@@ -1120,8 +1125,8 @@ body:has(main[data-embed]) {
   }
   .lf-smartviews-sidebar {
     width: 100% !important;
-    border-right: 0 !important;
-    padding-right: 0 !important;
+    border-inline-end: 0 !important;
+    padding-inline-end: 0 !important;
     border-bottom: 1px solid var(--lf-line);
     padding-bottom: var(--lf-space-3);
   }
@@ -1133,7 +1138,7 @@ body:has(main[data-embed]) {
   }
   .lf-wizard-step {
     display: none;
-    border-right: 0;
+    border-inline-end: 0;
   }
   .lf-wizard-step[data-active='true'] {
     display: block;
@@ -1337,7 +1342,7 @@ a:hover {
   gap: var(--lf-space-3);
   padding: var(--lf-space-3) var(--lf-space-4);
   border: 1px solid var(--lf-vermillion);
-  border-left-width: 3px;
+  border-inline-start-width: 3px;
   border-radius: var(--lf-radius);
   background: var(--lf-vermillion-sub);
   /* The accent token, as the badges above pair it: the hardcoded dark reds
@@ -1495,7 +1500,7 @@ a:hover {
   border-spacing: 0;
 }
 .lf-grid thead th {
-  text-align: left;
+  text-align: start;
   user-select: none;
 }
 .lf-grid thead th[aria-sort] {
@@ -1513,7 +1518,7 @@ a:hover {
    through its reference. */
 .lf-grid .lf-sticky {
   position: sticky;
-  left: 0;
+  inset-inline-start: 0;
   z-index: 1;
   background: var(--lf-surface);
   box-shadow: 1px 0 0 var(--lf-line);
@@ -1524,7 +1529,7 @@ a:hover {
    of the table, and a column cut there ('No actio…') as the whole of it. */
 .lf-grid td.lf-grid__actions {
   position: sticky;
-  right: 0;
+  inset-inline-end: 0;
   z-index: 1;
   background: var(--lf-surface);
   box-shadow:
@@ -1535,7 +1540,7 @@ a:hover {
    pinned cells, so a column's name stood over the buttons hiding its values. */
 .lf-grid th.lf-grid__actions {
   position: sticky;
-  right: 0;
+  inset-inline-end: 0;
   box-shadow:
     -1px 0 0 var(--lf-line),
     -4px 0 6px var(--lf-shadow-edge);
@@ -1624,7 +1629,7 @@ a:hover {
   background: var(--lf-wine-700);
 }
 .lf-tab__count {
-  margin-left: 6px;
+  margin-inline-start: 6px;
   padding: 1px 6px;
   border-radius: 999px;
   background: var(--lf-slate-sub);
@@ -1636,12 +1641,12 @@ a:hover {
 /* ── Timeline ────────────────────────────────────────────────────────────── */
 .lf-timeline {
   position: relative;
-  padding-left: var(--lf-space-6);
+  padding-inline-start: var(--lf-space-6);
 }
 .lf-timeline::before {
   content: '';
   position: absolute;
-  left: 7px;
+  inset-inline-start: 7px;
   top: 6px;
   bottom: 6px;
   width: 1px;
@@ -1653,7 +1658,7 @@ a:hover {
 }
 .lf-timeline__dot {
   position: absolute;
-  left: calc(-1 * var(--lf-space-6) + 3px);
+  inset-inline-start: calc(-1 * var(--lf-space-6) + 3px);
   top: 4px;
   width: 9px;
   height: 9px;
@@ -1718,7 +1723,7 @@ a:hover {
   font-size: var(--lf-text-sm);
 }
 .lf-toast__action {
-  margin-left: auto;
+  margin-inline-start: auto;
   /* Room inside the focus ring, so it does not sit on the word. */
   padding: 2px 4px;
   color: var(--lf-wine-300);
@@ -1738,23 +1743,23 @@ a:hover {
   position: fixed;
   /* Clear of the assistant's button, which floats in that corner above the
      phone tier (on a phone it docks into the tab bar, below this). */
-  right: var(--lf-fab-gutter);
+  inset-inline-end: var(--lf-fab-gutter);
   bottom: var(--lf-space-4);
-  left: var(--lf-space-4);
+  inset-inline-start: var(--lf-space-4);
   z-index: 60;
   flex-direction: column;
   align-items: stretch;
   max-width: 480px;
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 /* An action after the sentence it belongs to ("2 leads deleted. Undo"): apart
    from it, so its focus ring does not touch the text. */
 .lf-outbox .lf-toast__action {
-  margin-left: var(--lf-space-2);
+  margin-inline-start: var(--lf-space-2);
 }
 @media (max-width: 760px) {
   .lf-outbox {
-    right: var(--lf-space-4);
+    inset-inline-end: var(--lf-space-4);
     bottom: calc(76px + env(safe-area-inset-bottom));
   }
 }
@@ -1780,7 +1785,7 @@ a:hover {
     border: 0;
     white-space: normal;
     overflow-wrap: anywhere;
-    text-align: left !important;
+    text-align: start !important;
   }
   .lf-grid tbody td::before {
     content: attr(data-label);
@@ -1829,11 +1834,11 @@ a:hover {
   .lf-grid tbody td[data-label=''] .lf-btn,
   .lf-grid tbody td:not([data-label]) .lf-btn {
     min-height: 44px;
-    margin-right: var(--lf-fab-gutter);
+    margin-inline-end: var(--lf-fab-gutter);
   }
   /* Two actions side by side: only the last stops short of the assistant. */
   .lf-grid tbody td.lf-grid__actions .lf-btn:not(:last-child) {
-    margin-right: 0;
+    margin-inline-end: 0;
   }
   /* A status pill should hug its word.
 
@@ -1949,7 +1954,7 @@ a:hover {
   .lf-grid__select {
     position: absolute;
     top: var(--lf-space-3);
-    right: var(--lf-space-3);
+    inset-inline-end: var(--lf-space-3);
     width: auto;
     padding: 0;
   }
@@ -2132,7 +2137,7 @@ a:hover {
   padding: 14px 6px 4px;
 }
 .lf-checkin__verdict + .lf-checkin__verdict {
-  border-left: 1px solid var(--lf-line);
+  border-inline-start: 1px solid var(--lf-line);
 }
 .lf-checkin__verdict strong {
   font: 400 20px/1 var(--lf-font-display);
@@ -2177,7 +2182,7 @@ a:hover {
 .lf-checkin__blocked {
   margin: 0;
   padding: 10px 12px;
-  border-left: 3px solid var(--lf-brass, #b98f4c);
+  border-inline-start: 3px solid var(--lf-brass, #b98f4c);
   background: var(--lf-brass-sub, #f7f0df);
   color: var(--lf-brass);
   font-size: var(--lf-text-sm);
@@ -2336,7 +2341,7 @@ a:hover {
 .lf-callout {
   margin: 0;
   padding: 12px 14px;
-  border-left: 3px solid;
+  border-inline-start: 3px solid;
   border-radius: var(--lf-radius-sm);
   font-size: var(--lf-text-sm);
   line-height: 1.6;
@@ -2761,7 +2766,7 @@ a:hover {
 .lf-face__warn {
   margin: 0;
   padding: 12px 14px;
-  border-left: 3px solid var(--brass, #b98f4c);
+  border-inline-start: 3px solid var(--brass, #b98f4c);
   background: color-mix(in srgb, var(--brass, #b98f4c) 10%, transparent);
   font-size: var(--lf-text-sm);
 }
@@ -2937,13 +2942,13 @@ a:hover {
 .lf-stat-strip > div {
   display: block;
   padding: 4px 22px;
-  border-left: 1px solid rgb(255 255 255 / 0.16);
+  border-inline-start: 1px solid rgb(255 255 255 / 0.16);
   text-decoration: none;
   color: inherit;
 }
 .lf-stat-strip > :first-child {
-  border-left: 0;
-  padding-left: 0;
+  border-inline-start: 0;
+  padding-inline-start: 0;
 }
 .lf-stat-strip .lf-figure {
   display: block;
@@ -2970,7 +2975,7 @@ a:hover {
 .lf-module-panel {
   background: var(--lf-surface);
   border: 1px solid var(--lf-line);
-  border-left: 3px solid var(--panel-accent, var(--lf-line-2));
+  border-inline-start: 3px solid var(--panel-accent, var(--lf-line-2));
   border-radius: var(--lf-radius-lg);
   box-shadow: var(--lf-shadow-1);
   padding: 18px 20px;
@@ -3115,7 +3120,7 @@ a:hover {
 /* ── Manath AI widget ── */
 .lf-ai-fab {
   position: fixed;
-  right: 18px;
+  inset-inline-end: 18px;
   bottom: 18px;
   z-index: 46;
   width: 52px;
@@ -3139,7 +3144,7 @@ a:hover {
    Declared after the base rule: both are single-class selectors, so order wins. */
 @media (max-width: 760px) {
   .lf-ai-fab {
-    right: 8px;
+    inset-inline-end: 8px;
     bottom: calc(4px + env(safe-area-inset-bottom, 0px));
     width: 44px;
     height: 44px;
@@ -3152,7 +3157,7 @@ a:hover {
 }
 .lf-ai-panel {
   position: fixed;
-  right: 18px;
+  inset-inline-end: 18px;
   bottom: 18px;
   z-index: 46;
   width: 400px;
@@ -3243,7 +3248,7 @@ a:hover {
   overflow-wrap: anywhere;
 }
 .lf-ai-msg[data-role='user'] {
-  margin-left: auto;
+  margin-inline-start: auto;
   padding: 8px 11px;
   background: var(--lf-wine-050);
   border: 1px solid var(--lf-wine-100);
@@ -3251,14 +3256,14 @@ a:hover {
   white-space: pre-wrap;
 }
 .lf-ai-msg[data-role='assistant'] {
-  margin-right: auto;
+  margin-inline-end: auto;
 }
 .lf-ai-msg p {
   margin: 0 0 6px;
 }
 .lf-ai-msg ul {
   margin: 0 0 6px;
-  padding-left: 18px;
+  padding-inline-start: 18px;
 }
 .lf-ai-msg p:last-child,
 .lf-ai-msg ul:last-child {
@@ -3313,7 +3318,7 @@ a:hover {
   display: grid;
   gap: 8px;
   border: 1px solid var(--lf-line-2);
-  border-left: 3px solid var(--lf-wine-700);
+  border-inline-start: 3px solid var(--lf-wine-700);
   border-radius: var(--lf-radius);
   background: var(--lf-surface-2);
 }
@@ -3338,7 +3343,7 @@ a:hover {
   margin-bottom: 2px;
 }
 .lf-ai-suggest button {
-  text-align: left;
+  text-align: start;
   padding: 8px 11px;
   border: 1px solid var(--lf-line-2);
   border-radius: var(--lf-radius);
@@ -3387,7 +3392,7 @@ a:hover {
 .lf-visually-hidden {
   position: absolute;
   top: 0;
-  left: 0;
+  inset-inline-start: 0;
   width: 1px;
   height: 1px;
   overflow: hidden;
@@ -3457,7 +3462,7 @@ a:hover {
   display: grid;
   gap: 3px;
   width: 100%;
-  text-align: left;
+  text-align: start;
   padding: 10px 12px;
   border: 0;
   border-bottom: 1px solid var(--lf-line);
@@ -3512,7 +3517,7 @@ a:hover {
 }
 
 .lf-inbox__unread {
-  margin-left: auto;
+  margin-inline-start: auto;
   background: var(--lf-wine-500);
   color: #fff;
   border-radius: 999px;
@@ -3564,7 +3569,7 @@ a:hover {
    alone — colour is not available to every reader (§73). */
 .lf-msg[data-failed='true'] {
   border-color: var(--lf-danger);
-  border-left-width: 3px;
+  border-inline-start-width: 3px;
 }
 
 .lf-msg__body {
@@ -3664,7 +3669,7 @@ a:hover {
   }
 
   .lf-inbox__ctxtoggle {
-    margin-left: auto;
+    margin-inline-start: auto;
   }
 
   /* The customer becomes a drawer rather than a third column. */
@@ -3789,9 +3794,9 @@ a:hover {
 }
 .lf-drawer__panel {
   top: 0;
-  right: 0;
+  inset-inline-end: 0;
   height: 100%;
-  border-left: 1px solid var(--lf-line);
+  border-inline-start: 1px solid var(--lf-line);
   animation: lf-drawer-in 160ms ease-out;
 }
 @keyframes lf-drawer-in {
@@ -3818,7 +3823,7 @@ a:hover {
   align-content: start;
 }
 .lf-drawer__close {
-  margin-left: auto;
+  margin-inline-start: auto;
   flex: none;
   border: 1px solid var(--lf-line-2);
   border-radius: var(--lf-radius-sm);
@@ -3924,7 +3929,7 @@ a:hover {
      trap, and these actions must stay deliberate rather than cramped. */
   .lf-drawer__panel {
     width: 100%;
-    border-left: 0;
+    border-inline-start: 0;
   }
   .lf-facts {
     grid-template-columns: minmax(0, 1fr);
@@ -3950,7 +3955,7 @@ a:hover {
    for white surfaces so figures read as one sentence, not a grid of boxes. */
 .lf-stat-strip--light > a,
 .lf-stat-strip--light > div {
-  border-left-color: var(--lf-line);
+  border-inline-start-color: var(--lf-line);
 }
 .lf-stat-strip--light .lf-eyebrow {
   color: var(--lf-ink-3);
@@ -4435,7 +4440,7 @@ dialog.lf-drawer::backdrop {
 }
 .lf-meta__summary ul {
   margin: 4px 0 0;
-  padding-left: 18px;
+  padding-inline-start: 18px;
   display: grid;
   gap: 2px;
 }
@@ -4678,7 +4683,7 @@ dialog.lf-drawer::backdrop {
 .lf-pop {
   position: absolute;
   top: 100%;
-  right: 0;
+  inset-inline-end: 0;
   margin-top: 6px;
   background: var(--lf-surface);
   border: 1px solid var(--lf-line);
@@ -4728,8 +4733,8 @@ dialog.lf-drawer::backdrop {
   .lf-noti-panel {
     position: fixed;
     top: 56px;
-    right: 8px;
-    left: 8px;
+    inset-inline-end: 8px;
+    inset-inline-start: 8px;
     width: auto;
     max-height: 70dvh;
   }
@@ -4757,7 +4762,7 @@ dialog.lf-drawer::backdrop {
   background: var(--lf-surface-2);
   /* A 2px nudge is enough to register as "this row is live" without moving text
      far enough to be read as a layout shift. */
-  padding-left: 18px;
+  padding-inline-start: 18px;
 }
 .lf-noti-row:last-child {
   border-bottom: 0;
@@ -4963,7 +4968,7 @@ body,
   color: var(--lf-ink);
   font: inherit;
   font-size: var(--lf-text-sm);
-  text-align: left;
+  text-align: start;
   text-decoration: none;
   cursor: pointer;
   transition: background 120ms ease;
@@ -5145,7 +5150,7 @@ a.lf-kpi:hover {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 0;
+  inset-inline-start: 0;
   width: 3px;
   background: var(--yh-signal-edge);
 }
@@ -5309,7 +5314,7 @@ a.lf-kpi:hover {
 }
 .lf-toolbar__search svg {
   position: absolute;
-  left: 10px;
+  inset-inline-start: 10px;
   top: 50%;
   width: 14px;
   height: 14px;
@@ -5319,7 +5324,7 @@ a.lf-kpi:hover {
 }
 .lf-toolbar__search .lf-input {
   height: 34px;
-  padding-left: 32px;
+  padding-inline-start: 32px;
   background: var(--lf-surface);
 }
 .lf-toolbar .lf-select,
@@ -5425,7 +5430,7 @@ a.lf-kpi:hover {
   min-width: 0;
 }
 .lf-layout-switch {
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 .lf-views {
   margin-bottom: var(--lf-space-3);
@@ -5479,8 +5484,8 @@ a.lf-kpi:hover {
   display: flex;
   align-items: flex-start;
   gap: var(--lf-space-3);
-  padding-left: var(--lf-space-3);
-  border-left: 2px dashed var(--lf-line-2);
+  padding-inline-start: var(--lf-space-3);
+  border-inline-start: 2px dashed var(--lf-line-2);
 }
 .lf-board__col {
   flex: 0 0 264px;
@@ -5580,7 +5585,7 @@ a.lf-kpi:hover {
   justify-content: space-between;
   list-style: none;
   cursor: pointer;
-  padding-right: 14px;
+  padding-inline-end: 14px;
   user-select: none;
 }
 .lf-nav-group > summary::-webkit-details-marker {
@@ -5590,7 +5595,7 @@ a.lf-kpi:hover {
   content: '';
   width: 5px;
   height: 5px;
-  border-right: 1.5px solid currentColor;
+  border-inline-end: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
   transform: rotate(-45deg);
   transition: transform 150ms ease;
@@ -5663,7 +5668,7 @@ a.lf-kpi:hover {
   background: var(--lf-surface);
   color: var(--lf-ink-3);
   font: 400 var(--lf-text-sm)/1 var(--lf-font-ui);
-  text-align: left;
+  text-align: start;
   cursor: text;
   transition:
     border-color 120ms ease,
@@ -5901,7 +5906,7 @@ a.lf-kpi:hover {
 .lf-attn__go {
   color: var(--lf-ink-4);
   font-size: 14px;
-  text-align: right;
+  text-align: end;
 }
 @media (max-width: 760px) {
   .lf-attn__row {
@@ -5956,7 +5961,7 @@ a.lf-kpi:hover {
   font-weight: 600;
   color: var(--lf-ink);
   font-variant-numeric: tabular-nums;
-  text-align: right;
+  text-align: end;
 }
 .lf-panel-duo {
   gap: var(--lf-space-4);
@@ -6000,7 +6005,7 @@ a.lf-kpi:hover {
 /* ── Menus: one popover for every "choose one of these" ─────────────────── */
 .lf-menu {
   position: absolute;
-  right: 0;
+  inset-inline-end: 0;
   top: calc(100% + 4px);
   z-index: 20;
   min-width: 200px;
@@ -6024,7 +6029,7 @@ a.lf-kpi:hover {
   background: none;
   color: var(--lf-ink);
   font: 400 var(--lf-text-sm)/1.3 var(--lf-font-ui);
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 .lf-menu__item:hover,
@@ -6100,7 +6105,7 @@ a.lf-kpi:hover {
   background: none;
   color: var(--lf-ink);
   font: 600 var(--lf-text-sm)/1.3 var(--lf-font-ui);
-  text-align: right;
+  text-align: end;
   cursor: pointer;
 }
 .lf-kv__btn:hover {
@@ -6137,7 +6142,7 @@ a.lf-kpi:hover {
   content: '';
   width: 5px;
   height: 5px;
-  border-right: 1.5px solid currentColor;
+  border-inline-end: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
   transform: rotate(-45deg) translateY(-1px);
   transition: transform 150ms ease;
@@ -6211,7 +6216,7 @@ a.lf-kpi:hover {
   margin-bottom: var(--lf-space-5);
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
   mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
-  padding-right: 40px;
+  padding-inline-end: 40px;
 }
 .lf-tab:focus-visible {
   outline: 2px solid var(--lf-wine-700);
@@ -6288,7 +6293,7 @@ a.lf-kpi:hover {
 }
 .lf-public ul {
   margin: 12px 0;
-  padding-left: 1.5rem;
+  padding-inline-start: 1.5rem;
 }
 .lf-public li {
   margin: 8px 0;
@@ -6327,7 +6332,7 @@ a.lf-kpi:hover {
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 32px;
-  border-left: 4px solid var(--yh-azure);
+  border-inline-start: 4px solid var(--yh-azure);
 }
 .lf-privacy-summary h2 {
   margin-top: 0;
@@ -6335,7 +6340,7 @@ a.lf-kpi:hover {
 }
 .lf-summary-list {
   margin: 0;
-  padding-left: 1.5rem;
+  padding-inline-start: 1.5rem;
 }
 .lf-summary-list li {
   margin: 8px 0;
@@ -6562,7 +6567,7 @@ input.lf-date__native::-webkit-calendar-picker-indicator {
   text-decoration: none;
 }
 .lf-bars__row .lf-num {
-  text-align: right;
+  text-align: end;
   font-weight: 600;
 }
 a.lf-bars__row:hover .lf-bars__label,
@@ -6598,7 +6603,7 @@ a.lf-bars__row:focus-visible .lf-bars__label {
   display: inline-block;
   width: 10px;
   height: 10px;
-  margin-right: 4px;
+  margin-inline-end: 4px;
   border-radius: 2px;
   vertical-align: -1px;
 }
@@ -6745,7 +6750,7 @@ a.lf-bars__row:focus-visible .lf-bars__label {
 .lf-leaderboard td {
   padding: 8px 6px;
   border-top: 1px solid color-mix(in srgb, var(--lf-line) 65%, transparent);
-  text-align: right;
+  text-align: end;
   white-space: nowrap;
 }
 .lf-leaderboard thead th {
@@ -6756,7 +6761,7 @@ a.lf-bars__row:focus-visible .lf-bars__label {
 }
 .lf-leaderboard th:first-child {
   width: 100%;
-  text-align: left;
+  text-align: start;
   white-space: normal;
   font-weight: 500;
 }

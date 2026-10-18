@@ -10,15 +10,16 @@
  * bespoke renderers is ten places to get alignment, empty states and CSV
  * escaping subtly different; one shape means one table component and one export.
  */
-import { Prisma } from '@prisma/client';
-import { prismaRead } from '@/lib/db';
+import { Prisma, type CallOutcome } from '@prisma/client';
+import { prismaRead, type TxClient } from '@/lib/db';
 import { csvHeader, csvRow, type CsvColumn } from '@/lib/csv';
-import { NotFound } from '@/lib/errors';
+import { Invalid, NotFound } from '@/lib/errors';
 import { mergeWhere } from '@/lib/api/where';
 import { conversion, funnel, names, rank, subtree, throughLead, type Range } from './rollups';
-import type { Ctx } from '@/lib/security/rbac';
+import { can, type Ctx } from '@/lib/security/rbac';
 import { hasAnyModuleEntitlement, SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { callScope } from '@/lib/security/record-scope';
+import { visibilityWhere } from '@/lib/security/visibility';
 import { LEAD_SOURCES } from '@/lib/integrations/leadSources';
 import {
   boardQuery,
@@ -65,6 +66,10 @@ export const REPORT_KEYS = [
   'lead-quality',
   'follow-up-adherence',
   'source-to-booking',
+  'project-report',
+  'site-visits',
+  'call-report',
+  'call-performance',
 ] as const;
 export type ReportKey = (typeof REPORT_KEYS)[number];
 
@@ -74,6 +79,9 @@ export type ReportKey = (typeof REPORT_KEYS)[number];
  * these, and asking for one by URL answers 404 (M16-00).
  */
 const MONEY_REPORTS: readonly ReportKey[] = ['revenue-forecast', 'team-performance', 'campaign-performance'];
+
+/** The reports that read calls, under the calls scope as well as the reports one (`callReach`). */
+export const CALL_REPORTS: readonly ReportKey[] = ['rep-activity', 'call-performance', 'call-report'];
 
 /** The reports this workspace's plan has rows for, in menu order. */
 export async function offeredReports(tenantId: string): Promise<ReportKey[]> {
@@ -122,6 +130,27 @@ export async function reportParams(ctx: Ctx, raw: Record<string, unknown>, now =
 /** No user has this id: a narrowing that keeps nobody must not read as `[]`, the whole workspace. */
 const NOBODY = ['-'];
 
+/** What a report's rows can be regrouped by (M16-13): `?by=`, the same query keyed another way. */
+export const PIVOT_KEYS = ['user', 'month', 'project', 'lead'] as const;
+export type Pivot = (typeof PIVOT_KEYS)[number];
+/** The groupings each report offers, its default first. A report missing here has one shape. */
+export const PIVOTS: Partial<Record<ReportKey, readonly Pivot[]>> = {
+  'activity-log': ['user', 'month'],
+  'follow-up-adherence': ['user', 'month'],
+  'site-visits': ['user', 'project', 'month'],
+  'call-report': ['user', 'lead', 'month'],
+};
+const PIVOT_COLUMN: Record<Pivot, Column> = {
+  user: { key: 'agent', label: 'Agent' },
+  month: { key: 'month', label: 'Month' },
+  project: { key: 'project', label: 'Project' },
+  lead: { key: 'lead', label: 'Lead' },
+};
+
+/** The file a report downloads or is mailed as: `call-report-by-lead-2026-10-17.csv`, `day` on the workspace's clock. */
+export const reportFileName = (key: ReportKey, by: Pivot | undefined, day: string) =>
+  `${key}${by ? `-by-${by}` : ''}-${day}.csv`;
+
 export interface Column {
   key: string;
   label: string;
@@ -141,11 +170,68 @@ export interface Report {
 
 const pct = (n: number | null) => (n === null ? null : `${n}%`);
 
+/** 0:01:30, as the board shows talk time. */
+const clock = (seconds: number) =>
+  [Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60), Math.round(seconds % 60)]
+    .map((part, i) => (i === 0 ? String(part) : String(part).padStart(2, '0')))
+    .join(':');
+
 const aed = (amount: Prisma.Decimal | null, currency = 'AED') =>
   amount === null ? null : `${currency} ${Number(amount.toString()).toLocaleString('en-GB')}`;
 
 /** Empty user list means the whole workspace, matching the rollups module. */
 const owned = (userIds: string[]) => (userIds.length === 0 ? {} : { ownerId: { in: userIds } });
+
+/**
+ * The calls a report may read (M9-05, M16-09), as the Calls page reads them:
+ * provider calls by their caller (`callScope`), calls logged by hand by their
+ * owner at the same scope, and without a calls grant the viewer's own.
+ */
+const callReach = (ctx: Ctx) =>
+  Promise.all([
+    callScope(ctx, 'VIEW'),
+    can(ctx, 'calls', 'VIEW')
+      ? visibilityWhere(ctx, 'calls', 'VIEW', { ownerField: 'ownerId' })
+      : { tenantId: ctx.tenantId, ownerId: ctx.actor.id },
+  ]);
+
+/** Calls counted as the Call Report counts them (M16-09): a group of provider calls, or of calls logged by hand. */
+const CALL_SUMS = { _count: { _all: true }, _sum: { durationSecs: true } } as const;
+type CallSums = { _count: { _all: number }; _sum: { durationSecs: number | null } };
+const placedCalls = (g: CallSums & { status: string; outcome: CallOutcome | null }) => ({
+  n: g._count._all,
+  connected: g.status === 'COMPLETED' && !!g.outcome && CONNECTED_CALL_OUTCOMES.includes(g.outcome),
+  secs: g._sum.durationSecs,
+});
+const loggedCalls = (g: CallSums & { outcome: string | null }) => ({
+  n: g._count._all,
+  connected: !!g.outcome && CONNECTED_LOG_OUTCOMES.includes(g.outcome),
+  secs: g._sum.durationSecs,
+});
+
+/**
+ * One lead's calls, connected calls and talk time, all time: the Call Report's
+ * per-lead figures, heading the lead's timeline (M16-09). `reach` is the
+ * viewer's calls scope, as the timeline lists calls; logged calls are the
+ * lead's activities, which it lists to anyone who opens the lead.
+ */
+export async function leadCallTotals(db: TxClient, tenantId: string, leadId: string, reach: Prisma.CallWhereInput) {
+  const [calls, logs] = await Promise.all([
+    db.call.groupBy({
+      by: ['status', 'outcome'],
+      where: { tenantId, leadId, ...callTab('placed').where, AND: [reach] },
+      ...CALL_SUMS,
+    }),
+    db.activity.groupBy({ by: ['outcome'], where: { tenantId, leadId, ...LOGGED_CALL }, ...CALL_SUMS }),
+  ]);
+  const groups = [...calls.map(placedCalls), ...logs.map(loggedCalls)];
+  const sum = (n: (g: (typeof groups)[number]) => number) => groups.reduce((total, g) => total + n(g), 0);
+  return {
+    calls: sum((g) => g.n),
+    connected: sum((g) => (g.connected ? g.n : 0)),
+    minutes: Math.round(sum((g) => g.secs ?? 0) / 6) / 10,
+  };
+}
 
 /**
  * Where a lead came from, finer than its RecordSource: Marketplace is three
@@ -175,7 +261,73 @@ const catalogueLabel = (lead: {
 }) => leadSourceLabel(lead.leadSource, ' / ') ?? sourceLabel(lead.source, lead.sourceDetail);
 const LEAD_SOURCE = { select: { name: true, parent: { select: { name: true } } } };
 
-export async function runReport(ctx: Ctx, key: ReportKey, range: Range, filter: ReportFilter = {}): Promise<Report> {
+type Within = { gte: Date; lte: Date };
+const MAX_MONTHS = 36;
+/** `2026-12` → `2027-01`: Date.UTC's months count from 0, so the 1-based month is the next one. */
+export const nextMonth = (month: string) =>
+  new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1)).toISOString().slice(0, 7);
+
+/**
+ * One read per calendar month on the workspace's clock, each clipped to the
+ * range: a groupBy cannot bucket by date, and a month must not be the server's.
+ * ponytail: one query per month in turn (36 at most); a date_trunc GROUP BY if month pivots get slow.
+ */
+async function perMonth<T>(ctx: Ctx, range: Range, read: (within: Within, month: string) => Promise<T[]>) {
+  const zone = await workspaceTimezone(ctx);
+  const last = todayKey(zone, range.to).slice(0, 7);
+  const out: T[] = [];
+  for (let month = todayKey(zone, range.from).slice(0, 7), n = 0; month <= last; month = nextMonth(month), n++) {
+    if (n === MAX_MONTHS) {
+      throw Invalid([
+        { field: 'from', code: 'too_long', message: `By month, a report covers ${MAX_MONTHS} months at most.` },
+      ]);
+    }
+    const start = dayBounds(`${month}-01`, zone).from;
+    const end = new Date(dayBounds(`${nextMonth(month)}-01`, zone).from.getTime() - 1);
+    const within = { gte: start > range.from ? start : range.from, lte: end < range.to ? end : range.to };
+    out.push(...(await read(within, month)));
+  }
+  return out;
+}
+
+/** What a pivot's keys read as: a person's name, a lead's, a project's, or the month itself. */
+async function pivotLabels(tenantId: string, by: Pivot, keys: (string | null)[]) {
+  if (by === 'month') return (key: string | null) => key ?? '';
+  if (by === 'user') {
+    const who = await names(tenantId, keys);
+    return (key: string | null) => (key ? (who.get(key) ?? 'Unknown') : 'Unassigned');
+  }
+  const ids = [...new Set(keys.filter((k): k is string => k !== null))];
+  const found =
+    by === 'lead'
+      ? (
+          await prismaRead.lead.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, fullName: true } })
+        ).map((l) => [l.id, l.fullName] as const)
+      : (
+          await prismaRead.project.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, name: true } })
+        ).map((p) => [p.id, p.name] as const);
+  const name = new Map(found);
+  const [removed, none] = by === 'lead' ? ['Removed lead', 'No lead'] : ['Removed project', 'No project'];
+  return (key: string | null) => (key ? (name.get(key) ?? removed) : none);
+}
+
+/** Months in order; anything else by its count, largest first. */
+const pivotOrder = (by: Pivot, count: string) => (a: Record<string, Cell>, b: Record<string, Cell>) =>
+  by === 'month' ? String(a.month).localeCompare(String(b.month)) : Number(b[count]) - Number(a[count]);
+
+/** A visit that took place: the agent punched in with the client, or finished. */
+const VISITED = ['CHECKED_IN', 'COMPLETED'] as const;
+
+/**
+ * One report over `range`, narrowed by `filter` (M16-01, M16-12) and grouped
+ * `by` a pivot where the report offers one (M16-13).
+ */
+export async function runReport(
+  ctx: Ctx,
+  key: ReportKey,
+  range: Range,
+  { by, ...filter }: ReportFilter & { by?: Pivot } = {},
+): Promise<Report> {
   const tenantId = ctx.tenantId;
   const money = await hasAnyModuleEntitlement(tenantId, SALES_OR_REALTY);
   if (!money && MONEY_REPORTS.includes(key)) throw NotFound('Report');
@@ -185,14 +337,16 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, filter: 
   const { people } = await resolveBoardFilter(ctx, { owner: filter.owner, team: filter.team }, 'UTC');
   const kept = people && (reach.length === 0 ? people : people.filter((id) => reach.includes(id)));
   const userIds = !kept ? reach : kept.length > 0 ? kept : NOBODY;
-  // Source and project, on the lead (`lead`) or through it (`viaLead`), as the board's lists read them.
-  const lead = boardWhere(
-    { filter: { source: filter.source, project: filter.project }, people: null, span: null },
-    'lead',
-    false,
-  ) as Prisma.LeadWhereInput;
+  const byPerson = (field: string) => (userIds.length === 0 ? {} : { [field]: { in: userIds } });
+  // Source and project as the board's lists read them: on the lead (`lead`) or through it (`viaLead`);
+  // a visit's and a booking's project is their own, the source their lead's (`onVisit`, `onBooking`).
+  const narrowing = { filter: { source: filter.source, project: filter.project }, people: null, span: null };
+  const lead = boardWhere(narrowing, 'lead', false) as Prisma.LeadWhereInput;
   const viaLead = throughLead(lead);
+  const onVisit = boardWhere(narrowing, 'visit', false);
+  const onBooking = boardWhere(narrowing, 'booking', false);
   const within = { gte: range.from, lte: range.to };
+  const pivot = by ?? PIVOTS[key]?.[0] ?? 'user';
 
   switch (key) {
     case 'lead-conversion': {
@@ -263,37 +417,45 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, filter: 
     }
 
     case 'activity-log': {
-      const rows = await prismaRead.activity.groupBy({
-        by: ['typeId', 'ownerId'],
-        where: { tenantId, occurredAt: within, ...owned(userIds), ...viaLead },
-        _count: { _all: true },
-      });
-      const [types, who] = await Promise.all([
+      const where = (span: Within) => ({ tenantId, occurredAt: span, ...owned(userIds), ...viaLead });
+      const rows =
+        pivot === 'month'
+          ? await perMonth(ctx, range, async (span, month) =>
+              (await prismaRead.activity.groupBy({ by: ['typeId'], where: where(span), _count: { _all: true } })).map(
+                (r) => ({ typeId: r.typeId, key: month as string | null, count: r._count._all }),
+              ),
+            )
+          : (
+              await prismaRead.activity.groupBy({
+                by: ['typeId', 'ownerId'],
+                where: where(within),
+                _count: { _all: true },
+              })
+            ).map((r) => ({ typeId: r.typeId, key: r.ownerId, count: r._count._all }));
+      const [types, label] = await Promise.all([
         prismaRead.activityType.findMany({
           where: { tenantId, id: { in: [...new Set(rows.map((r) => r.typeId))] } },
           select: { id: true, name: true },
         }),
-        names(
+        pivotLabels(
           tenantId,
-          rows.map((r) => r.ownerId),
+          pivot,
+          rows.map((r) => r.key),
         ),
       ]);
       const typeBy = new Map(types.map((t) => [t.id, t.name]));
+      const column = pivot === 'month' ? 'month' : 'who';
       return {
         key,
         title: 'Activity log',
         columns: [
           { key: 'type', label: 'Type' },
-          { key: 'who', label: 'Who' },
+          pivot === 'month' ? PIVOT_COLUMN.month : { key: 'who', label: 'Who' },
           { key: 'count', label: 'Logged', align: 'right' },
         ],
         rows: rows
-          .map((r) => ({
-            type: typeBy.get(r.typeId) ?? r.typeId,
-            who: r.ownerId ? (who.get(r.ownerId) ?? r.ownerId) : 'Unassigned',
-            count: r._count._all,
-          }))
-          .sort((a, b) => Number(b.count) - Number(a.count)),
+          .map((r) => ({ type: typeBy.get(r.typeId) ?? r.typeId, [column]: label(r.key), count: r.count }))
+          .sort((a, b) => pivotOrder(pivot, 'count')(a, b) || Number(b.count) - Number(a.count)),
       };
     }
 
@@ -385,7 +547,6 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, filter: 
     case 'rep-activity': {
       // Each agent's work (M16-05): activities, calls and how many got through, the
       // stage moves they made, their notes, and how fast they answered new leads.
-      const person = (field: string) => (userIds.length === 0 ? {} : { [field]: { in: userIds } });
       // Two rounds of three: one render asks for half the connection pool at most.
       const [activities, response, placed] = await Promise.all([
         rank(tenantId, userIds, range, 'activities', lead),
@@ -406,7 +567,7 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, filter: 
         callScope(ctx, 'VIEW').then((scope) =>
           prismaRead.call.groupBy({
             by: ['callerId', 'status', 'outcome'],
-            where: mergeWhere(scope, callTab('placed').where, person('callerId'), viaLead, {
+            where: mergeWhere(scope, callTab('placed').where, byPerson('callerId'), viaLead, {
               tenantId,
               deletedAt: null,
               createdAt: within,
@@ -598,6 +759,82 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, filter: 
       };
     }
 
+    case 'call-performance': {
+      // Who called, who got through and for how long (M9-05): the calls placed
+      // through the provider and those logged by hand, as the board counts them,
+      // under the calls scope as well as the reports one.
+      const [callsWhere, logWhere] = await callReach(ctx);
+      const [placed, logged] = await Promise.all([
+        prismaRead.call.groupBy({
+          by: ['callerId', 'status', 'outcome'],
+          where: mergeWhere(callsWhere, callTab('placed').where, byPerson('callerId'), viaLead, {
+            deletedAt: null,
+            createdAt: within,
+          }) as Prisma.CallWhereInput,
+          _count: { _all: true },
+          _sum: { durationSecs: true, talkSecs: true },
+        }),
+        prismaRead.activity.groupBy({
+          by: ['ownerId', 'outcome'],
+          where: mergeWhere(logWhere, LOGGED_CALL, byPerson('ownerId'), viaLead, {
+            occurredAt: within,
+          }) as Prisma.ActivityWhereInput,
+          _count: { _all: true },
+          _sum: { durationSecs: true },
+        }),
+      ]);
+      const by = new Map<
+        string,
+        { calls: number; connected: number; secs: number; connectedSecs: number; talk: number | null }
+      >();
+      const add = (userId: string | null, count: number, secs: number, connected: boolean, talk: number | null) => {
+        if (!userId) return;
+        const row = by.get(userId) ?? { calls: 0, connected: 0, secs: 0, connectedSecs: 0, talk: null };
+        row.calls += count;
+        row.secs += secs;
+        if (connected) {
+          row.connected += count;
+          row.connectedSecs += secs;
+        }
+        if (talk !== null) row.talk = (row.talk ?? 0) + talk;
+        by.set(userId, row);
+      };
+      for (const r of placed) {
+        const connected = r.status === 'COMPLETED' && !!r.outcome && CONNECTED_CALL_OUTCOMES.includes(r.outcome);
+        add(r.callerId, r._count._all, r._sum.durationSecs ?? 0, connected, r._sum.talkSecs);
+      }
+      for (const r of logged) {
+        const connected = !!r.outcome && CONNECTED_LOG_OUTCOMES.includes(r.outcome);
+        add(r.ownerId, r._count._all, r._sum.durationSecs ?? 0, connected, null);
+      }
+      const who = await names(tenantId, [...by.keys()]);
+      return {
+        key,
+        title: 'Call performance',
+        columns: [
+          { key: 'agent', label: 'Agent' },
+          { key: 'calls', label: 'Calls', align: 'right' },
+          { key: 'connected', label: 'Connected', align: 'right' },
+          { key: 'rate', label: 'Connect rate', align: 'right' },
+          { key: 'total', label: 'Time on calls', align: 'right' },
+          { key: 'average', label: 'Average connected call', align: 'right' },
+          { key: 'talk', label: 'Talk time', align: 'right' },
+        ],
+        rows: [...by]
+          .map(([userId, r]) => ({
+            agent: who.get(userId) ?? 'Removed user',
+            calls: r.calls,
+            connected: r.connected,
+            rate: r.calls === 0 ? null : `${Math.round((r.connected / r.calls) * 100)}%`,
+            total: clock(r.secs),
+            average: r.connected === 0 ? null : clock(Math.round(r.connectedSecs / r.connected)),
+            talk: r.talk === null ? null : clock(r.talk),
+          }))
+          .sort((a, b) => b.calls - a.calls || a.agent.localeCompare(b.agent)),
+        note: 'Calls placed through the telephony provider and calls logged by hand, by when they were made. Talk time is what the provider reports, without the ring; blank where it reports none.',
+      };
+    }
+
     case 'follow-up-adherence': {
       // Ported from Lead Eagle's report of the same name: are we doing what we
       // said we would, when we said it?
@@ -613,25 +850,25 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, filter: 
         },
         select: { ownerId: true, dueAt: true, status: true, completedAt: true },
       });
-      const who = await names(
-        tenantId,
-        due.map((f) => f.ownerId),
-      );
+      const zone = pivot === 'month' ? await workspaceTimezone(ctx) : null;
+      const keyOf = (f: (typeof due)[number]) => (zone ? todayKey(zone, f.dueAt).slice(0, 7) : f.ownerId);
+      const label = await pivotLabels(tenantId, pivot, due.map(keyOf));
       const by = new Map<string, { due: number; done: number; onTime: number; overdue: number }>();
       for (const f of due) {
-        const row = by.get(f.ownerId) ?? { due: 0, done: 0, onTime: 0, overdue: 0 };
+        const row = by.get(keyOf(f)) ?? { due: 0, done: 0, onTime: 0, overdue: 0 };
         row.due += 1;
         if (f.status === 'COMPLETED') {
           row.done += 1;
           if (f.completedAt && f.completedAt <= f.dueAt) row.onTime += 1;
         } else if (f.dueAt < now) row.overdue += 1;
-        by.set(f.ownerId, row);
+        by.set(keyOf(f), row);
       }
+      const column = PIVOT_COLUMN[pivot];
       return {
         key,
         title: 'Follow-up adherence',
         columns: [
-          { key: 'agent', label: 'Agent' },
+          column,
           { key: 'due', label: 'Due', align: 'right' },
           { key: 'done', label: 'Done', align: 'right' },
           { key: 'onTime', label: 'On time', align: 'right' },
@@ -640,8 +877,8 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, filter: 
           { key: 'rate', label: 'On-time rate', align: 'right' },
         ],
         rows: [...by]
-          .map(([ownerId, r]) => ({
-            agent: who.get(ownerId) ?? 'Unknown',
+          .map(([group, r]) => ({
+            [column.key]: label(group),
             due: r.due,
             done: r.done,
             onTime: r.onTime,
@@ -649,43 +886,58 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, filter: 
             overdue: r.overdue,
             rate: pct(Math.round((r.onTime / r.due) * 100)),
           }))
-          .sort((a, b) => b.overdue - a.overdue || b.due - a.due),
+          .sort((a, b) =>
+            pivot === 'month' ? pivotOrder(pivot, 'due')(a, b) : b.overdue - a.overdue || b.due - a.due,
+          ),
         note: 'On time is done no later than due. A follow-up due later in the period is neither late nor overdue yet, but counts in Due.',
       };
     }
     case 'source-to-booking': {
-      const leads = await prismaRead.lead.findMany({
-        where: { tenantId, deletedAt: null, createdAt: within, ...owned(userIds), ...lead },
-        select: { id: true, source: true, sourceDetail: true, leadSource: LEAD_SOURCE },
-      });
-      // ponytail: the period's lead ids as one IN list; a join in SQL if a range ever holds 100k leads.
-      const leadId = { in: leads.map((l) => l.id) };
-      const [visited, booked] = await Promise.all([
+      // Counted in the database (NFR-10): a period of a large book holds more
+      // leads than one query may name, which the IN list of their ids used to
+      // need (it failed past 65,535; at 1,000,000 leads the default period holds
+      // about 200,000). Visits and bookings reach their leads by the relation.
+      // The period's leads, narrowed by the source and project filter (M16-12).
+      const inPeriod = { tenantId, deletedAt: null, createdAt: within, ...owned(userIds), ...lead };
+      const ofLead = { select: { source: true, sourceDetail: true, leadSource: LEAD_SOURCE } };
+      const [grouped, entries, visited, booked] = await Promise.all([
+        // ponytail: one group per distinct detail (a listing's portal reference,
+        // a form, a line), not per lead; group on the detail's prefix in SQL if
+        // details ever become one per lead.
+        prismaRead.lead.groupBy({
+          by: ['source', 'sourceDetail', 'sourceId'],
+          where: inPeriod,
+          _count: { _all: true },
+        }),
+        prismaRead.leadSource.findMany({ where: { tenantId }, select: { id: true, ...LEAD_SOURCE.select } }),
         prismaRead.siteVisit.findMany({
-          where: { tenantId, status: { in: ['CHECKED_IN', 'COMPLETED'] }, leadId },
-          select: { leadId: true },
+          where: { tenantId, status: { in: [...VISITED] }, lead: inPeriod },
+          select: { leadId: true, lead: ofLead },
           distinct: ['leadId'],
         }),
         // Bookings are Sales' and Real Estate's: none to read in a Lead-Eagle-only workspace (M16-00).
         money
           ? prismaRead.booking.findMany({
-              where: { tenantId, deletedAt: null, status: { not: 'CANCELLED' }, leadId },
-              select: { leadId: true, saleValue: true },
+              where: { tenantId, deletedAt: null, status: { not: 'CANCELLED' }, lead: inPeriod },
+              select: { saleValue: true, lead: ofLead },
             })
           : [],
       ]);
-      const sourceOf = new Map(leads.map((l) => [l.id, catalogueLabel(l)]));
+      const entry = new Map(entries.map((e) => [e.id, e]));
       const by = new Map<string, { leads: number; visited: number; bookings: number; value: Prisma.Decimal }>();
       const row = (source: string) => {
         const r = by.get(source) ?? { leads: 0, visited: 0, bookings: 0, value: new Prisma.Decimal(0) };
         by.set(source, r);
         return r;
       };
-      for (const l of leads) row(sourceOf.get(l.id)!).leads += 1;
-      for (const v of visited) if (v.leadId && sourceOf.has(v.leadId)) row(sourceOf.get(v.leadId)!).visited += 1;
+      for (const g of grouped) {
+        const leadSource = g.sourceId ? (entry.get(g.sourceId) ?? null) : null;
+        row(catalogueLabel({ source: g.source, sourceDetail: g.sourceDetail, leadSource })).leads += g._count._all;
+      }
+      for (const v of visited) if (v.lead) row(catalogueLabel(v.lead)).visited += 1;
       for (const b of booked) {
-        if (!b.leadId || !sourceOf.has(b.leadId)) continue;
-        const r = row(sourceOf.get(b.leadId)!);
+        if (!b.lead) continue;
+        const r = row(catalogueLabel(b.lead));
         r.bookings += 1;
         r.value = r.value.plus(b.saleValue);
       }
@@ -719,12 +971,227 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range, filter: 
           : 'Leads that arrived in the period, followed to their site visits whenever those happened.',
       };
     }
+
+    case 'project-report': {
+      // Ported in shape from Lead Eagle's projects report (M16-03). Inventory is the
+      // workspace's, as it stands; leads, visits and bookings are the viewer's, in the period.
+      const [projects, units] = await Promise.all([
+        prismaRead.project.findMany({
+          where: { tenantId, ...(filter.project && { id: filter.project }) },
+          select: { id: true, name: true },
+        }),
+        prismaRead.unitInventory.groupBy({ by: ['projectId', 'status'], where: { tenantId }, _count: { _all: true } }),
+      ]);
+      const [interests, visits, bookings] = await Promise.all([
+        // Neither model is soft-deleted, so the guard adds nothing below them: a deleted lead is left out here.
+        prismaRead.leadProject.findMany({
+          where: { tenantId, createdAt: within, lead: { is: { deletedAt: null, ...owned(userIds), ...lead } } },
+          select: { projectId: true, leadId: true },
+        }),
+        prismaRead.siteVisit.findMany({
+          where: mergeWhere(
+            { tenantId, scheduledAt: within, projectId: { not: null }, lead: { is: { deletedAt: null } } },
+            owned(userIds),
+            onVisit,
+          ) as Prisma.SiteVisitWhereInput,
+          select: { projectId: true, leadId: true, status: true },
+        }),
+        // Bookings are Sales' and Real Estate's: none to read in a Lead-Eagle-only workspace (M16-00).
+        money
+          ? prismaRead.booking.groupBy({
+              by: ['projectId'],
+              where: mergeWhere(
+                { tenantId, deletedAt: null, status: { not: 'CANCELLED' }, bookingDate: within },
+                owned(userIds),
+                onBooking,
+              ) as Prisma.BookingWhereInput,
+              _count: { _all: true },
+              _sum: { saleValue: true },
+            })
+          : [],
+      ]);
+      const unitsOf = (id: string, status?: string) =>
+        units
+          .filter((u) => u.projectId === id && (!status || u.status === status))
+          .reduce((n, u) => n + u._count._all, 0);
+      const leadsOf = (id: string, visitedOnly: boolean) =>
+        new Set([
+          ...(visitedOnly ? [] : interests.filter((i) => i.projectId === id).map((i) => i.leadId)),
+          ...visits
+            .filter((v) => v.projectId === id && (!visitedOnly || (VISITED as readonly string[]).includes(v.status)))
+            .map((v) => v.leadId),
+        ]).size;
+      const bookedBy = new Map(bookings.map((b) => [b.projectId, b]));
+      return {
+        key,
+        title: 'Projects',
+        columns: [
+          { key: 'project', label: 'Project' },
+          { key: 'units', label: 'Units', align: 'right' },
+          { key: 'available', label: 'Available', align: 'right' },
+          { key: 'booked', label: 'Booked or sold', align: 'right' },
+          { key: 'leads', label: 'Leads', align: 'right' },
+          { key: 'visited', label: 'Visited', align: 'right' },
+          ...(money
+            ? ([
+                { key: 'bookings', label: 'Bookings', align: 'right' },
+                { key: 'value', label: 'Booked value', align: 'right' },
+              ] satisfies Column[])
+            : []),
+        ],
+        rows: projects
+          .map((p) => ({
+            project: p.name,
+            units: unitsOf(p.id),
+            available: unitsOf(p.id, 'AVAILABLE'),
+            // A booked unit moves on to SOLD; both are taken, as the inventory rollup counts them.
+            booked: unitsOf(p.id, 'BOOKED') + unitsOf(p.id, 'SOLD'),
+            leads: leadsOf(p.id, false),
+            visited: leadsOf(p.id, true),
+            bookings: bookedBy.get(p.id)?._count._all ?? 0,
+            value: aed(bookedBy.get(p.id)?._sum.saleValue ?? null),
+          }))
+          .sort((a, b) => b.leads - a.leads || b.bookings - a.bookings || a.project.localeCompare(b.project)),
+        note: money
+          ? 'Units as they stand today. Leads asked about the project or were taken to it in the period; visited means the visit took place. Cancelled bookings are left out.'
+          : 'Units as they stand today. Leads asked about the project or were taken to it in the period; visited means the visit took place.',
+      };
+    }
+
+    case 'site-visits': {
+      // M16-07: scheduled is every visit not cancelled or refused; the show rate is done of done-or-missed.
+      const where = (span: Within) =>
+        mergeWhere({ tenantId, scheduledAt: span }, owned(userIds), onVisit) as Prisma.SiteVisitWhereInput;
+      const groups =
+        pivot === 'month'
+          ? await perMonth(ctx, range, async (span, month) =>
+              (await prismaRead.siteVisit.groupBy({ by: ['status'], where: where(span), _count: { _all: true } })).map(
+                (g) => ({ key: month as string | null, status: g.status, n: g._count._all }),
+              ),
+            )
+          : pivot === 'project'
+            ? (
+                await prismaRead.siteVisit.groupBy({
+                  by: ['projectId', 'status'],
+                  where: where(within),
+                  _count: { _all: true },
+                })
+              ).map((g) => ({ key: g.projectId, status: g.status, n: g._count._all }))
+            : (
+                await prismaRead.siteVisit.groupBy({
+                  by: ['ownerId', 'status'],
+                  where: where(within),
+                  _count: { _all: true },
+                })
+              ).map((g) => ({ key: g.ownerId as string | null, status: g.status, n: g._count._all }));
+      const tally = new Map<string | null, { scheduled: number; done: number; missed: number; cancelled: number }>();
+      for (const g of groups) {
+        const t = tally.get(g.key) ?? { scheduled: 0, done: 0, missed: 0, cancelled: 0 };
+        tally.set(g.key, t);
+        if (g.status === 'CANCELLED' || g.status === 'REJECTED') t.cancelled += g.n;
+        else {
+          t.scheduled += g.n;
+          if (g.status === 'COMPLETED') t.done += g.n;
+          if (g.status === 'NO_SHOW') t.missed += g.n;
+        }
+      }
+      const label = await pivotLabels(tenantId, pivot, [...tally.keys()]);
+      const column = PIVOT_COLUMN[pivot];
+      return {
+        key,
+        title: 'Site visits',
+        columns: [
+          column,
+          { key: 'scheduled', label: 'Scheduled', align: 'right' },
+          { key: 'done', label: 'Done', align: 'right' },
+          { key: 'missed', label: 'Missed', align: 'right' },
+          { key: 'cancelled', label: 'Cancelled', align: 'right' },
+          { key: 'rate', label: 'Show rate', align: 'right' },
+        ],
+        rows: [...tally]
+          .map(([group, t]) => ({
+            [column.key]: label(group),
+            ...t,
+            rate: t.done + t.missed === 0 ? null : pct(Math.round((t.done / (t.done + t.missed)) * 100)),
+          }))
+          .sort(pivotOrder(pivot, 'scheduled')),
+        note: 'By the time each visit was booked for. Done is completed, missed is a no-show; cancelled and refused visits are not scheduled.',
+      };
+    }
+
+    case 'call-report': {
+      // M16-09: calls placed through the provider and calls logged by hand, as the board counts them,
+      // under the calls scope as Call Performance reads them.
+      const [callsWhere, logWhere] = await callReach(ctx);
+      const placed = (span: Within) =>
+        mergeWhere(callsWhere, callTab('placed').where, byPerson('callerId'), viaLead, {
+          deletedAt: null,
+          createdAt: span,
+        }) as Prisma.CallWhereInput;
+      const logged = (span: Within) =>
+        mergeWhere(logWhere, LOGGED_CALL, byPerson('ownerId'), viaLead, {
+          occurredAt: span,
+        }) as Prisma.ActivityWhereInput;
+      type Group = { key: string | null; n: number; connected: boolean; secs: number | null };
+      const read = async (span: Within, month?: string): Promise<Group[]> => {
+        const [calls, logs] = await Promise.all([
+          pivot === 'lead'
+            ? prismaRead.call
+                .groupBy({ by: ['leadId', 'status', 'outcome'], where: placed(span), ...CALL_SUMS })
+                .then((r) => r.map((g) => ({ ...g, key: g.leadId })))
+            : prismaRead.call
+                .groupBy({ by: ['callerId', 'status', 'outcome'], where: placed(span), ...CALL_SUMS })
+                .then((r) => r.map((g) => ({ ...g, key: month ?? (g.callerId as string | null) }))),
+          pivot === 'lead'
+            ? prismaRead.activity
+                .groupBy({ by: ['leadId', 'outcome'], where: logged(span), ...CALL_SUMS })
+                .then((r) => r.map((g) => ({ ...g, key: g.leadId })))
+            : prismaRead.activity
+                .groupBy({ by: ['ownerId', 'outcome'], where: logged(span), ...CALL_SUMS })
+                .then((r) => r.map((g) => ({ ...g, key: month ?? g.ownerId }))),
+        ]);
+        return [
+          ...calls.map((g) => ({ key: g.key, ...placedCalls(g) })),
+          ...logs.map((g) => ({ key: g.key, ...loggedCalls(g) })),
+        ];
+      };
+      const groups = pivot === 'month' ? await perMonth(ctx, range, read) : await read(within);
+      const tally = new Map<string | null, { calls: number; connected: number; secs: number }>();
+      for (const g of groups) {
+        const t = tally.get(g.key) ?? { calls: 0, connected: 0, secs: 0 };
+        tally.set(g.key, t);
+        t.calls += g.n;
+        if (g.connected) t.connected += g.n;
+        t.secs += g.secs ?? 0;
+      }
+      const label = await pivotLabels(tenantId, pivot, [...tally.keys()]);
+      const column = PIVOT_COLUMN[pivot];
+      return {
+        key,
+        title: 'Call report',
+        columns: [
+          column,
+          { key: 'calls', label: 'Calls', align: 'right' },
+          { key: 'connected', label: 'Connected', align: 'right' },
+          { key: 'minutes', label: 'Talk time (min)', align: 'right' },
+        ],
+        rows: [...tally]
+          .map(([group, t]) => ({
+            [column.key]: label(group),
+            calls: t.calls,
+            connected: t.connected,
+            minutes: Math.round(t.secs / 6) / 10,
+          }))
+          .sort(pivotOrder(pivot, 'calls')),
+        note: 'Calls placed (not merely scheduled) and calls logged by hand. Connected means someone answered; talk time is what the provider or the agent recorded.',
+      };
+    }
     case 'source-analysis':
     case 'lead-quality': {
       // By the catalogue entry where a lead has one (M4-03); else by the portal its
       // intake named (`bayut:…`), which folds it into that portal's entry (M16-02);
       // else by its pipeline source.
-      // ponytail: the period's leads in memory, as Source to Booking reads them; a GROUP BY on the label at 100k leads.
+      // ponytail: the period's leads in memory; a groupBy as Source to Booking's (NFR-10) at 100k leads.
       const leads = await prismaRead.lead.findMany({
         where: { tenantId, deletedAt: null, createdAt: within, ...owned(userIds), ...lead },
         select: {

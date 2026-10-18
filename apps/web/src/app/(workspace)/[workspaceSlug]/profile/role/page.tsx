@@ -2,6 +2,8 @@ import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
 import { redirect } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
+import { hasAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitlements';
+import AvailabilityToggle from './AvailabilityToggle';
 
 export const metadata = { title: 'My role & access' };
 
@@ -127,10 +129,10 @@ export default async function RolePage({ params }: { params: Promise<{ workspace
   }
   const { ctx, workspace } = page;
 
-  const [user, role] = await Promise.all([
+  const [user, role, leadWork] = await Promise.all([
     prisma.user.findFirst({
       where: { tenantId: ctx.tenantId, id: ctx.actor.id },
-      select: { fullName: true, email: true },
+      select: { fullName: true, email: true, isAvailable: true },
     }),
     prisma.role.findFirst({
       where: { tenantId: ctx.tenantId, id: ctx.actor.roleId },
@@ -143,6 +145,7 @@ export default async function RolePage({ params }: { params: Promise<{ workspace
         },
       },
     }),
+    hasAnyModuleEntitlement(ctx.tenantId, LEAD_MODULES),
   ]);
 
   const copy = ROLE_COPY[role?.key ?? ''] ?? { title: role?.name ?? 'Team member', responsibilities: [] };
@@ -189,6 +192,12 @@ export default async function RolePage({ params }: { params: Promise<{ workspace
           </span>
         </div>
       </section>
+
+      {leadWork && user && (
+        <section className="lf-card" style={{ padding: 'var(--lf-space-5)', marginBottom: 'var(--lf-space-4)' }}>
+          <AvailabilityToggle slug={workspaceSlug} initial={user.isAvailable} />
+        </section>
+      )}
 
       {copy.responsibilities.length > 0 && (
         <section className="lf-card" style={{ padding: 'var(--lf-space-5)', marginBottom: 'var(--lf-space-4)' }}>

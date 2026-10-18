@@ -8,11 +8,14 @@ import { can } from '@/lib/security/rbac';
 import { maskOwner } from '@/lib/inventory/listings';
 import { expireLapsedMandates } from '@/services/inventory/mandates';
 import { requirementsWanting } from '@/services/inventory/demand';
+import { workspaceTimezone } from '@/services/hr/attendance';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import { SHOWABLE } from '@/lib/proposals/publicProposal';
 import ShareWithLead from '../../leads/ShareWithLead';
 import MandatePanel from './MandatePanel';
+import ListingStatusPanel from './ListingStatusPanel';
+import MediaUpload from '@/components/workspace/MediaUpload';
 import { Metric } from '@/components/ui/MetricCard';
 
 export const metadata = { title: 'Listing' };
@@ -64,6 +67,12 @@ export default async function ListingDetailPage({
   ]);
 
   const owner = maskOwner(ctx, listing.propertyOwner);
+  const canEdit = can(ctx, 'listings', 'EDIT');
+  const now = new Date();
+  const hasLiveMandate = listing.mandates.some((m) => m.status === 'ACTIVE' && m.expiresAt > now);
+  // A permit is good through its expiry day, read in the workspace's time zone.
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: await workspaceTimezone(ctx) }).format(now);
+  const permitExpired = !!listing.permitExpiry && listing.permitExpiry.toISOString().slice(0, 10) < today;
   const canSeeContact = can(ctx, 'listings', 'VIEW_SENSITIVE_FIELDS');
   const gallery = listing.media.filter((m) => m.kind === 'IMAGE');
   const documents = listing.media.filter(
@@ -152,9 +161,39 @@ export default async function ListingDetailPage({
         )}
       </section>
 
+      <section className="lf-card" style={{ padding: 18 }} aria-label="Status and permit">
+        <h2 className="lf-h2" style={{ fontSize: 'var(--lf-text-lg)', marginTop: 0 }}>
+          Status and permit
+        </h2>
+        {canEdit ? (
+          <ListingStatusPanel
+            listingId={listing.id}
+            listingType={listing.listingType}
+            status={listing.status}
+            permitNumber={listing.permitNumber}
+            permitExpiry={listing.permitExpiry?.toISOString().slice(0, 10) ?? null}
+            hasLiveMandate={hasLiveMandate}
+          />
+        ) : (
+          <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px', margin: 0 }}>
+            <Row label="Status" value={title(listing.status)} />
+            <Row label="Trakheesi permit" value={listing.permitNumber} />
+            <Row
+              label="Permit expires"
+              value={listing.permitExpiry?.toLocaleDateString('en-GB', { dateStyle: 'medium' })}
+            />
+          </dl>
+        )}
+        {permitExpired && (
+          <p className="lf-hint" style={{ margin: '8px 0 0', color: 'var(--lf-vermillion)' }}>
+            The advertising permit has expired.
+          </p>
+        )}
+      </section>
+
       <MandatePanel
         listingId={listing.id}
-        canEdit={can(ctx, 'listings', 'EDIT')}
+        canEdit={canEdit}
         daysLeft={
           listing.mandateExpires ? Math.ceil((listing.mandateExpires.getTime() - Date.now()) / 86_400_000) : null
         }
@@ -182,8 +221,8 @@ export default async function ListingDetailPage({
         </section>
       )}
 
-      {(gallery.length > 0 || documents.length > 0 || embeds.length > 0) && (
-        <section className="lf-card" style={{ padding: 18 }}>
+      {(gallery.length > 0 || documents.length > 0 || embeds.length > 0 || canEdit) && (
+        <section className="lf-card" style={{ padding: 18 }} aria-label="Media">
           <h2 className="lf-h2" style={{ fontSize: 'var(--lf-text-lg)', marginTop: 0 }}>
             Media
           </h2>
@@ -233,6 +272,7 @@ export default async function ListingDetailPage({
               ))}
             </ul>
           )}
+          {canEdit && <MediaUpload endpoint={`/api/v1/listings/${listing.id}/media/upload`} />}
         </section>
       )}
 

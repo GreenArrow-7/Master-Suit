@@ -16,7 +16,7 @@ const body = z
   .strict();
 
 export const POST = route(
-  { module: 'events', productModule: SALES_OR_REALTY, action: 'EDIT', params, body },
+  { module: 'events', productModule: SALES_OR_REALTY, action: 'EDIT', params, body, auditEvent: 'RECORD_UPDATED' },
   async ({ ctx, params, body: { inviteeId, rsvpStatus, channel } }) => {
     await assertEventInScope(ctx, params.id, 'EDIT');
     const invitee = await prisma.eventInvitee.findFirst({
