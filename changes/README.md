@@ -29,7 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
-| 2026-10-18 | [Meetings, follow-ups and site visits on the workspace's Microsoft 365 (Outlook) calendar, connected with Microsoft](2026-10-18-le-outlook-calendar.md) | — | Lead Eagle, follow-ups, integrations, feature |
+| 2026-10-18 | [Meetings, follow-ups and site visits on the workspace's Microsoft 365 (Outlook) calendar, connected with Microsoft](2026-10-18-le-outlook-calendar.md) | #228 | Lead Eagle, follow-ups, integrations, feature |
 | 2026-10-18 | [Next.js 16.4.2: the dev server no longer starts without its deepest routes](2026-10-18-next-16-4-2.md) | — | Platform, dependencies, CI |
 | 2026-10-18 | [Browser tests no longer fail on a connection the dev server already closed](2026-10-18-e2e-socket-reuse.md) | #225 | Test, CI |
 | 2026-10-18 | [One tap checks phone notifications end to end](2026-10-18-push-test-button.md) | #223 | Notifications, feature |

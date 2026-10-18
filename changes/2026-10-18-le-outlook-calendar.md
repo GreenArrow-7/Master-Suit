@@ -6,7 +6,7 @@ Google Calendar takes go onto it and follow every change: follow-ups of kind
 Meeting or Site visit (every follow-up with the card's switch), appointment
 tasks and site visits. Booked, created; moved, a PATCH; done, "Done: …";
 cancelled, refused or deleted, removed. A workspace with both calendars
-connected gets each meeting on both. PR —.
+connected gets each meeting on both. PR #228.
 
 **Why.** Audit row M8-09 (High), "Outlook / Microsoft 365 calendar sync",
 mirroring Google's (M8-08, PR #221). Built on the owner's approval of 18 Oct to
