@@ -180,7 +180,7 @@ describe('one render of a screen asks for half the connection pool at most', () 
   it('Admin > Integrations and its Meta page', async () => {
     cookieJar.value = fixture.a.cookie;
     const params = Promise.resolve({ workspaceSlug: slug });
-    fits('integrations', await peakOf(() => IntegrationsPage({ params })));
+    fits('integrations', await peakOf(() => IntegrationsPage({ params, searchParams: Promise.resolve({}) })));
     fits('integrations, Meta', await peakOf(() => MetaIntegrationPage({ params, searchParams: Promise.resolve({}) })));
   });
 

@@ -6,6 +6,7 @@ import { NotFound, Conflict } from '@/lib/errors';
 import { assertAssignableUser, assertLeadInScope, assertOwnerInScope } from '@/lib/security/record-scope';
 import { recordTargetProgress } from '@/services/targets/progress';
 import { lockLeads, recomputeNextFollowUp } from '@/services/leads/nextFollowUp';
+import { queueCalendarSync } from '@/services/integrations/googleCalendar';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -99,6 +100,8 @@ export const PATCH = route(
     // inside withTx has no tenant pinned, so RLS found no target and nothing
     // was ever counted.
     if (completingNow) await recordTargetProgress(ctx, updated.ownerId, 'FOLLOWUPS_COMPLETED');
+    // Moved, done or cancelled on the workspace's Google Calendar too (M8-08).
+    await queueCalendarSync(ctx.tenantId, 'followUp', updated.id);
 
     return updated;
   },

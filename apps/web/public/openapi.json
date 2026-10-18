@@ -10776,6 +10776,113 @@
         }
       }
     },
+    "/api/v1/integrations/google/callback": {
+      "get": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "integrations:MANAGE_CONFIGURATION",
+        "x-permission": "integrations:MANAGE_CONFIGURATION",
+        "x-product-modules": [
+          "HRMS",
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "operationId": "getIntegrationsGoogleCallback",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 2000
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/google/connect": {
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "integrations:MANAGE_CONFIGURATION",
+        "x-permission": "integrations:MANAGE_CONFIGURATION",
+        "x-product-modules": [
+          "HRMS",
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "operationId": "postIntegrationsGoogleConnect",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "returnTo": {
+                    "type": "string",
+                    "maxLength": 200
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/integrations/meta": {
       "post": {
         "tags": [

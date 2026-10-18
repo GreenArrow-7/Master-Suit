@@ -12,6 +12,7 @@
  */
 import { basic, vendorFetch } from './telephony/http';
 import { GRAPH_VERSION } from './meta/send';
+import { googleOAuthConfigured, googleToken } from './calendar';
 
 export type VerifyResult = { ok: true; detail?: string } | { ok: false; detail: string } | { ok: null; detail: string };
 
@@ -60,12 +61,18 @@ export async function verifyConnection(provider: string, c: Record<string, strin
       }
 
       case 'google': {
-        const a = await vendorFetch<{ id?: string }>({
+        // A connection made through Google holds a refresh token: its access token lasts an hour.
+        const accessToken =
+          c.refreshToken && googleOAuthConfigured()
+            ? (await googleToken({ refreshToken: c.refreshToken })).accessToken
+            : c.accessToken;
+        // The events list, not the calendar: all the calendar.events scope the connect flow asks for can read.
+        const a = await vendorFetch<{ summary?: string }>({
           vendor: provider,
-          url: 'https://www.googleapis.com/calendar/v3/calendars/primary',
-          headers: { Authorization: `Bearer ${c.accessToken}` },
+          url: `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(c.calendarId || 'primary')}/events?maxResults=1`,
+          headers: { Authorization: `Bearer ${accessToken}` },
         });
-        return { ok: true, detail: a.id };
+        return { ok: true, detail: a.summary };
       }
 
       case 'gemini': {

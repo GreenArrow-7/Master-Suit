@@ -5,6 +5,7 @@ import { assertLeadInScope, assertRecordInScope } from '@/lib/security/record-sc
 import { updateRecordField, addTag, loadRecord, RECORD_MODULE, type AutomationObjectType } from './records';
 import { postWebhook } from './webhook';
 import { withRecompute } from '@/services/leads/nextFollowUp';
+import { queueCalendarSync } from '@/services/integrations/googleCalendar';
 import { updateLead } from '@/services/leads/updateLead';
 import { sendLeadMessage, type MessageChannel } from '@/services/leads/leadMessages';
 import { assignLead } from '@/services/distribution/assignLead';
@@ -64,7 +65,7 @@ export async function runAction({ ctx, objectType, recordId, spec }: ActionConte
       // an opportunity, account or ticket attach elsewhere and affect no lead
       // aggregate — hence the conditional id rather than an unconditional one.
       const leadId = objectType === 'LEAD' ? recordId : null;
-      await withTx(ctx.tenantId, (tx) =>
+      const task = await withTx(ctx.tenantId, (tx) =>
         withRecompute(tx, ctx.tenantId, [leadId], () =>
           tx.task.create({
             data: {
@@ -78,6 +79,7 @@ export async function runAction({ ctx, objectType, recordId, spec }: ActionConte
           }),
         ),
       );
+      await queueCalendarSync(ctx.tenantId, 'task', task.id);
       return;
     }
 

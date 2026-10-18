@@ -6,6 +6,7 @@ import { can } from '@/lib/security/rbac';
 import { callbackSecrets, UNSIGNED_VENDORS } from '@/lib/integrations/telephony';
 import { defaultVendor } from '@/lib/integrations/telephony/resolve';
 import { PROVIDERS } from '@/lib/integrations/registry';
+import { googleOAuthConfigured } from '@/lib/integrations/calendar';
 import { buildId } from '@/lib/build';
 import IntegrationBoard, { type ProviderCard } from '@/components/workspace/IntegrationBoard';
 import ChannelOverview from '@/components/workspace/ChannelOverview';
@@ -20,8 +21,16 @@ export const metadata = { title: 'Integrations' };
  * while the connections that actually gate Meet, WhatsApp, transcription and
  * every outbound call lived in `IntegrationConnection` with no UI at all.
  */
-export default async function IntegrationsPage({ params }: { params: Promise<{ workspaceSlug: string }> }) {
+export default async function IntegrationsPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ workspaceSlug: string }>;
+  searchParams: Promise<{ connected?: string; error?: string }>;
+}) {
   const { workspaceSlug } = await params;
+  // Back from Google's consent screen (api/v1/integrations/google/callback).
+  const back = await searchParams;
   const ctx = await requirePageAccess({ permission: ['integrations', 'VIEW'] });
 
   const [connections, chosen, channels] = await Promise.all([
@@ -68,6 +77,7 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ w
         errorMessage: conn?.errorMessage ?? null,
         webhookUrl: spec.webhook && conn ? `${base}/api/v1/webhooks/${spec.webhook}/${conn.webhookKey}${token}` : null,
         manageHref: spec.category === 'LEADS' && conn ? `/${workspaceSlug}/admin/lead-sources/${spec.key}` : null,
+        oauth: spec.key === 'google' ? { configured: googleOAuthConfigured() } : null,
       };
     }),
   );
@@ -89,6 +99,17 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ w
       <h2 className="lf-channels__title" style={{ marginTop: 'var(--lf-space-5)' }}>
         Providers
       </h2>
+
+      {back.connected === 'google' && (
+        <p
+          className={back.error ? 'lf-hint lf-hint--error' : 'lf-hint'}
+          role={back.error ? 'alert' : 'status'}
+          style={{ marginBottom: 'var(--lf-space-3)' }}
+        >
+          {back.error ??
+            'Google Calendar connected. Meetings, site visits and meeting follow-ups now go onto it as they are booked or changed.'}
+        </p>
+      )}
 
       <IntegrationBoard
         providers={providers}
