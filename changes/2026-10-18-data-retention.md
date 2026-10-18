@@ -1,6 +1,6 @@
 # A workspace keeps its audit log, attendance punches and AI events longer than the deployment, never shorter
 
-**What.** Audit row M18-11, branch `feat/le-data-retention`. A per-workspace
+**What.** Audit row M18-11, PR #220. A per-workspace
 retention window for three kinds of record, and a nightly retention job that
 follows it.
 
