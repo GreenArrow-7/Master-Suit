@@ -239,10 +239,10 @@ deployment ran for months with every queue dead:
 dc logs worker | grep 'workers started'
 ```
 
-That line must appear and must list ten queues:
+That line must appear and must list eleven queues:
 
 ```
-"queues":["automation","distribution","sla","campaign","webhook","maintenance","reminders","media","ai","notifications"]
+"queues":["automation","distribution","sla","campaign","webhook","maintenance","reminders","media","ai","notifications","calendar"]
 ```
 
 If it is absent the container has exited; `dc logs worker` will say which queue

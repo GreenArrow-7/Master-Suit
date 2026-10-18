@@ -412,7 +412,7 @@ docker compose -p master-suite -f infra/docker-compose.prod.yml up -d worker
 
 The worker container runs `src/workers/index.ts` and registers the queues:
 distribution, sla, automation, maintenance, reminders, notifications, ai,
-campaigns, media, webhook, liveStream. The maintenance queue arms its schedules
+campaigns, media, webhook, liveStream, calendar (Google Calendar sync, M8-08). The maintenance queue arms its schedules
 — among them retention (03:00), lead triage (every 5 min) and the **follow-up
 drift canary (03:20, report-only)** — and the reminders queue one: the reminder
 sweep (every 5 min).
