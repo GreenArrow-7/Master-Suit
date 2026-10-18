@@ -23,7 +23,7 @@ export interface ProviderCard {
   /** A connected lead source's own screen: its deliveries and field mapping. */
   manageHref: string | null;
   /**
-   * Connected through the vendor's consent screen (Google); `configured` once the
+   * Connected through the vendor's consent screen (Google, Microsoft); `configured` once the
    * deployment has its OAuth client. `inApp`: the iOS or Android app, whose WebView
    * hands the consent screen to the phone's browser, where this session is not.
    */
@@ -480,8 +480,8 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
           )}
           {provider.oauth && !provider.oauth.configured && (
             <p className="lf-hint" style={{ marginTop: 4 }}>
-              Not configured on this deployment: an operator needs to set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET
-              before anyone can connect.
+              Not configured on this deployment: an operator needs to set {provider.key.toUpperCase()}_CLIENT_ID and{' '}
+              {provider.key.toUpperCase()}_CLIENT_SECRET before anyone can connect.
             </p>
           )}
           {provider.oauth?.configured && provider.oauth.inApp && canEdit && (

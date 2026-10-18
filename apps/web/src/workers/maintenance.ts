@@ -13,7 +13,7 @@ import { runDigestSweep } from '@/services/notifications/digest';
 import { sweepFirstContact } from '@/services/sla/checkLeadFirstContact';
 import { runReportSchedules } from '@/services/leadership/reportSchedules';
 import { sweepTimeTriggers } from '@/services/automation/engine';
-import { retryPendingCalendarSyncs } from '@/services/integrations/googleCalendar';
+import { retryPendingCalendarSyncs } from '@/services/integrations/calendarSync';
 
 /**
  * The `maintenance` queue: scheduled sweeps, one at a time (see startWorker).
@@ -179,7 +179,7 @@ export const MAINTENANCE_JOBS = {
     return result;
   },
   /**
-   * Google Calendar syncs that ran out of retries, or were left while the
+   * Calendar syncs (Google, Microsoft 365) that ran out of retries, or were left while the
    * connection was in error (M8-08), queued again. Scoped like the two above.
    */
   'calendar-sync-retry': async (data?: { tenantIds?: string[] }) => {

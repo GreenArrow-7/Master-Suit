@@ -7,7 +7,7 @@ import { Invalid } from '@/lib/errors';
 import type { Prisma } from '@prisma/client';
 import { assertContactInScope, assertLeadCallable } from '@/lib/security/record-scope';
 import { visibilityWhere } from '@/lib/security/visibility';
-import { queueCalendarSync } from '@/services/integrations/googleCalendar';
+import { queueCalendarSync } from '@/services/integrations/calendarSync';
 
 const KINDS = ['PROPERTY_VISIT', 'CLIENT_MEETING'] as const;
 const STATUSES = ['REQUESTED', 'APPROVED', 'REJECTED', 'CHECKED_IN', 'COMPLETED', 'CANCELLED', 'NO_SHOW'] as const;
@@ -156,7 +156,7 @@ export const POST = route(
       },
       select: LIST_SELECT,
     });
-    // Onto the workspace's Google Calendar (M8-08).
+    // Onto the workspace's calendars (M8-08, M8-09).
     await queueCalendarSync(ctx.tenantId, 'visit', visit.id);
     return visit;
   },

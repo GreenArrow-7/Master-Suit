@@ -205,6 +205,7 @@ shared when enabled:
 | SMTP relay | Invitations, resets, notifications — recipient address and message | Customer |
 | **Meta WhatsApp Business** | Message content and recipient phone number | Customer |
 | **Google Calendar** (OAuth) | Event details and attendees | Customer |
+| **Microsoft 365 Outlook calendar** (OAuth, Microsoft Graph) | Event details and attendees | Customer |
 | Telephony (caller number, country) | Numbers dialled and call metadata | Customer |
 | ClamAV | Uploaded file bytes, scanned in the operator's own infrastructure | Operator |
 | Object storage (S3/MinIO) | Uploaded documents at rest | Operator |

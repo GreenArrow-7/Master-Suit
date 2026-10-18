@@ -4,7 +4,7 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { createGoogleCalendarEvent } from '@/lib/integrations/calendar';
-import { googleAccessToken } from '@/services/integrations/googleCalendar';
+import { calendarAccessToken } from '@/services/integrations/calendarSync';
 import { assertAssignableUser, eventListScope } from '@/lib/security/record-scope';
 
 const createBody = z
@@ -50,7 +50,7 @@ export const POST = route(
 
     try {
       // Refreshed when a connection made through Google has run past its hour.
-      const accessToken = await googleAccessToken(ctx.tenantId);
+      const accessToken = await calendarAccessToken(ctx.tenantId, 'google');
       if (!accessToken) return event;
       const created = await createGoogleCalendarEvent(accessToken, {
         title: event.title,

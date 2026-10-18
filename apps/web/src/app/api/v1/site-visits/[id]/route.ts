@@ -5,7 +5,7 @@ import { prisma, withTx } from '@/lib/db';
 import { Conflict, NotFound } from '@/lib/errors';
 import { assertRecordInScope } from '@/lib/security/record-scope';
 import { VISIT_STATUSES, amendCompleted, findVisitInScope, transition, verify } from '@/services/visits/lifecycle';
-import { queueCalendarSync } from '@/services/integrations/googleCalendar';
+import { queueCalendarSync } from '@/services/integrations/calendarSync';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -93,7 +93,7 @@ export const PATCH = route(
   async ({ ctx, params, body }) => {
     if (body.action === 'transition') {
       const { visit, from } = await transition({ ctx, visitId: params.id, to: body.status, note: body.note });
-      // Done, cancelled or refused on the workspace's Google Calendar too (M8-08).
+      // Done, cancelled or refused on the workspace's calendars too (M8-08, M8-09).
       await queueCalendarSync(ctx.tenantId, 'visit', visit.id);
       return { id: visit.id, from, status: visit.status };
     }
@@ -131,7 +131,7 @@ export const PATCH = route(
         data: { ...data, updatedById: ctx.actor.id },
       });
     });
-    // A new time or place, on the workspace's Google Calendar (M8-08).
+    // A new time or place, on the workspace's calendars (M8-08, M8-09).
     await queueCalendarSync(ctx.tenantId, 'visit', edited.id);
     return edited;
   },
@@ -159,7 +159,7 @@ export const DELETE = route(
         select: { id: true, deletedAt: true },
       });
     });
-    // Off the workspace's Google Calendar (M8-08).
+    // Off the workspace's calendars (M8-08, M8-09).
     await queueCalendarSync(ctx.tenantId, 'visit', cancelled.id);
     return cancelled;
   },

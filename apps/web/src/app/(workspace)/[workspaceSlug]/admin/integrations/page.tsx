@@ -6,7 +6,7 @@ import { can } from '@/lib/security/rbac';
 import { callbackSecrets, UNSIGNED_VENDORS } from '@/lib/integrations/telephony';
 import { defaultVendor } from '@/lib/integrations/telephony/resolve';
 import { PROVIDERS } from '@/lib/integrations/registry';
-import { googleOAuthConfigured } from '@/lib/integrations/calendar';
+import { CALENDARS, isCalendarProvider } from '@/services/integrations/calendarSync';
 import { isAppUserAgent } from '@/lib/mobile/iosApp';
 import { headers } from 'next/headers';
 import { buildId } from '@/lib/build';
@@ -31,7 +31,7 @@ export default async function IntegrationsPage({
   searchParams: Promise<{ connected?: string; error?: string }>;
 }) {
   const { workspaceSlug } = await params;
-  // Back from Google's consent screen (api/v1/integrations/google/callback).
+  // Back from a calendar's consent screen (api/v1/integrations/{google,microsoft}/callback).
   const back = await searchParams;
   const ctx = await requirePageAccess({ permission: ['integrations', 'VIEW'] });
 
@@ -80,7 +80,7 @@ export default async function IntegrationsPage({
         errorMessage: conn?.errorMessage ?? null,
         webhookUrl: spec.webhook && conn ? `${base}/api/v1/webhooks/${spec.webhook}/${conn.webhookKey}${token}` : null,
         manageHref: spec.category === 'LEADS' && conn ? `/${workspaceSlug}/admin/lead-sources/${spec.key}` : null,
-        oauth: spec.key === 'google' ? { configured: googleOAuthConfigured(), inApp } : null,
+        oauth: isCalendarProvider(spec.key) ? { configured: CALENDARS[spec.key].configured(), inApp } : null,
       };
     }),
   );
@@ -103,14 +103,14 @@ export default async function IntegrationsPage({
         Providers
       </h2>
 
-      {back.connected === 'google' && (
+      {back.connected && isCalendarProvider(back.connected) && (
         <p
           className={back.error ? 'lf-hint lf-hint--error' : 'lf-hint'}
           role={back.error ? 'alert' : 'status'}
           style={{ marginBottom: 'var(--lf-space-3)' }}
         >
           {back.error ??
-            'Google Calendar connected. Meetings, site visits and meeting follow-ups now go onto it as they are booked or changed.'}
+            `${CALENDARS[back.connected].label} connected. Meetings, site visits and meeting follow-ups now go onto its calendar as they are booked or changed.`}
         </p>
       )}
 

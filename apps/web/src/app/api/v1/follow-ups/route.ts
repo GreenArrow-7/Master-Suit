@@ -4,7 +4,7 @@ import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
 import { assertCallInScope, assertLeadInScope, workListScope } from '@/lib/security/record-scope';
 import { withRecompute } from '@/services/leads/nextFollowUp';
-import { queueCalendarSync } from '@/services/integrations/googleCalendar';
+import { queueCalendarSync } from '@/services/integrations/calendarSync';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { mergeWhere } from '@/lib/api/where';
 import { FOLLOW_UP_KINDS, OPEN_FOLLOW_UP, followUpDueWhere, isDayKey } from '@/lib/leads/followUpDue';
@@ -39,7 +39,7 @@ export const POST = route(
         }),
       );
     });
-    // A meeting or site visit onto the workspace's Google Calendar, once committed (M8-08).
+    // A meeting or site visit onto the workspace's calendars, once committed (M8-08, M8-09).
     await queueCalendarSync(ctx.tenantId, 'followUp', created.id);
     return created;
   },

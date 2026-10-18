@@ -6,7 +6,7 @@ import { withTx } from '@/lib/db';
 import { NotFound, Conflict } from '@/lib/errors';
 import { assertAssignableUser, assertLeadInScope, assertOwnerInScope } from '@/lib/security/record-scope';
 import { lockLeads, recomputeNextFollowUp } from '@/services/leads/nextFollowUp';
-import { queueCalendarSync } from '@/services/integrations/googleCalendar';
+import { queueCalendarSync } from '@/services/integrations/calendarSync';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -122,7 +122,7 @@ export const PATCH = route(
       for (const leadId of locked) await recomputeNextFollowUp(tx, ctx.tenantId, leadId);
       return updated;
     });
-    // A meeting moved, done or cancelled, and its next occurrence, on the workspace's Google Calendar (M8-08).
+    // A meeting moved, done or cancelled, and its next occurrence, on the workspace's calendars (M8-08, M8-09).
     await queueCalendarSync(ctx.tenantId, 'task', updated.id, nextId);
     return updated;
   },
@@ -168,7 +168,7 @@ export const DELETE = route(
       for (const leadId of locked) await recomputeNextFollowUp(tx, ctx.tenantId, leadId);
       return { ok: true };
     });
-    // Off the workspace's Google Calendar (M8-08).
+    // Off the workspace's calendars (M8-08, M8-09).
     await queueCalendarSync(ctx.tenantId, 'task', params.id);
     return deleted;
   },
