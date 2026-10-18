@@ -46,6 +46,41 @@ const TX_TIMEOUT_MS = 120_000;
 const MAX_BATCHES = 200;
 
 /**
+ * The windows a workspace may lengthen (M18-11), keyed as they are stored in
+ * `OrganizationSetting.retentionPolicy` and edited under Administration →
+ * Settings → Data Retention.
+ *
+ * Owner decision (18 Oct): a workspace may keep a class longer than the
+ * deployment, never shorter. The sweep takes the longer of the two for each
+ * row's workspace, so a value below the deployment's — stored before the
+ * deployment chose a longer window — never deletes early. Unset at the
+ * deployment still keeps every row, whatever a workspace stores.
+ */
+export const WORKSPACE_RETENTION = {
+  auditLog: { label: 'Audit log', days: () => env.AUDIT_LOG_RETENTION_DAYS },
+  attendancePunch: { label: 'Attendance punches', days: () => env.ATTENDANCE_PUNCH_RETENTION_DAYS },
+  aiEvent: { label: 'AI events', days: () => env.AI_EVENT_RETENTION_DAYS },
+} as const;
+
+export type WorkspaceRetentionKey = keyof typeof WORKSPACE_RETENTION;
+
+/** Each class's deployment window, this workspace's own and the one the sweep applies; null days = keep every row. */
+export function workspaceRetention(policy: unknown) {
+  const stored = (policy && typeof policy === 'object' ? policy : {}) as Record<string, unknown>;
+  return (Object.keys(WORKSPACE_RETENTION) as WorkspaceRetentionKey[]).map((key) => {
+    const deployment = WORKSPACE_RETENTION[key].days() ?? null;
+    const own = typeof stored[key] === 'number' ? (stored[key] as number) : null;
+    return {
+      key,
+      label: WORKSPACE_RETENTION[key].label,
+      deployment,
+      workspace: own,
+      effective: deployment === null ? null : Math.max(deployment, own ?? 0),
+    };
+  });
+}
+
+/**
  * The tables swept by age, their timestamp, and where their window comes from.
  *
  * `days()` is a function rather than a value because `env` is parsed once at
@@ -66,6 +101,8 @@ const RETENTION_TABLES: {
   /** Keep the row when its object could not be removed, so the next run retries it. */
   keepRowOnObjectFailure?: boolean;
   days: () => number | undefined;
+  /** A workspace may keep this table's rows longer (WORKSPACE_RETENTION). */
+  workspaceKey?: WorkspaceRetentionKey;
 }[] = [
   // First, before the soft-delete purge below cascades a call's recordings away
   // with their objects still in the bucket. A provider recording's storageKey is
@@ -78,19 +115,20 @@ const RETENTION_TABLES: {
     keepRowOnObjectFailure: true,
     days: () => 0,
   },
-  { name: 'AuditLog', column: 'occurredAt', days: () => env.AUDIT_LOG_RETENTION_DAYS },
+  { name: 'AuditLog', column: 'occurredAt', days: WORKSPACE_RETENTION.auditLog.days, workspaceKey: 'auditLog' },
   {
     name: 'HrAttendancePunch',
     column: 'serverTime',
     object: '"capturePath"',
-    days: () => env.ATTENDANCE_PUNCH_RETENTION_DAYS,
+    days: WORKSPACE_RETENTION.attendancePunch.days,
+    workspaceKey: 'attendancePunch',
   },
   { name: 'PlatformAuditEvent', column: 'occurredAt', days: () => env.PLATFORM_AUDIT_RETENTION_DAYS },
   // One row per AI request. It carries no prompt and no completion, only counts
   // and a machine reason, but it is the fastest-growing table on a busy
   // deployment and an operator who can see a spend curve for ever has also kept
   // a per-person activity trail for ever.
-  { name: 'AiEvent', column: 'occurredAt', days: () => env.AI_EVENT_RETENTION_DAYS },
+  { name: 'AiEvent', column: 'occurredAt', days: WORKSPACE_RETENTION.aiEvent.days, workspaceKey: 'aiEvent' },
   // Identity documents of a deleted person: the executor sets purgeAt (owner decision: 15
   // days after completion); rows with purgeAt NULL never match `< now`.
   {
@@ -161,6 +199,17 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
     const cutoff = new Date(now.getTime() - days * 86_400_000);
     let deleted = 0;
     let sweeps = 0;
+    // A row whose workspace keeps this class longer is not due yet ($2 is now). The key is
+    // a closed literal from WORKSPACE_RETENTION, never a caller's value; a row with no
+    // workspace (an AiEvent's tenantId may be null) follows the deployment.
+    const where = table.workspaceKey
+      ? `"${table.column}" < $1 AND NOT EXISTS (
+           SELECT 1 FROM "OrganizationSetting" s
+            WHERE s."tenantId" = t."tenantId"
+              AND jsonb_typeof(s."retentionPolicy"->'${table.workspaceKey}') = 'number'
+              AND t."${table.column}" + (s."retentionPolicy"->>'${table.workspaceKey}')::float8 * interval '1 day' >= $2)`
+      : `"${table.column}" < $1`;
+    const args = table.workspaceKey ? [cutoff, now] : [cutoff];
 
     // A dry run counts. Paging the way the sweep does would re-read the same first
     // batch on every pass, since nothing is deleted, and report it up to MAX_BATCHES
@@ -168,10 +217,7 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
     if (dryRun) {
       const [row] = await withPlatformTx(
         (tx) =>
-          tx.$queryRawUnsafe<{ count: bigint }[]>(
-            `SELECT count(*) FROM "${table.name}" WHERE "${table.column}" < $1`,
-            cutoff,
-          ),
+          tx.$queryRawUnsafe<{ count: bigint }[]>(`SELECT count(*) FROM "${table.name}" t WHERE ${where}`, ...args),
         { timeoutMs: TX_TIMEOUT_MS },
       );
       result.auditSummary[table.name] = Number(row?.count ?? 0);
@@ -192,11 +238,11 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
       const due = await withPlatformTx(
         (tx) =>
           tx.$queryRawUnsafe<{ id: string; object: string | null }[]>(
-            `SELECT id${table.object ? `, ${table.object} AS object` : ''} FROM "${table.name}"
-              WHERE "${table.column}" < $1
+            `SELECT id${table.object ? `, ${table.object} AS object` : ''} FROM "${table.name}" t
+              WHERE ${where}
               ORDER BY "${table.column}" ASC
               LIMIT ${BATCH}`,
-            cutoff,
+            ...args,
           ),
         { timeoutMs: TX_TIMEOUT_MS },
       );

@@ -6,9 +6,10 @@ import { inIosApp } from '@/lib/mobile/iosApp';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import SettingsForm, { type SettingsField } from './SettingsForm';
 import { WORKSPACE_LOCALES } from '@/lib/locale';
+import { workspaceRetention } from '@/lib/jobs/retention';
 
 /**
- * One route serving four administration screens.
+ * One route serving five administration screens.
  *
  * Each needs its own permission — reading the subscription is not the same right
  * as reading the security posture — so the permission is resolved from the
@@ -21,6 +22,7 @@ const SECTION_PERMISSION: Record<string, readonly [string, Action]> = {
   modules: ['settings', 'VIEW'],
   subscription: ['settings', 'VIEW'],
   security: ['settings', 'VIEW'],
+  retention: ['settings', 'VIEW'],
 };
 
 export default async function Page({ params }: { params: Promise<{ workspaceSlug: string; section: string }> }) {
@@ -117,6 +119,44 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
               ['Database row-level security', 'Enforced'],
               ['Workspace status', workspace.status],
             ]}
+          />
+        </Shell>
+      );
+    }
+
+    case 'retention': {
+      // M18-11: each class's window, longer than the deployment's or following it.
+      const setting = await prisma.organizationSetting.findUnique({
+        where: { tenantId: ctx.tenantId },
+        select: { retentionPolicy: true },
+      });
+      const rows = workspaceRetention(setting?.retentionPolicy);
+      const days = (n: number | null) => (n === null ? 'Kept forever' : `${n} days`);
+      const fields: SettingsField[] = rows.map((row) => ({
+        name: row.key,
+        label: `${row.label} (days)`,
+        type: 'number',
+        value: row.workspace === null ? '' : String(row.workspace),
+        hint:
+          row.deployment === null
+            ? 'This deployment keeps every row. A number here is the least this workspace keeps if a window is ever set.'
+            : `At least ${row.deployment} days. Empty follows the deployment.`,
+      }));
+      return (
+        <Shell title="Data retention">
+          <p style={{ margin: 0, color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
+            How long the nightly retention job keeps each kind of record before deleting it. A workspace may keep a
+            record longer than this deployment does, never shorter.
+          </p>
+          <SettingsForm endpoint={endpoint('retention')} fields={fields} canEdit={canConfigure} />
+          <WorkspaceTable
+            headers={['Record', { label: 'Kept for', priority: 'secondary' }, 'Deployment', 'This workspace']}
+            rows={rows.map((row) => [
+              row.label,
+              days(row.effective),
+              days(row.deployment),
+              row.workspace === null ? 'Follows the deployment' : `${row.workspace} days`,
+            ])}
           />
         </Shell>
       );

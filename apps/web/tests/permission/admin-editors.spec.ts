@@ -11,7 +11,7 @@
  * workspace grant itself a module would make entitlement decorative.
  */
 import { randomBytes } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { prisma } from '@/lib/db';
 import { textDirection } from '@/lib/locale';
 import { PATCH as settingsPatch } from '@/app/api/v1/workspaces/[workspaceSlug]/settings/[section]/route';
@@ -19,6 +19,21 @@ import { createSessionToken } from '../helpers/session';
 import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import { patch } from '../helpers/request';
 import type { Grants } from '../helpers/fixtures';
+
+/** The deployment's audit-log window, swapped per case (M18-11); everything else in env is real. */
+const deployment: { audit?: number } = {};
+vi.mock('@/lib/env', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/env')>();
+  return {
+    ...actual,
+    env: {
+      ...actual.env,
+      get AUDIT_LOG_RETENTION_DAYS() {
+        return deployment.audit;
+      },
+    },
+  };
+});
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `admined-${suffix}`;
@@ -260,5 +275,43 @@ describe('what a workspace may not change about itself', () => {
       at('modules').params,
     );
     expect(await prisma.moduleEntitlement.count({ where: { tenantId } })).toBe(before);
+  });
+});
+
+describe('data retention (M18-11)', () => {
+  const save = (body: Record<string, unknown>, as = adminCookie) =>
+    patch(settingsPatch, at('retention').path, body, as, at('retention').params);
+  const stored = async () =>
+    (await prisma.organizationSetting.findUniqueOrThrow({ where: { tenantId } })).retentionPolicy;
+
+  it('keeps a class longer than the deployment and reports the window the sweep applies', async () => {
+    deployment.audit = 2555;
+    const res = await save({ auditLog: '3650', attendancePunch: '', aiEvent: '' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await stored()).toEqual({ auditLog: 3650 });
+    expect(res.body.find((row: { key: string }) => row.key === 'auditLog')).toMatchObject({
+      deployment: 2555,
+      workspace: 3650,
+      effective: 3650,
+    });
+  });
+
+  it('refuses a window shorter than the deployment, and keeps what was stored', async () => {
+    deployment.audit = 2555;
+    const res = await save({ auditLog: 365 });
+    expect(res.status).toBe(422);
+    expect(res.body.errors[0]).toMatchObject({ field: 'auditLog' });
+    expect(await stored()).toEqual({ auditLog: 3650 });
+  });
+
+  it('clears a class back to the deployment when emptied', async () => {
+    deployment.audit = 2555;
+    expect((await save({ auditLog: '' })).status).toBe(200);
+    expect(await stored()).toEqual({});
+  });
+
+  it('refuses someone who may read settings but not configure them', async () => {
+    expect((await save({ auditLog: 4000 }, viewerCookie)).status).toBe(403);
+    expect(await stored()).toEqual({});
   });
 });
