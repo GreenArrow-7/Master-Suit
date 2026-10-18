@@ -1,3 +1,4 @@
+import { Agent } from 'node:http';
 import { defineConfig, devices } from '@playwright/test';
 
 // The suite signs in as the platform owner, whose credentials live in .env
@@ -8,6 +9,21 @@ try {
 } catch {
   // Absent in a fresh checkout. globalSetup throws a readable error instead.
 }
+
+/**
+ * A fresh connection for every `page.request` call; no socket is reused.
+ *
+ * Playwright sends API requests through one keep-alive pool for the whole
+ * worker, so a test's first `page.request` can pick up a socket the previous
+ * test left idle. `next dev` closes an idle socket after 5 seconds and cannot
+ * be told otherwise (only `next start` takes --keepAliveTimeout). When the
+ * worker is busy enough not to read that close in time, the request goes out on
+ * a dead socket and fails with `read ECONNRESET` or `socket hang up` before
+ * the server ever sees it. Chromium retries that case itself; Node does not.
+ * Three CI runs failed this way (17-18 Oct). Every worker loads this file, and
+ * a new connection to localhost costs nothing.
+ */
+Agent.prototype.keepSocketAlive = () => false;
 
 /**
  * One marker for the whole run, set before any worker starts.
