@@ -1,7 +1,7 @@
 import { PRODUCT_DESCRIPTION, PRODUCT_NAME } from '@/lib/branding';
 import { MODULES } from '@/components/brand/ecosystem/modules';
 import { platformValue } from '@/lib/value/platformValue';
-import BrandHero from './BrandHero';
+import BrandHero, { LEAD_EAGLE } from './BrandHero';
 
 /**
  * The shared frame for every screen outside a session: sign in, MFA enrolment,
@@ -18,23 +18,28 @@ import BrandHero from './BrandHero';
  *
  * The graphic is decorative to assistive technology; one visually hidden
  * sentence says in words what it draws.
+ *
+ * `product="lead-eagle"` brands the frame as Lead Eagle (PROD-13); the task
+ * card and everything it posts to are the same.
  */
-export default async function AuthShell({ children }: { children: React.ReactNode }) {
+export default async function AuthShell({ children, product }: { children: React.ReactNode; product?: 'lead-eagle' }) {
   // Measured, not claimed: counts of work the platform did (lib/value/platformValue.ts).
   const value = await platformValue();
   return (
     <main className="lf-auth">
       <p className="lf-visually-hidden">
-        {PRODUCT_NAME}: {PRODUCT_DESCRIPTION} Modules: {MODULES.map((m) => m.label).join(', ')}.
+        {product === 'lead-eagle'
+          ? `${LEAD_EAGLE.label} by ${PRODUCT_NAME}: ${LEAD_EAGLE.description}`
+          : `${PRODUCT_NAME}: ${PRODUCT_DESCRIPTION} Modules: ${MODULES.map((m) => m.label).join(', ')}.`}
       </p>
       <section className="lf-auth-story" aria-hidden="true">
-        <BrandHero value={value} />
+        <BrandHero value={value} product={product} />
       </section>
 
       <section className="lf-auth-pane">
         <div className="lf-auth-column">
           <div className="lf-auth-compactWrap" aria-hidden="true">
-            <BrandHero variant="compact" />
+            <BrandHero variant="compact" product={product} />
           </div>
           <div className="lf-auth-card">{children}</div>
         </div>

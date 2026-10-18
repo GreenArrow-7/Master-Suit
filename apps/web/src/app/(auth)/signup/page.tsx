@@ -17,7 +17,7 @@ export default async function SignupPage() {
   if (!offer) notFound();
   const { days } = offer;
   return (
-    <AuthShell>
+    <AuthShell product="lead-eagle">
       <h1 className="lf-auth-title">Start your Lead Eagle trial</h1>
       <p className="lf-auth-lede">
         {days} days free. We&rsquo;ll email you a link; your workspace is made when you use it.

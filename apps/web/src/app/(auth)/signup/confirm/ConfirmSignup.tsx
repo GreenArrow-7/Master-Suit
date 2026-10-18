@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { LEAD_EAGLE_LOGIN } from '@/lib/security/redirect';
 import { useEffect, useRef, useState } from 'react';
 
 type Result =
@@ -64,7 +65,7 @@ export default function ConfirmSignup({ token }: { token: string }) {
         Your workspace is ready. Sign in as {result.email}
         {result.reusedExistingIdentity ? ' with the password you already use here.' : ' with the password you chose.'}
       </div>
-      <Link className="lf-btn lf-btn--lg" href="/login">
+      <Link className="lf-btn lf-btn--lg" href={LEAD_EAGLE_LOGIN}>
         Sign in
       </Link>
     </div>

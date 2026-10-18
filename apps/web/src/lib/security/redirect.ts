@@ -28,16 +28,24 @@ export function safeReturnTo(value: string | null | undefined, fallback = '/'): 
 const MAX_RETURN_TO = 2048;
 
 /**
+ * Lead Eagle's own sign-in door (PROD-13): the same page, form, endpoint and
+ * accounts as `/login`, under Lead Eagle's name.
+ */
+export const LEAD_EAGLE_LOGIN = '/login?product=lead-eagle';
+
+/**
  * The sign-in page for someone who was sent away from `path` (plus its query):
  * `/login?next=…`, so signing in can bring them back to the record they opened
  * — a notification, a shared link, an app deep link. Plain `/login` when there is
- * nothing worth returning to.
+ * nothing worth returning to. A Lead Eagle screen (`/{slug}/lead-eagle/…`) sends
+ * them to Lead Eagle's door.
  */
 export function loginPathFor(path: string | null | undefined, search = ''): string {
+  const door = path && /^\/[^/]+\/lead-eagle(?:\/|$)/.test(path) ? LEAD_EAGLE_LOGIN : '/login';
   const target = `${path ?? ''}${search}`;
-  if (!path || safeReturnTo(target, '') === '' || target.length > MAX_RETURN_TO) return '/login';
+  if (!path || safeReturnTo(target, '') === '' || target.length > MAX_RETURN_TO) return door;
   if (path === '/login' || path.startsWith('/login/')) return '/login';
-  return `/login?next=${encodeURIComponent(target)}`;
+  return `${door}${door.includes('?') ? '&' : '?'}next=${encodeURIComponent(target)}`;
 }
 
 /**

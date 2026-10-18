@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from '@/lib/auth/signOut';
+import { LEAD_EAGLE_LOGIN } from '@/lib/security/redirect';
 import { applyTheme, THEMES, THEME_LABELS } from '@/lib/theme';
 import { useTheme } from '@/lib/useTheme';
 import { usePaletteKey } from '@/lib/usePaletteKey';
@@ -624,7 +625,9 @@ export default function TopBar({
                 className="lf-account-pop__item"
                 onClick={() => {
                   void signOut().finally(() => {
-                    window.location.href = '/login';
+                    // A Lead-Eagle-only workspace signs out to Lead Eagle's door (PROD-13).
+                    window.location.href =
+                      modules.length === 1 && modules[0] === 'LEAD_EAGLE' ? LEAD_EAGLE_LOGIN : '/login';
                   });
                 }}
               >
