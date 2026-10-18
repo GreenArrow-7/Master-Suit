@@ -7,6 +7,8 @@ import { callbackSecrets, UNSIGNED_VENDORS } from '@/lib/integrations/telephony'
 import { defaultVendor } from '@/lib/integrations/telephony/resolve';
 import { PROVIDERS } from '@/lib/integrations/registry';
 import { googleOAuthConfigured } from '@/lib/integrations/calendar';
+import { isAppUserAgent } from '@/lib/mobile/iosApp';
+import { headers } from 'next/headers';
 import { buildId } from '@/lib/build';
 import IntegrationBoard, { type ProviderCard } from '@/components/workspace/IntegrationBoard';
 import ChannelOverview from '@/components/workspace/ChannelOverview';
@@ -50,6 +52,7 @@ export default async function IntegrationsPage({
   ]);
 
   const byProvider = new Map(connections.map((c) => [c.provider, c]));
+  const inApp = isAppUserAgent((await headers()).get('user-agent'));
   const base = env.APP_URL.replace(/\/$/, '');
 
   const providers: ProviderCard[] = await Promise.all(
@@ -77,7 +80,7 @@ export default async function IntegrationsPage({
         errorMessage: conn?.errorMessage ?? null,
         webhookUrl: spec.webhook && conn ? `${base}/api/v1/webhooks/${spec.webhook}/${conn.webhookKey}${token}` : null,
         manageHref: spec.category === 'LEADS' && conn ? `/${workspaceSlug}/admin/lead-sources/${spec.key}` : null,
-        oauth: spec.key === 'google' ? { configured: googleOAuthConfigured() } : null,
+        oauth: spec.key === 'google' ? { configured: googleOAuthConfigured(), inApp } : null,
       };
     }),
   );

@@ -11,6 +11,11 @@
  * queues the record; the job reads it as it now stands and writes, moves or
  * removes its event. Google down fails the job (retried by the queue, the
  * reason on the Integrations card), never the follow-up.
+ *
+ * A record whose sync failed, or that changed while the connection was not
+ * CONNECTED, stays pending (a Redis set per workspace) until a sync of it
+ * succeeds: the maintenance sweep re-queues it every quarter hour, and the
+ * card keeps its error until nothing is pending.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/db';
@@ -128,16 +133,64 @@ export async function queueCalendarSync(
   try {
     const wanted = ids.filter((id): id is string => !!id);
     if (!wanted.length) return;
-    const connected = await prisma.integrationConnection.findFirst({
-      where: { tenantId, provider: 'google', status: 'CONNECTED' },
-      select: { id: true },
+    const conn = await prisma.integrationConnection.findFirst({
+      where: { tenantId, provider: 'google' },
+      select: { status: true },
     });
-    if (!connected) return;
+    if (!conn) return;
+    // In ERROR (a failed Test connection) or unverified: kept for when it is connected again.
+    if (conn.status !== 'CONNECTED')
+      return await markPending(
+        tenantId,
+        wanted.map((id) => `${kind}:${id}`),
+      );
     // `fresh`: a second change to the record is a second sync, not the first one's id.
-    for (const id of wanted) await enqueue('notifications', 'calendar-sync', { tenantId, kind, id }, { fresh: true });
+    for (const id of wanted) await enqueue('calendar', 'calendar-sync', { tenantId, kind, id }, { fresh: true });
   } catch (err) {
     logger.warn({ err, tenantId, kind }, 'calendar sync not queued');
   }
+}
+
+const PENDING = 'google:calendar:pending';
+/** `{kind}:{id}` of the workspace's records whose event is not yet as the record stands. */
+const pendingOf = (tenantId: string) => `${PENDING}:${tenantId}`;
+/** Every calendar the workspace's events were written to: a changed `calendarId` leaves events on the old one. */
+const writtenTo = (tenantId: string) => `google:calendar:written:${tenantId}`;
+
+async function markPending(tenantId: string, members: string[]) {
+  await redis.sadd(pendingOf(tenantId), ...members);
+  await redis.sadd(PENDING, tenantId);
+}
+
+/**
+ * The maintenance sweep: every pending record of a workspace whose calendar is
+ * CONNECTED, queued again. A disconnected workspace's are dropped (its row is
+ * gone, and so is the calendar to keep in step). `tenantIds` limits it, for tests.
+ */
+export async function retryPendingCalendarSyncs(tenantIds?: string[]) {
+  let queued = 0;
+  for (const tenantId of tenantIds ?? (await redis.smembers(PENDING))) {
+    const members = await redis.smembers(pendingOf(tenantId));
+    const conn = members.length
+      ? await prisma.integrationConnection.findFirst({
+          where: { tenantId, provider: 'google' },
+          select: { status: true },
+        })
+      : null;
+    if (!conn) {
+      await redis.del(pendingOf(tenantId));
+      await redis.srem(PENDING, tenantId);
+      continue;
+    }
+    if (conn.status !== 'CONNECTED') continue;
+    // ponytail: a record Google refuses for good (a 400) is retried every sweep, its reason on the card; add a give-up count if that ever piles up.
+    for (const member of members) {
+      const [kind, id] = member.split(':');
+      await enqueue('calendar', 'calendar-sync', { tenantId, kind, id }, { fresh: true });
+      queued += 1;
+    }
+  }
+  return { queued };
 }
 
 /** The queue's job: the record's event as the record now stands. */
@@ -154,10 +207,18 @@ export async function syncCalendarEntry({
     where: { tenantId_provider: { tenantId, provider: 'google' } },
     select: { status: true, metadata: true },
   });
-  if (conn?.status !== 'CONNECTED') return { skipped: 'not connected' as const };
+  const member = `${kind}:${id}`;
+  if (conn?.status !== 'CONNECTED') {
+    if (conn) await markPending(tenantId, [member]);
+    return { skipped: 'not connected' as const };
+  }
   const settings = (conn.metadata ?? {}) as Record<string, unknown>;
   const entry = await calendarEntry(tenantId, kind, id, settings.syncAllFollowUps === true);
-  if (entry === 'skip') return { skipped: 'not a calendar entry' as const };
+  if (entry === 'skip') {
+    // Nothing for the calendar to hold (the switch went off since): nothing pending either.
+    await redis.srem(pendingOf(tenantId), member);
+    return { skipped: 'not a calendar entry' as const };
+  }
 
   const calendarId =
     typeof settings.calendarId === 'string' && settings.calendarId.trim() ? settings.calendarId.trim() : 'primary';
@@ -166,13 +227,27 @@ export async function syncCalendarEntry({
   try {
     const token = await googleAccessToken(tenantId);
     if (!token) return { skipped: 'not connected' as const };
-    if (entry) await putGoogleCalendarEvent(token, calendarId, eventId, entry);
-    else await deleteGoogleCalendarEvent(token, calendarId, eventId);
-    await prisma.integrationConnection.updateMany({ where, data: { lastSyncAt: new Date(), errorMessage: null } });
+    // The calendars written to before `calendarId` changed: the event may still be on one of them.
+    const earlier = (await redis.smembers(writtenTo(tenantId))).filter((c) => c !== calendarId);
+    if (entry) await putGoogleCalendarEvent(token, calendarId, eventId, entry, earlier);
+    else {
+      await deleteGoogleCalendarEvent(token, calendarId, eventId);
+      // Best effort: a calendar this account can no longer reach must not wedge the sync.
+      for (const old of earlier) await deleteGoogleCalendarEvent(token, old, eventId).catch(() => undefined);
+    }
+    await redis.sadd(writtenTo(tenantId), calendarId);
+    await redis.srem(pendingOf(tenantId), member);
+    // The card's error stays while another record is still waiting for its sync.
+    const waiting = await redis.scard(pendingOf(tenantId));
+    await prisma.integrationConnection.updateMany({
+      where,
+      data: { lastSyncAt: new Date(), ...(waiting ? {} : { errorMessage: null }) },
+    });
     return { synced: entry ? ('saved' as const) : ('removed' as const) };
   } catch (err) {
-    // On the Integrations card, and thrown so the queue tries again.
+    // On the Integrations card, pending for the sweep, and thrown so the queue tries again.
     const message = `Calendar sync failed: ${(err as Error).message}`.slice(0, 300);
+    await markPending(tenantId, [member]).catch(() => undefined);
     await prisma.integrationConnection.updateMany({ where, data: { errorMessage: message } });
     throw err;
   }
@@ -282,8 +357,12 @@ async function calendarEntry(
 
   const [tenant, owner] = await Promise.all([
     prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true, timezone: true } }),
+    // Only an account still working here: a suspended or deactivated owner is never invited again.
     row.ownerId
-      ? prisma.user.findFirst({ where: { tenantId, id: row.ownerId }, select: { email: true } })
+      ? prisma.user.findFirst({
+          where: { tenantId, id: row.ownerId, status: 'ACTIVE' },
+          select: { email: true },
+        })
       : Promise.resolve(null),
   ]);
   const leadPath = row.leadId && tenant ? entityRoute('lead', row.leadId, tenant.slug) : null;

@@ -51,9 +51,9 @@ export const JOBS: Record<QueueName, Jobs> = {
     // The name the push had when only HR raised it, kept for jobs mid-flight across a deploy.
     'hr-event-push': pushRecord,
     'hr-event': emailHrEvent,
-    // A meeting, follow-up or site visit onto the workspace's Google Calendar (M8-08).
-    'calendar-sync': syncCalendarEntry,
   },
+  // A meeting, follow-up or site visit onto the workspace's Google Calendar (M8-08).
+  calendar: { 'calendar-sync': syncCalendarEntry },
   webhook: { 'meta.event': applyWebhookEvent, 'lead-source.enquiry': applyLeadSourceEvent },
   maintenance: MAINTENANCE_JOBS,
 };

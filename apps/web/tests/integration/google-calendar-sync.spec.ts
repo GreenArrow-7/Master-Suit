@@ -17,10 +17,24 @@ vi.mock('@/lib/queue', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/queue')>()),
   enqueue,
 }));
+// For the Integrations page: its session cookie, and the app's user agent when asked.
+const browser = vi.hoisted(() => ({ cookie: '', userAgent: 'Mozilla/5.0' }));
+vi.mock('next/headers', () => ({
+  headers: async () =>
+    new Headers({ cookie: browser.cookie, 'user-agent': browser.userAgent, 'x-pathname': '/admin/integrations' }),
+  cookies: async () => ({
+    get: (name: string) => {
+      const match = browser.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+      return match ? { name, value: match[1] } : undefined;
+    },
+  }),
+}));
 
 import { prisma } from '@/lib/db';
 import { decryptCredentials, wrapCredentials } from '@/lib/integrations/connection';
-import { handleJob } from '@/workers/jobs';
+import { env } from '@/lib/env';
+import { RETRY } from '@/lib/queue';
+import { handleJob, JOBS } from '@/workers/jobs';
 import { calendarEventId, googleRedirectUri } from '@/services/integrations/googleCalendar';
 import { POST as createFollowUp } from '@/app/api/v1/follow-ups/route';
 import { PATCH as editFollowUp } from '@/app/api/v1/follow-ups/[id]/route';
@@ -30,11 +44,14 @@ import { POST as bookVisit } from '@/app/api/v1/site-visits/route';
 import { DELETE as cancelVisit } from '@/app/api/v1/site-visits/[id]/route';
 import { POST as connectGoogle } from '@/app/api/v1/integrations/google/connect/route';
 import { GET as googleCallback } from '@/app/api/v1/integrations/google/callback/route';
-import { grantPermissions, seedTwoTenants, type Fixture } from '../helpers/fixtures';
+import { POST as identityPost } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/[action]/route';
+import IntegrationsPage from '@/app/(workspace)/[workspaceSlug]/admin/integrations/page';
+import { createWorkspaceUser, grantPermissions, seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { del, patch, post } from '../helpers/request';
 
 // ── A fake Google ────────────────────────────────────────────────────────────
 type Body = Record<string, any>;
+/** Events by `{calendarId}/{eventId}`: each calendar holds its own. */
 const calendar = new Map<string, Body>();
 const calls: { method: string; url: string; auth: string | null }[] = [];
 const tokenRequests: Record<string, string>[] = [];
@@ -63,19 +80,19 @@ vi.stubGlobal(
     if (googleDown) return json({ error: { message: 'Backend Error' } }, 503);
     const match = /\/calendar\/v3\/calendars\/([^/]+)\/events(?:\/([0-9a-v]+))?/.exec(url);
     if (!match) return json({ error: { message: `unexpected ${url}` } }, 400);
-    const id = match[2];
+    const [cal, id] = [decodeURIComponent(match[1]!), match[2]];
     if (method === 'PUT') {
-      if (!calendar.has(id!)) return json({ error: { message: 'Not Found' } }, 404);
-      calendar.set(id!, JSON.parse(String(init.body)));
+      if (!calendar.has(`${cal}/${id}`)) return json({ error: { message: 'Not Found' } }, 404);
+      calendar.set(`${cal}/${id}`, JSON.parse(String(init.body)));
       return json({ id });
     }
     if (method === 'POST') {
       const body = JSON.parse(String(init.body));
-      calendar.set(body.id, body);
+      calendar.set(`${cal}/${body.id}`, body);
       return json({ id: body.id });
     }
     if (method === 'DELETE') {
-      if (!calendar.delete(id!)) return json({ error: { message: 'Not Found' } }, 404);
+      if (!calendar.delete(`${cal}/${id}`)) return json({ error: { message: 'Not Found' } }, 404);
       return new Response(null, { status: 204 });
     }
     return json({ error: { message: 'unsupported' } }, 405);
@@ -88,17 +105,33 @@ let tenantId = '';
 let cookie = '';
 let leadId = '';
 
+/** Syncs queued since the last drain — on the calendar's own queue. */
 const queued = () =>
-  enqueue.mock.calls.filter((call) => call[1] === 'calendar-sync').map((call) => call[2] as Record<string, string>);
+  enqueue.mock.calls
+    .filter((call) => call[0] === 'calendar' && call[1] === 'calendar-sync')
+    .map((call) => call[2] as Record<string, string>);
 
 /** What the worker would do with every sync queued since the last drain. */
 async function drain() {
   const jobs = queued();
   enqueue.mockClear();
-  for (const data of jobs) await handleJob('notifications', { name: 'calendar-sync', data });
+  for (const data of jobs) await handleJob('calendar', { name: 'calendar-sync', data });
 }
 
-const eventOf = (kind: 'followUp' | 'task' | 'visit', id: string) => calendar.get(calendarEventId(tenantId, kind, id));
+const eventOf = (kind: 'followUp' | 'task' | 'visit', id: string, on = 'primary') =>
+  calendar.get(`${on}/${calendarEventId(tenantId, kind, id)}`);
+
+const card = () => prisma.integrationConnection.findFirstOrThrow({ where: { tenantId, provider: 'google' } });
+
+/** The maintenance sweep that re-drives syncs left behind, for this workspace only. */
+const sweep = () => handleJob('maintenance', { name: 'calendar-sync-retry', data: { tenantIds: [tenantId] } });
+
+const googleCallbackAs = (query: string, cookie?: string) =>
+  googleCallback(
+    new Request(`http://localhost/api/v1/integrations/google/callback?${query}`, {
+      headers: cookie ? { cookie } : {},
+    }),
+  );
 
 beforeAll(async () => {
   fixture = await seedTwoTenants();
@@ -112,6 +145,10 @@ beforeAll(async () => {
     ['visits', 'DELETE'],
     // To reach the callback at all, where another workspace's state is refused.
     ['integrations', 'MANAGE_CONFIGURATION'],
+    ['integrations', 'VIEW'],
+    // To deactivate a member and hand their work on.
+    ['users', 'VIEW'],
+    ['users', 'MANAGE_USERS'],
   ]);
   await prisma.integrationConnection.create({
     data: {
@@ -186,7 +223,7 @@ it('a call follow-up stays off the calendar unless the connection says every fol
     where: { tenantId, provider: 'google' },
     data: { metadata: { syncAllFollowUps: true } },
   });
-  await handleJob('notifications', { name: 'calendar-sync', data: { tenantId, kind: 'followUp', id } });
+  await handleJob('calendar', { name: 'calendar-sync', data: { tenantId, kind: 'followUp', id } });
   expect(eventOf('followUp', id)?.summary).toBe('Call: Call back — manath Lead 0');
   await prisma.integrationConnection.updateMany({ where: { tenantId, provider: 'google' }, data: { metadata: {} } });
 });
@@ -267,13 +304,13 @@ it('Google being down never fails the write: the job fails for the queue to retr
   expect(await prisma.followUpTask.count({ where: { tenantId, id } })).toBe(1);
 
   const job = { name: 'calendar-sync', data: { tenantId, kind: 'followUp', id } };
-  await expect(handleJob('notifications', job)).rejects.toThrow(/503/);
+  await expect(handleJob('calendar', job)).rejects.toThrow(/503/);
   const failed = await prisma.integrationConnection.findFirstOrThrow({ where: { tenantId, provider: 'google' } });
   expect(failed.status).toBe('CONNECTED');
   expect(failed.errorMessage).toMatch(/^Calendar sync failed: Google Calendar API error: 503 Backend Error/);
 
   googleDown = false;
-  await handleJob('notifications', job);
+  await handleJob('calendar', job);
   expect(eventOf('followUp', id)?.summary).toBe('Site visit: Site walk — manath Lead 0');
   const healed = await prisma.integrationConnection.findFirstOrThrow({ where: { tenantId, provider: 'google' } });
   expect(healed.errorMessage).toBeNull();
@@ -344,17 +381,13 @@ it('connects through Google’s consent screen: the session’s workspace, a sin
   expect(consent.href).not.toContain(b.tenantId);
   const state = consent.searchParams.get('state')!;
 
-  const callback = (query: string, as = b.cookie) =>
-    googleCallback(
-      new Request(`http://localhost/api/v1/integrations/google/callback?${query}`, { headers: { cookie: as } }),
-      {
-        params: Promise.resolve({}),
-      },
-    );
+  const callback = (query: string, as = b.cookie) => googleCallbackAs(query, as);
 
   // Another workspace's session cannot finish this one's flow — and spends the state trying.
-  const elsewhere = await callback(`state=${state}&code=abc`, cookie);
-  expect(new URL(elsewhere.headers.get('location')!).searchParams.get('error')).toMatch(/different workspace/);
+  const elsewhere = new URL((await callback(`state=${state}&code=abc`, cookie)).headers.get('location')!);
+  expect(elsewhere.searchParams.get('error')).toMatch(/different workspace/);
+  // Never the path the other workspace chose: it lands on this session's home.
+  expect(elsewhere.pathname).toBe('/');
 
   const again = await post(connectGoogle, '/api/v1/integrations/google/connect', { returnTo }, b.cookie);
   const handle = new URL(again.body.url as string).searchParams.get('state')!;
@@ -386,3 +419,249 @@ it('connects through Google’s consent screen: the session’s workspace, a sin
   const replay = await callback(`state=${handle}&code=abc`);
   expect(new URL(replay.headers.get('location')!).searchParams.get('error')).toMatch(/expired/);
 });
+
+// ── Review fixes ─────────────────────────────────────────────────────────────
+
+it('runs on a queue of its own, so a hanging Google never holds up reminder pushes and emails', () => {
+  expect(JOBS.calendar['calendar-sync']).toBeTypeOf('function');
+  expect(JOBS.notifications['calendar-sync']).toBeUndefined();
+  // A vendor outage outlasts an SMTP blip: longer between attempts than notifications.
+  expect(RETRY.calendar.backoff.delay).toBeGreaterThan(RETRY.notifications.backoff.delay);
+});
+
+it('a sync that runs out of retries is re-driven by the sweep; a later success elsewhere does not clear the card', async () => {
+  googleDown = true;
+  const first = await post(
+    createFollowUp,
+    '/api/v1/follow-ups',
+    { leadId, title: 'Handover pack', dueAt: '2026-11-11T05:00:00.000Z', kind: 'MEETING' },
+    cookie,
+  );
+  const firstId = first.body.id as string;
+  enqueue.mockClear();
+  // Its last attempt: the queue gives up on it here.
+  await expect(
+    handleJob('calendar', { name: 'calendar-sync', data: { tenantId, kind: 'followUp', id: firstId } }),
+  ).rejects.toThrow(/503/);
+
+  googleDown = false;
+  const second = await post(
+    createFollowUp,
+    '/api/v1/follow-ups',
+    { leadId, title: 'Snagging walk', dueAt: '2026-11-12T05:00:00.000Z', kind: 'MEETING' },
+    cookie,
+  );
+  await drain();
+  expect(eventOf('followUp', second.body.id as string)).toBeDefined();
+  expect(eventOf('followUp', firstId)).toBeUndefined();
+  // The first meeting is still missing, so the card still says so.
+  expect((await card()).errorMessage).toMatch(/^Calendar sync failed/);
+
+  await sweep();
+  expect(queued()).toEqual([{ tenantId, kind: 'followUp', id: firstId }]);
+  await drain();
+  expect(eventOf('followUp', firstId)?.summary).toBe('Meeting: Handover pack — manath Lead 0');
+  expect((await card()).errorMessage).toBeNull();
+  // Nothing left behind: the next sweep queues nothing.
+  await sweep();
+  expect(queued()).toEqual([]);
+});
+
+it('a meeting cancelled while the connection is in error comes off once it is connected again', async () => {
+  const created = await post(
+    createFollowUp,
+    '/api/v1/follow-ups',
+    { leadId, title: 'Mortgage adviser', dueAt: '2026-11-13T05:00:00.000Z', kind: 'MEETING' },
+    cookie,
+  );
+  const id = created.body.id as string;
+  await drain();
+  expect(eventOf('followUp', id)).toBeDefined();
+
+  // A failed Test connection.
+  await prisma.integrationConnection.updateMany({
+    where: { tenantId, provider: 'google' },
+    data: { status: 'ERROR', errorMessage: 'Google Calendar API error: 401' },
+  });
+  expect((await patch(editFollowUp, `/api/v1/follow-ups/${id}`, { status: 'CANCELLED' }, cookie, { id })).status).toBe(
+    200,
+  );
+  await drain();
+  await sweep();
+  expect(queued()).toEqual([]);
+  expect(eventOf('followUp', id)).toBeDefined();
+
+  await prisma.integrationConnection.updateMany({
+    where: { tenantId, provider: 'google' },
+    data: { status: 'CONNECTED', errorMessage: null },
+  });
+  await sweep();
+  await drain();
+  expect(eventOf('followUp', id)).toBeUndefined();
+});
+
+it('a leaver’s meetings follow the hand-over: the new owner is the guest, the leaver is never invited again', async () => {
+  const staff = await prisma.role.create({
+    data: { tenantId, key: `gcal-staff-${Date.now()}`, name: 'Agent', rank: 50, defaultScope: 'OWN' },
+  });
+  const agent = await createWorkspaceUser({
+    tenantId,
+    roleId: staff.id,
+    email: `leaver-${Date.now()}@${fixture.a.slug}.test`,
+    fullName: 'Leaving Agent',
+  });
+  const meeting = await prisma.followUpTask.create({
+    data: {
+      tenantId,
+      ownerId: agent.id,
+      leadId,
+      title: 'Contract signing',
+      kind: 'MEETING',
+      dueAt: new Date('2026-11-14T05:00:00.000Z'),
+    },
+  });
+  // Site visits are not handed over: they keep the leaver as owner.
+  const visit = await prisma.siteVisit.create({
+    data: {
+      tenantId,
+      ownerId: agent.id,
+      leadId,
+      kind: 'CLIENT_MEETING',
+      status: 'APPROVED',
+      decidedById: fixture.a.userId,
+      decidedAt: new Date(),
+      address: 'Marina Walk',
+      scheduledAt: new Date('2026-11-15T05:00:00.000Z'),
+    },
+  });
+  for (const [kind, id] of [
+    ['followUp', meeting.id],
+    ['visit', visit.id],
+  ] as const) {
+    await handleJob('calendar', { name: 'calendar-sync', data: { tenantId, kind, id } });
+  }
+  expect(eventOf('followUp', meeting.id)?.attendees).toEqual([{ email: agent.email }]);
+  expect(eventOf('visit', visit.id)?.attendees).toEqual([{ email: agent.email }]);
+
+  const deactivated = await post(
+    identityPost,
+    `/api/v1/workspaces/${fixture.a.slug}/identity/account-active`,
+    { userId: agent.id, active: false, handOverTo: fixture.a.userId },
+    cookie,
+    { workspaceSlug: fixture.a.slug, action: 'account-active' },
+  );
+  expect(deactivated.status).toBe(200);
+  // The response is the counts it always was.
+  expect(deactivated.body.handedOver).toEqual({ leads: 0, followUps: 1, tasks: 0 });
+  expect(queued()).toEqual(
+    expect.arrayContaining([
+      { tenantId, kind: 'followUp', id: meeting.id },
+      { tenantId, kind: 'visit', id: visit.id },
+    ]),
+  );
+  await drain();
+  expect(eventOf('followUp', meeting.id)?.attendees).toEqual([{ email: `admin@${fixture.a.slug}.test` }]);
+  expect(eventOf('visit', visit.id)?.attendees).toBeUndefined();
+
+  // A manager moves the leaver's visit a week later: the leaver is still not invited.
+  await prisma.siteVisit.updateMany({
+    where: { tenantId, id: visit.id },
+    data: { scheduledAt: new Date('2026-11-22T05:00:00.000Z') },
+  });
+  await handleJob('calendar', { name: 'calendar-sync', data: { tenantId, kind: 'visit', id: visit.id } });
+  expect(eventOf('visit', visit.id)).toMatchObject({ start: { dateTime: '2026-11-22T05:00:00.000Z' } });
+  expect(eventOf('visit', visit.id)?.attendees).toBeUndefined();
+});
+
+it('a changed calendar moves an event written to the old one, and a cancel removes it wherever it was written', async () => {
+  const book = async (title: string, dueAt: string) => {
+    const created = await post(createFollowUp, '/api/v1/follow-ups', { leadId, title, dueAt, kind: 'MEETING' }, cookie);
+    await drain();
+    return created.body.id as string;
+  };
+  const moved = await book('Floor plan review', '2026-11-16T05:00:00.000Z');
+  const cancelled = await book('Key handover', '2026-11-17T05:00:00.000Z');
+  expect(eventOf('followUp', moved)).toBeDefined();
+
+  const shared = 'sales-team@group.calendar.google.com';
+  await prisma.integrationConnection.updateMany({
+    where: { tenantId, provider: 'google' },
+    data: { metadata: { calendarId: shared } },
+  });
+  try {
+    const later = '2026-11-18T07:00:00.000Z';
+    await patch(editFollowUp, `/api/v1/follow-ups/${moved}`, { dueAt: later }, cookie, { id: moved });
+    await drain();
+    // One event, on the new calendar, at the new time: no copy left at the old time.
+    expect(eventOf('followUp', moved, shared)?.start.dateTime).toBe(later);
+    expect(eventOf('followUp', moved)).toBeUndefined();
+
+    await patch(editFollowUp, `/api/v1/follow-ups/${cancelled}`, { status: 'CANCELLED' }, cookie, { id: cancelled });
+    await drain();
+    expect(eventOf('followUp', cancelled)).toBeUndefined();
+    expect(eventOf('followUp', cancelled, shared)).toBeUndefined();
+  } finally {
+    await prisma.integrationConnection.updateMany({ where: { tenantId, provider: 'google' }, data: { metadata: {} } });
+  }
+});
+
+it('signed out — the phone’s own browser, say — the callback spends the state and says to sign in, on this site', async () => {
+  // A return path a URL parser would read as another site.
+  const started = await post(
+    connectGoogle,
+    '/api/v1/integrations/google/connect',
+    { returnTo: '/\t/evil.example/login' },
+    cookie,
+  );
+  expect(started.status).toBe(200);
+  const state = new URL(started.body.url as string).searchParams.get('state')!;
+  const before = await card();
+
+  const signedOut = await googleCallbackAs(`state=${state}&code=abc`);
+  expect(signedOut.status).toBeGreaterThanOrEqual(300);
+  expect(signedOut.status).toBeLessThan(400);
+  const landed = new URL(signedOut.headers.get('location')!);
+  expect(landed.origin).toBe(new URL(env.APP_URL).origin);
+  expect(landed.searchParams.get('error')).toMatch(/sign in/i);
+
+  // Spent: the same link with the session connects nothing.
+  const replay = new URL((await googleCallbackAs(`state=${state}&code=abc`, cookie)).headers.get('location')!);
+  expect(replay.searchParams.get('error')).toMatch(/expired/);
+  expect((await card()).credentials).toEqual(before.credentials);
+});
+
+it('inside the iOS or Android app the card says to connect from a browser, where Google’s sign-in works', async () => {
+  browser.cookie = cookie;
+  const googleCard = async (userAgent: string) => {
+    browser.userAgent = userAgent;
+    const tree = await IntegrationsPage({
+      params: Promise.resolve({ workspaceSlug: fixture.a.slug }),
+      searchParams: Promise.resolve({}),
+    });
+    const board = findProps(tree, 'providers') as { providers: { key: string; oauth?: unknown }[] };
+    return board.providers.find((p) => p.key === 'google')!.oauth;
+  };
+  expect(await googleCard('Mozilla/5.0 (iPhone) AppleWebKit YouhanOneApp/1.1.0')).toEqual({
+    configured: true,
+    inApp: true,
+  });
+  expect(await googleCard('Mozilla/5.0 (Linux; Android 14) YouhanOneApp/1.1.0')).toMatchObject({ inApp: true });
+  expect(await googleCard('Mozilla/5.0 (Windows NT 10.0) Chrome/130')).toEqual({ configured: true, inApp: false });
+});
+
+/** The first element in a rendered tree whose props carry `key`. */
+function findProps(node: unknown, key: string, seen = new Set<unknown>()): Record<string, unknown> | undefined {
+  if (!node || typeof node !== 'object' || seen.has(node)) return undefined;
+  seen.add(node);
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const found = findProps(item, key, seen);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  const props = (node as { props?: Record<string, unknown> }).props;
+  if (!props) return undefined;
+  if (key in props) return props;
+  return findProps(props.children, key, seen);
+}

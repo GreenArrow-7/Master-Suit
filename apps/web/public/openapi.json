@@ -10779,51 +10779,10 @@
     "/api/v1/integrations/google/callback": {
       "get": {
         "tags": [
-          "integrations"
+          "other"
         ],
-        "summary": "integrations:MANAGE_CONFIGURATION",
-        "x-permission": "integrations:MANAGE_CONFIGURATION",
-        "x-product-modules": [
-          "HRMS",
-          "SALES",
-          "REAL_ESTATE",
-          "LEAD_EAGLE"
-        ],
-        "security": [
-          {
-            "session": []
-          }
-        ],
+        "description": "Answers outside the route() kernel (its own authentication); no declared schema.",
         "operationId": "getIntegrationsGoogleCallback",
-        "parameters": [
-          {
-            "name": "state",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "maxLength": 200
-            }
-          },
-          {
-            "name": "code",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "maxLength": 2000
-            }
-          },
-          {
-            "name": "error",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "maxLength": 200
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Success"

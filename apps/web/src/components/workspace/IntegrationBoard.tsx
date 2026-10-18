@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
@@ -22,8 +22,12 @@ export interface ProviderCard {
   webhookUrl: string | null;
   /** A connected lead source's own screen: its deliveries and field mapping. */
   manageHref: string | null;
-  /** Connected through the vendor's consent screen (Google); `configured` once the deployment has its OAuth client. */
-  oauth?: { configured: boolean } | null;
+  /**
+   * Connected through the vendor's consent screen (Google); `configured` once the
+   * deployment has its OAuth client. `inApp`: the iOS or Android app, whose WebView
+   * hands the consent screen to the phone's browser, where this session is not.
+   */
+  oauth?: { configured: boolean; inApp: boolean } | null;
 }
 
 /**
@@ -370,6 +374,13 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
 
   const configured = provider.status !== 'NOT_CONFIGURED';
 
+  // Back from the consent screen with the browser's Back button: the page comes out of the cache still "Opening…".
+  useEffect(() => {
+    const restored = (event: PageTransitionEvent) => event.persisted && setBusy(null);
+    window.addEventListener('pageshow', restored);
+    return () => window.removeEventListener('pageshow', restored);
+  }, []);
+
   /** The vendor's consent screen; it sends the browser back here (api/v1/integrations/{key}/callback). */
   async function connectWithVendor() {
     setBusy('connect');
@@ -473,6 +484,12 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
               before anyone can connect.
             </p>
           )}
+          {provider.oauth?.configured && provider.oauth.inApp && canEdit && (
+            <p className="lf-hint" style={{ marginTop: 4 }}>
+              {provider.label.split(' ')[0]}’s sign-in does not open inside the app. To connect, open YOUHAN ONE in a
+              web browser and come back to Admin → Integrations there.
+            </p>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -481,7 +498,7 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
               Deliveries and field mapping
             </Link>
           )}
-          {provider.oauth && canEdit && (
+          {provider.oauth && !provider.oauth.inApp && canEdit && (
             <button
               type="button"
               className="lf-btn lf-btn--sm"

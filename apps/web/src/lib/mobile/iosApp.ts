@@ -11,6 +11,9 @@ import { headers } from 'next/headers';
  * point at buying the service (plans, trials, sign-up, subscription). The
  * service is sold to companies outside the app (3.1.3(c), Enterprise Services).
  */
+/** The iOS or Android app: both WebViews append `YouhanOneApp/<version>`. */
+export const isAppUserAgent = (ua: string | null | undefined): boolean => !!ua && ua.includes('YouhanOneApp/');
+
 export const isIosAppUserAgent = (ua: string | null | undefined): boolean =>
   !!ua && ua.includes('YouhanOneApp/') && !ua.includes('Android');
 

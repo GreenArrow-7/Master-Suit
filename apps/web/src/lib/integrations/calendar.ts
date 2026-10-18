@@ -90,17 +90,26 @@ export async function createGoogleCalendarEvent(
  * Writes the event under an id we chose (base32hex, 5–1024 characters): replaced
  * where it already is, inserted where it is not, so a retried or repeated sync
  * converges on one event. No email goes to the guests (`sendUpdates=none`).
+ *
+ * Not yet on `calendarId`, it may be on a calendar the workspace used before
+ * (`earlier`): taken off there first, so a changed calendar never leaves a copy
+ * at the old time.
  */
 export async function putGoogleCalendarEvent(
   accessToken: string,
   calendarId: string,
   eventId: string,
   event: CalendarEvent,
+  earlier: string[] = [],
 ): Promise<void> {
   const events = `${CALENDARS}/${encodeURIComponent(calendarId)}/events`;
   const body = { ...eventBody(event), id: eventId, status: 'confirmed' };
   let res = await call(accessToken, 'PUT', `${events}/${eventId}?sendUpdates=none`, body);
-  if (res.status === 404) res = await call(accessToken, 'POST', `${events}?sendUpdates=none`, body);
+  if (res.status === 404) {
+    // Best effort: a calendar this account can no longer reach must not wedge the sync.
+    for (const old of earlier) await deleteGoogleCalendarEvent(accessToken, old, eventId).catch(() => undefined);
+    res = await call(accessToken, 'POST', `${events}?sendUpdates=none`, body);
+  }
   if (!res.ok) throw await failure(res);
 }
 

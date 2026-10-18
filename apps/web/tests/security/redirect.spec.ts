@@ -36,6 +36,14 @@ describe('REDIR-001: safeReturnTo keeps a redirect on this origin', () => {
     expect(safeReturnTo('/\\/evil.example')).toBe('/');
   });
 
+  it('refuses a tab, newline or carriage return, which the URL parser strips before it parses', () => {
+    // '/\t/evil.example' passes a look at the raw string, then parses as '//evil.example'.
+    for (const hostile of ['/\t/evil.example/login', '/\n/evil.example', '/\r\\evil.example', '/\u0000x']) {
+      expect(safeReturnTo(hostile), JSON.stringify(hostile)).toBe('/');
+      expect(new URL(safeReturnTo(hostile), 'https://app.example.test').origin).toBe('https://app.example.test');
+    }
+  });
+
   it('refuses absolute URLs and non-http schemes', () => {
     for (const hostile of [
       'https://evil.example',

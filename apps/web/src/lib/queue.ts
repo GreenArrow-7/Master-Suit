@@ -23,6 +23,9 @@ export const QUEUE_NAMES = [
   'ai',
   // Email for in-app notifications that have already been written.
   'notifications',
+  // Meetings, follow-ups and site visits onto a workspace's Google Calendar (M8-08):
+  // its own worker, so a hanging Google never holds up reminder pushes and emails.
+  'calendar',
 ] as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[number];
@@ -47,6 +50,9 @@ export const RETRY: Record<QueueName, { attempts: number; backoff: any }> = {
   // over a few minutes covers an SMTP host having a bad moment; past that the
   // person still has the notification waiting for them in the product.
   notifications: { attempts: 5, backoff: { type: 'exponential', delay: 10_000 } },
+  // A Google outage, not a blip: about eight minutes of attempts, then the
+  // maintenance sweep (calendar-sync-retry) re-drives what is still pending.
+  calendar: { attempts: 5, backoff: { type: 'exponential', delay: 30_000 } },
 };
 
 const queues = new Map<QueueName, Queue>();
