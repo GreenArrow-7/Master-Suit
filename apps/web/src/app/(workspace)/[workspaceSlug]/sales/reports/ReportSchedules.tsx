@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { send, useRun } from '@/components/forms/useRun';
 
-/** Email this report on a cadence (M16-16): the CSV, to members of the workspace. `caveat`: what it leaves out. */
+/** Email this report on a cadence (M16-16): the CSV or the Excel workbook (M16-15), to members of the workspace. `caveat`: what it leaves out. */
 export function ScheduleForm({
   report,
   by,
@@ -17,6 +17,7 @@ export function ScheduleForm({
 }) {
   const { busy, run, note } = useRun();
   const [cadence, setCadence] = useState('WEEKLY');
+  const [format, setFormat] = useState('csv');
   const [recipients, setRecipients] = useState(email);
   return (
     <form
@@ -36,12 +37,13 @@ export function ScheduleForm({
               report,
               ...(by && { by }),
               cadence,
+              format,
               recipients: recipients
                 .split(/[\s,;]+/)
                 .map((r) => r.trim())
                 .filter(Boolean),
             }),
-          'Scheduled. It arrives at 07:00 as a CSV; stop it under Scheduled emails on the Reports page.',
+          `Scheduled. It arrives at 07:00 as ${format === 'xlsx' ? 'an Excel workbook' : 'a CSV'}; stop it under Scheduled emails on the Reports page.`,
         );
       }}
     >
@@ -53,6 +55,13 @@ export function ScheduleForm({
             <option value="DAILY">Every day (yesterday)</option>
             <option value="WEEKLY">Every Monday (last week)</option>
             <option value="MONTHLY">On the 1st (last month)</option>
+          </select>
+        </label>
+        <label className="lf-field" style={{ flex: '0 1 120px', minWidth: 0 }}>
+          <span className="lf-label">File</span>
+          <select className="lf-select" value={format} onChange={(e) => setFormat(e.target.value)}>
+            <option value="csv">CSV</option>
+            <option value="xlsx">Excel</option>
           </select>
         </label>
         <label className="lf-field" style={{ flex: '1 1 240px', minWidth: 0 }}>
@@ -80,6 +89,7 @@ export interface ScheduleRow {
   id: string;
   title: string;
   cadence: string;
+  format: string;
   recipients: string[];
   next: string;
 }
@@ -109,7 +119,8 @@ export function ScheduleList({ schedules }: { schedules: ScheduleRow[] }) {
             <div style={{ minWidth: 0, flex: '1 1 220px' }}>
               <div style={{ fontWeight: 600, fontSize: 'var(--lf-text-sm)' }}>{s.title}</div>
               <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)', overflowWrap: 'anywhere' }}>
-                {s.cadence.toLowerCase()} to {s.recipients.join(', ')} · next {s.next}
+                {s.cadence.toLowerCase()}, {s.format === 'xlsx' ? 'Excel' : 'CSV'}, to {s.recipients.join(', ')} · next{' '}
+                {s.next}
               </div>
             </div>
             <button

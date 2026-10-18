@@ -11,7 +11,7 @@ import { scorePracticeSession } from '@/services/shared/practiceScoring';
 import { runQueuedLeadMessage } from '@/services/leads/leadMessages';
 import { checkLeadFirstContact } from '@/services/sla/checkLeadFirstContact';
 import { escalateSocialSla } from '@/services/social/escalateSocialSla';
-import { syncCalendarEntry } from '@/services/integrations/googleCalendar';
+import { syncCalendarEntry } from '@/services/integrations/calendarSync';
 import { AI_CONCURRENCY, fairShare } from './ai';
 import { MAINTENANCE_JOBS, REMINDER_JOBS } from './maintenance';
 import { emailHrEvent, pushRecord } from './notifications';
@@ -52,7 +52,7 @@ export const JOBS: Record<QueueName, Jobs> = {
     'hr-event-push': pushRecord,
     'hr-event': emailHrEvent,
   },
-  // A meeting, follow-up or site visit onto the workspace's Google Calendar (M8-08).
+  // A meeting, follow-up or site visit onto the workspace's calendars (M8-08, M8-09).
   calendar: { 'calendar-sync': syncCalendarEntry },
   webhook: { 'meta.event': applyWebhookEvent, 'lead-source.enquiry': applyLeadSourceEvent },
   maintenance: MAINTENANCE_JOBS,

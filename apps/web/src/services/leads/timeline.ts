@@ -123,7 +123,7 @@ const reason = (value: string | null) => (value && /^[A-Z_]+$/.test(value) ? sen
  * thread by its own. A role with no inbox, which still sends from the lead
  * (the Telecaller), reads the messages it sent itself, and nothing else.
  */
-async function inboxReach(ctx: Ctx): Promise<Prisma.CommunicationWhereInput> {
+export async function inboxReach(ctx: Ctx): Promise<Prisma.CommunicationWhereInput> {
   if (!can(ctx, 'communications', 'VIEW')) return { createdById: ctx.actor.id };
   const visible = await visibilityWhere(ctx, 'communications', 'VIEW', { includeUnassigned: true });
   return {

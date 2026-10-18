@@ -19,6 +19,8 @@ export interface MailAttachment {
   filename: string;
   content: string;
   contentType?: string;
+  /** `base64`: `content` is a binary file (an Excel workbook) written as base64. */
+  encoding?: 'base64';
 }
 
 export interface SentMail {
@@ -54,7 +56,7 @@ function smtpTransport(): Transporter {
 
 /**
  * `replyTo`: where an answer goes, when not to the platform's own address (a lead answering its agent).
- * `attachments`: files sent with it (a scheduled report's CSV).
+ * `attachments`: files sent with it (a scheduled report's CSV or workbook).
  */
 export async function sendMail(
   to: string,

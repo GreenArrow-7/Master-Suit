@@ -10,7 +10,7 @@ import { CALL_LOG_OUTCOMES, CALL_OUTCOME_OF, FOLLOW_UP_TITLE } from '@/lib/leads
 import { reachedOut, touchLead } from '@/services/leads/touch';
 import { scoreActivity } from '@/services/leads/scoring';
 import { withRecompute } from '@/services/leads/nextFollowUp';
-import { queueCalendarSync } from '@/services/integrations/googleCalendar';
+import { queueCalendarSync } from '@/services/integrations/calendarSync';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { dayBounds } from '@/services/targets/dailyBoard';
 import { findReplay, recordOutcome } from '@/services/idempotency';
@@ -149,7 +149,7 @@ export const POST = route(
         return done;
       });
       await touchLead(ctx.tenantId, leadId, undefined, reachedOut(placed));
-      // On the workspace's Google Calendar where it holds every follow-up (M8-08).
+      // On the workspace's calendars where they hold every follow-up (M8-08, M8-09).
       await queueCalendarSync(ctx.tenantId, 'followUp', result.followUp?.id);
       return result;
     }

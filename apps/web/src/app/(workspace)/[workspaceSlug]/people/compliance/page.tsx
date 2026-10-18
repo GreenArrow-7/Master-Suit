@@ -2,7 +2,7 @@ import { resolveWorkspacePage, pageLoad } from '@/lib/workspace-page';
 import PageHeader from '@/components/ui/PageHeader';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import ExportCsv from '@/components/workspace/ExportCsv';
-import { csvCell } from '@/lib/csv';
+import { tableFiles } from '@/lib/csv';
 import SalesLink from '@/components/workspace/SalesLink';
 import { complianceRegister } from '@/services/hr/compliance';
 import { Metric } from '@/components/ui/MetricCard';
@@ -41,6 +41,32 @@ export default async function CompliancePage({
   const expired = rows.filter((row) => row.severity === 'expired').length;
   const urgent = rows.filter((row) => row.severity === 'urgent').length;
 
+  const files =
+    rows.length > 0
+      ? await tableFiles([
+          [
+            'Employee',
+            'Employee number',
+            'Employment type',
+            'Credential',
+            'Reference',
+            'Expires',
+            'Days remaining',
+            'Severity',
+          ],
+          ...rows.map((row) => [
+            row.employeeName,
+            row.employeeNumber,
+            row.employmentType ?? '',
+            row.credential,
+            row.reference ?? '',
+            date(row.expiresAt),
+            row.daysRemaining,
+            row.severity,
+          ]),
+        ])
+      : null;
+
   return (
     <div className="lf-page-stack">
       <PageHeader
@@ -52,38 +78,8 @@ export default async function CompliancePage({
           { label: 'Compliance' },
         ]}
         actions={
-          rows.length > 0 ? (
-            <ExportCsv
-              filename={`compliance-register-${new Date().toISOString().slice(0, 10)}.csv`}
-              csv={[
-                [
-                  'Employee',
-                  'Employee number',
-                  'Employment type',
-                  'Credential',
-                  'Reference',
-                  'Expires',
-                  'Days remaining',
-                  'Severity',
-                ]
-                  .map(csvCell)
-                  .join(','),
-                ...rows.map((row) =>
-                  [
-                    row.employeeName,
-                    row.employeeNumber,
-                    row.employmentType ?? '',
-                    row.credential,
-                    row.reference ?? '',
-                    date(row.expiresAt),
-                    row.daysRemaining,
-                    row.severity,
-                  ]
-                    .map(csvCell)
-                    .join(','),
-                ),
-              ].join('\r\n')}
-            />
+          files ? (
+            <ExportCsv filename={`compliance-register-${new Date().toISOString().slice(0, 10)}.csv`} {...files} />
           ) : undefined
         }
       />

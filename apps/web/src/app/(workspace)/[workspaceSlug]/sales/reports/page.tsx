@@ -144,7 +144,7 @@ const isReportKey = (value: string | undefined): value is ReportKey =>
  * the links are workspace-relative like the rest of the app.
  *
  * A report reads the board's filters (period, person, team, source, project)
- * and its CSV link carries the same query; a Lead-Eagle-only workspace is
+ * and its CSV and Excel links carry the same query; a Lead-Eagle-only workspace is
  * offered only the reports it has rows for (`offeredReports`).
  */
 export default async function ReportsPage({
@@ -184,12 +184,20 @@ export default async function ReportsPage({
           actions={
             <>
               {mayExport && (
-                <a
-                  className="lf-btn lf-btn--secondary lf-btn--sm"
-                  href={`/api/v1/reports?report=${report.key}${carried}${by ? `&by=${by}` : ''}&format=csv`}
-                >
-                  Export CSV
-                </a>
+                <>
+                  <a
+                    className="lf-btn lf-btn--secondary lf-btn--sm"
+                    href={`/api/v1/reports?report=${report.key}${carried}${by ? `&by=${by}` : ''}&format=csv`}
+                  >
+                    Export CSV
+                  </a>
+                  <a
+                    className="lf-btn lf-btn--secondary lf-btn--sm"
+                    href={`/api/v1/reports?report=${report.key}${carried}${by ? `&by=${by}` : ''}&format=xlsx`}
+                  >
+                    Excel
+                  </a>
+                </>
               )}
               <SalesLink className="lf-btn lf-btn--secondary lf-btn--sm" href={`/reports${query ? `?${query}` : ''}`}>
                 All reports
@@ -297,6 +305,7 @@ export default async function ReportsPage({
             id: s.id,
             title: `${titles.get(s.report) ?? s.report}${s.by ? ` by ${PIVOT_LABEL[s.by as Pivot]}` : ''}`,
             cadence: s.cadence,
+            format: s.format,
             recipients: s.recipients,
             next: s.nextRunAt.toLocaleString('en-GB', { timeZone: zone, dateStyle: 'medium', timeStyle: 'short' }),
           }))}

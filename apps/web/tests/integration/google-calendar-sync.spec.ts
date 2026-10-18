@@ -42,8 +42,8 @@ import { POST as createTask } from '@/app/api/v1/tasks/route';
 import { PATCH as editTask } from '@/app/api/v1/tasks/[id]/route';
 import { POST as bookVisit } from '@/app/api/v1/site-visits/route';
 import { DELETE as cancelVisit } from '@/app/api/v1/site-visits/[id]/route';
-import { POST as connectGoogle } from '@/app/api/v1/integrations/google/connect/route';
-import { GET as googleCallback } from '@/app/api/v1/integrations/google/callback/route';
+import { POST as connectCalendar } from '@/app/api/v1/integrations/[provider]/connect/route';
+import { GET as calendarCallback } from '@/app/api/v1/integrations/[provider]/callback/route';
 import { POST as identityPost } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/[action]/route';
 import IntegrationsPage from '@/app/(workspace)/[workspaceSlug]/admin/integrations/page';
 import { createWorkspaceUser, grantPermissions, seedTwoTenants, type Fixture } from '../helpers/fixtures';
@@ -127,11 +127,14 @@ const card = () => prisma.integrationConnection.findFirstOrThrow({ where: { tena
 const sweep = () => handleJob('maintenance', { name: 'calendar-sync-retry', data: { tenantIds: [tenantId] } });
 
 const googleCallbackAs = (query: string, cookie?: string) =>
-  googleCallback(
+  calendarCallback(
     new Request(`http://localhost/api/v1/integrations/google/callback?${query}`, {
       headers: cookie ? { cookie } : {},
     }),
+    { params: Promise.resolve({ provider: 'google' }) },
   );
+const connectGoogle = (body: Record<string, unknown>, as: string) =>
+  post(connectCalendar, '/api/v1/integrations/google/connect', body, as, { provider: 'google' });
 
 beforeAll(async () => {
   fixture = await seedTwoTenants();
@@ -179,7 +182,7 @@ it('a meeting follow-up booked, moved and cancelled goes onto, moves on and come
   );
   expect(created.status).toBe(200);
   const id = created.body.id as string;
-  expect(queued()).toEqual([{ tenantId, kind: 'followUp', id }]);
+  expect(queued()).toEqual([{ tenantId, kind: 'followUp', id, provider: 'google' }]);
   await drain();
 
   const event = eventOf('followUp', id)!;
@@ -365,7 +368,7 @@ it('connects through Google’s consent screen: the session’s workspace, a sin
   await grantPermissions(b.tenantId, admin.roleId, [['integrations', 'MANAGE_CONFIGURATION']]);
   const returnTo = `/${b.slug}/admin/integrations`;
 
-  const started = await post(connectGoogle, '/api/v1/integrations/google/connect', { returnTo }, b.cookie);
+  const started = await connectGoogle({ returnTo }, b.cookie);
   expect(started.status).toBe(200);
   const consent = new URL(started.body.url as string);
   expect(`${consent.origin}${consent.pathname}`).toBe('https://accounts.google.com/o/oauth2/v2/auth');
@@ -389,7 +392,7 @@ it('connects through Google’s consent screen: the session’s workspace, a sin
   // Never the path the other workspace chose: it lands on this session's home.
   expect(elsewhere.pathname).toBe('/');
 
-  const again = await post(connectGoogle, '/api/v1/integrations/google/connect', { returnTo }, b.cookie);
+  const again = await connectGoogle({ returnTo }, b.cookie);
   const handle = new URL(again.body.url as string).searchParams.get('state')!;
   const done = await callback(
     `state=${handle}&code=abc&scope=https://www.googleapis.com/auth/calendar.events&authuser=0`,
@@ -458,7 +461,7 @@ it('a sync that runs out of retries is re-driven by the sweep; a later success e
   expect((await card()).errorMessage).toMatch(/^Calendar sync failed/);
 
   await sweep();
-  expect(queued()).toEqual([{ tenantId, kind: 'followUp', id: firstId }]);
+  expect(queued()).toEqual([{ tenantId, kind: 'followUp', id: firstId, provider: 'google' }]);
   await drain();
   expect(eventOf('followUp', firstId)?.summary).toBe('Meeting: Handover pack — manath Lead 0');
   expect((await card()).errorMessage).toBeNull();
@@ -555,8 +558,8 @@ it('a leaver’s meetings follow the hand-over: the new owner is the guest, the 
   expect(deactivated.body.handedOver).toEqual({ leads: 0, followUps: 1, tasks: 0 });
   expect(queued()).toEqual(
     expect.arrayContaining([
-      { tenantId, kind: 'followUp', id: meeting.id },
-      { tenantId, kind: 'visit', id: visit.id },
+      { tenantId, kind: 'followUp', id: meeting.id, provider: 'google' },
+      { tenantId, kind: 'visit', id: visit.id, provider: 'google' },
     ]),
   );
   await drain();
@@ -607,12 +610,7 @@ it('a changed calendar moves an event written to the old one, and a cancel remov
 
 it('signed out — the phone’s own browser, say — the callback spends the state and says to sign in, on this site', async () => {
   // A return path a URL parser would read as another site.
-  const started = await post(
-    connectGoogle,
-    '/api/v1/integrations/google/connect',
-    { returnTo: '/\t/evil.example/login' },
-    cookie,
-  );
+  const started = await connectGoogle({ returnTo: '/\t/evil.example/login' }, cookie);
   expect(started.status).toBe(200);
   const state = new URL(started.body.url as string).searchParams.get('state')!;
   const before = await card();

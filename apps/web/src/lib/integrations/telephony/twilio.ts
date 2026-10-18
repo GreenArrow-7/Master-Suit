@@ -19,6 +19,8 @@ import type {
   CallRequest,
   CallResult,
   Capability,
+  SmsMessage,
+  SmsResult,
   TelephonyProvider,
   WebhookRequest,
 } from './types';
@@ -48,6 +50,7 @@ export class TwilioProvider implements TelephonyProvider {
     'END_CALL',
     'SIGNED_WEBHOOK',
     'LIVE_STREAM',
+    'SMS',
   ];
 
   constructor(
@@ -129,6 +132,35 @@ export class TwilioProvider implements TelephonyProvider {
     });
     const sid = data.recordings?.[0]?.sid;
     return sid ? `${API}/Accounts/${this.accountSid}/Recordings/${sid}.mp3` : null;
+  }
+
+  /**
+   * One text through the Messages API, on the account that places the calls.
+   * Not retried: a create is not idempotent, and a second try can be a second
+   * text. `failed` or `undelivered` at once is a refusal; anything else is on
+   * its way (Twilio reports delivery later, by callback, which is not wired).
+   */
+  async sendSms(message: SmsMessage): Promise<SmsResult> {
+    const data = await vendorFetch<{
+      sid: string;
+      status: string;
+      error_code: number | null;
+      error_message: string | null;
+    }>({
+      vendor: this.name,
+      url: `${API}/Accounts/${this.accountSid}/Messages.json`,
+      headers: this.auth,
+      form: { To: message.to, From: message.from, Body: message.body },
+    });
+    const refused = data.status === 'failed' || data.status === 'undelivered';
+    return {
+      externalMessageId: data.sid,
+      status: refused ? 'failed' : 'sent',
+      ...(refused && {
+        errorCode: data.error_code == null ? undefined : String(data.error_code),
+        errorMessage: data.error_message ?? undefined,
+      }),
+    };
   }
 
   /** Basic auth is also what fetches the media, so the ingest worker can reach it. */

@@ -416,6 +416,9 @@ describe('a WhatsApp template from the lead (M4-28)', () => {
       ],
       whatsappBlocked: null,
       emailBlocked: null,
+      // No calling provider that texts: tests/sales/lead-sms.spec.ts covers Send SMS.
+      smsBlocked:
+        'SMS is not set up: connect Twilio under Administration → Integrations as the calling provider and give it an SMS sender.',
     });
     // Masked: the labels carry the mask, never the number.
     const seen = await offer(masked, leadId);

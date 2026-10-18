@@ -16,9 +16,10 @@
 import { prisma } from '@/lib/db';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { connectionCredentials } from '../connection';
-import { telephonyProvider } from './index';
+import { providerSpec } from '../registry';
+import { sendsSms, telephonyProvider } from './index';
 import { TELEPHONY_VENDORS, TelephonyConfigError } from './types';
-import type { TelephonyProvider } from './types';
+import type { SmsResult, TelephonyProvider } from './types';
 
 export interface ResolvedTelephony {
   provider: TelephonyProvider;
@@ -138,5 +139,71 @@ export async function resolveTelephony(tenantId: string): Promise<ResolvedTeleph
     callerNumber: settings.callerNumber,
     recordingEnabled: settings.recordingEnabled !== false,
     consentRequired: settings.consentRequired !== false,
+  };
+}
+
+/**
+ * A sender as the carriers take one: an E.164 number, or an alphanumeric sender
+ * ID (letters, digits and spaces, at most 11, at least one letter), such as one
+ * registered for the UAE.
+ */
+const SMS_SENDER = /^(?:\+[1-9]\d{6,14}|(?=[A-Za-z0-9 ]*[A-Za-z])[A-Za-z0-9 ]{1,11})$/;
+
+export type SmsSetup =
+  { ready: true; vendor: string; from: string; webhookKey: string } | { ready: false; reason: string };
+
+/**
+ * Whether this workspace can send a text from the lead (M4-29), and if not why:
+ * through its calling provider's own connection, when that vendor sends SMS,
+ * from the SMS sender set on its card (Administration → Integrations). No
+ * credentials are read: the lead page asks this on every render.
+ */
+export async function smsSetup(tenantId: string): Promise<SmsSetup> {
+  const vendor = await defaultVendor(tenantId);
+  if (!vendor || !sendsSms(vendor)) {
+    return {
+      ready: false,
+      reason:
+        'SMS is not set up: connect Twilio under Administration → Integrations as the calling provider and give it an SMS sender.',
+    };
+  }
+  const label = providerSpec(vendor)?.label ?? vendor;
+  const connection = await prisma.integrationConnection.findUnique({
+    where: { tenantId_provider: { tenantId, provider: vendor } },
+    select: { status: true, webhookKey: true, metadata: true },
+  });
+  if (connection?.status !== 'CONNECTED') {
+    return { ready: false, reason: `SMS is not set up: ${label} is not connected.` };
+  }
+  const raw = (connection.metadata as Record<string, unknown> | null)?.smsSender;
+  const from = typeof raw === 'string' ? raw.trim() : '';
+  if (!from) {
+    return {
+      ready: false,
+      reason: `SMS is not set up: set the SMS sender on the ${label} card under Administration → Integrations.`,
+    };
+  }
+  if (!SMS_SENDER.test(from)) {
+    return {
+      ready: false,
+      reason: `The SMS sender on the ${label} card is neither a number such as +971500000000 nor a name of up to 11 letters and digits.`,
+    };
+  }
+  return { ready: true, vendor, from, webhookKey: connection.webhookKey };
+}
+
+/** The workspace's text sender, or a `TelephonyConfigError` saying what is not set up. */
+export async function resolveSms(tenantId: string) {
+  const setup = await smsSetup(tenantId);
+  if (!setup.ready) throw new TelephonyConfigError(setup.reason);
+  const credentials = await connectionCredentials(tenantId, setup.vendor);
+  if (!credentials) throw new TelephonyConfigError(`${setup.vendor} credentials are missing.`);
+  const provider = telephonyProvider(setup.vendor, credentials, setup.webhookKey);
+  const send = provider.sendSms?.bind(provider);
+  if (!send) throw new TelephonyConfigError(`${setup.vendor} does not send SMS.`);
+  return {
+    vendor: setup.vendor,
+    from: setup.from,
+    send: (to: string, body: string): Promise<SmsResult> => send({ from: setup.from, to, body }),
   };
 }

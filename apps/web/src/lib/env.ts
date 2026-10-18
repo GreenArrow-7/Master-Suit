@@ -249,6 +249,15 @@ export const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
 
   /**
+   * The Microsoft Entra app registration the platform connects workspaces'
+   * Outlook calendars with (Integrations → Microsoft 365 → Connect with
+   * Microsoft) and refreshes their tokens with (M8-09). Unset, the card says an
+   * operator has to set them.
+   */
+  MICROSOFT_CLIENT_ID: z.string().optional(),
+  MICROSOFT_CLIENT_SECRET: z.string().optional(),
+
+  /**
    * The realtime call engine (worker process): where telephony vendors fork
    * live call audio. LIVE_STREAM_WS_URL is the PUBLIC wss:// URL the vendor is
    * told to connect to (through the tunnel/load balancer); unset means live

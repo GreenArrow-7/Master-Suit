@@ -13,6 +13,7 @@
 import { Prisma, type CallOutcome } from '@prisma/client';
 import { prismaRead, type TxClient } from '@/lib/db';
 import { csvHeader, csvRow, type CsvColumn } from '@/lib/csv';
+import { xlsx } from '@/lib/xlsx';
 import { Invalid, NotFound } from '@/lib/errors';
 import { mergeWhere } from '@/lib/api/where';
 import { conversion, funnel, names, rank, subtree, throughLead, type Range } from './rollups';
@@ -147,9 +148,13 @@ const PIVOT_COLUMN: Record<Pivot, Column> = {
   lead: { key: 'lead', label: 'Lead' },
 };
 
+/** The files a report downloads or is mailed as (M16-15). */
+export const REPORT_FORMATS = ['csv', 'xlsx'] as const;
+export type ReportFormat = (typeof REPORT_FORMATS)[number];
+
 /** The file a report downloads or is mailed as: `call-report-by-lead-2026-10-17.csv`, `day` on the workspace's clock. */
-export const reportFileName = (key: ReportKey, by: Pivot | undefined, day: string) =>
-  `${key}${by ? `-by-${by}` : ''}-${day}.csv`;
+export const reportFileName = (key: ReportKey, by: Pivot | undefined, day: string, format: ReportFormat = 'csv') =>
+  `${key}${by ? `-by-${by}` : ''}-${day}.${format}`;
 
 export interface Column {
   key: string;
@@ -1285,3 +1290,11 @@ export function toCsv(report: Report): string {
   }));
   return csvHeader(columns) + report.rows.map((row) => csvRow(columns, row)).join('');
 }
+
+/** The same columns and rows as an Excel workbook (M16-15), numbers as numbers. */
+export const toXlsx = (report: Report) =>
+  xlsx(
+    report.columns.map((c) => c.label),
+    report.rows.map((row) => report.columns.map((c) => row[c.key] ?? null)),
+    report.title,
+  );

@@ -72,10 +72,19 @@ const TELEPHONY_SETTINGS: SettingField[] = [
   },
 ];
 
+/** On a vendor that sends texts (M4-29): without it, Send SMS on the lead page says SMS is not set up. */
+const SMS_SENDER: SettingField = {
+  key: 'smsSender',
+  label: 'SMS sender',
+  secret: false,
+  setting: true,
+  hint: 'The sender a lead sees on a text from the lead page: a registered sender ID of up to 11 letters and digits (e.g. YOUHANHOMES), or a number of this account in E.164. Empty, SMS stays off.',
+};
+
 const TELEPHONY_LABELS: Record<string, { label: string; description: string; unsigned?: boolean }> = {
   twilio: {
     label: 'Twilio',
-    description: 'Global voice. Signs its callbacks over the URL and parameters.',
+    description: 'Global voice and SMS. Signs its callbacks over the URL and parameters.',
   },
   exotel: {
     label: 'Exotel',
@@ -100,7 +109,7 @@ export const PROVIDERS: ProviderSpec[] = [
     category: 'TELEPHONY',
     description: TELEPHONY_LABELS[vendor].description,
     credentials: VENDOR_FIELDS[vendor],
-    settings: TELEPHONY_SETTINGS,
+    settings: vendorCapabilities(vendor).includes('SMS') ? [...TELEPHONY_SETTINGS, SMS_SENDER] : TELEPHONY_SETTINGS,
     capabilities: vendorCapabilities(vendor),
     webhook: 'telephony',
     unsignedCallbacks: TELEPHONY_LABELS[vendor].unsigned,
@@ -167,6 +176,29 @@ export const PROVIDERS: ProviderSpec[] = [
       },
     ],
     capabilities: ['CREATE_MEETING', 'UPDATE_MEETING', 'CANCEL_MEETING', 'MEET_LINK', 'CALENDAR_SYNC'],
+    webhook: false,
+  },
+  {
+    key: 'microsoft',
+    label: 'Microsoft 365',
+    category: 'MEETINGS',
+    description:
+      'Meetings, site visits and meeting follow-ups on the connected account’s Outlook calendar, kept in step as they move, finish or are cancelled, with their owner invited (Outlook sends the invitation and each update).',
+    credentials: [
+      { key: 'accessToken', label: 'OAuth access token', secret: true },
+      { key: 'refreshToken', label: 'OAuth refresh token', secret: true },
+    ],
+    settings: [
+      {
+        key: 'syncAllFollowUps',
+        label: 'Every follow-up on the calendar',
+        secret: false,
+        setting: true,
+        toggle: true,
+        hint: 'Calls and other follow-ups too. Off, only meetings and site visits go on the calendar.',
+      },
+    ],
+    capabilities: ['CREATE_MEETING', 'UPDATE_MEETING', 'CANCEL_MEETING', 'CALENDAR_SYNC'],
     webhook: false,
   },
   {

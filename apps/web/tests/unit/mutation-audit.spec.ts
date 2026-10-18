@@ -33,6 +33,7 @@ const EXEMPT: Record<string, Exemption> = {
   'v1/integrations/[provider]/deliveries POST': audited('src/services/leads/deliveries.ts'),
   'v1/leads/messages POST': audited('src/services/leads/leadMessages.ts'),
   'v1/leads/[id]/messages POST': audited('src/services/leads/leadMessages.ts'),
+  'v1/leads/[id]/sms POST': audited('src/services/leads/leadSms.ts'),
   'v1/leads/triage/[id]/assign POST': audited('src/services/distribution/triageQueue.ts'),
   'v1/leads/[id]/merge POST': audited('src/services/leads/merge.ts'),
   'v1/leads/[id]/move-to-data POST': audited('src/services/leads/coldData.ts'),

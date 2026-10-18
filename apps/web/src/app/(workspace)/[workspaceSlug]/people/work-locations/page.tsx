@@ -8,7 +8,7 @@ import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
 import LocationMapForm from './LocationMapForm';
 import ExportCsv from '@/components/workspace/ExportCsv';
-import { csvCell } from '@/lib/csv';
+import { tableFiles } from '@/lib/csv';
 import { isHrAdmin, myEmployee } from '@/services/hr/leave';
 
 /** RFC 4180-ish: quote every field and double any embedded quote. */
@@ -43,6 +43,32 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
     }),
     getHrPolicy(ctx),
   ]);
+
+  const files =
+    hr && assignments.length > 0
+      ? await tableFiles([
+          [
+            'Employee',
+            'Employee number',
+            'Location',
+            'Type',
+            'Effective from',
+            'Effective to',
+            'Check-out rule',
+            'Status',
+          ],
+          ...assignments.map((assignment) => [
+            assignment.employee.membership.platformUser.fullName,
+            assignment.employee.employeeNumber,
+            assignment.location.name,
+            assignment.assignmentType,
+            assignment.effectiveFrom ? date(assignment.effectiveFrom) : '',
+            assignment.effectiveTo ? date(assignment.effectiveTo) : '',
+            assignment.checkoutRule,
+            assignment.status,
+          ]),
+        ])
+      : null;
 
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-6)' }}>
@@ -156,38 +182,8 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           }}
         >
           <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>Assignments</h2>
-          {hr && assignments.length > 0 && (
-            <ExportCsv
-              filename={`work-location-assignments-${new Date().toISOString().slice(0, 10)}.csv`}
-              csv={[
-                [
-                  'Employee',
-                  'Employee number',
-                  'Location',
-                  'Type',
-                  'Effective from',
-                  'Effective to',
-                  'Check-out rule',
-                  'Status',
-                ]
-                  .map(csvCell)
-                  .join(','),
-                ...assignments.map((assignment) =>
-                  [
-                    assignment.employee.membership.platformUser.fullName,
-                    assignment.employee.employeeNumber,
-                    assignment.location.name,
-                    assignment.assignmentType,
-                    assignment.effectiveFrom ? date(assignment.effectiveFrom) : '',
-                    assignment.effectiveTo ? date(assignment.effectiveTo) : '',
-                    assignment.checkoutRule,
-                    assignment.status,
-                  ]
-                    .map(csvCell)
-                    .join(','),
-                ),
-              ].join('\r\n')}
-            />
+          {files && (
+            <ExportCsv filename={`work-location-assignments-${new Date().toISOString().slice(0, 10)}.csv`} {...files} />
           )}
         </div>
         <WorkspaceTable
