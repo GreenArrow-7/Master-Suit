@@ -6,7 +6,7 @@ that calendar and follow every change: a follow-up of kind Meeting or Site
 visit, a task of an appointment type (Meeting, Site visit, Demo, or booked as
 an appointment, as a stage's meeting booking is) and a site visit. Booked, it
 is written; moved, it moves; done, it reads "Done: …"; cancelled, refused or
-deleted, it comes off. PR: see the index.
+deleted, it comes off. PR #221.
 
 **Why.** Audit row M8-08 ("Google Calendar sync of meetings/follow-ups"); the
 Google helper was wired only to Events' Meet links. Built on the owner's
