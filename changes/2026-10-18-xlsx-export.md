@@ -4,7 +4,7 @@
 
 M16-15: `format=xlsx` on the report, lead and HR report exports returns a real
 .xlsx with the CSV's columns and rows; a scheduled report email can attach the
-workbook instead of the CSV; an Excel button sits beside every CSV one. PR —.
+workbook instead of the CSV; an Excel button sits beside every CSV one. PR #229.
 
 ## Why
 
