@@ -13338,6 +13338,19 @@
               "type": "string",
               "maxLength": 1830
             }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "csv",
+                "xlsx"
+              ],
+              "default": "csv"
+            }
           }
         ],
         "responses": {
@@ -20508,7 +20521,8 @@
               "type": "string",
               "enum": [
                 "json",
-                "csv"
+                "csv",
+                "xlsx"
               ],
               "default": "json"
             }
@@ -20623,6 +20637,14 @@
                       "WEEKLY",
                       "MONTHLY"
                     ]
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "csv",
+                      "xlsx"
+                    ],
+                    "default": "csv"
                   },
                   "recipients": {
                     "type": "array",

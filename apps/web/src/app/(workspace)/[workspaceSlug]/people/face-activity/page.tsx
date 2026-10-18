@@ -6,7 +6,7 @@ import { isHrAdmin } from '@/services/hr/access';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 import ExportCsv from '@/components/workspace/ExportCsv';
-import { csvCell } from '@/lib/csv';
+import { tableFiles } from '@/lib/csv';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import DateInput from '@/components/forms/DateInput';
 
@@ -131,7 +131,7 @@ export default async function Page({
     };
   });
 
-  const csv = [
+  const files = await tableFiles([
     [
       'Employee',
       'Employee code',
@@ -147,30 +147,24 @@ export default async function Page({
       'Reason',
       'Device',
       'Audit reference',
-    ]
-      .map(csvCell)
-      .join(','),
-    ...rows.map((row) =>
-      [
-        row.employee,
-        row.employeeNumber,
-        row.at,
-        row.event,
-        row.liveness,
-        row.match,
-        row.location,
-        row.distance,
-        row.accuracy,
-        row.inside,
-        row.status,
-        row.reason,
-        row.device,
-        row.audit,
-      ]
-        .map(csvCell)
-        .join(','),
-    ),
-  ].join('\r\n');
+    ],
+    ...rows.map((row) => [
+      row.employee,
+      row.employeeNumber,
+      row.at,
+      row.event,
+      row.liveness,
+      row.match,
+      row.location,
+      row.distance,
+      row.accuracy,
+      row.inside,
+      row.status,
+      row.reason,
+      row.device,
+      row.audit,
+    ]),
+  ]);
 
   const iso = (value: Date) => value.toISOString().slice(0, 10);
 
@@ -242,7 +236,7 @@ export default async function Page({
         <a className="lf-btn lf-btn--secondary" href="?">
           Clear filters
         </a>
-        <ExportCsv filename={`face-activity-${iso(from)}-to-${iso(to)}.csv`} csv={csv} />
+        <ExportCsv filename={`face-activity-${iso(from)}-to-${iso(to)}.csv`} {...files} />
       </form>
 
       <h2 className="lf-leave__section">Consent register</h2>

@@ -11,7 +11,7 @@ import { EVERY_WORKSPACE_REPORT, runReport as runHrReport } from '@/services/hr/
 import ExportCsv from '@/components/workspace/ExportCsv';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
-import { csvCell } from '@/lib/csv';
+import { tableFiles } from '@/lib/csv';
 import TableSearch from '@/components/workspace/TableSearch';
 import PageHeader from '@/components/ui/PageHeader';
 import Badge from '@/components/ui/Badge';
@@ -141,29 +141,25 @@ export default async function Page({
     ['Face verified', faceVerified],
   ];
 
-  const csv = [
-    ['Date', 'Employee', 'First in', 'Last out', 'Hours', 'Location', 'Status'].map(csvCell).join(','),
-    ...rows.map((row) =>
-      [
-        dayLabel(row.workDate),
-        row.employee.membership.platformUser.fullName,
-        timeLabel(row.checkInAt),
-        timeLabel(row.checkOutAt),
-        hhmm(row.workMinutes ?? 0),
-        row.location?.name ?? '',
-        row.checkOutAt ? 'complete' : row.checkInAt ? 'open' : row.status,
-      ]
-        .map(csvCell)
-        .join(','),
-    ),
-  ].join('\r\n');
+  const files = await tableFiles([
+    ['Date', 'Employee', 'First in', 'Last out', 'Hours', 'Location', 'Status'],
+    ...rows.map((row) => [
+      dayLabel(row.workDate),
+      row.employee.membership.platformUser.fullName,
+      timeLabel(row.checkInAt),
+      timeLabel(row.checkOutAt),
+      hhmm(row.workMinutes ?? 0),
+      row.location?.name ?? '',
+      row.checkOutAt ? 'complete' : row.checkInAt ? 'open' : row.status,
+    ]),
+  ]);
 
   return (
     <div className="lf-page-stack">
       <PageHeader
         title="Attendance"
         description="One row per day from accepted check-ins and check-outs, in Asia/Dubai. A day stays open until a check-out is recorded."
-        actions={<ExportCsv filename={`attendance-${iso(from)}-to-${iso(to)}.csv`} csv={csv} />}
+        actions={<ExportCsv filename={`attendance-${iso(from)}-to-${iso(to)}.csv`} {...files} />}
       />
 
       {/* The date range is a toolbar, like every other list's controls — not a
@@ -220,9 +216,14 @@ export default async function Page({
         <section>
           <div className="lf-toolbar" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
             <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>Per person</h2>
-            <a className="lf-btn lf-btn--secondary lf-btn--sm" href={summaryCsv}>
-              Export summary
-            </a>
+            <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 'var(--lf-space-2)' }}>
+              <a className="lf-btn lf-btn--secondary lf-btn--sm" href={summaryCsv}>
+                Export summary
+              </a>
+              <a className="lf-btn lf-btn--secondary lf-btn--sm" href={`${summaryCsv}&format=xlsx`}>
+                Excel
+              </a>
+            </span>
           </div>
           <WorkspaceTable
             headers={summary.columns.map((column) => column.label)}

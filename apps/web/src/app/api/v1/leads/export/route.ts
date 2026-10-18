@@ -11,6 +11,8 @@ import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
 import { customCells, customColumns } from '@/services/leads/customFields';
 import { route } from '@/lib/api/handler';
+import { XLSX_TYPE, xlsxStream } from '@/lib/xlsx';
+import { z } from 'zod';
 
 /**
  * Every query in this module goes to `prismaRead` — the replica when
@@ -31,7 +33,11 @@ import { route } from '@/lib/api/handler';
 // answered by the grid's own query, so the file is the list that was on screen.
 // Two copies of that query had already drifted: this one was missing `mine`,
 // then the follow-up filters and the phone search.
-const query = leadListParams.omit({ layout: true }).strict();
+// `format=xlsx`: the same columns and rows as an Excel workbook (M16-15).
+const query = leadListParams
+  .omit({ layout: true })
+  .extend({ format: z.enum(['csv', 'xlsx']).default('csv') })
+  .strict();
 
 /** RFC 4180: quote every field, double any embedded quote. Also blunts the
  *  spreadsheet formula-injection trick where a value starting =, +, - or @ is
@@ -45,7 +51,7 @@ function csvCell(value: unknown): string {
 
 export const GET = route(
   { module: 'leads', action: 'EXPORT', productModule: LEAD_MODULES, sessionOnly: true, query },
-  async ({ ctx, query: params }) => {
+  async ({ ctx, query: { format, ...params } }) => {
     const [setting, rules, extra] = await Promise.all([
       prismaRead.organizationSetting.findUnique({ where: { tenantId: ctx.tenantId }, select: { gridColumns: true } }),
       loadFieldRules(ctx, 'LEAD'),
@@ -90,68 +96,45 @@ export const GET = route(
     // nowhere since it was added, so an operator who lowered it changed nothing.
     const PAGE = 500;
     const MAX_ROWS = env.EXPORT_MAX_ROWS;
-    const encoder = new TextEncoder();
-    let cursor: string | null = null;
-    let exported = 0;
 
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(encoder.encode('﻿' + columns.map((column) => csvCell(column.label)).join(',') + '\r\n'));
-      },
-      async pull(controller) {
-        const page = await prismaRead.lead.findMany({
-          where,
-          // By id whatever the grid's sort: the cursor walks a key no edit
-          // changes, where an updatedAt walk would skip or repeat a lead edited
-          // while the file streams.
-          orderBy: { id: 'asc' },
-          // The last page is trimmed to land exactly on the cap rather than
-          // overshooting it by up to PAGE-1 rows.
-          take: Math.min(PAGE, MAX_ROWS - exported),
-          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-          select: {
-            id: true,
-            reference: true,
-            fullName: true,
-            email: true,
-            phone: true,
-            company: true,
-            score: true,
-            grade: true,
-            priority: true,
-            slaState: true,
-            nextFollowUpAt: true,
-            updatedAt: true,
-            ownerId: true,
-            stage: { select: { key: true, name: true, color: true } },
-            owner: { select: { fullName: true } },
-            customData: true,
-          },
-        });
+    const leadPage = (cursor: string | null, take: number) =>
+      prismaRead.lead.findMany({
+        where,
+        // By id whatever the grid's sort: the cursor walks a key no edit
+        // changes, where an updatedAt walk would skip or repeat a lead edited
+        // while the file streams.
+        orderBy: { id: 'asc' },
+        take,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        select: {
+          id: true,
+          reference: true,
+          fullName: true,
+          email: true,
+          phone: true,
+          company: true,
+          score: true,
+          grade: true,
+          priority: true,
+          slaState: true,
+          nextFollowUpAt: true,
+          updatedAt: true,
+          ownerId: true,
+          stage: { select: { key: true, name: true, color: true } },
+          owner: { select: { fullName: true } },
+          customData: true,
+        },
+      });
 
-        if (page.length === 0 || exported >= MAX_ROWS) {
-          // Audited on completion so the record reflects what actually left the
-          // system — including `truncated`, because a caller who received a capped
-          // file and a reviewer reading this row must both be able to tell that
-          // the export is not the whole answer.
-          // What was asked for, so a narrowed file reads as one; whether it was
-          // searched, not what was typed (a phone number stays out of the trail).
-          const { q, ...asked } = params;
-          await audit(ctx, {
-            event: 'EXPORT_REQUESTED',
-            objectType: 'leads',
-            metadata: {
-              rows: exported,
-              ...asked,
-              filter: params.filter ?? null,
-              searched: Boolean(q),
-              truncated: exported >= MAX_ROWS,
-              ...(exported >= MAX_ROWS ? { limit: MAX_ROWS } : {}),
-            },
-          });
-          controller.close();
-          return;
-        }
+    /** The file's rows, a page at a time, each row its cells' values; audited after the last. */
+    async function* pages() {
+      let cursor: string | null = null;
+      let exported = 0;
+      for (;;) {
+        // The last page is trimmed to land exactly on the cap rather than
+        // overshooting it by up to PAGE-1 rows.
+        const page = await leadPage(cursor, Math.min(PAGE, MAX_ROWS - exported));
+        if (page.length === 0 || exported >= MAX_ROWS) break;
 
         // One derivation per page, not per row. Bounded by PAGE like the query it
         // follows, so a 50,000-row export is still two extra queries per page.
@@ -163,25 +146,62 @@ export const GET = route(
 
         // Masking runs on the export exactly as it does on the grid — an export must
         // not be a way around field-level security.
-        const body = page
+        yield page
           .map((row) => ({ ...row, nextFollowUpAt: due.get(row.id) ?? null }))
           .map((row) => applyFieldSecurity(ctx, 'LEAD', rules, row, LEAD_SENSITIVE_FIELDS) as Record<string, any>)
-          .map((row) => columns.map((column) => csvCell(value(row, column.key))).join(','))
-          .join('\r\n');
-
-        controller.enqueue(encoder.encode(body + '\r\n'));
+          .map((row) => columns.map((column) => value(row, column.key)));
         exported += page.length;
         cursor = page[page.length - 1].id;
-      },
-    });
+      }
+
+      // Audited on completion so the record reflects what actually left the
+      // system — including `truncated`, because a caller who received a capped
+      // file and a reviewer reading this row must both be able to tell that
+      // the export is not the whole answer.
+      // What was asked for, so a narrowed file reads as one; whether it was
+      // searched, not what was typed (a phone number stays out of the trail).
+      const { q, ...asked } = params;
+      await audit(ctx, {
+        event: 'EXPORT_REQUESTED',
+        objectType: 'leads',
+        metadata: {
+          rows: exported,
+          ...asked,
+          filter: params.filter ?? null,
+          searched: Boolean(q),
+          truncated: exported >= MAX_ROWS,
+          ...(exported >= MAX_ROWS ? { limit: MAX_ROWS } : {}),
+          format,
+        },
+      });
+    }
 
     const stamp = new Date().toISOString().slice(0, 10);
-    return new NextResponse(stream, {
-      headers: {
-        'content-type': 'text/csv; charset=utf-8',
-        'content-disposition': `attachment; filename="leads-${stamp}.csv"`,
-        'cache-control': 'no-store',
+    const headers = (type: string) => ({
+      'content-type': type,
+      'content-disposition': `attachment; filename="leads-${stamp}.${format}"`,
+      'cache-control': 'no-store',
+    });
+    const labels = columns.map((column) => column.label);
+    if (format === 'xlsx')
+      return new NextResponse(xlsxStream(labels, pages(), 'Leads'), { headers: headers(XLSX_TYPE) });
+
+    const rows = pages();
+    const encoder = new TextEncoder();
+    const line = (cells: unknown[]) => cells.map(csvCell).join(',') + '\r\n';
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('\ufeff' + line(labels)));
+      },
+      async pull(controller) {
+        const page = await rows.next();
+        if (page.done) controller.close();
+        else controller.enqueue(encoder.encode(page.value.map(line).join('')));
+      },
+      async cancel() {
+        await rows.return(undefined);
       },
     });
+    return new NextResponse(stream, { headers: headers('text/csv; charset=utf-8') });
   },
 );

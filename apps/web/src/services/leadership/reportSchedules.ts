@@ -5,7 +5,8 @@
  * workspace to send it to. The maintenance sweep runs it as its creator, at
  * their scope today and only while they hold reports:VIEW and EXPORT and the
  * workspace is live with a lead module, over the period the cadence covers,
- * and mails the CSV the Export button would have given them, to the members
+ * and mails the file the Export button would have given them (the CSV, or the
+ * Excel workbook when the schedule asks for it), to the members
  * who could see that report on the screen. Each send is audited as
  * EXPORT_REQUESTED, as a download is.
  */
@@ -30,20 +31,24 @@ import {
   offeredReports,
   PIVOT_KEYS,
   PIVOTS,
+  REPORT_FORMATS,
   REPORT_KEYS,
   reportFileName,
   runReport,
   toCsv,
+  toXlsx,
   type Pivot,
   type ReportKey,
 } from './reports';
 import { subtree } from './rollups';
+import { XLSX_TYPE } from '@/lib/xlsx';
 
 export const scheduleBody = z
   .object({
     report: z.enum(REPORT_KEYS),
     by: z.enum(PIVOT_KEYS).optional(),
     cadence: z.enum(['DAILY', 'WEEKLY', 'MONTHLY']),
+    format: z.enum(REPORT_FORMATS).default('csv'),
     recipients: z.array(z.string().trim().toLowerCase().email()).min(1).max(10),
   })
   .strict()
@@ -128,6 +133,7 @@ const SCHEDULE = {
   reportKey: true,
   by: true,
   cadence: true,
+  format: true,
   recipients: true,
   nextRunAt: true,
   lastRunAt: true,
@@ -169,6 +175,7 @@ export async function createSchedule(ctx: Ctx, body: z.infer<typeof scheduleBody
       reportKey: body.report,
       by: body.by ?? null,
       cadence: body.cadence,
+      format: body.format,
       recipients,
       nextRunAt: nextRunAt(body.cadence, zone),
       createdById: ctx.actor.id,
@@ -244,15 +251,20 @@ async function sendSchedule(tenantId: string, id: string, now: Date) {
   const range = periodOf(schedule.cadence, zone, schedule.nextRunAt);
   const report = await runReport(ctx, key, range, { by });
   const period = `${todayKey(zone, range.from)} to ${todayKey(zone, range.to)}`;
+  const xlsx = schedule.format === 'xlsx';
+  const filename = reportFileName(key, by, todayKey(zone, range.to), xlsx ? 'xlsx' : 'csv');
   const attachments = [
-    {
-      filename: reportFileName(key, by, todayKey(zone, range.to)),
-      content: toCsv(report),
-      contentType: 'text/csv; charset=utf-8',
-    },
+    xlsx
+      ? {
+          filename,
+          content: Buffer.from(await toXlsx(report)).toString('base64'),
+          encoding: 'base64' as const,
+          contentType: XLSX_TYPE,
+        }
+      : { filename, content: toCsv(report), contentType: 'text/csv; charset=utf-8' },
   ];
   const body =
-    `${report.title}, ${period}: ${report.rows.length} rows, attached as a CSV.\n\n` +
+    `${report.title}, ${period}: ${report.rows.length} rows, attached as ${xlsx ? 'an Excel workbook' : 'a CSV'}.\n\n` +
     `${ctx.actor.fullName} set this up to arrive ${schedule.cadence.toLowerCase()}; ` +
     'they can stop it under Reports → Scheduled emails.';
   let delivered = 0;
@@ -276,6 +288,7 @@ async function sendSchedule(tenantId: string, id: string, now: Date) {
             from: range.from.toISOString(),
             to: range.to.toISOString(),
             rows: report.rows.length,
+            format: xlsx ? 'xlsx' : 'csv',
             scheduleId: id,
             recipients: delivered,
             runAs: schedule.createdById,

@@ -3537,6 +3537,8 @@ model ReportSchedule {
   reportKey   String
   by          String?
   cadence     ReportCadence
+  /// The file attached: a REPORT_FORMATS entry, csv or xlsx.
+  format      String        @default("csv")
   /// Lower-cased addresses of workspace members, checked when saved and again when sent.
   recipients  String[]
   nextRunAt   DateTime
