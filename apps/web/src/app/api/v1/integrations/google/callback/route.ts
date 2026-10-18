@@ -33,7 +33,13 @@ function back(returnTo: string, error?: string) {
 }
 
 export const GET = route(
-  { module: 'integrations', action: 'MANAGE_CONFIGURATION', productModule: PRODUCT_MODULE_KEYS, sessionOnly: true, query },
+  {
+    module: 'integrations',
+    action: 'MANAGE_CONFIGURATION',
+    productModule: PRODUCT_MODULE_KEYS,
+    sessionOnly: true,
+    query,
+  },
   async ({ ctx, query }) => {
     // Spent first, on every path: a live handle left behind is a replayable credential.
     const state = await consumeGoogleOAuthState(query.state ?? '');
