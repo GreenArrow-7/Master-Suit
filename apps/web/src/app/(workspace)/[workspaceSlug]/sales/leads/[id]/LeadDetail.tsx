@@ -185,7 +185,7 @@ interface Props {
   canCall: boolean;
   /** The Calls list opens for this lead (`calls:VIEW`, which the list asks for). */
   canViewCalls: boolean;
-  /** Send WhatsApp and Send email (M4-28): null without `communications:CREATE` or the lead's `leads:EDIT`. */
+  /** Send WhatsApp, Send email (M4-28) and Send SMS (M4-29): null without `communications:CREATE` or the lead's `leads:EDIT`. */
   messaging: LeadMessaging | null;
   /** Share a property (M4-30): its links, and wa.me where the lead's WhatsApp number is visible; null where `leads:EDIT` does not reach it. */
   sharing: { firstName: string; whatsapp: string | null; shares: LeadShareRow[] } | null;
