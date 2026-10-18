@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { loginPathFor } from '@/lib/security/redirect';
 import { useEffect, useRef, useState } from 'react';
 
 type Result =
@@ -64,7 +65,8 @@ export default function ConfirmSignup({ token }: { token: string }) {
         Your workspace is ready. Sign in as {result.email}
         {result.reusedExistingIdentity ? ' with the password you already use here.' : ' with the password you chose.'}
       </div>
-      <Link className="lf-btn lf-btn--lg" href="/login">
+      {/* Back to the new workspace's board: the server would land an existing account on its oldest workspace. */}
+      <Link className="lf-btn lf-btn--lg" href={loginPathFor(`/${result.slug}/lead-eagle/dashboard`)}>
         Sign in
       </Link>
     </div>

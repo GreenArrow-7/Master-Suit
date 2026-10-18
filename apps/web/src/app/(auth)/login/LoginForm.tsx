@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { signInLanding } from '@/lib/security/redirect';
+import { PRODUCT_NAME } from '@/lib/branding';
 
 /**
  * Two visual steps over one endpoint: credentials, then — only when the server
@@ -15,8 +16,11 @@ import { signInLanding } from '@/lib/security/redirect';
  * mode: which of an account's passwords was typed is recorded on the server and
  * decides where the session lands. The password is dropped from memory once the
  * challenge arrives.
+ *
+ * `product` names the application on its own door (Lead Eagle, PROD-13); the
+ * account and the endpoint are the same.
  */
-export default function LoginForm({ next = null }: { next?: string | null }) {
+export default function LoginForm({ next = null, product }: { next?: string | null; product?: string }) {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -121,7 +125,9 @@ export default function LoginForm({ next = null }: { next?: string | null }) {
             ? useRecoveryCode
               ? 'Enter one of your saved recovery codes.'
               : 'Enter the 6-digit code from your authenticator app.'
-            : 'Sign in to your workspace.'}
+            : product
+              ? `Sign in to ${product} with your ${PRODUCT_NAME} account.`
+              : 'Sign in to your workspace.'}
         </p>
       </div>
 

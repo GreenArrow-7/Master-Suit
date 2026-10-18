@@ -67,7 +67,13 @@ Node 22 or newer (CI uses 24).
   (`tests/permission/page-access.spec.ts`). A workspace whose only usable
   product is Lead Eagle opens on `/{slug}/lead-eagle/dashboard` after sign-in
   and from `/` (`workspaceLanding`, `src/lib/security/entitlements.ts`); every
-  other workspace on its summary, `/{slug}/dashboard`.
+  other workspace on its summary, `/{slug}/dashboard`. Lead Eagle has its own
+  sign-in door, `/login?product=lead-eagle` (`LEAD_EAGLE_LOGIN`,
+  `src/lib/security/redirect.ts`): the same form, endpoint, accounts and session
+  under Lead Eagle's name (`AuthShell product="lead-eagle"`); a signed-out visit
+  to a Lead Eagle screen, signing out of a Lead-Eagle-only workspace and
+  self-serve sign-up go to it, with the workspace's board as `next` where it is
+  known (the server lands an account in two workspaces on the oldest).
 - **Permissions.** Roles live in the database. A new workspace gets one role,
   Company Admin, holding every permission; the admin builds the others in the
   role editor. Lead Eagle's arrival adds five editable starter roles (Manager,
@@ -354,6 +360,10 @@ Waiting on the owner:
   inbound-mail service and a small relay posting their lead emails, signed, to
   a Portal emails source), opening
   sign-up, and a real standalone database for the move tool, if one exists.
+  "An application, not a feature" (PROD-13) is built as its own sign-in door
+  and the sidebar's Lead Eagle section; its own mark, a domain or a store
+  listing would each be a further owner choice
+  (`changes/2026-10-18-le-signin-branding.md`).
 - **Self-serve sign-up** — built and closed: the platform owner decides whether
   to open it (console → Settings → Self-serve sign-up, trial days).
   Phase 2 is built: Google Ads lead forms work once connected; Property Finder,

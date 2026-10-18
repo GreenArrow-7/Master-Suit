@@ -10,7 +10,7 @@ export default async function ConfirmSignupPage({ searchParams }: { searchParams
   if (await inIosApp()) notFound();
   const { token } = await searchParams;
   return (
-    <AuthShell>
+    <AuthShell product="lead-eagle">
       <h1 className="lf-auth-title">Your workspace</h1>
       <ConfirmSignup token={token ?? ''} />
     </AuthShell>
