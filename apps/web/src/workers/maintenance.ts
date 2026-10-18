@@ -32,26 +32,32 @@ import { sweepTimeTriggers } from '@/services/automation/engine';
 /** 03:00 UTC — after the working day in every timezone this product ships to. */
 const DAILY_PATTERN = '0 3 * * *';
 
-/**
- * Every quarter hour, for the reminder sweep.
- *
- * A reminder is only worth sending before the thing is due, so its cadence is
- * set by how late it is acceptable to be told — not by load. The sweep looks 45
- * minutes ahead and refuses to repeat itself, so this interval can change
- * without anybody being told twice.
- */
+/** Every quarter hour: account deletions and scheduled reports (see their rows). */
 const QUARTER_HOURLY_PATTERN = '*/15 * * * *';
 
 /**
- * Every five minutes, for the unassigned-lead queue.
+ * Every five minutes, for the unassigned-lead queue and the reminder sweep.
  *
- * Faster than the reminder sweep because its unit is a *review deadline a
- * manager configured*, and a workspace that sets a fifteen-minute window would
- * otherwise learn about the breach a quarter of an hour after it happened. The
- * three passes are all idempotent and all no-ops on an empty queue, so the
- * cadence costs a handful of indexed reads when nothing is waiting.
+ * The queue's unit is a *review deadline a manager configured*, and a workspace
+ * that sets a fifteen-minute window would otherwise learn about the breach a
+ * quarter of an hour after it happened. The three passes are all idempotent and
+ * all no-ops on an empty queue, so the cadence costs a handful of indexed reads
+ * when nothing is waiting.
+ *
+ * A reminder is only worth sending before the thing is due, so its cadence is
+ * set by how late it is acceptable to be told — not by load. The sweep looks 15
+ * minutes ahead (T-15, audit M8-05) and refuses to repeat itself, so this
+ * interval can change without anybody being told twice, as long as it stays
+ * shorter than that look-ahead.
  */
 const FIVE_MINUTE_PATTERN = '*/5 * * * *';
+
+/**
+ * Scheduler ids no longer armed. `upsertJobScheduler` never removes an id it is
+ * not given, so a renamed schedule would keep firing under its old id beside the
+ * new one; each start removes these (a no-op once gone).
+ */
+const RETIRED_SCHEDULES = ['reminders-quarter-hourly'];
 
 /** The maintenance queue's jobs, by the names the schedules below send. */
 export const MAINTENANCE_JOBS = {
@@ -190,7 +196,7 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
   // that cannot disagree with itself is the fix; another careful edit is not.
   const schedules: { id: string; pattern: string; name: string }[] = [
     { id: 'retention-daily', pattern: DAILY_PATTERN, name: 'retention' },
-    { id: 'reminders-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'reminders' },
+    { id: 'reminders-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'reminders' },
     { id: 'lead-triage-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'triage-sweep' },
     { id: 'first-contact-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'first-contact' },
     { id: 'automation-time-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'automation-time' },
@@ -210,6 +216,7 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
     { id: 'report-schedules-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'report-schedules' },
   ];
   const queue = new Queue('maintenance', { connection: redis });
+  for (const id of RETIRED_SCHEDULES) await queue.removeJobScheduler(id);
   for (const schedule of schedules) {
     await queue.upsertJobScheduler(schedule.id, { pattern: schedule.pattern }, { name: schedule.name });
   }

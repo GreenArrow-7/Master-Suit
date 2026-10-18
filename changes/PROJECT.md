@@ -286,7 +286,9 @@ Node 22 or newer (CI uses 24).
   Allocate, cross-team routing and the leaver hand-over through
   `notifyLeadMoves` inside the move's transaction (the previous owner too), then
   one push per receiving person (`ringNewOwner`), not one per lead. A merge
-  tells nobody.
+  tells nobody. Reminders ring the owner 10–15 minutes before a follow-up,
+  call follow-up or site visit is due (`src/services/crm/reminders.ts`, 15
+  minutes ahead; the five-minutely maintenance job `reminders`), once each.
 
 ## Testing and verifying
 

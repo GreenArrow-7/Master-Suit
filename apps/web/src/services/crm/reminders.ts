@@ -26,13 +26,16 @@ import { logger } from '@/lib/logger';
 import { enqueue } from '@/lib/queue';
 
 /**
- * How far ahead to look.
+ * How far ahead to look: fifteen minutes, so a reminder lands 10-15 minutes
+ * before the thing is due (T-15, the owner's choice, audit M8-05).
  *
- * Comfortably wider than the run interval, so a late or skipped run still
- * catches the window it missed rather than dropping those reminders on the
- * floor. The existence check above is what makes the overlap free.
+ * Three times the five-minute run interval (`reminders-five-minutely` in
+ * workers/maintenance.ts), so a late or skipped run still catches the window it
+ * missed rather than dropping those reminders on the floor. Keep it wider than
+ * the interval if either changes. The existence check above is what makes the
+ * overlap free.
  */
-const LOOKAHEAD_MINUTES = 45;
+const LOOKAHEAD_MINUTES = 15;
 
 /** Suppression window for the "already told them" check. */
 const ALREADY_TOLD_HOURS = 24;
