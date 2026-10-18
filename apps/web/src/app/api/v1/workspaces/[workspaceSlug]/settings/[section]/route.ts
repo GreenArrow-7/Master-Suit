@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
-import { prisma } from '@/lib/db';
-import { NotFound } from '@/lib/errors';
+import { prisma, withTx } from '@/lib/db';
+import { Invalid, NotFound } from '@/lib/errors';
+import { WORKSPACE_RETENTION, workspaceRetention, type WorkspaceRetentionKey } from '@/lib/jobs/retention';
 import { requireWorkspace } from '@/lib/workspace';
 import { WORKSPACE_LOCALES, type WorkspaceLocale } from '@/lib/locale';
 
@@ -12,14 +13,15 @@ import { WORKSPACE_LOCALES, type WorkspaceLocale } from '@/lib/locale';
  * subscription each rendered a two-column table with no form, no button and no
  * input. A customer who rebranded could not change their own display name.
  *
- * Only the two sections a company owns are writable here. Modules and
+ * Only the sections a company owns are writable here (company, security, and its
+ * data retention — longer than the deployment's, never shorter). Modules and
  * subscription are deliberately absent — those belong to the platform owner, and
  * an endpoint that let a workspace grant itself a module would make the
  * entitlement system decorative.
  */
 const paramsSchema = z.object({
   workspaceSlug: z.string().min(2).max(64),
-  section: z.enum(['company', 'security']),
+  section: z.enum(['company', 'security', 'retention']),
 });
 
 const hex = z
@@ -81,6 +83,20 @@ const securityBody = z.object({
     .optional(),
 });
 
+/**
+ * Days a workspace keeps a data class (M18-11); empty or null follows the deployment.
+ * 30 is the deployment's own typo guard (lib/env.ts); the floor that matters is the
+ * deployment's window, checked in the handler because it is read at request time.
+ */
+const retentionDays = z
+  .preprocess((value) => (value === '' ? null : value), z.coerce.number().int().min(30).max(36_500).nullable())
+  .optional();
+const retentionBody = z.object({
+  auditLog: retentionDays,
+  attendancePunch: retentionDays,
+  aiEvent: retentionDays,
+});
+
 export const PATCH = route(
   {
     module: 'settings',
@@ -135,6 +151,49 @@ export const PATCH = route(
         },
       });
       return { ...company, ...brand, locale: defaultLocale };
+    }
+
+    if (params.section === 'retention') {
+      const input = retentionBody.parse(body);
+      const keys = Object.keys(WORKSPACE_RETENTION) as WorkspaceRetentionKey[];
+      return withTx(ctx.tenantId, async (tx) => {
+        // Locked, so two saves of different classes cannot each merge into the same
+        // stale copy and the later one drop the other's key (and with it a longer window).
+        // ponytail: a workspace with no settings row yet takes no lock; provisioning creates one.
+        const [row] = await tx.$queryRaw<{ retentionPolicy: Record<string, unknown> }[]>`
+          SELECT "retentionPolicy" FROM "OrganizationSetting" WHERE "tenantId" = ${ctx.tenantId} FOR UPDATE`;
+        const policy = { ...row?.retentionPolicy };
+        // Lengthen only (owner, 18 Oct): a window below the deployment's would be ignored
+        // by the sweep, so it is refused rather than stored as a promise nobody keeps. A
+        // value already stored (saved before the deployment set a window) is left alone:
+        // the form sends it back on every save.
+        const tooShort = keys.flatMap((key) => {
+          const days = input[key];
+          const floor = WORKSPACE_RETENTION[key].days();
+          return typeof days === 'number' && floor !== undefined && days < floor && days !== policy[key]
+            ? [
+                {
+                  field: key,
+                  code: 'below_deployment',
+                  message: `The deployment keeps this ${floor} days; a workspace may only keep it longer.`,
+                },
+              ]
+            : [];
+        });
+        if (tooShort.length) throw Invalid(tooShort);
+
+        for (const key of keys) {
+          if (input[key] === null) delete policy[key];
+          else if (input[key] !== undefined) policy[key] = input[key];
+        }
+        const saved = await tx.organizationSetting.upsert({
+          where: { tenantId: ctx.tenantId },
+          create: { tenantId: ctx.tenantId, retentionPolicy: policy as object },
+          update: { retentionPolicy: policy as object },
+          select: { retentionPolicy: true },
+        });
+        return workspaceRetention(saved.retentionPolicy);
+      });
     }
 
     const input = securityBody.parse(body);

@@ -14,6 +14,7 @@ import { findDuplicates } from './findDuplicates';
 import { assertLeadSource } from './leadSources';
 import { withCustomValues } from './customFields';
 import { normalizePhone } from './normalizePhone';
+import { queueCalendarSync } from '../integrations/googleCalendar';
 
 export interface UpdateLeadInput {
   fullName?: string;
@@ -82,6 +83,8 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput, o
   let stageChangedCategory: string | null = null;
   let previousOwnerId: string | null = null;
   let ownerChanged = false;
+  /** The site visit and meeting the new stage booked, if it booked any. */
+  let booked: { visitId?: string; taskId?: string } | undefined;
 
   const inTx = <T>(fn: (tx: TxClient) => Promise<T>) => (opts.dryRun ? fn(opts.dryRun) : withTx(ctx.tenantId, fn));
   const updated = await inTx(async (tx) => {
@@ -153,7 +156,7 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput, o
           reason,
         },
       });
-      await book(ctx, tx, before, stage.requiredFields, input);
+      booked = await book(ctx, tx, before, stage.requiredFields, input);
     }
 
     if (input.ownerId !== undefined && input.ownerId !== before.ownerId) {
@@ -203,6 +206,10 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput, o
     return after;
   });
   if (opts.dryRun) return updated;
+
+  // What the stage booked, onto the workspace's Google Calendar (M8-08).
+  await queueCalendarSync(ctx.tenantId, 'visit', booked?.visitId);
+  await queueCalendarSync(ctx.tenantId, 'task', booked?.taskId);
 
   await enqueue('automation', 'trigger', {
     tenantId: ctx.tenantId,
@@ -361,7 +368,8 @@ async function book(
 ) {
   const visit = fields.includes('visitAt');
   const meeting = fields.includes('meetingAt');
-  if (!visit && !meeting) return;
+  const booked: { visitId?: string; taskId?: string } = {};
+  if (!visit && !meeting) return booked;
   const { timezone } = await tx.tenant.findFirstOrThrow({ where: { id: ctx.tenantId }, select: { timezone: true } });
 
   if (visit) {
@@ -400,6 +408,7 @@ async function book(
       },
       tx,
     );
+    booked.visitId = row.id;
   }
 
   if (meeting) {
@@ -431,7 +440,9 @@ async function book(
       { event: 'RECORD_CREATED', objectType: 'tasks', recordId: task.id, newValue: { leadId: lead.id, dueAt } },
       tx,
     );
+    booked.taskId = task.id;
   }
+  return booked;
 }
 
 /**

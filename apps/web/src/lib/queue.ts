@@ -17,12 +17,17 @@ export const QUEUE_NAMES = [
   'campaign',
   'webhook',
   'maintenance',
+  // The reminder sweep, apart from maintenance so a long sweep there cannot hold a reminder past its time.
+  'reminders',
   // Fetching call recordings out of a vendor and into our own bucket.
   'media',
   // Transcription, Gemini analysis and the call audit that follows them.
   'ai',
   // Email for in-app notifications that have already been written.
   'notifications',
+  // Meetings, follow-ups and site visits onto a workspace's Google Calendar (M8-08):
+  // its own worker, so a hanging Google never holds up reminder pushes and emails.
+  'calendar',
 ] as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[number];
@@ -34,6 +39,8 @@ export const RETRY: Record<QueueName, { attempts: number; backoff: any }> = {
   campaign: { attempts: 3, backoff: { type: 'exponential', delay: 30_000 } },
   webhook: { attempts: 5, backoff: { type: 'exponential', delay: 10_000 } },
   maintenance: { attempts: 1, backoff: { type: 'fixed', delay: 0 } },
+  // The next sweep, five minutes on, is the retry.
+  reminders: { attempts: 1, backoff: { type: 'fixed', delay: 0 } },
   // Vendors publish recording media a little after they announce it, and some
   // 404 for a few seconds. Long backoff, several attempts: the alternative to
   // retrying is losing the only copy of a client conversation.
@@ -47,6 +54,9 @@ export const RETRY: Record<QueueName, { attempts: number; backoff: any }> = {
   // over a few minutes covers an SMTP host having a bad moment; past that the
   // person still has the notification waiting for them in the product.
   notifications: { attempts: 5, backoff: { type: 'exponential', delay: 10_000 } },
+  // A Google outage, not a blip: about eight minutes of attempts, then the
+  // maintenance sweep (calendar-sync-retry) re-drives what is still pending.
+  calendar: { attempts: 5, backoff: { type: 'exponential', delay: 30_000 } },
 };
 
 const queues = new Map<QueueName, Queue>();

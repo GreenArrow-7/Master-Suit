@@ -13,6 +13,7 @@ import { recordTargetProgress } from '@/services/targets/progress';
 import { CLOSE_OUT_STATUSES, closeOutLead } from './closeOut';
 import { LEAD_SENSITIVE_FIELDS } from './createLead';
 import { lockLeads, OPEN_STATUSES, recomputeNextFollowUp } from './nextFollowUp';
+import { queueCalendarSync } from '../integrations/googleCalendar';
 
 /**
  * Whose cold data a person reaches for `action`, as a `where`: the lead rule
@@ -136,7 +137,8 @@ export async function moveLeadToData(ctx: Ctx, id: string) {
     }
   }
   const batch = `From pipeline ${todayKey(await workspaceTimezone(ctx))}`;
-  return withTx(tenantId, async (tx) => {
+  let cancelled: { followUps: string[]; tasks: string[] } = { followUps: [], tasks: [] };
+  const moved = await withTx(tenantId, async (tx) => {
     // The row lock first: a second move of the same lead waits, then finds it closed out.
     await lockLeads(tx, tenantId, [id]);
     const before = await assertLeadInScope(ctx, id, tx, 'EDIT');
@@ -155,6 +157,7 @@ export async function moveLeadToData(ctx: Ctx, id: string) {
       data: { status: 'CANCELLED', updatedById: ctx.actor.id },
     });
     await recomputeNextFollowUp(tx, tenantId, id);
+    cancelled = { followUps, tasks };
 
     const phones = await tx.leadPhone.findMany({
       where: { tenantId, leadId: id },
@@ -203,4 +206,8 @@ export async function moveLeadToData(ctx: Ctx, id: string) {
     );
     return { id, dataRecordId: record.id, batch };
   });
+  // The cancelled meetings off the workspace's Google Calendar (M8-08).
+  await queueCalendarSync(tenantId, 'followUp', ...cancelled.followUps);
+  await queueCalendarSync(tenantId, 'task', ...cancelled.tasks);
+  return moved;
 }

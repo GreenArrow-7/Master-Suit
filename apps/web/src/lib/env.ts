@@ -240,6 +240,15 @@ export const envSchema = z.object({
   META_APP_SECRET: z.string().optional(),
 
   /**
+   * The Google OAuth client the platform connects workspaces' calendars with
+   * (Integrations → Google Workspace → Connect with Google) and refreshes their
+   * access tokens with. Unset, the card says an operator has to set them, and a
+   * pasted access token lasts the hour Google gives it.
+   */
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+
+  /**
    * The realtime call engine (worker process): where telephony vendors fork
    * live call audio. LIVE_STREAM_WS_URL is the PUBLIC wss:// URL the vendor is
    * told to connect to (through the tunnel/load balancer); unset means live

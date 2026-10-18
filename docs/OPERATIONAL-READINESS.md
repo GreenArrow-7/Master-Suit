@@ -125,7 +125,7 @@ throttle disappears exactly when the system is already unhealthy.
 | 8.1 | Attendance capture frames | Per workspace | By the retention job | Verified in a scratch run |
 | 8.2 | Face templates | Deleted on consent withdrawal and on exit | Yes | Verified |
 | 8.3 | Employee documents | **No retention policy at all** | ☐ | ☐ |
-| 8.4 | `AuditLog`, `HrAttendancePunch`, `PlatformAuditEvent` | Per deployment, in days — `AUDIT_LOG_RETENTION_DAYS`, `ATTENDANCE_PUNCH_RETENTION_DAYS`, `PLATFORM_AUDIT_RETENTION_DAYS` | By the retention job **only when a window is set**; empty means keep | `tests/tenant/audit-retention.spec.ts` |
+| 8.4 | `AuditLog`, `HrAttendancePunch`, `PlatformAuditEvent` | Per deployment, in days — `AUDIT_LOG_RETENTION_DAYS`, `ATTENDANCE_PUNCH_RETENTION_DAYS`, `PLATFORM_AUDIT_RETENTION_DAYS`; a workspace may keep the audit log, punches and AI events longer, never shorter (Settings → Data Retention) | By the retention job **only when a window is set**; empty means keep | `tests/tenant/audit-retention.spec.ts` |
 | 8.5 | Soft-deleted records | 90 days | Retention job | ☐ |
 
 **8.3 and 8.4 need a decision.** Passport scans and audit rows kept forever is a

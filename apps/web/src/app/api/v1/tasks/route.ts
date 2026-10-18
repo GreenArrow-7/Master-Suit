@@ -7,6 +7,7 @@ import { cursorWhere, pageQuery, toPage } from '@/lib/api/pagination';
 import { mergeWhere } from '@/lib/api/where';
 import { assertAssignableUser, assertLeadInScope, workListScope } from '@/lib/security/record-scope';
 import { withRecompute } from '@/services/leads/nextFollowUp';
+import { queueCalendarSync } from '@/services/integrations/googleCalendar';
 
 const createBody = z
   .object({
@@ -38,7 +39,7 @@ export const POST = route(
     // A new task can be earlier than everything already open on the lead, so the
     // stored aggregate is recomputed under the lead's lock in the same
     // transaction that creates the row. A task with no lead locks nothing.
-    return withTx(ctx.tenantId, async (tx) => {
+    const task = await withTx(ctx.tenantId, async (tx) => {
       if (rest.leadId) await assertLeadInScope(ctx, rest.leadId, tx, 'EDIT');
       return withRecompute(tx, ctx.tenantId, [rest.leadId], () =>
         tx.task.create({
@@ -53,6 +54,9 @@ export const POST = route(
         }),
       );
     });
+    // A meeting onto the workspace's Google Calendar, once committed (M8-08).
+    await queueCalendarSync(ctx.tenantId, 'task', task.id);
+    return task;
   },
 );
 

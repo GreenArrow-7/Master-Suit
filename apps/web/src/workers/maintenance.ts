@@ -13,6 +13,7 @@ import { runDigestSweep } from '@/services/notifications/digest';
 import { sweepFirstContact } from '@/services/sla/checkLeadFirstContact';
 import { runReportSchedules } from '@/services/leadership/reportSchedules';
 import { sweepTimeTriggers } from '@/services/automation/engine';
+import { retryPendingCalendarSyncs } from '@/services/integrations/googleCalendar';
 
 /**
  * The `maintenance` queue: scheduled sweeps, one at a time (see startWorker).
@@ -32,26 +33,35 @@ import { sweepTimeTriggers } from '@/services/automation/engine';
 /** 03:00 UTC — after the working day in every timezone this product ships to. */
 const DAILY_PATTERN = '0 3 * * *';
 
-/**
- * Every quarter hour, for the reminder sweep.
- *
- * A reminder is only worth sending before the thing is due, so its cadence is
- * set by how late it is acceptable to be told — not by load. The sweep looks 45
- * minutes ahead and refuses to repeat itself, so this interval can change
- * without anybody being told twice.
- */
+/** Every quarter hour: account deletions and scheduled reports (see their rows). */
 const QUARTER_HOURLY_PATTERN = '*/15 * * * *';
 
 /**
- * Every five minutes, for the unassigned-lead queue.
+ * Every five minutes, for the unassigned-lead queue and the reminder sweep.
  *
- * Faster than the reminder sweep because its unit is a *review deadline a
- * manager configured*, and a workspace that sets a fifteen-minute window would
- * otherwise learn about the breach a quarter of an hour after it happened. The
- * three passes are all idempotent and all no-ops on an empty queue, so the
- * cadence costs a handful of indexed reads when nothing is waiting.
+ * The queue's unit is a *review deadline a manager configured*, and a workspace
+ * that sets a fifteen-minute window would otherwise learn about the breach a
+ * quarter of an hour after it happened. The three passes are all idempotent and
+ * all no-ops on an empty queue, so the cadence costs a handful of indexed reads
+ * when nothing is waiting.
+ *
+ * A reminder is only worth sending before the thing is due, so its cadence is
+ * set by how late it is acceptable to be told — not by load. The sweep looks 15
+ * minutes ahead (T-15, audit M8-05) and refuses to repeat itself, so this
+ * interval can change without anybody being told twice, as long as it stays
+ * shorter than that look-ahead. It runs on a queue of its own (REMINDER_JOBS).
  */
 const FIVE_MINUTE_PATTERN = '*/5 * * * *';
+
+/**
+ * Scheduler ids no longer armed. `upsertJobScheduler` never removes an id it is
+ * not given, so a renamed schedule would keep firing under its old id beside the
+ * new one; each start removes these (a no-op once gone).
+ */
+const RETIRED_SCHEDULES = ['reminders-quarter-hourly'];
+
+/** The reminder sweep's scheduler id, on the `reminders` queue. */
+const REMINDER_SCHEDULE = 'reminders-five-minutely';
 
 /** The maintenance queue's jobs, by the names the schedules below send. */
 export const MAINTENANCE_JOBS = {
@@ -59,11 +69,6 @@ export const MAINTENANCE_JOBS = {
   // what a sweep *would* remove before authorising it; a scheduled sweep that only
   // counted would be the current bug wearing a cron expression.
   retention: () => runRetentionCleanup(false),
-  reminders: async () => {
-    const result = await runReminderSweep();
-    logger.info(result, 'reminder sweep complete');
-    return result;
-  },
   'triage-sweep': async () => {
     /**
      * Stale first: an entry whose lead already has an owner must not be
@@ -173,12 +178,40 @@ export const MAINTENANCE_JOBS = {
     logger.info(result, 'report schedule sweep complete');
     return result;
   },
+  /**
+   * Google Calendar syncs that ran out of retries, or were left while the
+   * connection was in error (M8-08), queued again. Scoped like the two above.
+   */
+  'calendar-sync-retry': async (data?: { tenantIds?: string[] }) => {
+    const result = await retryPendingCalendarSyncs(data?.tenantIds);
+    logger.info(result, 'calendar sync retry sweep complete');
+    return result;
+  },
 };
 
 /**
- * Arms this queue's schedules. Idempotent: the scheduler ids are stable, so
- * every worker start converges on one schedule each rather than stacking them —
- * the same property armCampaignScheduler relies on.
+ * The `reminders` queue: the reminder sweep alone.
+ *
+ * Not a maintenance job, because that worker runs one job at a time and the
+ * hourly digest, the 03:00 retention sweep and the scheduled report emails all
+ * do long work inline. A sweep queued behind one of them starts late, and the
+ * look-ahead only absorbs ten minutes of that: past it, an item falls due
+ * before any sweep has seen it (`dueAt >= now()`), and it never rings. Here the
+ * only job ahead of a sweep is the previous sweep.
+ */
+export const REMINDER_JOBS = {
+  sweep: async () => {
+    const result = await runReminderSweep();
+    logger.info(result, 'reminder sweep complete');
+    return result;
+  },
+};
+
+/**
+ * Arms this queue's schedules, and the reminder sweep's on its own queue.
+ * Idempotent: the scheduler ids are stable, so every worker start converges on
+ * one schedule each rather than stacking them — the same property
+ * armCampaignScheduler relies on.
  *
  * Returns the ids it armed so the start-up log can name what is actually
  * running. That line used to be a hard-coded pair and had already gone stale.
@@ -190,7 +223,6 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
   // that cannot disagree with itself is the fix; another careful edit is not.
   const schedules: { id: string; pattern: string; name: string }[] = [
     { id: 'retention-daily', pattern: DAILY_PATTERN, name: 'retention' },
-    { id: 'reminders-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'reminders' },
     { id: 'lead-triage-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'triage-sweep' },
     { id: 'first-contact-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'first-contact' },
     { id: 'automation-time-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'automation-time' },
@@ -208,11 +240,17 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
     { id: 'morning-digest-hourly', pattern: '5 * * * *', name: 'digest' },
     // A quarter hour is how late a 07:00 report may arrive.
     { id: 'report-schedules-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'report-schedules' },
+    // A meeting missing from the calendar for a quarter hour past a Google outage, at most.
+    { id: 'calendar-sync-retry-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'calendar-sync-retry' },
   ];
   const queue = new Queue('maintenance', { connection: redis });
+  for (const id of RETIRED_SCHEDULES) await queue.removeJobScheduler(id);
   for (const schedule of schedules) {
     await queue.upsertJobScheduler(schedule.id, { pattern: schedule.pattern }, { name: schedule.name });
   }
   await queue.close();
-  return schedules.map((schedule) => schedule.id);
+  const reminders = new Queue('reminders', { connection: redis });
+  await reminders.upsertJobScheduler(REMINDER_SCHEDULE, { pattern: FIVE_MINUTE_PATTERN }, { name: 'sweep' });
+  await reminders.close();
+  return [...schedules.map((schedule) => schedule.id), REMINDER_SCHEDULE];
 }

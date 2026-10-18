@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { LEAD_EAGLE_LOGIN } from '@/lib/security/redirect';
 import { useState } from 'react';
 
 const FIELDS = [
@@ -103,7 +104,7 @@ export default function SignupForm() {
       <button className="lf-btn lf-btn--lg" type="submit" disabled={busy || Object.values(form).some((v) => !v.trim())}>
         {busy ? 'Sending…' : 'Email me the link'}
       </button>
-      <Link href="/login" style={{ fontSize: 'var(--lf-text-sm)', textAlign: 'center' }}>
+      <Link href={LEAD_EAGLE_LOGIN} style={{ fontSize: 'var(--lf-text-sm)', textAlign: 'center' }}>
         Already have an account? Sign in
       </Link>
     </form>

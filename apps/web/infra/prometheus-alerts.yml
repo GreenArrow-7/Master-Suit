@@ -81,7 +81,7 @@ groups:
       # counter the enqueue path maintains looks perfectly healthy in exactly
       # this failure, because jobs really were being enqueued.
       - alert: QueueHasNoConsumer
-        expr: masterapp_queue_workers{queue=~"ai|media|webhook|notifications|sla|distribution|automation|campaign|maintenance"} == 0
+        expr: masterapp_queue_workers{queue=~"ai|media|webhook|notifications|sla|distribution|automation|campaign|maintenance|reminders|calendar"} == 0
         for: 5m
         labels: { severity: page }
         annotations:

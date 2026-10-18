@@ -16,7 +16,8 @@ export interface SettingField extends VendorField {
   setting?: true;
   /**
    * On or off, a checkbox rather than a text box. Unsaved, it reads as its
-   * default: `capturesUnknown` in services/leads/intake.ts.
+   * default: `capturesUnknown` in services/leads/intake.ts for the two lead
+   * capture switches, off for any other.
    */
   toggle?: true;
 }
@@ -148,13 +149,24 @@ export const PROVIDERS: ProviderSpec[] = [
     key: 'google',
     label: 'Google Workspace',
     category: 'MEETINGS',
-    description: 'Calendar events and Google Meet links against the organiser calendar.',
+    description:
+      'Meetings, site visits and meeting follow-ups on your Google Calendar, kept in step as they move, finish or are cancelled, with their owner as a guest; Google Meet links for online events.',
     credentials: [
       { key: 'accessToken', label: 'OAuth access token', secret: true },
       { key: 'refreshToken', label: 'OAuth refresh token', secret: true },
     ],
-    settings: [{ key: 'calendarId', label: 'Calendar', secret: false, setting: true, hint: 'Defaults to primary' }],
-    capabilities: ['CREATE_MEETING', 'UPDATE_MEETING', 'CANCEL_MEETING', 'MEET_LINK'],
+    settings: [
+      { key: 'calendarId', label: 'Calendar', secret: false, setting: true, hint: 'Defaults to primary' },
+      {
+        key: 'syncAllFollowUps',
+        label: 'Every follow-up on the calendar',
+        secret: false,
+        setting: true,
+        toggle: true,
+        hint: 'Calls and other follow-ups too. Off, only meetings and site visits go on the calendar.',
+      },
+    ],
+    capabilities: ['CREATE_MEETING', 'UPDATE_MEETING', 'CANCEL_MEETING', 'MEET_LINK', 'CALENDAR_SYNC'],
     webhook: false,
   },
   {

@@ -787,3 +787,9 @@
     animation-duration: 1.6s;
   }
 }
+
+/* Lead Eagle's door (PROD-13) has no ecosystem graphic: its message takes the
+   middle of the story column instead. */
+.lf-auth-message[data-product='lead-eagle'] {
+  margin-block: auto;
+}

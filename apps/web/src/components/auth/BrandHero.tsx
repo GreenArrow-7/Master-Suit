@@ -1,4 +1,5 @@
 import { COMPANY_NAME, PRODUCT_DESCRIPTION, PRODUCT_NAME } from '@/lib/branding';
+import { PRODUCT_MODULE_CHOICES } from '@/lib/modules/catalogue';
 import YouhanMark from '@/components/brand/YouhanMark';
 import BrandBackground from '@/components/brand/BrandBackground';
 import BusinessEcosystem from '@/components/brand/ecosystem/BusinessEcosystem';
@@ -17,26 +18,38 @@ import type { ValueSummary } from '@/lib/value/platformValue';
  *
  * Decorative to assistive technology — the form is the task — except for one
  * visually hidden sentence that says what the graphic shows.
+ *
+ * `product="lead-eagle"` is Lead Eagle's door (PROD-13): its name beside the
+ * mark, its own line and the catalogue's description of it, and no ecosystem
+ * graphic — that one draws the whole platform, not the one application.
  */
+export const LEAD_EAGLE = PRODUCT_MODULE_CHOICES.find((choice) => choice.value === 'LEAD_EAGLE')!;
+
 export default function BrandHero({
   variant = 'full',
   value = null,
+  product,
 }: {
   variant?: 'full' | 'compact';
   value?: ValueSummary | null;
+  product?: 'lead-eagle';
 }) {
+  const leadEagle = product === 'lead-eagle';
+  const name = leadEagle ? LEAD_EAGLE.label : PRODUCT_NAME;
+  const [first, second] = leadEagle ? ['Every lead.', 'Followed up.'] : ['Your business.', 'Working as one.'];
+
   if (variant === 'compact') {
     return (
       <div className="lf-auth-compact">
         <BrandBackground />
         <div className="lf-auth-brand">
           <YouhanMark size={30} className="lf-auth-mark" />
-          <span className="lf-wordmark">{PRODUCT_NAME}</span>
+          <span className="lf-wordmark">{name}</span>
         </div>
         <h2 className="lf-auth-headline lf-auth-headline--compact">
-          Your business. <em>Working as one.</em>
+          {first} <em>{second}</em>
         </h2>
-        <BusinessEcosystem variant="compact" className="lf-auth-eco" />
+        {!leadEagle && <BusinessEcosystem variant="compact" className="lf-auth-eco" />}
       </div>
     );
   }
@@ -46,19 +59,19 @@ export default function BrandHero({
       <BrandBackground />
       <div className="lf-auth-brand">
         <YouhanMark size={34} className="lf-auth-mark" />
-        <span className="lf-wordmark">{PRODUCT_NAME}</span>
+        <span className="lf-wordmark">{name}</span>
       </div>
 
-      <div className="lf-auth-message">
+      <div className="lf-auth-message" data-product={product}>
         <h2 className="lf-auth-headline">
-          Your business.
+          {first}
           <br />
-          <em>Working as one.</em>
+          <em>{second}</em>
         </h2>
-        <p className="lf-auth-sub">{PRODUCT_DESCRIPTION}</p>
+        <p className="lf-auth-sub">{leadEagle ? LEAD_EAGLE.description : PRODUCT_DESCRIPTION}</p>
       </div>
 
-      <BusinessEcosystem className="lf-auth-eco" />
+      {!leadEagle && <BusinessEcosystem className="lf-auth-eco" />}
 
       <div className="lf-auth-foot">
         {value && (

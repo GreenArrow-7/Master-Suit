@@ -7,11 +7,11 @@
  * sweep, a task with a due date was a row in a list that quietly went overdue,
  * which is most of what a CRM's bell is *for*.
  *
- * Runs on the `maintenance` queue beside the retention sweep, and spans tenants
- * the same way that one does: through `withPlatformTx`, which sets the
- * `app.platform_admin` flag the RLS policies name. A cross-tenant read through
- * the ordinary client matches zero rows and reports success — the exact bug
- * retention.ts documents at its top.
+ * Runs on a `reminders` queue of its own (workers/maintenance.ts says why), and
+ * spans tenants the way the retention sweep does: through `withPlatformTx`,
+ * which sets the `app.platform_admin` flag the RLS policies name. A cross-tenant
+ * read through the ordinary client matches zero rows and reports success — the
+ * exact bug retention.ts documents at its top.
  *
  * ── Not double-sending ────────────────────────────────────────────────────
  *
@@ -26,13 +26,17 @@ import { logger } from '@/lib/logger';
 import { enqueue } from '@/lib/queue';
 
 /**
- * How far ahead to look.
+ * How far ahead to look: fifteen minutes, so a reminder lands 10-15 minutes
+ * before the thing is due (T-15, the owner's choice, audit M8-05).
  *
- * Comfortably wider than the run interval, so a late or skipped run still
- * catches the window it missed rather than dropping those reminders on the
- * floor. The existence check above is what makes the overlap free.
+ * Three times the five-minute run interval (`reminders-five-minutely` in
+ * workers/maintenance.ts), so a run up to ten minutes late, or two skipped in a
+ * row, still catches the window it missed rather than dropping those reminders
+ * on the floor; that is why the sweep has a queue to itself. Keep it wider than
+ * the interval if either changes. The existence check above is what makes the
+ * overlap free.
  */
-const LOOKAHEAD_MINUTES = 45;
+const LOOKAHEAD_MINUTES = 15;
 
 /** Suppression window for the "already told them" check. */
 const ALREADY_TOLD_HOURS = 24;

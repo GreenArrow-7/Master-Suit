@@ -35,7 +35,13 @@ import { assertNotReused, recordPreviousPassword } from './passwordHistory';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { assignableUsers } from '@/lib/security/record-scope';
-import { countOpenWork, handOverOpenWork, mayHandOverWorkOf, type HandOver } from '@/services/leads/assign';
+import {
+  countOpenWork,
+  handOverOpenWork,
+  mayHandOverWorkOf,
+  syncHandedOver,
+  type HandOver,
+} from '@/services/leads/assign';
 
 /** Rank 10 is `company_admin`/`org_admin`; anything at or above it administers the workspace. */
 export const ADMIN_ROLE_RANK = 10;
@@ -434,7 +440,7 @@ export async function setUserActive(
     newValue: { status },
     metadata: { action: active ? 'account.restored' : 'account.suspended', reason },
   });
-  return { userId: target.id, status, handedOver };
+  return { userId: target.id, status, handedOver: await syncHandedOver(ctx.tenantId, handedOver) };
 }
 
 /**
@@ -533,7 +539,7 @@ export async function deleteUser(ctx: Ctx, userId: string, reason?: string, hand
     newValue: { status: 'DEACTIVATED', deletedAt: removedAt.toISOString() },
     metadata: { action: 'account.removed', reason },
   });
-  return { userId: target.id, removed: true, handedOver };
+  return { userId: target.id, removed: true, handedOver: await syncHandedOver(ctx.tenantId, handedOver) };
 }
 
 /** Signs an account out everywhere without changing anything else about it. */
