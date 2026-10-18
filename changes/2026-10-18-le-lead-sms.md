@@ -4,7 +4,7 @@
 character and SMS-part counter that texts the lead through the workspace's
 Twilio connection (the one that places its calls), from the **SMS sender** set
 on the Twilio card under Administration → Integrations. Every send, and every
-failure, is an SMS on the lead's timeline. PR —.
+failure, is an SMS on the lead's timeline. PR #227.
 
 **Why.** Audit row M4-29 ("Send an SMS from the lead", High), not built
 anywhere. Built on the owner's approval of 18 Oct; like Google Calendar, it is
