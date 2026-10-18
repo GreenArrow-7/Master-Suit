@@ -4,7 +4,7 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { createGoogleCalendarEvent } from '@/lib/integrations/calendar';
-import { connectionCredentials } from '@/lib/integrations/connection';
+import { googleAccessToken } from '@/services/integrations/googleCalendar';
 import { assertAssignableUser, eventListScope } from '@/lib/security/record-scope';
 
 const createBody = z
@@ -47,11 +47,12 @@ export const POST = route(
     // physical event, an event that already carries a link, or a tenant with no
     // connected calendar is left alone — the organiser can still paste a URL.
     if (event.eventType === 'PHYSICAL' || event.meetingUrl) return event;
-    const credentials = await connectionCredentials(ctx.tenantId, 'google');
-    if (!credentials?.accessToken) return event;
 
     try {
-      const created = await createGoogleCalendarEvent(credentials.accessToken, {
+      // Refreshed when a connection made through Google has run past its hour.
+      const accessToken = await googleAccessToken(ctx.tenantId);
+      if (!accessToken) return event;
+      const created = await createGoogleCalendarEvent(accessToken, {
         title: event.title,
         description: event.description ?? undefined,
         startAt: event.startAt,

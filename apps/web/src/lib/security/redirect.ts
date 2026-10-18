@@ -7,6 +7,11 @@
  * is the same trick with the other slash, which several parsers normalise to
  * `//`. Both are how a "relative paths only" check is usually defeated.
  *
+ * The test reads the raw string, and the URL parser strips every tab, CR and LF
+ * before it parses: `/\t/evil.example` passes a look at the first two
+ * characters and resolves to `https://evil.example/`. So no control character
+ * is allowed anywhere in the value.
+ *
  * This lives in one place because it was written twice — in the Meta connect
  * route and again in its callback — and both copies had the same hole. A
  * security predicate with two definitions has two chances to be wrong.
@@ -21,7 +26,8 @@ const SAME_SITE_PATH = /^\/(?![/\\])/;
  */
 export function safeReturnTo(value: string | null | undefined, fallback = '/'): string {
   if (!value) return fallback;
-  return SAME_SITE_PATH.test(value) ? value : fallback;
+  // eslint-disable-next-line no-control-regex -- control characters are exactly what is refused
+  return SAME_SITE_PATH.test(value) && !/[\u0000-\u001f\u007f]/.test(value) ? value : fallback;
 }
 
 /** Long enough for any screen with its filters; short enough not to be a payload. */

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
@@ -22,6 +22,12 @@ export interface ProviderCard {
   webhookUrl: string | null;
   /** A connected lead source's own screen: its deliveries and field mapping. */
   manageHref: string | null;
+  /**
+   * Connected through the vendor's consent screen (Google); `configured` once the
+   * deployment has its OAuth client. `inApp`: the iOS or Android app, whose WebView
+   * hands the consent screen to the phone's browser, where this session is not.
+   */
+  oauth?: { configured: boolean; inApp: boolean } | null;
 }
 
 /**
@@ -359,7 +365,7 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<Record<string, string | boolean>>({});
-  const [busy, setBusy] = useState<'save' | 'test' | 'disconnect' | null>(null);
+  const [busy, setBusy] = useState<'save' | 'test' | 'disconnect' | 'connect' | null>(null);
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   /** Second press confirms; blurring the button forgets the first one. */
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -367,6 +373,31 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
   const [issued, setIssued] = useState<string | null>(null);
 
   const configured = provider.status !== 'NOT_CONFIGURED';
+
+  // Back from the consent screen with the browser's Back button: the page comes out of the cache still "Opening…".
+  useEffect(() => {
+    const restored = (event: PageTransitionEvent) => event.persisted && setBusy(null);
+    window.addEventListener('pageshow', restored);
+    return () => window.removeEventListener('pageshow', restored);
+  }, []);
+
+  /** The vendor's consent screen; it sends the browser back here (api/v1/integrations/{key}/callback). */
+  async function connectWithVendor() {
+    setBusy('connect');
+    setMessage(null);
+    const res = await fetch(`/api/v1/integrations/${provider.key}/connect`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ returnTo: window.location.pathname }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.url) {
+      window.location.assign(data.url);
+      return;
+    }
+    setBusy(null);
+    setMessage({ tone: 'error', text: data.errors?.[0]?.message ?? data.detail ?? 'The connection could not start.' });
+  }
 
   async function send(action: 'save' | 'test' | 'disconnect') {
     setBusy(action);
@@ -447,6 +478,18 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
               {provider.errorMessage}
             </p>
           )}
+          {provider.oauth && !provider.oauth.configured && (
+            <p className="lf-hint" style={{ marginTop: 4 }}>
+              Not configured on this deployment: an operator needs to set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET
+              before anyone can connect.
+            </p>
+          )}
+          {provider.oauth?.configured && provider.oauth.inApp && canEdit && (
+            <p className="lf-hint" style={{ marginTop: 4 }}>
+              {provider.label.split(' ')[0]}’s sign-in does not open inside the app. To connect, open YOUHAN ONE in a
+              web browser and come back to Admin → Integrations there.
+            </p>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -455,8 +498,20 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
               Deliveries and field mapping
             </Link>
           )}
+          {provider.oauth && !provider.oauth.inApp && canEdit && (
+            <button
+              type="button"
+              className="lf-btn lf-btn--sm"
+              disabled={!provider.oauth.configured || busy !== null}
+              onClick={() => void connectWithVendor()}
+            >
+              {busy === 'connect'
+                ? 'Opening…'
+                : `${configured ? 'Reconnect' : 'Connect'} with ${provider.label.split(' ')[0]}`}
+            </button>
+          )}
           <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(!open)}>
-            {open ? 'Close' : configured ? 'Configure' : 'Connect'}
+            {open ? 'Close' : configured || provider.oauth ? 'Configure' : 'Connect'}
           </button>
           {/*
             Removing a key used to mean Configure → scroll past the form →

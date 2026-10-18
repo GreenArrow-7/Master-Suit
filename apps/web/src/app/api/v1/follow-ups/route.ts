@@ -4,6 +4,7 @@ import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
 import { assertCallInScope, assertLeadInScope, workListScope } from '@/lib/security/record-scope';
 import { withRecompute } from '@/services/leads/nextFollowUp';
+import { queueCalendarSync } from '@/services/integrations/googleCalendar';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { mergeWhere } from '@/lib/api/where';
 import { FOLLOW_UP_KINDS, OPEN_FOLLOW_UP, followUpDueWhere, isDayKey } from '@/lib/leads/followUpDue';
@@ -30,7 +31,7 @@ export const POST = route(
     if (body.callId) await assertCallInScope(ctx, body.callId, 'VIEW');
     // Same contract as a task: the lead is locked and its stored aggregate
     // recomputed in the transaction that creates the obligation.
-    return withTx(ctx.tenantId, async (tx) => {
+    const created = await withTx(ctx.tenantId, async (tx) => {
       if (body.leadId) await assertLeadInScope(ctx, body.leadId, tx, 'EDIT');
       return withRecompute(tx, ctx.tenantId, [body.leadId], () =>
         tx.followUpTask.create({
@@ -38,6 +39,9 @@ export const POST = route(
         }),
       );
     });
+    // A meeting or site visit onto the workspace's Google Calendar, once committed (M8-08).
+    await queueCalendarSync(ctx.tenantId, 'followUp', created.id);
+    return created;
   },
 );
 

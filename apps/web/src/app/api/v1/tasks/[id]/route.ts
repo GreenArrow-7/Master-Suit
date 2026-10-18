@@ -6,6 +6,7 @@ import { withTx } from '@/lib/db';
 import { NotFound, Conflict } from '@/lib/errors';
 import { assertAssignableUser, assertLeadInScope, assertOwnerInScope } from '@/lib/security/record-scope';
 import { lockLeads, recomputeNextFollowUp } from '@/services/leads/nextFollowUp';
+import { queueCalendarSync } from '@/services/integrations/googleCalendar';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -36,8 +37,9 @@ export const PATCH = route(
     body: patchBody,
     auditEvent: 'RECORD_UPDATED',
   },
-  async ({ ctx, params, body }) =>
-    withTx(ctx.tenantId, async (tx) => {
+  async ({ ctx, params, body }) => {
+    let nextId: string | undefined;
+    const updated = await withTx(ctx.tenantId, async (tx) => {
       const task = await tx.task.findFirst({ where: { tenantId: ctx.tenantId, id: params.id } });
       if (!task) throw NotFound('Task');
       // A task you may see (the task lists' rule; seeded managers hold
@@ -98,7 +100,7 @@ export const PATCH = route(
           ? nextDue(updated.dueAt, task.recurrenceRule)
           : null;
       if (due) {
-        await tx.task.create({
+        const next = await tx.task.create({
           data: {
             tenantId: ctx.tenantId,
             typeId: updated.typeId,
@@ -112,12 +114,18 @@ export const PATCH = route(
             parentTaskId: task.parentTaskId ?? task.id,
             createdById: ctx.actor.id,
           },
+          select: { id: true },
         });
+        nextId = next.id;
       }
 
       for (const leadId of locked) await recomputeNextFollowUp(tx, ctx.tenantId, leadId);
       return updated;
-    }),
+    });
+    // A meeting moved, done or cancelled, and its next occurrence, on the workspace's Google Calendar (M8-08).
+    await queueCalendarSync(ctx.tenantId, 'task', updated.id, nextId);
+    return updated;
+  },
 );
 
 /**
@@ -134,8 +142,8 @@ export const PATCH = route(
  */
 export const DELETE = route(
   { module: 'tasks', productModule: LEAD_MODULES, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
-  async ({ ctx, params }) =>
-    withTx(ctx.tenantId, async (tx) => {
+  async ({ ctx, params }) => {
+    const deleted = await withTx(ctx.tenantId, async (tx) => {
       const task = await tx.task.findFirst({
         where: { tenantId: ctx.tenantId, id: params.id, deletedAt: null },
         select: { id: true, leadId: true, ownerId: true },
@@ -159,5 +167,9 @@ export const DELETE = route(
       });
       for (const leadId of locked) await recomputeNextFollowUp(tx, ctx.tenantId, leadId);
       return { ok: true };
-    }),
+    });
+    // Off the workspace's Google Calendar (M8-08).
+    await queueCalendarSync(ctx.tenantId, 'task', params.id);
+    return deleted;
+  },
 );

@@ -19,7 +19,7 @@ import { addDays, daysBetween, expirySeverity, gratuityUae, noticePayInLieu, toD
 import { employeeRecordScope, isHrAdmin, myEmployee, requireEmployee } from './leave';
 import { mayReadSensitiveDocuments } from './access';
 import { getHrPolicy } from './settings';
-import { handOverOpenWork, type HandOver } from '@/services/leads/assign';
+import { handOverOpenWork, syncHandedOver, type HandedOver, type HandOver } from '@/services/leads/assign';
 import { EMPLOYEE_WITH_PERSON, MEMBERSHIP_PUBLIC } from './publicSelect';
 
 export type ChecklistPhase = 'ONBOARDING' | 'OFFBOARDING';
@@ -522,6 +522,7 @@ export async function finaliseExit(
   const [settlement, settlementPolicy] = await Promise.all([settlementFor(ctx, employee.id), getHrPolicy(ctx)]);
   const exitedOn = employee.exitedOn ?? toDay(new Date());
 
+  let handed: HandedOver | null = null;
   const result = await withTx(ctx.tenantId, async (tx) => {
     const openCase = await tx.hrOffboardingCase.findFirst({
       where: { tenantId: ctx.tenantId, employeeId: employee.id, completedAt: null },
@@ -568,7 +569,7 @@ export async function finaliseExit(
         where: { tenantId: ctx.tenantId, id: employee.membership.salesUserId },
         data: { status: 'DEACTIVATED' },
       });
-      await handOverOpenWork(
+      handed = await handOverOpenWork(
         ctx,
         tx,
         { id: employee.membership.salesUserId, fullName: employee.membership.platformUser.fullName },
@@ -588,6 +589,7 @@ export async function finaliseExit(
   if (employee.membership.salesUserId) {
     await revokeAllSessions(employee.membership.salesUserId, undefined, 'EMPLOYMENT_ENDED');
   }
+  await syncHandedOver(ctx.tenantId, handed);
 
   await audit(ctx, {
     event: 'RECORD_UPDATED',

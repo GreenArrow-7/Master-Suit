@@ -25,11 +25,15 @@ const API = join(__dirname, '..', '..', 'src', 'app', 'api', 'v1');
 /**
  * Routes that legitimately resolve a session without the prologue.
  *
- * Both are pre-authorisation by nature: signing out must work for a session that
+ * All are pre-authorisation by nature: signing out must work for a session that
  * is already partly invalid, and an OAuth callback arrives from the provider
  * carrying a state token rather than a workspace context.
  */
-const EXEMPT = new Set(['auth/logout/route.ts', 'integrations/meta/callback/route.ts']);
+const EXEMPT = new Set([
+  'auth/logout/route.ts',
+  'integrations/meta/callback/route.ts',
+  'integrations/google/callback/route.ts',
+]);
 
 /**
  * Normalised to '/', because `globSync` returns the host's separator and EXEMPT
@@ -41,7 +45,7 @@ const EXEMPT = new Set(['auth/logout/route.ts', 'integrations/meta/callback/rout
 const routeFiles = globSync('**/route.ts', { cwd: API }).map((file) => file.split(sep).join('/'));
 
 describe('the security prologue', () => {
-  it('is not re-implemented outside the two routes that must', () => {
+  it('is not re-implemented outside the routes that must', () => {
     const handRolled = routeFiles.filter((file) => {
       if (EXEMPT.has(file)) return false;
       return /\bresolveCtx\s*\(\s*req/.test(readFileSync(join(API, file), 'utf8'));

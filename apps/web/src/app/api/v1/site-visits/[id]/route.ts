@@ -5,6 +5,7 @@ import { prisma, withTx } from '@/lib/db';
 import { Conflict, NotFound } from '@/lib/errors';
 import { assertRecordInScope } from '@/lib/security/record-scope';
 import { VISIT_STATUSES, amendCompleted, findVisitInScope, transition, verify } from '@/services/visits/lifecycle';
+import { queueCalendarSync } from '@/services/integrations/googleCalendar';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -92,6 +93,8 @@ export const PATCH = route(
   async ({ ctx, params, body }) => {
     if (body.action === 'transition') {
       const { visit, from } = await transition({ ctx, visitId: params.id, to: body.status, note: body.note });
+      // Done, cancelled or refused on the workspace's Google Calendar too (M8-08).
+      await queueCalendarSync(ctx.tenantId, 'visit', visit.id);
       return { id: visit.id, from, status: visit.status };
     }
 
@@ -109,7 +112,7 @@ export const PATCH = route(
       return verify({ ctx, visitId: params.id, verdict: body.verdict, note: body.note });
     }
 
-    return withTx(ctx.tenantId, async (tx) => {
+    const edited = await withTx(ctx.tenantId, async (tx) => {
       const visit = await findVisitInScope(ctx, tx, params.id, 'EDIT');
 
       // The acceptance criterion. A completed visit is evidence, and evidence is
@@ -128,6 +131,9 @@ export const PATCH = route(
         data: { ...data, updatedById: ctx.actor.id },
       });
     });
+    // A new time or place, on the workspace's Google Calendar (M8-08).
+    await queueCalendarSync(ctx.tenantId, 'visit', edited.id);
+    return edited;
   },
 );
 
@@ -139,8 +145,8 @@ export const PATCH = route(
  */
 export const DELETE = route(
   { module: 'visits', productModule: LEAD_MODULES, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
-  async ({ ctx, params }) =>
-    withTx(ctx.tenantId, async (tx) => {
+  async ({ ctx, params }) => {
+    const cancelled = await withTx(ctx.tenantId, async (tx) => {
       const visit = await findVisitInScope(ctx, tx, params.id, 'DELETE');
 
       if (['CHECKED_IN', 'COMPLETED'].includes(visit.status)) {
@@ -152,5 +158,9 @@ export const DELETE = route(
         data: { deletedAt: new Date(), status: 'CANCELLED', updatedById: ctx.actor.id },
         select: { id: true, deletedAt: true },
       });
-    }),
+    });
+    // Off the workspace's Google Calendar (M8-08).
+    await queueCalendarSync(ctx.tenantId, 'visit', cancelled.id);
+    return cancelled;
+  },
 );

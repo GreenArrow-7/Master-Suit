@@ -31,6 +31,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 |---|---|---|---|
 | 2026-10-18 | [Reminders ring fifteen minutes before](2026-10-18-reminders-t15.md) | #218 | Lead Eagle, follow-ups, notifications |
 | 2026-10-18 | [A workspace keeps its audit log, attendance punches and AI events longer than the deployment, never shorter](2026-10-18-data-retention.md) | #220 | Admin, retention, feature |
+| 2026-10-18 | [Meetings, follow-ups and site visits on the workspace's Google Calendar, connected with Google](2026-10-18-le-google-calendar.md) | #221 | Lead Eagle, follow-ups, integrations, feature |
 | 2026-10-18 | [Round 3 batch B review: reports read a visit's and a booking's own project, Call Report reads under the calls scope, call reports mail only to those who may see the calls](2026-10-18-round3-b-report-review.md) | #217 | Reports, Lead Eagle, fix |
 | 2026-10-18 | [The board-filters test reads the board at the moment its data was made](2026-10-18-dashboard-filters-one-clock.md) | — | Test, CI |
 | 2026-10-18 | [The Lead Eagle move tool counts every table it leaves behind and names every author it loses](2026-10-18-move-tool-every-table.md) | #208 | Lead Eagle, data migration, fix |

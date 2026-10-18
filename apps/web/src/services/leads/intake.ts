@@ -86,6 +86,7 @@ export async function applyEnquiry({ tenantId, provider, externalId, source }: E
 
 /** The connection setting that decides it (lib/integrations/registry.ts). */
 export type CaptureSetting = 'createLeadsFromNewNumbers' | 'createLeadsFromUnknownCallers';
+const CAPTURE_SETTINGS: readonly string[] = ['createLeadsFromNewNumbers', 'createLeadsFromUnknownCallers'];
 
 /**
  * Whether a number nobody holds becomes a lead: a WhatsApp sender (M6-10,
@@ -111,8 +112,12 @@ export async function withSwitches(tenantId: string, fields: readonly SettingFie
   const leads = await hasAnyModuleEntitlement(tenantId, LEAD_MODULES);
   const settings = { ...((metadata ?? {}) as Record<string, unknown>) };
   for (const f of fields.filter((f) => f.toggle)) {
-    if (leads) settings[f.key] = await capturesUnknown(tenantId, f.key as CaptureSetting, metadata);
-    else delete settings[f.key];
+    if (!leads) delete settings[f.key];
+    else if (CAPTURE_SETTINGS.includes(f.key)) {
+      settings[f.key] = await capturesUnknown(tenantId, f.key as CaptureSetting, metadata);
+    }
+    // Any other switch is off until saved on (Google's syncAllFollowUps).
+    else settings[f.key] = settings[f.key] === true;
   }
   return { settingFields: fields.filter((f) => leads || !f.toggle), settings };
 }

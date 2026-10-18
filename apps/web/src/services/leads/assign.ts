@@ -7,6 +7,7 @@ import { resolveOwnerIds } from '@/lib/security/visibility';
 import { activeRule } from '@/services/distribution/assignLead';
 import { openTriageEntry } from '@/services/distribution/triage';
 import { notifyLeadMoves } from '@/services/crm/notify';
+import { queueCalendarSync } from '@/services/integrations/googleCalendar';
 import { OPEN_LEADS_WHERE } from './closeOut';
 import { OPEN_STATUSES } from './nextFollowUp';
 
@@ -127,6 +128,29 @@ export function describeOpenWork(work: OpenWork): string {
   return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : (parts[0] ?? 'nothing');
 }
 
+/**
+ * What a hand-over moved, plus the departing member's records a Google Calendar
+ * event names them on as guest (M8-08): their open follow-ups and tasks, and the
+ * open site visits they keep. `syncHandedOver` re-syncs them once it commits.
+ */
+export interface HandedOver extends OpenWork {
+  calendar: { followUps: string[]; tasks: string[]; visits: string[] };
+}
+
+/**
+ * After the hand-over's transaction commits: each event re-synced, so the new
+ * owner is its guest and the leaver drops off (services/integrations/googleCalendar.ts
+ * invites active owners only). Returns the counts the callers always answered with.
+ */
+export async function syncHandedOver(tenantId: string, handed: HandedOver | null): Promise<OpenWork | null> {
+  if (!handed) return null;
+  const { calendar, ...work } = handed;
+  await queueCalendarSync(tenantId, 'followUp', ...calendar.followUps);
+  await queueCalendarSync(tenantId, 'task', ...calendar.tasks);
+  await queueCalendarSync(tenantId, 'visit', ...calendar.visits);
+  return work;
+}
+
 export interface HandOver {
   /** The active member who takes the work — and the follow-ups and tasks even when the leads go to the queue. */
   toUserId?: string;
@@ -151,7 +175,7 @@ export interface HandOver {
  * Call after the account's status is written and before its `deletedAt` is:
  * User before Lead is the lock order assignment uses
  * (services/distribution/assignLead.ts), and the reach check cannot see a
- * soft-deleted user.
+ * soft-deleted user. Pass the result to `syncHandedOver` after the commit.
  */
 export async function handOverOpenWork(
   ctx: Ctx,
@@ -159,9 +183,24 @@ export async function handOverOpenWork(
   from: { id: string; fullName: string },
   handOver: HandOver,
   why: 'deactivated' | 'removed',
-): Promise<OpenWork> {
+): Promise<HandedOver> {
   await endSecondOwnership(ctx, tx, from.id, why);
-  const work = await countOpenWork(tx, ctx.tenantId, from.id);
+  const counts = await countOpenWork(tx, ctx.tenantId, from.id);
+  const open = openObligationsOf(ctx.tenantId, from.id);
+  const ids = (rows: { id: string }[]) => rows.map((row) => row.id);
+  const work: HandedOver = {
+    ...counts,
+    calendar: {
+      followUps: ids(await tx.followUpTask.findMany({ where: open, select: { id: true } })),
+      tasks: ids(await tx.task.findMany({ where: open, select: { id: true } })),
+      visits: ids(
+        await tx.siteVisit.findMany({
+          where: { tenantId: ctx.tenantId, ownerId: from.id, status: { in: ['REQUESTED', 'APPROVED', 'CHECKED_IN'] } },
+          select: { id: true },
+        }),
+      ),
+    },
+  };
   if (work.leads + work.followUps + work.tasks === 0) return work;
 
   const queue = handOver.leadsToQueue === true && work.leads > 0;
@@ -170,7 +209,7 @@ export async function handOverOpenWork(
     throw Conflict(
       `${from.fullName} still owns ${describeOpenWork(work)}. Hand them to an active member` +
         `${work.leads ? ' (or send the leads to the allocation queue)' : ''} before this account is ${why}.`,
-      { openWork: work },
+      { openWork: counts },
     );
   }
 
@@ -235,7 +274,7 @@ export async function handOverOpenWork(
       recordId: from.id,
       previousValue: { ownerId: from.id },
       newValue: { leadsTo: queue ? 'allocation-queue' : to!.id, followUpsAndTasksTo: to?.id ?? null },
-      metadata: { action: `account.${why}.work_handed_over`, ...work, leadIds: moved },
+      metadata: { action: `account.${why}.work_handed_over`, ...counts, leadIds: moved },
     },
     tx,
   );

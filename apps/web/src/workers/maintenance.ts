@@ -13,6 +13,7 @@ import { runDigestSweep } from '@/services/notifications/digest';
 import { sweepFirstContact } from '@/services/sla/checkLeadFirstContact';
 import { runReportSchedules } from '@/services/leadership/reportSchedules';
 import { sweepTimeTriggers } from '@/services/automation/engine';
+import { retryPendingCalendarSyncs } from '@/services/integrations/googleCalendar';
 
 /**
  * The `maintenance` queue: scheduled sweeps, one at a time (see startWorker).
@@ -177,6 +178,15 @@ export const MAINTENANCE_JOBS = {
     logger.info(result, 'report schedule sweep complete');
     return result;
   },
+  /**
+   * Google Calendar syncs that ran out of retries, or were left while the
+   * connection was in error (M8-08), queued again. Scoped like the two above.
+   */
+  'calendar-sync-retry': async (data?: { tenantIds?: string[] }) => {
+    const result = await retryPendingCalendarSyncs(data?.tenantIds);
+    logger.info(result, 'calendar sync retry sweep complete');
+    return result;
+  },
 };
 
 /**
@@ -230,6 +240,8 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
     { id: 'morning-digest-hourly', pattern: '5 * * * *', name: 'digest' },
     // A quarter hour is how late a 07:00 report may arrive.
     { id: 'report-schedules-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'report-schedules' },
+    // A meeting missing from the calendar for a quarter hour past a Google outage, at most.
+    { id: 'calendar-sync-retry-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'calendar-sync-retry' },
   ];
   const queue = new Queue('maintenance', { connection: redis });
   for (const id of RETIRED_SCHEDULES) await queue.removeJobScheduler(id);
