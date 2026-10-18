@@ -72,10 +72,19 @@ const TELEPHONY_SETTINGS: SettingField[] = [
   },
 ];
 
+/** On a vendor that sends texts (M4-29): without it, Send SMS on the lead page says SMS is not set up. */
+const SMS_SENDER: SettingField = {
+  key: 'smsSender',
+  label: 'SMS sender',
+  secret: false,
+  setting: true,
+  hint: 'The sender a lead sees on a text from the lead page: a registered sender ID of up to 11 letters and digits (e.g. YOUHANHOMES), or a number of this account in E.164. Empty, SMS stays off.',
+};
+
 const TELEPHONY_LABELS: Record<string, { label: string; description: string; unsigned?: boolean }> = {
   twilio: {
     label: 'Twilio',
-    description: 'Global voice. Signs its callbacks over the URL and parameters.',
+    description: 'Global voice and SMS. Signs its callbacks over the URL and parameters.',
   },
   exotel: {
     label: 'Exotel',
@@ -100,7 +109,7 @@ export const PROVIDERS: ProviderSpec[] = [
     category: 'TELEPHONY',
     description: TELEPHONY_LABELS[vendor].description,
     credentials: VENDOR_FIELDS[vendor],
-    settings: TELEPHONY_SETTINGS,
+    settings: vendorCapabilities(vendor).includes('SMS') ? [...TELEPHONY_SETTINGS, SMS_SENDER] : TELEPHONY_SETTINGS,
     capabilities: vendorCapabilities(vendor),
     webhook: 'telephony',
     unsignedCallbacks: TELEPHONY_LABELS[vendor].unsigned,

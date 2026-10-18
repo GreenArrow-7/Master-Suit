@@ -19,6 +19,8 @@ import type {
   CallRequest,
   CallResult,
   Capability,
+  SmsMessage,
+  SmsResult,
   TelephonyProvider,
   TelephonyVendor,
   WebhookRequest,
@@ -98,13 +100,23 @@ export function vendorCapabilities(vendor: string): readonly Capability[] {
   return stub[vendor];
 }
 
+/**
+ * Whether texts go out through this vendor's connection (M4-29): a vendor with
+ * the SMS capability, or the development mock anywhere but production (where
+ * `telephonyProvider` refuses it in any case).
+ */
+export function sendsSms(vendor: string): boolean {
+  if (vendor === 'mock') return env.NODE_ENV !== 'production';
+  return vendorCapabilities(vendor).includes('SMS');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Development mock
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class MockTelephonyProvider implements TelephonyProvider {
   readonly name = 'mock';
-  readonly capabilities: readonly Capability[] = ['OUTBOUND_CALL', 'CLICK_TO_CALL', 'CALL_STATUS', 'END_CALL'];
+  readonly capabilities: readonly Capability[] = ['OUTBOUND_CALL', 'CLICK_TO_CALL', 'CALL_STATUS', 'END_CALL', 'SMS'];
 
   async initiateCall(request: CallRequest): Promise<CallResult> {
     const id = `mock_call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -122,6 +134,12 @@ export class MockTelephonyProvider implements TelephonyProvider {
 
   async getRecordingUrl(externalCallId: string): Promise<string | null> {
     return `https://recordings.example.com/${externalCallId}.wav`;
+  }
+
+  /** Sends nothing: logs the length, never the text. */
+  async sendSms(message: SmsMessage): Promise<SmsResult> {
+    logger.info({ provider: 'mock', action: 'sendSms', length: message.body.length }, 'telephony mock');
+    return { externalMessageId: `mock_sms_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, status: 'sent' };
   }
 
   /**

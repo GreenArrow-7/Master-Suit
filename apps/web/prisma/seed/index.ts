@@ -1356,7 +1356,8 @@ async function main() {
         // The mock dials nothing and holds no secret; connectionCredentials only
         // needs the row to be CONNECTED with a credentials object present.
         credentials: {},
-        metadata: { callerNumber: '+971500000000', recordingEnabled: true, consentRequired: true },
+        // The SMS sender turns on Send SMS from the lead (M4-29); the mock texts nobody.
+        metadata: { callerNumber: '+971500000000', recordingEnabled: true, consentRequired: true, smsSender: 'YOUHAN' },
       },
     });
     const hr = await db.organizationSetting.findUnique({ where: { tenantId }, select: { hrPolicy: true } });

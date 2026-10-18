@@ -26,7 +26,26 @@ export type Capability =
   | 'END_CALL'
   | 'SIGNED_WEBHOOK'
   /** The vendor can fork live call audio to a WebSocket (Twilio Media Streams). */
-  | 'LIVE_STREAM';
+  | 'LIVE_STREAM'
+  /** The vendor sends a text message on the same account (`sendSms`). */
+  | 'SMS';
+
+export interface SmsMessage {
+  /** The workspace's SMS sender: an E.164 number or an alphanumeric sender ID. */
+  from: string;
+  /** The client, E.164. */
+  to: string;
+  body: string;
+}
+
+export interface SmsResult {
+  /** The vendor's message identifier. */
+  externalMessageId: string;
+  /** Accepted for delivery, or refused outright by the vendor (`errorMessage` says why). */
+  status: 'sent' | 'failed';
+  errorCode?: string;
+  errorMessage?: string;
+}
 
 export interface CallRequest {
   /** The number the client sees. A vendor-provisioned virtual number. */
@@ -126,6 +145,8 @@ export interface TelephonyProvider {
   endCall(externalCallId: string): Promise<void>;
   getCallStatus(externalCallId: string): Promise<CallEvent | null>;
   getRecordingUrl(externalCallId: string): Promise<string | null>;
+  /** Present on vendors with the SMS capability. Throws `TelephonyApiError` on a refused request. */
+  sendSms?(message: SmsMessage): Promise<SmsResult>;
   /**
    * Headers needed to fetch vendor-hosted media. Twilio's recording URLs require
    * the same basic auth as its API; the others are unauthenticated links. Absent
