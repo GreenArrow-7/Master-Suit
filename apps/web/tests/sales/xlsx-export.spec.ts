@@ -182,6 +182,29 @@ describe('the lead export as Excel', () => {
   it('needs EXPORT, as the CSV does', async () => {
     expect((await leads(viewer, 'format=xlsx')).status).toBe(403);
   });
+
+  it('types its dates: an instant on the workspace’s clock, a DATE field as the day itself', async () => {
+    await prisma.tenant.updateMany({ where: { id: tenantId }, data: { timezone: 'Asia/Dubai' } });
+    await prisma.leadCustomFieldDefinition.create({
+      data: { tenantId, key: 'handover', label: 'Handover', type: 'DATE' },
+    });
+    const { id, reference } = await prisma.lead.findFirstOrThrow({ where: { tenantId, fullName: 'Ayla Export' } });
+    await prisma.lead.updateMany({ where: { tenantId, id }, data: { customData: { handover: '2026-11-05' } } });
+    const { updatedAt } = await prisma.lead.findFirstOrThrow({ where: { tenantId, id } });
+
+    const query = 'cols=reference,updatedAt,cf:handover';
+    const line = csvRows((await leads(ws.cookie, query)).body).find((cells) => cells[0] === reference)!;
+    const row = (await readSheet((await leads(ws.cookie, `${query}&format=xlsx`)).body)).find(
+      (cells) => cells[0] === reference,
+    )!;
+    // Reference and name are always there.
+    // The CSV states UTC with its Z; the workbook shows the same instant as Dubai's clock reads it (UTC+4).
+    expect(line[2]).toBe(updatedAt.toISOString());
+    expect(Math.abs((row[2] as unknown as Date).getTime() - (updatedAt.getTime() + 4 * 3_600_000))).toBeLessThan(2);
+    // A DATE field: DD/MM/YYYY text in the CSV, a real date (sortable, filterable) in the workbook.
+    expect(line[3]).toBe('05/11/2026');
+    expect(row[3]).toEqual(new Date('2026-11-05T00:00:00Z'));
+  });
 });
 
 describe('an HR report as Excel', () => {

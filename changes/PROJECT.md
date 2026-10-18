@@ -233,7 +233,7 @@ Node 22 or newer (CI uses 24).
 - **Exports.** A file is a CSV (`src/lib/csv.ts`: a BOM, every cell quoted, a
   cell starting `=`, `+`, `-` or `@` blunted with an apostrophe) or, with
   `format=xlsx` on the same route, an Excel workbook of the same columns and
-  rows (`src/lib/xlsx.ts`, no dependency: numbers and dates typed, text as
+  rows (`src/lib/xlsx.ts`, no dependency: numbers and dates typed, the lead export's on the workspace's clock, text as
   inline strings carrying the quote prefix where the CSV adds its apostrophe,
   never a formula, streamed page by page). The report, lead and HR report
   exports, a scheduled report email (its File) and every Export CSV button

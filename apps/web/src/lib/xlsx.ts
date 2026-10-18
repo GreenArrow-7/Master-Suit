@@ -5,8 +5,10 @@
  *
  * The rules are the CSV's (lib/csv.ts), carried into the format:
  *
- *   - **Types.** A number is a number cell and a Date a date cell (UTC, as the
- *     CSV writes it); everything else is text, exactly the text the CSV holds.
+ *   - **Types.** A number is a number cell and a Date a date cell showing the
+ *     Date's UTC clock, since a serial has no zone (`onClock` first, to show an
+ *     instant on a workspace's clock); everything else is text, exactly the
+ *     text the CSV holds.
  *   - **Formula injection.** No cell is ever a formula: text goes in as an
  *     inline string, which Excel and Sheets never evaluate. A cell the CSV
  *     would prefix with an apostrophe (`=`, `+`, `-`, `@`, tab, CR) carries the
@@ -62,6 +64,36 @@ function column(index: number) {
   let name = '';
   for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) name = String.fromCharCode(65 + ((n - 1) % 26)) + name;
   return name;
+}
+
+/** One formatter per zone: building one costs far more than using it (dailyBoard's dayFormats). */
+const clocks = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * `at` as the clock in `timeZone` reads it, as a Date whose UTC fields are that
+ * reading: what a cell must hold to show the workspace's time, as the grid does.
+ * That zone's midnight then reads as a day alone.
+ */
+export function onClock(at: Date, timeZone: string): Date {
+  let clock = clocks.get(timeZone);
+  if (!clock) {
+    clock = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      hourCycle: 'h23',
+    });
+    clocks.set(timeZone, clock);
+  }
+  const parts = clock.formatToParts(at);
+  const n = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+  return new Date(
+    Date.UTC(n('year'), n('month') - 1, n('day'), n('hour'), n('minute'), n('second'), at.getUTCMilliseconds()),
+  );
 }
 
 function cell(value: unknown, ref: string, header: boolean): string {

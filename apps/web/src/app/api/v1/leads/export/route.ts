@@ -11,7 +11,9 @@ import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
 import { customCells, customColumns } from '@/services/leads/customFields';
 import { route } from '@/lib/api/handler';
-import { XLSX_TYPE, xlsxStream } from '@/lib/xlsx';
+import { XLSX_TYPE, onClock, xlsxStream } from '@/lib/xlsx';
+import { parseTypedDate } from '@/lib/dates';
+import { workspaceTimezone } from '@/services/hr/attendance';
 import { z } from 'zod';
 
 /**
@@ -52,11 +54,12 @@ function csvCell(value: unknown): string {
 export const GET = route(
   { module: 'leads', action: 'EXPORT', productModule: LEAD_MODULES, sessionOnly: true, query },
   async ({ ctx, query: { format, ...params } }) => {
-    const [setting, rules, extra] = await Promise.all([
+    const [setting, rules, extra, zone] = await Promise.all([
       prismaRead.organizationSetting.findUnique({ where: { tenantId: ctx.tenantId }, select: { gridColumns: true } }),
       loadFieldRules(ctx, 'LEAD'),
       // The workspace's custom fields, as the grid offers them (`cf:<key>`, M18-03).
       customColumns(ctx.tenantId),
+      format === 'xlsx' ? workspaceTimezone(ctx) : null,
     ]);
     /**
      * An export is an egress path, so it gets the same treatment as the screen.
@@ -73,15 +76,22 @@ export const GET = route(
       params.cols?.split(',') ?? storedColumnsFor(setting?.gridColumns, 'LEAD'),
       extra,
     );
+    // The workbook's dates are typed and on the workspace's clock, as the grid
+    // shows them; the CSV keeps its UTC `Z` and a DATE field's DD/MM/YYYY.
+    const days = new Set(columns.filter((column) => column.date).map((column) => column.key));
     const value = (row: Record<string, any>, key: string) => {
-      if (key.startsWith('cf:')) return customCells(columns, row.customData)[key];
+      if (key.startsWith('cf:')) {
+        const day = row.customData?.[key.slice(3)];
+        if (zone && days.has(key) && typeof day === 'string' && parseTypedDate(day) === day) return new Date(day);
+        return customCells(columns, row.customData)[key];
+      }
       switch (key) {
         case 'stage':
           return row.stage?.name;
         case 'owner':
           return row.owner?.fullName ?? 'Unassigned';
         default:
-          return row[key];
+          return zone && row[key] instanceof Date ? onClock(row[key], zone) : row[key];
       }
     };
 

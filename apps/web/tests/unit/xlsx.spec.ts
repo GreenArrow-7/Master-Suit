@@ -1,7 +1,7 @@
 import { crc32, inflateRawSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { readSheet } from 'read-excel-file/node';
-import { xlsx as build, xlsxStream } from '@/lib/xlsx';
+import { onClock, xlsx as build, xlsxStream } from '@/lib/xlsx';
 
 const xlsx = async (...args: Parameters<typeof build>) => Buffer.from(await build(...args));
 
@@ -89,6 +89,19 @@ describe('xlsx', () => {
     expect(sheet).not.toContain('r="C4"');
     expect(sheet).not.toMatch(/<f[ >]/);
     expect(sheet.match(/<row /g)).toHaveLength(4);
+  });
+
+  it('shows an instant on the workspace’s clock, its midnight as a day alone', async () => {
+    // Due 19 Oct 00:30 in Dubai (UTC+4) is 18 Oct 20:30 UTC: the cell reads the 19th, not the 18th.
+    // Dubai's midnight is 20:00 UTC the day before; New York's 23:30 on the 17th is 03:30 UTC on the 18th.
+    const due = onClock(new Date('2026-10-18T20:30:00Z'), 'Asia/Dubai');
+    const midnight = onClock(new Date('2026-10-18T20:00:00Z'), 'Asia/Dubai');
+    const west = onClock(new Date('2026-10-18T03:30:00Z'), 'America/New_York');
+    const sheet = unzip(await xlsx(['Due', 'Day', 'West'], [[due, midnight, west]])).get('xl/worksheets/sheet1.xml')!;
+    expect(cells(sheet)).toContain('<c r="A2" s="3"><v>46314.02083333333</v></c>');
+    expect(cells(sheet)).toContain('<c r="B2" s="2"><v>46314</v></c>');
+    expect(cells(sheet)).toContain('<c r="C2" s="3"><v>46312.97916666667</v></c>');
+    expect(onClock(when, 'UTC')).toEqual(when);
   });
 
   it('opens in a real reader with the same rows', async () => {
