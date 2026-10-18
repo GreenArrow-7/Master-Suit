@@ -4,6 +4,8 @@ import { readPrefs } from '@/lib/notificationPrefs';
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import ListHeader from '@/components/workspace/ListHeader';
 import NotificationPrefsForm from './NotificationPrefsForm';
+import PushTest from './PushTest';
+import { pushConfigured } from '@/lib/push/send';
 
 export const metadata = { title: 'Notifications' };
 
@@ -16,17 +18,23 @@ export default async function NotificationsPrefsPage({ params }: { params: Promi
   } catch {
     redirect('/login');
   }
-  const user = await prisma.user.findFirst({
-    where: { tenantId: page.ctx.tenantId, id: page.ctx.actor.id },
-    select: { notificationPrefs: true },
-  });
+  const [user, devices] = await Promise.all([
+    prisma.user.findFirst({
+      where: { tenantId: page.ctx.tenantId, id: page.ctx.actor.id },
+      select: { notificationPrefs: true },
+    }),
+    prisma.deviceToken.count({ where: { userId: page.ctx.actor.id } }),
+  ]);
   return (
     <>
       <ListHeader
         title="Notifications"
         description="Everything appears in the bell. Choose whether it also reaches your phone and your email."
       />
-      <NotificationPrefsForm initial={readPrefs(user?.notificationPrefs)} />
+      <div style={{ display: 'grid', gap: 'var(--lf-space-4)' }}>
+        <NotificationPrefsForm initial={readPrefs(user?.notificationPrefs)} />
+        <PushTest configured={pushConfigured()} devices={devices} />
+      </div>
     </>
   );
 }
