@@ -30,6 +30,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 | Date | Entry | PR | Area |
 |---|---|---|---|
 | 2026-10-18 | [Phone apps 1.3.0 with push (prepared; merge after the owner's keys)](2026-10-18-mobile-1-3-0-push.md) | — | Mobile, build |
+| 2026-10-18 | [One tap checks phone notifications end to end](2026-10-18-push-test-button.md) | — | Notifications, feature |
 | 2026-10-18 | [Reminders ring fifteen minutes before](2026-10-18-reminders-t15.md) | #218 | Lead Eagle, follow-ups, notifications |
 | 2026-10-18 | [A workspace keeps its audit log, attendance punches and AI events longer than the deployment, never shorter](2026-10-18-data-retention.md) | #220 | Admin, retention, feature |
 | 2026-10-18 | [Meetings, follow-ups and site visits on the workspace's Google Calendar, connected with Google](2026-10-18-le-google-calendar.md) | #221 | Lead Eagle, follow-ups, integrations, feature |

@@ -75,6 +75,9 @@ const EXEMPT: Record<string, Exemption> = {
   'v1/practice/[id] POST': nothing("A turn in the caller's own practice session; finishing it is audited."),
   'v1/devices POST': nothing("The caller's own push token, registered on every app start."),
   'v1/devices/unregister POST': nothing("Forgets the caller's own push token."),
+  'v1/notification-preferences/test POST': nothing(
+    "A test notification to the caller's own phones; the only write drops tokens the transport rejected, as the delivery worker does.",
+  ),
   'v1/notifications PATCH': nothing("Marks the caller's own notifications read."),
   'v1/notification-preferences PUT': nothing("The caller's own phone and email choices for their notifications."),
   'v1/projects/[id]/favourite POST': nothing("The caller's own bookmark on a project."),
