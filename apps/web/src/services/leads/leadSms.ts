@@ -16,7 +16,8 @@ import { normalizePhone } from './normalizePhone';
  * outside it), never to a lead that withdrew consent, opted out of SMS or is
  * on the do-not-call list, and logged as an SMS Communication on the lead, on
  * its timeline, before the provider is asked, then marked sent or failed with
- * the provider's message id or its reason. No number goes back to the sender.
+ * the provider's message id or its reason (left queued, with a warning, when
+ * the provider never answered). No number goes back to the sender.
  */
 type SmsContact = {
   fullName: string;
@@ -66,6 +67,9 @@ export function smsBlock(lead: SmsContact, setup: SmsSetup): string | null {
 
 /** A provider's complaint often quotes the number it refused: the sender may read it masked. */
 const withoutNumbers = (text: string) => text.replace(/\+?\d[\d\s().-]{4,}\d/g, 'the number').slice(0, 500);
+
+/** What a text reads when the provider never answered whether it took it. */
+const UNANSWERED = 'The SMS provider did not answer, so this text may have been sent. Check before sending it again.';
 
 export async function sendLeadSms(ctx: Ctx, leadId: string, text: string) {
   const { tenantId } = ctx;
@@ -121,11 +125,17 @@ export async function sendLeadSms(ctx: Ctx, leadId: string, text: string) {
             errorMessage: result.errorMessage ? withoutNumbers(result.errorMessage) : null,
           }
         : { status: 'SENT' as const, providerMessageId: result.externalMessageId || null },
-    (err: Error) => ({
-      status: 'FAILED' as const,
-      errorCode: err instanceof TelephonyApiError ? String(err.status) : null,
-      errorMessage: withoutNumbers((err instanceof TelephonyApiError && err.detail) || err.message || 'Not sent.'),
-    }),
+    (err: Error) =>
+      err instanceof TelephonyApiError
+        ? {
+            status: 'FAILED' as const,
+            errorCode: String(err.status),
+            errorMessage: withoutNumbers(err.detail || err.message),
+          }
+        : // No answer (a timeout, a dropped connection, a reply that does not parse): the provider
+          // may have taken it, and its create is not idempotent. Left queued with a warning, not
+          // failed: "Not sent" invites a second send, and the customer gets the text twice.
+          { status: 'QUEUED' as const, errorMessage: UNANSWERED },
   );
   return prisma.communication.update({
     where: { tenantId, id: message.id },

@@ -7,6 +7,9 @@ import ListHeader from '@/components/workspace/ListHeader';
 import ConfigurableGrid from '@/components/workspace/ConfigurableGrid';
 import ColumnEditor from '@/components/workspace/ColumnEditor';
 import { columnsFor } from '@/lib/grid/resolve';
+import { applyFieldSecurity, loadFieldRules } from '@/lib/security/fieldSecurity';
+import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
+import { inboxReach } from '@/services/leads/timeline';
 
 export const metadata = { title: 'Communications' };
 
@@ -28,8 +31,10 @@ export default async function CommunicationsPage({ searchParams }: { searchParam
 
   const allowed = CHANNELS.map(([, key]) => key).filter(Boolean) as string[];
   const channelFilter = params.channel && allowed.includes(params.channel) ? { channel: params.channel as never } : {};
-  const rows = await prisma.communication.findMany({
-    where: { tenantId: ctx.tenantId, ...channelFilter },
+  const [inbox, leadRules] = await Promise.all([inboxReach(ctx), loadFieldRules(ctx, 'LEAD')]);
+  const found = await prisma.communication.findMany({
+    // The messages the inbox shows this viewer, as the lead timeline reads them: not the whole workspace's.
+    where: { tenantId: ctx.tenantId, ...channelFilter, AND: [inbox] },
     orderBy: { createdAt: 'desc' },
     take: 50,
     select: {
@@ -40,7 +45,16 @@ export default async function CommunicationsPage({ searchParams }: { searchParam
       subject: true,
       status: true,
       createdAt: true,
+      leadId: true,
+      conversation: { select: { leadId: true } },
     },
+  });
+  // A message to a lead went to its number or email, which reads here as the lead's own does to this role.
+  const rows = found.map(({ leadId, conversation, ...row }) => {
+    if (!(leadId ?? conversation?.leadId) || row.direction !== 'OUTBOUND') return row;
+    const field = row.channel === 'EMAIL' ? 'email' : 'phone';
+    const seen = applyFieldSecurity(ctx, 'LEAD', leadRules, { [field]: row.toAddress }, LEAD_SENSITIVE_FIELDS);
+    return { ...row, toAddress: (seen[field] as string | undefined) ?? '' };
   });
 
   const columns = await columnsFor(ctx.tenantId, 'COMMUNICATION');

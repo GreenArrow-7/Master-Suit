@@ -19,6 +19,7 @@ off until the owner's side exists (a Twilio account with SMS and a sender).
 - `src/app/api/v1/leads/[id]/sms/route.ts` — `POST { body }`, 1–640 characters.
 - `src/lib/sms.ts` — the part count; `sales/leads/[id]/SmsDialog.tsx`, `MessageCard.tsx`, `page.tsx` — the button and composer.
 - `prisma/seed/index.ts` — the development mock connection gets a sender.
+- `sales/communications/page.tsx` (review fix) — the grid was the whole workspace's, every number in full: now the viewer's inbox reach (`inboxReach`, exported from `services/leads/timeline.ts`), and a lead's address reads as the lead's own (field security).
 
 **Behaviour.** Permissioned as Send WhatsApp: `communications:CREATE` in a lead
 module, on a lead the sender's `leads:EDIT` reaches (404 outside it), 20 sends
@@ -32,16 +33,25 @@ digits). The page shows the same reason under a disabled Send SMS. The message
 is written (QUEUED) and audited (`MESSAGE_SENT`, channel SMS) before Twilio is
 asked, then marked SENT with Twilio's message id, or FAILED with Twilio's code
 and reason, numbers taken out of the reason (the sender may read them masked).
-The answer never carries the number. The mock sends nothing and is refused in
+FAILED only when Twilio answered: with no answer (a timeout, a dropped
+connection, a reply that does not parse) Twilio may have taken it, so the text
+stays QUEUED and the composer says it may have been sent, check before sending
+again, not "Not sent" (which invited a second text).
+The answer never carries the number. On Sales → Communications a role sees the
+messages its `communications` scope reaches, not the workspace's, and a lead's
+number or email masked as the lead's is to it (this leak predates SMS; WhatsApp
+and email rows had it too). The mock sends nothing and is refused in
 production, as mock telephony is.
 
-**Verified.** `tests/sales/lead-sms.spec.ts` (8, `fetch` stubbed): sends and
+**Verified.** `tests/sales/lead-sms.spec.ts` (10, `fetch` stubbed): sends and
 logs (the exact Messages API request, the Communication, the audit row, the
 timeline); a Twilio refusal and an immediate `failed` logged as FAILED; 404 out
 of scope and for a reader, 403 without the permission, 422 empty or too long;
 no number, opted out, withdrawn, do-not-call (route and page); another number;
 not set up four ways; the Twilio card's setting; the mock in development and
-refused in production. `tests/unit/sms-parts.spec.ts` (3).
+refused in production; no answer (an `AbortError`, a 2xx that is not JSON) left
+QUEUED with the warning; the Communications page lists an OWN role's messages
+only and masks a lead's number (both new cases fail without the fix). `tests/unit/sms-parts.spec.ts` (3).
 `tests/sales/lead-send.spec.ts` updated for the page's new `smsBlocked`.
 `public/openapi.json` regenerated; mutation-audit lists the route as audited by
 `leadSms.ts`. No browser check: no dev server on the shared rig.
@@ -49,5 +59,6 @@ refused in production. `tests/unit/sms-parts.spec.ts` (3).
 **Left open.**
 
 - Owner: a Twilio account able to send SMS to the UAE, connected as the calling provider, and a sender on its card (a UAE-registered alphanumeric sender ID, or a Twilio number).
-- Delivery receipts (Twilio's status callback) are not wired: a text reads Sent once Twilio accepts it.
+- Delivery receipts (Twilio's status callback) are not wired: a text reads Sent once Twilio accepts it, and one Twilio never answered stays Queued.
+- The inbox (`api/v1/conversations`) still shows a thread's number unmasked to whoever its scope reaches.
 - No inbound SMS, no SMS templates, no bulk SMS from the grid; Plivo and Exotel do not text from here.

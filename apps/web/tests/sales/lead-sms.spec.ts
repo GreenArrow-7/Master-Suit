@@ -22,6 +22,7 @@ import { POST as sendSms } from '@/app/api/v1/leads/[id]/sms/route';
 import { GET as readTimeline } from '@/app/api/v1/leads/[id]/timeline/route';
 import { GET as listIntegrations } from '@/app/api/v1/integrations/route';
 import LeadDetailPage from '@/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page';
+import CommunicationsPage from '@/app/(workspace)/[workspaceSlug]/sales/communications/page';
 import { createWorkspaceUser, grantPermissions, seedTwoTenants, type Fixture, type Grants } from '../helpers/fixtures';
 import { createSessionToken } from '../helpers/session';
 import { get, post } from '../helpers/request';
@@ -270,6 +271,63 @@ describe('an SMS from the lead (M4-29)', () => {
     const again = await send(masked, lead.id, { body: 'Hello again' });
     expect(again.body.message).toMatchObject({ status: 'FAILED', errorMessage: 'Carrier filtered.' });
     expect((await textsOf(lead.id))[1]).toMatchObject({ providerMessageId: 'SM2', errorCode: '30007' });
+  });
+
+  it('a send Twilio never answers stays queued with a warning, not failed: it may have gone', async () => {
+    const lead = await newLead({ fullName: 'No Answer', phone: MAIN, phoneNormalized: MAIN });
+    const unanswered = {
+      status: 'QUEUED',
+      sentAt: null,
+      errorMessage: 'The SMS provider did not answer, so this text may have been sent. Check before sending it again.',
+    };
+    // The request timed out or the connection dropped: Twilio may have taken it.
+    fetchMock.mockRejectedValue(new DOMException('This operation was aborted', 'AbortError'));
+    const res = await send(agent, lead.id, { body: 'Hello' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.message).toMatchObject(unanswered);
+    // A 2xx Twilio answered with something that is not its JSON: taken, as far as anyone knows.
+    fetchMock.mockImplementation(async () => new Response('<html>Bad gateway</html>', { status: 200 }));
+    expect((await send(agent, lead.id, { body: 'Hello again' })).body.message).toMatchObject(unanswered);
+    expect(await textsOf(lead.id)).toMatchObject([
+      { ...unanswered, errorCode: null, providerMessageId: null },
+      { ...unanswered, errorCode: null, providerMessageId: null },
+    ]);
+  });
+
+  it('the Communications page lists the viewer’s messages only, a lead’s number read as the lead’s own', async () => {
+    const theirs = await newLead({
+      fullName: 'Someone Else',
+      phone: '+971502223344',
+      phoneNormalized: '+971502223344',
+      ownerId: fixture.a.userId,
+    });
+    const fromMasked = (await send(masked, theirs.id, { body: 'From the masked role' })).body.message.id;
+    const fromAgent = (await send(agent, leadId, { body: 'From the agent' })).body.message.id;
+    const listed = async (as: string) => {
+      cookieJar.value = as;
+      try {
+        const page = await CommunicationsPage({ searchParams: Promise.resolve({ channel: 'SMS' }) });
+        return propsWith(page, 'rows')!.rows as { id: string; toAddress: string }[];
+      } finally {
+        cookieJar.value = admin;
+      }
+    };
+    await prisma.moduleEntitlement.updateMany({ where: { tenantId, module: 'SALES' }, data: { state: 'ACTIVE' } });
+    await invalidateEntitlements(tenantId);
+    try {
+      // Its own messages (communications at OWN), the number as it reads its lead's.
+      const own = await listed(agent);
+      expect(own.find((row) => row.id === fromAgent)?.toAddress).toBe(MAIN);
+      expect(own.map((row) => row.id)).not.toContain(fromMasked);
+      // Every message, each lead's number masked as the lead's is to this role.
+      const all = await listed(masked);
+      expect(all.map((row) => row.id)).toEqual(expect.arrayContaining([fromAgent, fromMasked]));
+      expect(all.find((row) => row.id === fromAgent)?.toAddress).toBeTruthy();
+      expect(JSON.stringify(all)).not.toMatch(/501234567|502223344/);
+    } finally {
+      await prisma.moduleEntitlement.updateMany({ where: { tenantId, module: 'SALES' }, data: { state: 'CANCELED' } });
+      await invalidateEntitlements(tenantId);
+    }
   });
 
   it('answers 404 outside the lead scope and 403 without the permission, and sends nothing', async () => {

@@ -52,8 +52,10 @@ export default function SmsDialog({
       );
       return;
     }
-    if (data.message?.status === 'FAILED') {
-      setError(`Not sent: ${data.message.errorMessage ?? 'the provider refused it.'}`);
+    // QUEUED after the send: the provider never answered, so it may have gone; the message says so.
+    if (data.message?.status === 'FAILED' || data.message?.status === 'QUEUED') {
+      const { status, errorMessage } = data.message;
+      setError(status === 'FAILED' ? `Not sent: ${errorMessage ?? 'the provider refused it.'}` : errorMessage);
       router.refresh();
       return;
     }
