@@ -13,7 +13,7 @@ import { recordTargetProgress } from '@/services/targets/progress';
 import { CLOSE_OUT_STATUSES, closeOutLead } from './closeOut';
 import { LEAD_SENSITIVE_FIELDS } from './createLead';
 import { lockLeads, OPEN_STATUSES, recomputeNextFollowUp } from './nextFollowUp';
-import { queueCalendarSync } from '../integrations/googleCalendar';
+import { queueCalendarSync } from '../integrations/calendarSync';
 
 /**
  * Whose cold data a person reaches for `action`, as a `where`: the lead rule
@@ -206,7 +206,7 @@ export async function moveLeadToData(ctx: Ctx, id: string) {
     );
     return { id, dataRecordId: record.id, batch };
   });
-  // The cancelled meetings off the workspace's Google Calendar (M8-08).
+  // The cancelled meetings off the workspace's calendars (M8-08, M8-09).
   await queueCalendarSync(tenantId, 'followUp', ...cancelled.followUps);
   await queueCalendarSync(tenantId, 'task', ...cancelled.tasks);
   return moved;

@@ -19,6 +19,8 @@ import { workspaceTimezone } from '@/services/hr/attendance';
 import { leadTimeline, onClock } from '@/services/leads/timeline';
 import { matchesForRequirement, unitsForRequirement, type Requirement } from '@/services/inventory/demand';
 import { leadShares } from '@/services/leads/leadShares';
+import { smsBlock } from '@/services/leads/leadSms';
+import { smsSetup } from '@/lib/integrations/telephony/resolve';
 import { whatsappLink } from '@/components/workspace/CallLink';
 import StageRail from '@/components/ui/StageRail';
 import LeadDetail from './LeadDetail';
@@ -296,6 +298,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         emailBlocked:
           withdrawn ??
           (lead.emailOptOut ? `${lead.fullName} has opted out of email.` : lead.email ? null : 'No email address.'),
+        // The lead's own refusals first, then whether the workspace can text (M4-29).
+        smsBlocked: smsBlock(lead, await smsSetup(ctx.tenantId)),
       }
     : null;
 

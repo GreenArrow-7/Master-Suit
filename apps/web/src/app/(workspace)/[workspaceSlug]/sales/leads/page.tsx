@@ -250,6 +250,8 @@ export default async function LeadsPage({
   const data = withFollowUp.map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
   const shown = new Set(columns.map((column) => column.key));
   const { layout: _layout, ...listParams } = params;
+  // The file is the list on screen: the CSV, or the same rows as an Excel workbook (M16-15).
+  const exportHref = leadListHref(listParams, '/api/v1/leads/export');
   const total = columnsOfBoard.reduce((sum, column) => sum + column.count, 0);
 
   return (
@@ -267,12 +269,17 @@ export default async function LeadsPage({
         secondaryActions={
           <>
             {can(ctx, 'leads', 'EXPORT') && (
-              <a
-                className="lf-btn lf-btn--secondary lf-btn--sm"
-                href={leadListHref(listParams, '/api/v1/leads/export')}
-              >
-                Export
-              </a>
+              <>
+                <a className="lf-btn lf-btn--secondary lf-btn--sm" href={exportHref}>
+                  Export
+                </a>
+                <a
+                  className="lf-btn lf-btn--secondary lf-btn--sm"
+                  href={`${exportHref}${exportHref.includes('?') ? '&' : '?'}format=xlsx`}
+                >
+                  Excel
+                </a>
+              </>
             )}
             {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
               <ColumnEditor

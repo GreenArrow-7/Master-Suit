@@ -14,7 +14,7 @@ import { findDuplicates } from './findDuplicates';
 import { assertLeadSource } from './leadSources';
 import { withCustomValues } from './customFields';
 import { normalizePhone } from './normalizePhone';
-import { queueCalendarSync } from '../integrations/googleCalendar';
+import { queueCalendarSync } from '../integrations/calendarSync';
 
 export interface UpdateLeadInput {
   fullName?: string;
@@ -207,7 +207,7 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput, o
   });
   if (opts.dryRun) return updated;
 
-  // What the stage booked, onto the workspace's Google Calendar (M8-08).
+  // What the stage booked, onto the workspace's calendars (M8-08, M8-09).
   await queueCalendarSync(ctx.tenantId, 'visit', booked?.visitId);
   await queueCalendarSync(ctx.tenantId, 'task', booked?.taskId);
 

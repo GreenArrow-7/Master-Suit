@@ -25,8 +25,8 @@ export const QUEUE_NAMES = [
   'ai',
   // Email for in-app notifications that have already been written.
   'notifications',
-  // Meetings, follow-ups and site visits onto a workspace's Google Calendar (M8-08):
-  // its own worker, so a hanging Google never holds up reminder pushes and emails.
+  // Meetings, follow-ups and site visits onto a workspace's Google and Microsoft 365 calendars (M8-08, M8-09):
+  // its own worker, so a hanging provider never holds up reminder pushes and emails.
   'calendar',
 ] as const;
 

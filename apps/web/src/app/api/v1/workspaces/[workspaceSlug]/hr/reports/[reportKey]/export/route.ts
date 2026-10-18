@@ -7,7 +7,8 @@ import { requireWorkspace } from '@/lib/workspace';
 import { EVERY_WORKSPACE_REPORT, exportReportCsv } from '@/services/hr/reports';
 
 /**
- * A report as a CSV.
+ * A report as a CSV, or with `format=xlsx` the same rows as an Excel workbook
+ * (M16-15): the same gate, the same audit row.
  *
  * Its own route because the response is a file rather than JSON, but the
  * authorisation is not its own: `exportReportCsv` resolves the report through
@@ -47,20 +48,26 @@ export const GET = route(
       return Number.isNaN(parsed.getTime()) ? undefined : parsed;
     };
     const text = (key: string) => url.searchParams.get(key) ?? undefined;
+    const { format } = z.object({ format: z.enum(['csv', 'xlsx']).default('csv') }).parse({ format: text('format') });
 
-    const file = await exportReportCsv(ctx, reportKey, {
-      from: date('from'),
-      to: date('to'),
-      departmentId: text('departmentId'),
-      locationId: text('locationId'),
-      employeeId: text('employeeId'),
-      status: text('status'),
-      cycleId: text('cycleId'),
-    });
+    const file = await exportReportCsv(
+      ctx,
+      reportKey,
+      {
+        from: date('from'),
+        to: date('to'),
+        departmentId: text('departmentId'),
+        locationId: text('locationId'),
+        employeeId: text('employeeId'),
+        status: text('status'),
+        cycleId: text('cycleId'),
+      },
+      format,
+    );
 
     return new NextResponse(file.content, {
       headers: {
-        'content-type': 'text/csv; charset=utf-8',
+        'content-type': file.type,
         'content-disposition': `attachment; filename="${file.filename.replace(/"/g, '')}"`,
         'cache-control': 'private, no-store',
         'x-row-count': String(file.rows),

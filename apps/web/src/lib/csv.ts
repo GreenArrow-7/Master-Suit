@@ -21,6 +21,7 @@
  */
 import { env } from './env';
 import { csvCell } from './csvCell';
+import { xlsx } from './xlsx';
 
 export { csvCell };
 
@@ -121,3 +122,16 @@ export const csvHeaders = (filename: string, requestId?: string) => ({
   'cache-control': 'no-store',
   ...(requestId ? { 'x-request-id': requestId } : {}),
 });
+
+/**
+ * A table a page already holds (header row first) as the two files its
+ * ExportCsv button downloads: the CSV, and the same rows as an Excel workbook,
+ * base64 (M16-15).
+ */
+export async function tableFiles(table: unknown[][]) {
+  const [header = [], ...rows] = table;
+  return {
+    csv: table.map((row) => row.map(csvCell).join(',')).join('\r\n'),
+    xlsx: Buffer.from(await xlsx(header, rows)).toString('base64'),
+  };
+}

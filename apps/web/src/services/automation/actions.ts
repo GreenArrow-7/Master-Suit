@@ -5,7 +5,7 @@ import { assertLeadInScope, assertRecordInScope } from '@/lib/security/record-sc
 import { updateRecordField, addTag, loadRecord, RECORD_MODULE, type AutomationObjectType } from './records';
 import { postWebhook } from './webhook';
 import { withRecompute } from '@/services/leads/nextFollowUp';
-import { queueCalendarSync } from '@/services/integrations/googleCalendar';
+import { queueCalendarSync } from '@/services/integrations/calendarSync';
 import { updateLead } from '@/services/leads/updateLead';
 import { sendLeadMessage, type MessageChannel } from '@/services/leads/leadMessages';
 import { assignLead } from '@/services/distribution/assignLead';

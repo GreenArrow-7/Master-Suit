@@ -12,7 +12,7 @@
  */
 import { basic, vendorFetch } from './telephony/http';
 import { GRAPH_VERSION } from './meta/send';
-import { googleOAuthConfigured, googleToken } from './calendar';
+import { GRAPH_EVENTS, googleOAuthConfigured, googleToken, microsoftOAuthConfigured, microsoftToken } from './calendar';
 
 export type VerifyResult = { ok: true; detail?: string } | { ok: false; detail: string } | { ok: null; detail: string };
 
@@ -73,6 +73,20 @@ export async function verifyConnection(provider: string, c: Record<string, strin
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         return { ok: true, detail: a.summary };
+      }
+
+      case 'microsoft': {
+        // As Google's: refreshed first where the connection holds a refresh token.
+        const accessToken =
+          c.refreshToken && microsoftOAuthConfigured()
+            ? (await microsoftToken({ refreshToken: c.refreshToken })).accessToken
+            : c.accessToken;
+        await vendorFetch({
+          vendor: provider,
+          url: `${GRAPH_EVENTS}?$top=1&$select=id`,
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        return { ok: true };
       }
 
       case 'gemini': {

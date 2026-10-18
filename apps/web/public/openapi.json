@@ -10665,6 +10665,96 @@
         }
       }
     },
+    "/api/v1/integrations/{provider}/callback": {
+      "get": {
+        "tags": [
+          "other"
+        ],
+        "description": "Answers outside the route() kernel (its own authentication); no declared schema.",
+        "operationId": "getIntegrationsProviderCallback",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/{provider}/connect": {
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "integrations:MANAGE_CONFIGURATION",
+        "x-permission": "integrations:MANAGE_CONFIGURATION",
+        "x-product-modules": [
+          "HRMS",
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "operationId": "postIntegrationsProviderConnect",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "google",
+                "microsoft"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "returnTo": {
+                    "type": "string",
+                    "maxLength": 200
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/integrations/{provider}/deliveries": {
       "get": {
         "tags": [
@@ -10769,72 +10859,6 @@
                 "required": [
                   "id"
                 ],
-                "additionalProperties": false
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/integrations/google/callback": {
-      "get": {
-        "tags": [
-          "other"
-        ],
-        "description": "Answers outside the route() kernel (its own authentication); no declared schema.",
-        "operationId": "getIntegrationsGoogleCallback",
-        "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "default": {
-            "$ref": "#/components/responses/Problem"
-          }
-        }
-      }
-    },
-    "/api/v1/integrations/google/connect": {
-      "post": {
-        "tags": [
-          "integrations"
-        ],
-        "summary": "integrations:MANAGE_CONFIGURATION",
-        "x-permission": "integrations:MANAGE_CONFIGURATION",
-        "x-product-modules": [
-          "HRMS",
-          "SALES",
-          "REAL_ESTATE",
-          "LEAD_EAGLE"
-        ],
-        "security": [
-          {
-            "session": []
-          },
-          {
-            "apiKey": []
-          }
-        ],
-        "operationId": "postIntegrationsGoogleConnect",
-        "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "default": {
-            "$ref": "#/components/responses/Problem"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "returnTo": {
-                    "type": "string",
-                    "maxLength": 200
-                  }
-                },
                 "additionalProperties": false
               }
             }
@@ -13082,6 +13106,68 @@
         }
       }
     },
+    "/api/v1/leads/{id}/sms": {
+      "post": {
+        "tags": [
+          "communications"
+        ],
+        "summary": "communications:CREATE",
+        "x-permission": "communications:CREATE",
+        "x-product-modules": [
+          "SALES",
+          "REAL_ESTATE",
+          "LEAD_EAGLE"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "operationId": "postLeadsIdSms",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "body": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 640
+                  }
+                },
+                "required": [
+                  "body"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/leads/{id}/timeline": {
       "get": {
         "tags": [
@@ -13337,6 +13423,19 @@
             "schema": {
               "type": "string",
               "maxLength": 1830
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "csv",
+                "xlsx"
+              ],
+              "default": "csv"
             }
           }
         ],
@@ -20508,7 +20607,8 @@
               "type": "string",
               "enum": [
                 "json",
-                "csv"
+                "csv",
+                "xlsx"
               ],
               "default": "json"
             }
@@ -20623,6 +20723,14 @@
                       "WEEKLY",
                       "MONTHLY"
                     ]
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "csv",
+                      "xlsx"
+                    ],
+                    "default": "csv"
                   },
                   "recipients": {
                     "type": "array",

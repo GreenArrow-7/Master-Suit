@@ -25,6 +25,7 @@ import { audit } from '@/lib/security/audit';
 import type { Action, Ctx, Scope } from '@/lib/security/rbac';
 import { can, scopeFor } from '@/lib/security/rbac';
 import { resolveOwnerIds } from '@/lib/security/visibility';
+import { xlsx, XLSX_TYPE } from '@/lib/xlsx';
 import { attendanceScope } from './attendance';
 import { addDays, dayKey, toDay } from './rules';
 
@@ -1021,21 +1022,41 @@ export async function runReport(ctx: Ctx, key: string, filters: ReportFilters = 
   return { key: report.key, title: report.title, scope: audience.scope, ...result };
 }
 
+export interface ReportFile {
+  filename: string;
+  content: string | Uint8Array<ArrayBuffer>;
+  rows: number;
+  /** Its content type. */
+  type: string;
+}
+
 /**
- * The same report as a CSV.
+ * The same report as a CSV, or (`format` xlsx) the same columns and rows as an
+ * Excel workbook (M16-15).
  *
  * Exports are audited where runs are not: a report on screen is a look, an
  * export is a copy leaving the building, and §105 asks for access to sensitive
  * information to be logged.
  */
-export async function exportReportCsv(ctx: Ctx, key: string, filters: ReportFilters = {}) {
+export async function exportReportCsv(
+  ctx: Ctx,
+  key: string,
+  filters?: ReportFilters,
+): Promise<ReportFile & { content: string }>;
+export async function exportReportCsv(
+  ctx: Ctx,
+  key: string,
+  filters: ReportFilters,
+  format: 'csv' | 'xlsx',
+): Promise<ReportFile>;
+export async function exportReportCsv(
+  ctx: Ctx,
+  key: string,
+  filters: ReportFilters = {},
+  format: 'csv' | 'xlsx' = 'csv',
+): Promise<ReportFile> {
   const { report, audience } = await resolveWithAudience(ctx, key);
   const result = await report.run(ctx, filters, audience);
-
-  const lines = [
-    result.columns.map((column) => csvCell(column.label)).join(','),
-    ...result.rows.map((row) => result.columns.map((column) => csvCell(row[column.key])).join(',')),
-  ];
 
   await audit(ctx, {
     event: 'EXPORT_REQUESTED',
@@ -1051,17 +1072,32 @@ export async function exportReportCsv(ctx: Ctx, key: string, filters: ReportFilt
       // whose payslips the caller was entitled to.
       scope: audience.scope,
       filters: { ...filters, from: filters.from?.toISOString(), to: filters.to?.toISOString() },
+      format,
     },
   });
 
+  const filename = `${report.key}-${dayKey(new Date())}.${format}`;
+  if (format === 'xlsx') {
+    const content = await xlsx(
+      result.columns.map((column) => column.label),
+      result.rows.map((row) => result.columns.map((column) => row[column.key])),
+      report.title,
+    );
+    return { filename, content, rows: result.rows.length, type: XLSX_TYPE };
+  }
+  const lines = [
+    result.columns.map((column) => csvCell(column.label)).join(','),
+    ...result.rows.map((row) => result.columns.map((column) => csvCell(row[column.key])).join(',')),
+  ];
   return {
-    filename: `${report.key}-${dayKey(new Date())}.csv`,
+    filename,
     // The BOM makes Excel read UTF-8 rather than the system codepage, which is
     // what mangles Arabic names in an otherwise correct file.
     // Written as an escape rather than a literal BOM: an invisible character in
     // source is the kind of thing a later edit silently deletes.
     content: `\ufeff${lines.join('\r\n')}\r\n`,
     rows: result.rows.length,
+    type: 'text/csv; charset=utf-8',
   };
 }
 

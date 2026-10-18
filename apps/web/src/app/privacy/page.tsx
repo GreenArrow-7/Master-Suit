@@ -217,6 +217,7 @@ export default function PrivacyPage() {
           <li>Email relay services (for sending invoices and notifications)</li>
           <li>Meta WhatsApp Business (if your organisation enables it)</li>
           <li>Google Calendar (if you connect it)</li>
+          <li>Microsoft 365 Outlook calendar (if you connect it)</li>
           <li>Telephony providers (if your organisation uses call features)</li>
           <li>Google Gemini (if your organisation enables AI features)</li>
         </ul>

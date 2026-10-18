@@ -130,9 +130,18 @@ export default async function Page({
                 </form>
               )}
               {result && result.rows.length > 0 && (
-                <a className="lf-btn" href={exportHref} download>
-                  Export CSV
-                </a>
+                <>
+                  <a className="lf-btn" href={exportHref} download>
+                    Export CSV
+                  </a>
+                  <a
+                    className="lf-btn"
+                    href={`${exportHref}${exportHref.includes('?') ? '&' : '?'}format=xlsx`}
+                    download
+                  >
+                    Excel
+                  </a>
+                </>
               )}
             </div>
           </div>

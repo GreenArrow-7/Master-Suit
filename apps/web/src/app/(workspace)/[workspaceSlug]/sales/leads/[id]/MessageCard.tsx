@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import TemplateSendDialog, { type MessageChannel } from '../TemplateSendDialog';
+import SmsDialog from './SmsDialog';
 
 export interface LeadMessaging {
   /** The numbers marked as on WhatsApp, main first, labelled as the viewer reads them. */
@@ -10,11 +11,13 @@ export interface LeadMessaging {
   /** Why WhatsApp cannot go to this lead (opted out, no number marked), or null. */
   whatsappBlocked: string | null;
   emailBlocked: string | null;
+  /** Why a text cannot go (no number, opted out, SMS not set up for the workspace), or null (M4-29). */
+  smsBlocked: string | null;
 }
 
 /**
- * Send a WhatsApp template or an email template from the lead's Overview
- * (M4-28). Shown to a viewer who may send (`communications:CREATE`) and whose
+ * Send a WhatsApp template, an email template (M4-28) or a text (M4-29) from
+ * the lead's Overview. Shown to a viewer who may send (`communications:CREATE`) and whose
  * `leads:EDIT` reaches the lead; a channel the lead cannot take says why.
  */
 export default function MessageCard({
@@ -25,9 +28,16 @@ export default function MessageCard({
   messaging: LeadMessaging;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState<MessageChannel | null>(null);
+  const [open, setOpen] = useState<MessageChannel | 'SMS' | null>(null);
   const [sent, setSent] = useState(false);
-  const reasons = [messaging.whatsappBlocked, messaging.emailBlocked].filter(Boolean);
+  // Withdrawn consent stops every channel with one sentence: said once.
+  const reasons = [
+    ...new Set([messaging.whatsappBlocked, messaging.emailBlocked, messaging.smsBlocked].filter(Boolean)),
+  ];
+  const onSent = () => {
+    setSent(true);
+    router.refresh();
+  };
 
   return (
     <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }} aria-label="Message the lead">
@@ -51,6 +61,14 @@ export default function MessageCard({
         >
           Send email
         </button>
+        <button
+          type="button"
+          className="lf-btn lf-btn--secondary lf-btn--sm"
+          disabled={!!messaging.smsBlocked}
+          onClick={() => setOpen('SMS')}
+        >
+          Send SMS
+        </button>
       </div>
       {reasons.map((reason) => (
         <p key={reason} className="lf-hint" style={{ margin: 'var(--lf-space-2) 0 0' }}>
@@ -62,16 +80,17 @@ export default function MessageCard({
           Sent. It is on the timeline.
         </p>
       )}
-      {open && (
-        <TemplateSendDialog
-          channel={open}
-          target={{ leadId: lead.id, fullName: lead.fullName, numbers: messaging.numbers }}
-          onClose={() => setOpen(null)}
-          onSent={() => {
-            setSent(true);
-            router.refresh();
-          }}
-        />
+      {open === 'SMS' ? (
+        <SmsDialog lead={lead} onClose={() => setOpen(null)} onSent={onSent} />
+      ) : (
+        open && (
+          <TemplateSendDialog
+            channel={open}
+            target={{ leadId: lead.id, fullName: lead.fullName, numbers: messaging.numbers }}
+            onClose={() => setOpen(null)}
+            onSent={onSent}
+          />
+        )
       )}
     </section>
   );

@@ -644,6 +644,7 @@ model Tenant {
   captureLinks        CaptureLink[]
   dataRecords         DataRecord[]
   reportSchedules     ReportSchedule[]
+  calendarEventLinks  CalendarEventLink[]
 
   @@index([status])
 }
@@ -3537,6 +3538,8 @@ model ReportSchedule {
   reportKey   String
   by          String?
   cadence     ReportCadence
+  /// The file attached: a REPORT_FORMATS entry, csv or xlsx.
+  format      String        @default("csv")
   /// Lower-cased addresses of workspace members, checked when saved and again when sent.
   recipients  String[]
   nextRunAt   DateTime
@@ -6379,6 +6382,28 @@ model IntegrationConnection {
 
   @@unique([tenantId, provider])
   @@index([tenantId])
+}
+
+/// The provider's event a CRM record is on, where the provider chooses event ids
+/// (Microsoft Graph, M8-09). Google's id is derived from the record and needs no
+/// row (services/integrations/googleCalendar.ts).
+model CalendarEventLink {
+  id            String   @id @default(cuid())
+  tenantId      String
+  provider      String
+  /// followUp, task or visit (CalendarRecord in services/integrations/calendarSync.ts).
+  recordKind    String
+  recordId      String
+  /// Sent with the create, so a retried create returns the event the first one made.
+  transactionId String
+  /// The provider's id for the event; null until the create has answered.
+  externalId    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider, recordKind, recordId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

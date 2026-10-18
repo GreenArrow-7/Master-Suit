@@ -7,7 +7,7 @@ import { resolveOwnerIds } from '@/lib/security/visibility';
 import { activeRule } from '@/services/distribution/assignLead';
 import { openTriageEntry } from '@/services/distribution/triage';
 import { notifyLeadMoves } from '@/services/crm/notify';
-import { queueCalendarSync } from '@/services/integrations/googleCalendar';
+import { queueCalendarSync } from '@/services/integrations/calendarSync';
 import { OPEN_LEADS_WHERE } from './closeOut';
 import { OPEN_STATUSES } from './nextFollowUp';
 
@@ -129,7 +129,7 @@ export function describeOpenWork(work: OpenWork): string {
 }
 
 /**
- * What a hand-over moved, plus the departing member's records a Google Calendar
+ * What a hand-over moved, plus the departing member's records a calendar
  * event names them on as guest (M8-08): their open follow-ups and tasks, and the
  * open site visits they keep. `syncHandedOver` re-syncs them once it commits.
  */
@@ -139,7 +139,7 @@ export interface HandedOver extends OpenWork {
 
 /**
  * After the hand-over's transaction commits: each event re-synced, so the new
- * owner is its guest and the leaver drops off (services/integrations/googleCalendar.ts
+ * owner is its guest and the leaver drops off (services/integrations/calendarSync.ts
  * invites active owners only). Returns the counts the callers always answered with.
  */
 export async function syncHandedOver(tenantId: string, handed: HandedOver | null): Promise<OpenWork | null> {
