@@ -48,7 +48,7 @@ const QUARTER_HOURLY_PATTERN = '*/15 * * * *';
  * set by how late it is acceptable to be told — not by load. The sweep looks 15
  * minutes ahead (T-15, audit M8-05) and refuses to repeat itself, so this
  * interval can change without anybody being told twice, as long as it stays
- * shorter than that look-ahead.
+ * shorter than that look-ahead. It runs on a queue of its own (REMINDER_JOBS).
  */
 const FIVE_MINUTE_PATTERN = '*/5 * * * *';
 
@@ -59,17 +59,15 @@ const FIVE_MINUTE_PATTERN = '*/5 * * * *';
  */
 const RETIRED_SCHEDULES = ['reminders-quarter-hourly'];
 
+/** The reminder sweep's scheduler id, on the `reminders` queue. */
+const REMINDER_SCHEDULE = 'reminders-five-minutely';
+
 /** The maintenance queue's jobs, by the names the schedules below send. */
 export const MAINTENANCE_JOBS = {
   // Never a dry run from the scheduler. The dry run exists so an operator can see
   // what a sweep *would* remove before authorising it; a scheduled sweep that only
   // counted would be the current bug wearing a cron expression.
   retention: () => runRetentionCleanup(false),
-  reminders: async () => {
-    const result = await runReminderSweep();
-    logger.info(result, 'reminder sweep complete');
-    return result;
-  },
   'triage-sweep': async () => {
     /**
      * Stale first: an entry whose lead already has an owner must not be
@@ -182,9 +180,28 @@ export const MAINTENANCE_JOBS = {
 };
 
 /**
- * Arms this queue's schedules. Idempotent: the scheduler ids are stable, so
- * every worker start converges on one schedule each rather than stacking them —
- * the same property armCampaignScheduler relies on.
+ * The `reminders` queue: the reminder sweep alone.
+ *
+ * Not a maintenance job, because that worker runs one job at a time and the
+ * hourly digest, the 03:00 retention sweep and the scheduled report emails all
+ * do long work inline. A sweep queued behind one of them starts late, and the
+ * look-ahead only absorbs ten minutes of that: past it, an item falls due
+ * before any sweep has seen it (`dueAt >= now()`), and it never rings. Here the
+ * only job ahead of a sweep is the previous sweep.
+ */
+export const REMINDER_JOBS = {
+  sweep: async () => {
+    const result = await runReminderSweep();
+    logger.info(result, 'reminder sweep complete');
+    return result;
+  },
+};
+
+/**
+ * Arms this queue's schedules, and the reminder sweep's on its own queue.
+ * Idempotent: the scheduler ids are stable, so every worker start converges on
+ * one schedule each rather than stacking them — the same property
+ * armCampaignScheduler relies on.
  *
  * Returns the ids it armed so the start-up log can name what is actually
  * running. That line used to be a hard-coded pair and had already gone stale.
@@ -196,7 +213,6 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
   // that cannot disagree with itself is the fix; another careful edit is not.
   const schedules: { id: string; pattern: string; name: string }[] = [
     { id: 'retention-daily', pattern: DAILY_PATTERN, name: 'retention' },
-    { id: 'reminders-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'reminders' },
     { id: 'lead-triage-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'triage-sweep' },
     { id: 'first-contact-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'first-contact' },
     { id: 'automation-time-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'automation-time' },
@@ -221,5 +237,8 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
     await queue.upsertJobScheduler(schedule.id, { pattern: schedule.pattern }, { name: schedule.name });
   }
   await queue.close();
-  return schedules.map((schedule) => schedule.id);
+  const reminders = new Queue('reminders', { connection: redis });
+  await reminders.upsertJobScheduler(REMINDER_SCHEDULE, { pattern: FIVE_MINUTE_PATTERN }, { name: 'sweep' });
+  await reminders.close();
+  return [...schedules.map((schedule) => schedule.id), REMINDER_SCHEDULE];
 }

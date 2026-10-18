@@ -78,18 +78,33 @@ it('a site visit starting in 10 minutes raises one visit.reminder to its agent, 
   expect(bell).toEqual([{ recordId: visit.id, title: 'Site visit soon: a client' }]);
 });
 
-it('runs the reminder sweep from the maintenance queue every five minutes, and retires the quarter-hourly schedule (M8-05)', async () => {
+it('sweeps every five minutes on a queue of its own, so a long maintenance sweep cannot hold a reminder past its time (M8-05)', async () => {
   const { MAINTENANCE_JOBS, armMaintenanceScheduler } = await import('@/workers/maintenance');
-  expect(Object.keys(MAINTENANCE_JOBS)).toContain('reminders');
-  const armed = vi.spyOn(Queue.prototype, 'upsertJobScheduler').mockResolvedValue(undefined as never);
+  const { JOBS } = await import('@/workers/jobs');
+  // The maintenance worker runs one job at a time; a reminder queued behind the hourly digest
+  // or the nightly retention sweep would start after the items it was due to ring for.
+  expect(Object.keys(MAINTENANCE_JOBS)).not.toContain('reminders');
+  expect(Object.keys(JOBS.reminders)).toEqual(['sweep']);
+  const armed: [string, string, unknown, unknown][] = [];
+  const upsert = vi.spyOn(Queue.prototype, 'upsertJobScheduler').mockImplementation(async function (
+    this: Queue,
+    id,
+    repeat,
+    template,
+  ) {
+    armed.push([this.name, id, repeat, template]);
+    return undefined as never;
+  });
   const removed = vi.spyOn(Queue.prototype, 'removeJobScheduler').mockResolvedValue(true);
   try {
-    await armMaintenanceScheduler();
-    expect(armed).toHaveBeenCalledWith('reminders-five-minutely', { pattern: '*/5 * * * *' }, { name: 'reminders' });
-    expect(armed.mock.calls.map(([id]) => id)).not.toContain('reminders-quarter-hourly');
+    const ids = await armMaintenanceScheduler();
+    expect(armed.filter(([, id]) => id.startsWith('reminders'))).toEqual([
+      ['reminders', 'reminders-five-minutely', { pattern: '*/5 * * * *' }, { name: 'sweep' }],
+    ]);
+    expect(ids).toContain('reminders-five-minutely');
     expect(removed).toHaveBeenCalledWith('reminders-quarter-hourly');
   } finally {
-    armed.mockRestore();
+    upsert.mockRestore();
     removed.mockRestore();
   }
 });

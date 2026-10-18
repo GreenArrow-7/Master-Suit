@@ -17,6 +17,8 @@ export const QUEUE_NAMES = [
   'campaign',
   'webhook',
   'maintenance',
+  // The reminder sweep, apart from maintenance so a long sweep there cannot hold a reminder past its time.
+  'reminders',
   // Fetching call recordings out of a vendor and into our own bucket.
   'media',
   // Transcription, Gemini analysis and the call audit that follows them.
@@ -34,6 +36,8 @@ export const RETRY: Record<QueueName, { attempts: number; backoff: any }> = {
   campaign: { attempts: 3, backoff: { type: 'exponential', delay: 30_000 } },
   webhook: { attempts: 5, backoff: { type: 'exponential', delay: 10_000 } },
   maintenance: { attempts: 1, backoff: { type: 'fixed', delay: 0 } },
+  // The next sweep, five minutes on, is the retry.
+  reminders: { attempts: 1, backoff: { type: 'fixed', delay: 0 } },
   // Vendors publish recording media a little after they announce it, and some
   // 404 for a few seconds. Long backoff, several attempts: the alternative to
   // retrying is losing the only copy of a client conversation.

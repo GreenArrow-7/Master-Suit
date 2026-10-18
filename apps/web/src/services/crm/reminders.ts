@@ -7,11 +7,11 @@
  * sweep, a task with a due date was a row in a list that quietly went overdue,
  * which is most of what a CRM's bell is *for*.
  *
- * Runs on the `maintenance` queue beside the retention sweep, and spans tenants
- * the same way that one does: through `withPlatformTx`, which sets the
- * `app.platform_admin` flag the RLS policies name. A cross-tenant read through
- * the ordinary client matches zero rows and reports success — the exact bug
- * retention.ts documents at its top.
+ * Runs on a `reminders` queue of its own (workers/maintenance.ts says why), and
+ * spans tenants the way the retention sweep does: through `withPlatformTx`,
+ * which sets the `app.platform_admin` flag the RLS policies name. A cross-tenant
+ * read through the ordinary client matches zero rows and reports success — the
+ * exact bug retention.ts documents at its top.
  *
  * ── Not double-sending ────────────────────────────────────────────────────
  *
@@ -30,8 +30,9 @@ import { enqueue } from '@/lib/queue';
  * before the thing is due (T-15, the owner's choice, audit M8-05).
  *
  * Three times the five-minute run interval (`reminders-five-minutely` in
- * workers/maintenance.ts), so a late or skipped run still catches the window it
- * missed rather than dropping those reminders on the floor. Keep it wider than
+ * workers/maintenance.ts), so a run up to ten minutes late, or two skipped in a
+ * row, still catches the window it missed rather than dropping those reminders
+ * on the floor; that is why the sweep has a queue to itself. Keep it wider than
  * the interval if either changes. The existence check above is what makes the
  * overlap free.
  */

@@ -288,7 +288,8 @@ Node 22 or newer (CI uses 24).
   one push per receiving person (`ringNewOwner`), not one per lead. A merge
   tells nobody. Reminders ring the owner 10–15 minutes before a follow-up,
   call follow-up or site visit is due (`src/services/crm/reminders.ts`, 15
-  minutes ahead; the five-minutely maintenance job `reminders`), once each.
+  minutes ahead; swept every five minutes on the `reminders` queue, apart from
+  the maintenance worker's long jobs), once each.
 
 ## Testing and verifying
 

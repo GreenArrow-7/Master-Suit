@@ -12,7 +12,7 @@ import { runQueuedLeadMessage } from '@/services/leads/leadMessages';
 import { checkLeadFirstContact } from '@/services/sla/checkLeadFirstContact';
 import { escalateSocialSla } from '@/services/social/escalateSocialSla';
 import { AI_CONCURRENCY, fairShare } from './ai';
-import { MAINTENANCE_JOBS } from './maintenance';
+import { MAINTENANCE_JOBS, REMINDER_JOBS } from './maintenance';
 import { emailHrEvent, pushRecord } from './notifications';
 import { applyLeadSourceEvent, applyWebhookEvent } from './webhook';
 
@@ -53,6 +53,7 @@ export const JOBS: Record<QueueName, Jobs> = {
   },
   webhook: { 'meta.event': applyWebhookEvent, 'lead-source.enquiry': applyLeadSourceEvent },
   maintenance: MAINTENANCE_JOBS,
+  reminders: REMINDER_JOBS,
 };
 
 /**
