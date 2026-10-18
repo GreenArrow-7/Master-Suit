@@ -7,7 +7,7 @@
 `/login?product=lead-eagle` is Lead Eagle's sign-in: Lead Eagle's name beside
 the mark, its own line ("Every lead. Followed up.") and the catalogue's
 description of it, over the same form, endpoint (`POST /api/v1/auth/login`),
-accounts and session as `/login`. PR: see the index.
+accounts and session as `/login`. PR #219.
 
 ## Why
 
