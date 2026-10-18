@@ -32,7 +32,9 @@ UTC and Outlook shows them in each reader's zone; the owner is a required
 attendee and Exchange sends them the invitation and each update (Graph has no
 "send no email"). Graph chooses event ids, so the record's is kept in
 `CalendarEventLink`; its `transactionId` is stored before the create, so a
-retried create whose first answer was lost returns the same event. An event
+retried create whose first answer was lost returns the same event, which is
+then patched to the record as it now stands (Graph hands back the first
+attempt's body unchanged; the same covers two syncs of one record racing). An event
 deleted in Outlook is created again on the record's next change. Each token
 refresh stores Microsoft's new refresh token, encrypted. Jobs ride the existing
 `calendar` queue (payload now names `provider`; one queued before this reads as
@@ -51,7 +53,8 @@ fake Graph and token endpoint behind `fetch`, real routes and database): a
 meeting follow-up is queued for Microsoft and created, moved with a PATCH of the
 same id and cancelled with a DELETE that drops the link; a create whose answer
 is lost is retried under the same `transactionId` and leaves one event (fails
-with a new id per attempt); an event deleted in Outlook is re-created under a
+with a new id per attempt), at the time the record was moved to in between
+(fails, still at the old time, without the patch after a reused create); an event deleted in Outlook is re-created under a
 new `transactionId`; appointment task and site visit, and a cancelled visit;
 Graph down fails the job with the reason on the card and the sweep heals it;
 token refresh stores the rotated refresh token encrypted; Google and Microsoft

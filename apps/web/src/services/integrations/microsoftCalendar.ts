@@ -101,15 +101,16 @@ export async function writeMicrosoftEvent(
 
   // New, or deleted in Outlook since: created under a fresh transactionId. A link
   // without an id is a create still unanswered, retried under the one it has.
+  const fresh = randomUUID();
   if (!link)
     await prisma.calendarEventLink.createMany({
-      data: [{ ...record, transactionId: randomUUID() }],
+      data: [{ ...record, transactionId: fresh }],
       skipDuplicates: true,
     });
   else if (link.externalId)
     await prisma.calendarEventLink.updateMany({
       where: record,
-      data: { transactionId: randomUUID(), externalId: null },
+      data: { transactionId: fresh, externalId: null },
     });
   // Read back: a sync of the same record running beside this one may have stored its own first.
   const { transactionId } = await prisma.calendarEventLink.findFirstOrThrow({
@@ -118,4 +119,7 @@ export async function writeMicrosoftEvent(
   });
   const externalId = await createGraphEvent(token, entry, transactionId);
   await prisma.calendarEventLink.updateMany({ where: record, data: { externalId } });
+  // A transactionId sent before (a lost answer's retry, or a sync beside this one) gets back the event
+  // as that first create made it, unchanged: bring it to the record as it stands now.
+  if (transactionId !== fresh) await updateGraphEvent(token, externalId, entry);
 }

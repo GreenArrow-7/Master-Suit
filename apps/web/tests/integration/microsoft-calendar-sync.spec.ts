@@ -230,7 +230,7 @@ it('a meeting follow-up is created in Outlook, moved with a PATCH and cancelled 
   expect((await card()).lastSyncAt).not.toBeNull();
 });
 
-it('a create whose answer is lost is retried under the same transactionId: one event, not two', async () => {
+it('a create whose answer is lost is retried under the same transactionId: one event, not two, brought up to date', async () => {
   const created = await post(
     createFollowUp,
     '/api/v1/follow-ups',
@@ -246,13 +246,18 @@ it('a create whose answer is lost is retried under the same transactionId: one e
   expect(pending.externalId).toBeNull();
   expect((await card()).errorMessage).toMatch(/^Calendar sync failed/);
   const before = outlook.size;
+  // Moved before the retry runs: Graph's answer to the repeated create is the 05:00 event the first one made.
+  await patch(editFollowUp, `/api/v1/follow-ups/${id}`, { dueAt: '2026-11-05T10:00:00.000Z' }, cookie, { id });
 
   // The queue's retry.
   await handleJob('calendar', job);
   const posts = calls.filter((c) => c.method === 'POST' && c.body?.subject?.includes('Snagging walk'));
   expect(posts.map((c) => c.body!.transactionId)).toEqual([pending.transactionId, pending.transactionId]);
   expect(outlook.size).toBe(before);
-  expect((await eventOf('followUp', id))!.subject).toBe('Site visit: Snagging walk — manath Lead 0');
+  expect(await eventOf('followUp', id)).toMatchObject({
+    subject: 'Site visit: Snagging walk — manath Lead 0',
+    start: { dateTime: '2026-11-05T10:00:00.000' },
+  });
   expect((await card()).errorMessage).toBeNull();
 });
 
