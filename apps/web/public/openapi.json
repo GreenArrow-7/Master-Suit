@@ -15161,6 +15161,31 @@
         }
       }
     },
+    "/api/v1/notification-preferences/test": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Your own account",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "operationId": "postNotificationPreferencesTest",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "tags": [
