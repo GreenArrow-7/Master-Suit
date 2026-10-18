@@ -20,8 +20,8 @@ import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import { patch } from '../helpers/request';
 import type { Grants } from '../helpers/fixtures';
 
-/** The deployment's audit-log window, swapped per case (M18-11); everything else in env is real. */
-const deployment: { audit?: number } = {};
+/** The deployment's windows, swapped per case (M18-11); everything else in env is real. */
+const deployment: { audit?: number; punch?: number; ai?: number } = {};
 vi.mock('@/lib/env', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/env')>();
   return {
@@ -30,6 +30,12 @@ vi.mock('@/lib/env', async (importOriginal) => {
       ...actual.env,
       get AUDIT_LOG_RETENTION_DAYS() {
         return deployment.audit;
+      },
+      get ATTENDANCE_PUNCH_RETENTION_DAYS() {
+        return deployment.punch;
+      },
+      get AI_EVENT_RETENTION_DAYS() {
+        return deployment.ai;
       },
     },
   };
@@ -313,5 +319,29 @@ describe('data retention (M18-11)', () => {
   it('refuses someone who may read settings but not configure them', async () => {
     expect((await save({ auditLog: 4000 }, viewerCookie)).status).toBe(403);
     expect(await stored()).toEqual({});
+  });
+
+  it('saves another class while a value stored before the deployment set a longer window comes back unchanged', async () => {
+    deployment.audit = undefined;
+    expect((await save({ auditLog: 365 })).status).toBe(200);
+    deployment.audit = 2555;
+    // The form sends every field, so the stored 365 rides along with the change.
+    const res = await save({ auditLog: '365', attendancePunch: '', aiEvent: '400' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await stored()).toEqual({ auditLog: 365, aiEvent: 400 });
+    // A changed value below the deployment is still refused.
+    expect((await save({ auditLog: 400 })).status).toBe(422);
+  });
+
+  it('keeps both of two saves of different classes sent at once', async () => {
+    deployment.audit = 2555;
+    expect((await save({ auditLog: '', attendancePunch: '', aiEvent: '' })).status).toBe(200);
+    const results = await Promise.all([
+      save({ auditLog: 3650 }),
+      save({ attendancePunch: 900 }),
+      save({ aiEvent: 500 }),
+    ]);
+    expect(results.map((res) => res.status)).toEqual([200, 200, 200]);
+    expect(await stored()).toEqual({ auditLog: 3650, attendancePunch: 900, aiEvent: 500 });
   });
 });

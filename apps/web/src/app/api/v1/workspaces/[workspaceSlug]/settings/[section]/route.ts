@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import { Invalid, NotFound } from '@/lib/errors';
 import { WORKSPACE_RETENTION, workspaceRetention, type WorkspaceRetentionKey } from '@/lib/jobs/retention';
 import { requireWorkspace } from '@/lib/workspace';
@@ -156,39 +156,44 @@ export const PATCH = route(
     if (params.section === 'retention') {
       const input = retentionBody.parse(body);
       const keys = Object.keys(WORKSPACE_RETENTION) as WorkspaceRetentionKey[];
-      // Lengthen only (owner, 18 Oct): a window below the deployment's would be ignored
-      // by the sweep, so it is refused rather than stored as a promise nobody keeps.
-      const tooShort = keys.flatMap((key) => {
-        const days = input[key];
-        const floor = WORKSPACE_RETENTION[key].days();
-        return typeof days === 'number' && floor !== undefined && days < floor
-          ? [
-              {
-                field: key,
-                code: 'below_deployment',
-                message: `The deployment keeps this ${floor} days; a workspace may only keep it longer.`,
-              },
-            ]
-          : [];
-      });
-      if (tooShort.length) throw Invalid(tooShort);
+      return withTx(ctx.tenantId, async (tx) => {
+        // Locked, so two saves of different classes cannot each merge into the same
+        // stale copy and the later one drop the other's key (and with it a longer window).
+        // ponytail: a workspace with no settings row yet takes no lock; provisioning creates one.
+        const [row] = await tx.$queryRaw<{ retentionPolicy: Record<string, unknown> }[]>`
+          SELECT "retentionPolicy" FROM "OrganizationSetting" WHERE "tenantId" = ${ctx.tenantId} FOR UPDATE`;
+        const policy = { ...row?.retentionPolicy };
+        // Lengthen only (owner, 18 Oct): a window below the deployment's would be ignored
+        // by the sweep, so it is refused rather than stored as a promise nobody keeps. A
+        // value already stored (saved before the deployment set a window) is left alone:
+        // the form sends it back on every save.
+        const tooShort = keys.flatMap((key) => {
+          const days = input[key];
+          const floor = WORKSPACE_RETENTION[key].days();
+          return typeof days === 'number' && floor !== undefined && days < floor && days !== policy[key]
+            ? [
+                {
+                  field: key,
+                  code: 'below_deployment',
+                  message: `The deployment keeps this ${floor} days; a workspace may only keep it longer.`,
+                },
+              ]
+            : [];
+        });
+        if (tooShort.length) throw Invalid(tooShort);
 
-      const existing = await prisma.organizationSetting.findUnique({
-        where: { tenantId: ctx.tenantId },
-        select: { retentionPolicy: true },
+        for (const key of keys) {
+          if (input[key] === null) delete policy[key];
+          else if (input[key] !== undefined) policy[key] = input[key];
+        }
+        const saved = await tx.organizationSetting.upsert({
+          where: { tenantId: ctx.tenantId },
+          create: { tenantId: ctx.tenantId, retentionPolicy: policy as object },
+          update: { retentionPolicy: policy as object },
+          select: { retentionPolicy: true },
+        });
+        return workspaceRetention(saved.retentionPolicy);
       });
-      const policy = { ...((existing?.retentionPolicy ?? {}) as Record<string, unknown>) };
-      for (const key of keys) {
-        if (input[key] === null) delete policy[key];
-        else if (input[key] !== undefined) policy[key] = input[key];
-      }
-      const saved = await prisma.organizationSetting.upsert({
-        where: { tenantId: ctx.tenantId },
-        create: { tenantId: ctx.tenantId, retentionPolicy: policy as object },
-        update: { retentionPolicy: policy as object },
-        select: { retentionPolicy: true },
-      });
-      return workspaceRetention(saved.retentionPolicy);
     }
 
     const input = securityBody.parse(body);

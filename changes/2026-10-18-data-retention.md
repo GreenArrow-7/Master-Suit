@@ -17,7 +17,9 @@ record longer than the deployment but never shorter.
 - `apps/web/src/app/api/v1/workspaces/[workspaceSlug]/settings/[section]/route.ts`:
   new section `retention` (`settings:MANAGE_CONFIGURATION`). Stores the windows
   in `OrganizationSetting.retentionPolicy` and refuses (422) a window shorter
-  than the deployment's.
+  than the deployment's. The save reads the stored windows under a row lock
+  (`SELECT ... FOR UPDATE` in `withTx`), so two saves of different kinds at
+  once both land instead of the later one dropping the other's window.
 - `apps/web/src/app/(workspace)/[workspaceSlug]/admin/[section]/page.tsx`:
   `/admin/retention` (`settings:VIEW` to read). Shows each kind's deployment
   window, the workspace's own and how long it is kept.
@@ -51,6 +53,8 @@ window. Attendance capture frames already had a per-workspace window
   migration.
 - The workspace window may be set while the deployment keeps everything. It
   then acts as that workspace's minimum for when a deployment window is set.
+  Once that window is set, the stored value is not refused when the form sends
+  it back unchanged; only a changed value below the deployment gets 422.
 - Leads get no window. The owner named none, and leads are business records,
   not logs.
 
@@ -59,8 +63,12 @@ window. Attendance capture frames already had a per-workspace window
 deleted under a 90-day deployment window, and the dry run counts 1 without
 deleting (fails on the old code: 2). A 30-day workspace value under a
 500-day deployment window deletes nothing. `tests/permission/admin-editors.spec.ts`
-(15): a longer window is stored and the applied window reported; a shorter one
-gets 422 and is not stored; emptying clears it; a settings viewer gets 403.
+(17): a longer window is stored and the applied window reported; a shorter one
+gets 422 and is not stored; emptying clears it; a settings viewer gets 403; a
+value stored before the deployment set a longer window comes back unchanged
+with another kind's change and the save succeeds; three saves of different
+kinds sent at once all stay stored (both failed on the first version: 422, and
+one window lost).
 Nav, permission-catalogue and OpenAPI unit specs pass (839 in 9 files). The E2E
 navigation spec opens `/admin/retention` as an administrator. tsc clean.
 
