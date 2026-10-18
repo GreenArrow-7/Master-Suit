@@ -73,7 +73,7 @@ const hr = (query: string) =>
 const csvRows = (body: Buffer) =>
   body
     .toString('utf8')
-    .replace(/^﻿/, '')
+    .replace(/^\uFEFF/, '')
     .trim()
     .split('\r\n')
     .map((line) => line.split(',').map((cell) => cell.replace(/^"|"$/g, '')));
