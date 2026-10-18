@@ -19,7 +19,8 @@ with sign-in branding; no new domain, no separate store listing.
 ## Where
 
 - `src/lib/security/redirect.ts` — `LEAD_EAGLE_LOGIN`; `loginPathFor` sends a
-  signed-out visit to `/{slug}/lead-eagle/…` there, `next` included.
+  signed-out visit to `/{slug}/lead-eagle/…` there, `next` included;
+  `signOutPath` picks the sign-out door.
 - `src/components/auth/AuthShell.tsx`, `BrandHero.tsx` — `product="lead-eagle"`:
   the lockup, line and description; no ecosystem graphic (it draws the whole
   platform). `src/styles/auth.css` centres the message in its place.
@@ -27,16 +28,23 @@ with sign-in branding; no new domain, no separate store listing.
   "Sign in to Lead Eagle with your YOUHAN ONE account."; "Start your Lead Eagle
   trial" while sign-up is open, never inside the iOS app.
 - `src/components/nav/TopBar.tsx` — signing out of a Lead-Eagle-only workspace
-  goes to the Lead Eagle door.
+  goes to the Lead Eagle door, with that workspace's board as `next`.
 - `src/app/(auth)/signup/**` — self-serve sign-up (it only ever makes a Lead
   Eagle workspace) wears the Lead Eagle frame, and its Sign in links go to the
-  Lead Eagle door.
+  Lead Eagle door; the one after confirming carries the new workspace's board
+  as `next`.
 
 ## Behaviour
 
 - `/login` with no `product`, or any other value, is unchanged.
 - A Lead-Eagle-only workspace still lands on `/{slug}/lead-eagle/dashboard`
   (`workspaceLanding`, built before this change) from either door.
+- A person in two workspaces is landed by the server on the oldest one. So the
+  Sign in button after a Lead Eagle sign-up, and the door a Lead-Eagle-only
+  workspace signs out to, carry that workspace's board as `next`: alice, in
+  Sales `acme` since before, lands on `/eagle/lead-eagle/dashboard`, not
+  `/acme/dashboard`. `signInLanding` drops the `next` when whoever signs in
+  next does not belong to that workspace.
 - The sidebar already names the section "Lead Eagle" (owner, 5 Oct); unchanged.
 
 ## Verified
@@ -46,7 +54,11 @@ with sign-in branding; no new domain, no separate store listing.
   the trial link hides inside the iOS app and while sign-up is closed; `/login`
   and `?product=sales` are as before; a signed-out Lead Eagle screen goes to the
   Lead Eagle door, every other screen to `/login`. 4 of the 7 fail on the old code.
-- With the touched areas' specs: 11 files, 467 tests pass; `tsc` clean.
+- Review fixes, same spec (now 10): the confirm page's Sign in and the
+  Lead-Eagle-only sign-out carry the workspace's board, and an account in an
+  older workspace lands back in Lead Eagle; 3 fail on the code before the fix.
+  With the touched areas' specs: 7 files, 62 tests pass; `tsc` clean.
+- First build, with the touched areas' specs: 11 files, 467 tests pass; `tsc` clean.
 - No browser check on the rig: it has no local `next` to run a dev server.
 
 ## Decisions taken

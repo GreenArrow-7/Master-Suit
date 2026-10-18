@@ -72,7 +72,8 @@ Node 22 or newer (CI uses 24).
   `src/lib/security/redirect.ts`): the same form, endpoint, accounts and session
   under Lead Eagle's name (`AuthShell product="lead-eagle"`); a signed-out visit
   to a Lead Eagle screen, signing out of a Lead-Eagle-only workspace and
-  self-serve sign-up go to it.
+  self-serve sign-up go to it, with the workspace's board as `next` where it is
+  known (the server lands an account in two workspaces on the oldest).
 - **Permissions.** Roles live in the database. A new workspace gets one role,
   Company Admin, holding every permission; the admin builds the others in the
   role editor. Lead Eagle's arrival adds five editable starter roles (Manager,

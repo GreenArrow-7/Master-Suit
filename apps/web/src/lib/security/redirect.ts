@@ -49,6 +49,19 @@ export function loginPathFor(path: string | null | undefined, search = ''): stri
 }
 
 /**
+ * Where signing out of a workspace (`basePath` is `/{slug}`) with these product
+ * modules goes. A Lead-Eagle-only workspace goes to Lead Eagle's door with its board
+ * as `next`: without it the server lands a person who also belongs to an older
+ * workspace there, in another product. Someone else signing in on the same device
+ * is not sent to it (`signInLanding` checks the slug is one of theirs).
+ */
+export function signOutPath(basePath: string, modules: readonly string[]): string {
+  return modules.length === 1 && modules[0] === 'LEAD_EAGLE'
+    ? loginPathFor(`${basePath}/lead-eagle/dashboard`)
+    : '/login';
+}
+
+/**
  * Where a completed sign-in goes: the page the person asked for, or the server's
  * destination.
  *
