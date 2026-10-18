@@ -170,6 +170,29 @@ export const PROVIDERS: ProviderSpec[] = [
     webhook: false,
   },
   {
+    key: 'microsoft',
+    label: 'Microsoft 365',
+    category: 'MEETINGS',
+    description:
+      'Meetings, site visits and meeting follow-ups on the connected account’s Outlook calendar, kept in step as they move, finish or are cancelled, with their owner invited (Outlook sends the invitation and each update).',
+    credentials: [
+      { key: 'accessToken', label: 'OAuth access token', secret: true },
+      { key: 'refreshToken', label: 'OAuth refresh token', secret: true },
+    ],
+    settings: [
+      {
+        key: 'syncAllFollowUps',
+        label: 'Every follow-up on the calendar',
+        secret: false,
+        setting: true,
+        toggle: true,
+        hint: 'Calls and other follow-ups too. Off, only meetings and site visits go on the calendar.',
+      },
+    ],
+    capabilities: ['CREATE_MEETING', 'UPDATE_MEETING', 'CANCEL_MEETING', 'CALENDAR_SYNC'],
+    webhook: false,
+  },
+  {
     key: 'transcription',
     label: 'Speech to text',
     category: 'TRANSCRIPTION',

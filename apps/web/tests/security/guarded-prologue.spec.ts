@@ -32,7 +32,8 @@ const API = join(__dirname, '..', '..', 'src', 'app', 'api', 'v1');
 const EXEMPT = new Set([
   'auth/logout/route.ts',
   'integrations/meta/callback/route.ts',
-  'integrations/google/callback/route.ts',
+  // Google's and Microsoft's calendar consent screens return here (/integrations/google|microsoft/callback).
+  'integrations/[provider]/callback/route.ts',
 ]);
 
 /**

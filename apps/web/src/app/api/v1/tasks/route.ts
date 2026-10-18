@@ -7,7 +7,7 @@ import { cursorWhere, pageQuery, toPage } from '@/lib/api/pagination';
 import { mergeWhere } from '@/lib/api/where';
 import { assertAssignableUser, assertLeadInScope, workListScope } from '@/lib/security/record-scope';
 import { withRecompute } from '@/services/leads/nextFollowUp';
-import { queueCalendarSync } from '@/services/integrations/googleCalendar';
+import { queueCalendarSync } from '@/services/integrations/calendarSync';
 
 const createBody = z
   .object({
@@ -54,7 +54,7 @@ export const POST = route(
         }),
       );
     });
-    // A meeting onto the workspace's Google Calendar, once committed (M8-08).
+    // A meeting onto the workspace's calendars, once committed (M8-08, M8-09).
     await queueCalendarSync(ctx.tenantId, 'task', task.id);
     return task;
   },
