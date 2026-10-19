@@ -295,6 +295,90 @@ function propsWith(node: unknown, key: string): Record<string, any> | undefined 
   return key in props ? props : propsWith(props.children, key);
 }
 
+describe('a call the phone app logged by itself (M9-09)', () => {
+  const newLead = async (ownerId: string) =>
+    (
+      await prisma.lead.create({
+        data: {
+          tenantId,
+          reference: `CW-${randomBytes(3).toString('hex')}`,
+          fullName: 'Watched Lead',
+          stageId: fixture.a.stageId,
+          ownerId,
+        },
+      })
+    ).id;
+
+  it('keeps the measured talk time, and a correction rewrites that call rather than adding one', async () => {
+    const leadId = await newLead(fixture.a.userId);
+    const startedAt = new Date(Date.now() - 10 * 60_000);
+    const auto = await post(
+      logCall,
+      url(leadId),
+      { outcome: 'Connected', durationSecs: 125, occurredAt: startedAt.toISOString(), requestKey: randomUUID() },
+      admin,
+    );
+    expect(auto.status, JSON.stringify(auto.body)).toBe(200);
+    const activityId = auto.body.activity.id;
+    expect(await calls(leadId)).toEqual([
+      expect.objectContaining({ id: activityId, outcome: 'Connected', durationSecs: 125, occurredAt: startedAt }),
+    ]);
+
+    // Edit from the notice: what happened, a note, the next follow-up; the minutes left as measured.
+    const edit = await post(
+      logCall,
+      url(leadId),
+      {
+        outcome: 'Call back later',
+        notes: 'Driving, call tonight',
+        activityId,
+        followUpAt: '2027-01-14T10:00',
+        occurredAt: new Date().toISOString(),
+        requestKey: randomUUID(),
+      },
+      admin,
+    );
+    expect(edit.status, JSON.stringify(edit.body)).toBe(200);
+    const [call, ...more] = await calls(leadId);
+    expect(more).toHaveLength(0);
+    expect(call).toMatchObject({
+      id: activityId,
+      outcome: 'Call back later',
+      notes: 'Driving, call tonight',
+      durationSecs: 125,
+      occurredAt: startedAt,
+    });
+    expect(await followUps(leadId)).toEqual([expect.objectContaining({ id: edit.body.followUp.id })]);
+    expect(
+      await prisma.auditLog.findFirst({
+        where: { tenantId, objectType: 'activity', recordId: activityId, event: 'RECORD_UPDATED' },
+      }),
+    ).toMatchObject({ metadata: expect.objectContaining({ leadId, outcome: 'Call back later' }) });
+
+    // Minutes typed in the correction are taken.
+    expect(
+      (await post(logCall, url(leadId), { outcome: 'Connected', durationMins: 3, activityId }, admin)).status,
+    ).toBe(200);
+    expect(await calls(leadId)).toEqual([expect.objectContaining({ id: activityId, durationSecs: 180 })]);
+  });
+
+  it("corrects only the caller's own call on that lead: another's, or one on another lead, answers 404 and is left alone", async () => {
+    const leadId = await newLead(agentId);
+    const agents = await post(logCall, url(leadId), { outcome: 'No answer' }, agent);
+    expect(agents.status, JSON.stringify(agents.body)).toBe(200);
+    const activityId = agents.body.activity.id;
+
+    // The admin reaches the lead, but the call is the agent's.
+    const theirs = { outcome: 'Connected', activityId, followUpAt: '2027-01-15T10:00' };
+    expect((await post(logCall, url(leadId), theirs, admin)).status).toBe(404);
+    // The agent's own call, named on another of its leads.
+    expect((await post(logCall, url(agentLeadId), { outcome: 'Connected', activityId }, agent)).status).toBe(404);
+
+    expect(await calls(leadId)).toEqual([expect.objectContaining({ id: activityId, outcome: 'No answer' })]);
+    expect(await followUps(leadId)).toEqual([]);
+  });
+});
+
 describe('done follow-ups stay on the lead (M4-47)', () => {
   it('lists the open follow-ups beside the open tasks, and the last 10 done with when, on the workspace clock', async () => {
     const leadId = fixture.a.leadIds[0]!;

@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-19 | [Calls placed from the phone app log themselves](2026-10-19-le-call-watch.md) | — | Lead Eagle, calls, mobile, feature |
 | 2026-10-18 | [Every export also downloads as an Excel workbook](2026-10-18-xlsx-export.md) | #229 | Reports, Lead Eagle, HR, export, feature |
 | 2026-10-18 | [Send an SMS from the lead, through the workspace's Twilio](2026-10-18-le-lead-sms.md) | #227 | Lead Eagle, messaging, telephony, feature |
 | 2026-10-18 | [Meetings, follow-ups and site visits on the workspace's Microsoft 365 (Outlook) calendar, connected with Microsoft](2026-10-18-le-outlook-calendar.md) | #228 | Lead Eagle, follow-ups, integrations, feature |

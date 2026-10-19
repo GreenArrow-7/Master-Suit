@@ -276,10 +276,11 @@ export default function LeadDetail({
   const [logging, setLogging] = useState<CallLogLead | null>(null);
   const openLog = useCallback(
     // Back from dialling it carries the time away (M20-06).
-    (from?: CallLogLead) => setLogging({ id: lead.id, fullName: lead.fullName, dial: from?.dial }),
+    (from?: CallLogLead) =>
+      setLogging({ id: lead.id, fullName: lead.fullName, dial: from?.dial, activityId: from?.activityId }),
     [lead.id, lead.fullName],
   );
-  const dialled = useAfterDial(openLog);
+  const { dial, notice: autoLogged } = useAfterDial(openLog);
 
   function withBusy(fn: () => Promise<void>) {
     return async () => {
@@ -419,7 +420,7 @@ export default function LeadDetail({
                 sources={sources}
                 customFields={customFields}
                 hiddenFields={hiddenFields}
-                onDial={canLog ? () => dialled(lead) : undefined}
+                onDial={canLog ? (number, event) => dial(lead, number, event) : undefined}
               />
               <RequirementCard
                 leadId={lead.id}
@@ -503,10 +504,10 @@ export default function LeadDetail({
                       ? `Phone ${lead.phone} from this device — no AI assistance`
                       : 'No phone number'
                 }
-                onClick={() => {
+                onClick={(event) => {
                   if (!tel) return;
-                  // Back from the call, the call log opens (M4-27).
-                  if (canLog) dialled(lead);
+                  // Back from the call, the call log opens (M4-27); in the phone app it logs itself (M9-09).
+                  if (canLog && dial(lead, tel, event)) return;
                   window.open(`tel:${tel}`);
                 }}
               >
@@ -784,6 +785,7 @@ export default function LeadDetail({
           onLogged={() => router.refresh()}
         />
       )}
+      {autoLogged}
     </>
   );
 }
@@ -823,7 +825,7 @@ function OverviewTab({
   customFields: LeadField[];
   hiddenFields: string[];
   /** Dialling one of its other numbers. */
-  onDial?: () => void;
+  onDial?: (number: string, event: React.MouseEvent) => void;
 }) {
   // The lead's entry, split back into the source and the sub-source under it.
   const entry = sources.find((s) => s.id === lead.sourceId);
@@ -1029,7 +1031,7 @@ function OtherNumbers({
   leadId: string;
   canEdit: boolean;
   /** Back from dialling one, the call log opens (M4-27). */
-  onDial?: () => void;
+  onDial?: (number: string, event: React.MouseEvent) => void;
 }) {
   const router = useRouter();
   const blank = { phone: '', label: '', isWhatsapp: true };
@@ -1063,7 +1065,7 @@ function OtherNumbers({
             style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--lf-text-sm)' }}
           >
             {dialable(p.raw) ? (
-              <a href={`tel:${dialable(p.raw)}`} onClick={onDial}>
+              <a href={`tel:${dialable(p.raw)}`} onClick={(event) => onDial?.(dialable(p.raw)!, event)}>
                 {p.raw}
               </a>
             ) : (

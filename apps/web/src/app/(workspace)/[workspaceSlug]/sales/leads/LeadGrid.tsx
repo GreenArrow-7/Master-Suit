@@ -118,7 +118,7 @@ export default function LeadGrid({
   const [logFor, setLogFor] = useState<CallLogLead | null>(null);
   /** The leads a Send template is for, while its dialog is open. */
   const [sendTo, setSendTo] = useState<string[] | null>(null);
-  const dialled = useAfterDial(setLogFor);
+  const { dial, notice: autoLogged } = useAfterDial(setLogFor);
 
   const sorted = useMemo(() => {
     const copy = [...rows];
@@ -676,7 +676,7 @@ export default function LeadGrid({
                           href={`tel:${dialable(row.phone)}`}
                           aria-label={`Call ${row.fullName}`}
                           style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}
-                          onClick={() => row.canLog && dialled(row)}
+                          onClick={(event) => row.canLog && dial(row, dialable(row.phone)!, event)}
                         >
                           Call
                         </a>
@@ -709,6 +709,7 @@ export default function LeadGrid({
           onLogged={() => router.refresh()}
         />
       )}
+      {autoLogged}
     </>
   );
 }

@@ -38,8 +38,16 @@ const body = z
      * go onto that call, which is already on the timeline, and no second call is logged.
      */
     callId: z.string().cuid().optional(),
+    /**
+     * The call logged automatically from the phone app that this log corrects (M9-09):
+     * its outcome, note and minutes are rewritten and no second call is logged. The
+     * caller's own call on this lead, else 404.
+     */
+    activityId: z.string().cuid().optional(),
     notes: z.string().trim().max(2000).optional(),
     durationMins: z.number().int().min(0).max(600).optional(),
+    /** The talk time as the phone app measured it (M9-09); takes the place of `durationMins`. */
+    durationSecs: z.number().int().min(0).max(36_000).optional(),
     /** The next follow-up, on the workspace's clock; none when left out. */
     followUpAt: wallClock.optional(),
     /** A client's key for this one call, so a send repeated after a lost answer is not logged twice. */
@@ -70,12 +78,15 @@ function onWorkspaceClock(at: string, timeZone: string) {
  * `leads:EDIT` scope the lead answers 404 and nothing is written. With a
  * `callId` (the dialog that opens when a provider call ends) the outcome is
  * that call's own, and a call outside the caller's `calls:EDIT` reach or on
- * another lead answers 404.
+ * another lead answers 404. With an `activityId` (the call the phone app
+ * logged by itself, M9-09) the log corrects that call in place: the caller's
+ * own outbound call on this lead, else 404.
  */
 export const POST = route(
   { module: 'leads', productModule: LEAD_MODULES, action: 'EDIT', params, body },
   async ({ ctx, params, body }) => {
-    const { requestKey, followUpAt, durationMins, outcome, notes, occurredAt, callId } = body;
+    const { requestKey, followUpAt, durationMins, outcome, notes, occurredAt, callId, activityId } = body;
+    const durationSecs = body.durationSecs ?? (durationMins === undefined ? undefined : durationMins * 60);
     const leadId = params.id;
     const dueAt = followUpAt ? onWorkspaceClock(followUpAt, await workspaceTimezone(ctx)) : null;
     const key = requestKey && {
@@ -90,6 +101,9 @@ export const POST = route(
         durationMins: durationMins ?? null,
         followUpAt: followUpAt ?? null,
         callId: callId ?? null,
+        // Only when sent, so a key recorded before these existed still replays.
+        ...(body.durationSecs !== undefined && { durationSecs: body.durationSecs }),
+        ...(activityId && { activityId }),
       },
     };
 
@@ -154,6 +168,39 @@ export const POST = route(
       return result;
     }
 
+    if (activityId) {
+      const corrected = await withTx(ctx.tenantId, async (tx) => {
+        const { count } = await tx.activity.updateMany({
+          where: {
+            tenantId: ctx.tenantId,
+            id: activityId,
+            leadId,
+            ownerId: ctx.actor.id,
+            deletedAt: null,
+            type: { key: 'call_out' },
+          },
+          data: {
+            outcome,
+            ...(notes && { notes }),
+            ...(durationSecs !== undefined && { durationSecs }),
+            updatedById: ctx.actor.id,
+          },
+        });
+        if (!count) throw NotFound('Activity');
+        await audit(
+          ctx,
+          { event: 'RECORD_UPDATED', objectType: 'activity', recordId: activityId, metadata: { leadId, outcome } },
+          tx,
+        );
+        const followUp = dueAt ? await bookFollowUp(tx, { activityId }) : null;
+        const result = { activity: { id: activityId, outcome }, followUp };
+        if (key) await recordOutcome(tx, key, result);
+        return result;
+      });
+      await queueCalendarSync(ctx.tenantId, 'followUp', corrected.followUp?.id);
+      return corrected;
+    }
+
     const logged = await withTx(ctx.tenantId, async (tx) => {
       // The outbound-call type, as the cold-call log and the move tool find it.
       const type = await tx.activityType.upsert({
@@ -170,7 +217,7 @@ export const POST = route(
           ownerId: ctx.actor.id,
           outcome,
           notes: notes || undefined,
-          durationSecs: durationMins === undefined ? undefined : durationMins * 60,
+          durationSecs,
           occurredAt,
         },
         select: { id: true, leadId: true, typeId: true, outcome: true, occurredAt: true },
