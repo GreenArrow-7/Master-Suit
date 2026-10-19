@@ -30,6 +30,9 @@ placed from the app.
 - `api/v1/leads/[id]/call-log/route.ts`: takes `durationSecs` (the measured talk
   time) and `activityId` (the caller's own outbound call on this lead, rewritten in
   place, audited `RECORD_UPDATED`, 404 otherwise). `public/openapi.json` regenerated.
+  In the batch with #234 (whose `logLeadCall` in `services/leads/logCall.ts` now
+  holds the call log's body), both live in `logLeadCall`, and the `activityId`
+  check runs before a replay, as the lead and call checks do.
 - `apps/mobile/README.md`: the plugin, its limits and the store-form answers.
 
 **Behaviour.**
@@ -77,7 +80,8 @@ placed from the app.
 - `tests/sales/lead-call-log.spec.ts`: `durationSecs` kept as sent; a correction
   rewrites the outcome, note and minutes of the same activity and books the
   follow-up, audited; another person's call or one on another lead answers 404
-  and is left alone.
+  and is left alone; once the call is gone, a correction's key answers 404, not
+  its first answer.
 - Android: `gradlew :app:compileDebugJavaWithJavac :app:lintDebug` with the repo's
   toolchain (JDK 21, SDK 36), after `cap sync android`, no `google-services.json`
   (the build skips push config without it): both pass, no lint finding in the new
