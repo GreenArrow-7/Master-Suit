@@ -215,7 +215,10 @@ Node 22 or newer (CI uses 24).
   them (`src/lib/api/openapi.ts`), generated into `public/openapi.json` and kept
   equal to the routes by `tests/unit/openapi.spec.ts` — after changing a
   route's schemas (or adding a route), run it with `OPENAPI_WRITE=1`. A replay
-  answers with `Idempotent-Replay: true`.
+  answers with `Idempotent-Replay: true`. That check is not atomic (two
+  concurrent first sends both run): a write that must never double also hands
+  the key to its service, which records it in the write's own transaction
+  (`recordOutcome`, as `logLeadCall` does).
 - **Phone API.** `/api/mobile/*` is the standalone Lead Eagle Expo app's API
   on YOUHAN ONE, same paths and shapes (`changes/2026-10-19-le-mobile-api.md`).
   `auth/sign-in` (workspace slug, email, password) runs the web login's code
@@ -227,7 +230,7 @@ Node 22 or newer (CI uses 24).
   else, and `loadSession` and refresh never take it as a cookie; every
   revocation of a person's sessions ends their phones, and each phone signs out
   itself or from Profile → Security → Phones signed in. `me`, `leads` (the
-  grid's query, keyset), `leads/{id}/call` (`logLeadCall`, the call's own time,
+  grid's query, keyset), `leads/{id}/call` (`logLeadCall`, the key in its transaction, the call's own time,
   refused over 2 minutes ahead or a week old), `leads/{id}/status`,
   `follow-ups`. Attendance and push from that app are not served.
 - **Audit.** The rule for new code: every write should leave an AuditLog row,

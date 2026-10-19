@@ -44,19 +44,36 @@ const body = z
 /**
  * Log a call from the phone: the web call log (`logLeadCall`), the same
  * activity, score, follow-up and audit rows, under the lead's own `leads:EDIT`
- * scope. A send repeated with its Idempotency-Key is answered from the first.
+ * scope. A send repeated with its Idempotency-Key is answered from the first,
+ * and the key is kept in the call's own transaction: a retry sent while the
+ * first is still running gets a 409, not a second call.
  */
 export const POST = route(
   { module: 'leads', productModule: LEAD_MODULES, action: 'EDIT', mobile: true, params, body },
-  async ({ ctx, params, body }) => {
-    const result = await logLeadCall(ctx, params.leadId, {
-      outcome: OUTCOMES[body.outcome],
-      notes: body.note || undefined,
-      durationSecs: body.durationSecs ?? undefined,
-      dueAt: body.followUpAt ? new Date(body.followUpAt) : null,
-      followUpNote: body.followUpNote || undefined,
-      occurredAt: body.occurredAt ? new Date(body.occurredAt) : undefined,
-    });
+  async ({ ctx, params, body, req }) => {
+    const requestKey = req.headers.get('idempotency-key')?.trim();
+    const key = requestKey
+      ? {
+          tenantId: ctx.tenantId,
+          operation: 'mobile.lead.call',
+          requestKey,
+          actorUserId: ctx.actor.id,
+          input: { ...body, leadId: params.leadId },
+        }
+      : undefined;
+    const result = await logLeadCall(
+      ctx,
+      params.leadId,
+      {
+        outcome: OUTCOMES[body.outcome],
+        notes: body.note || undefined,
+        durationSecs: body.durationSecs ?? undefined,
+        dueAt: body.followUpAt ? new Date(body.followUpAt) : null,
+        followUpNote: body.followUpNote || undefined,
+        occurredAt: body.occurredAt ? new Date(body.occurredAt) : undefined,
+      },
+      key,
+    );
     return { ok: true, leadId: params.leadId, ...result };
   },
 );

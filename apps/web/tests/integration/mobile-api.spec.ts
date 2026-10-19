@@ -486,6 +486,23 @@ describe('logging a call from a phone', () => {
     expect(await calls(agentLeadId)).toBe(before + 1);
   });
 
+  it('logs a retry sent while the first is still running once: the later one is refused, not written', async () => {
+    const key = `offline-queue-${suffix}-race`;
+    const body = { outcome: 'CONNECTED', note: 'Sent twice at once' };
+    const before = await calls(agentLeadId);
+    const both = await Promise.all([
+      logCall(agentToken, agentLeadId, body, key),
+      logCall(agentToken, agentLeadId, body, key),
+    ]);
+    expect(both.map((res) => res.status).sort()).toEqual([200, 409]);
+    expect(await calls(agentLeadId)).toBe(before + 1);
+    const won = both.find((res) => res.status === 200)!;
+    const retry = await logCall(agentToken, agentLeadId, body, key);
+    expect(retry.status).toBe(200);
+    expect(retry.body).toEqual(won.body);
+    expect(await calls(agentLeadId)).toBe(before + 1);
+  });
+
   it('refuses a key reused for a different call, or by a different person', async () => {
     const key = `offline-queue-${suffix}-2`;
     expect((await logCall(agentToken, agentLeadId, { outcome: 'BUSY' }, key)).status).toBe(200);
@@ -566,6 +583,24 @@ describe('the lead list and the follow-ups', () => {
     });
     const seen = first.body.rows.map((row: { id: string }) => row.id);
     for (const row of next.body.rows) expect(seen).not.toContain(row.id);
+  });
+
+  it('searches a word that reads as an id, a name or an email starting with c, by its text', async () => {
+    const christina = await prisma.lead.create({
+      data: {
+        tenantId,
+        reference: `MOB-C-${suffix}`,
+        fullName: 'Christina Haddad',
+        email: `chris.${suffix}@gmail.test`,
+        stageId: fixture.a.stageId,
+        ownerId: fixture.a.userId,
+      },
+    });
+    for (const q of ['Christina', `chris.${suffix}@gmail.test`]) {
+      const found = await call(leadsRoute, `/api/mobile/leads?q=${encodeURIComponent(q)}`, { token: managerToken });
+      expect(found.status).toBe(200);
+      expect(found.body.rows.map((row: { id: string }) => row.id)).toEqual([christina.id]);
+    }
   });
 
   it('lists the caller’s own open follow-ups, overdue on the workspace clock, without a masked number', async () => {

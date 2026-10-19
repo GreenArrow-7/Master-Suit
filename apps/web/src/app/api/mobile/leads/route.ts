@@ -6,7 +6,7 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { applyFieldSecurity, loadFieldRules, seesField } from '@/lib/security/fieldSecurity';
 import { isNamedLeadFilter } from '@/lib/leads/namedFilters';
 import { leadListQuery, leadPage } from '@/services/leads/leadList';
-import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
+import { LEAD_SENSITIVE_FIELDS, leadSearch } from '@/services/leads/createLead';
 import { scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 
 const query = z.object({
@@ -29,10 +29,10 @@ export const GET = route(
   { module: 'leads', productModule: LEAD_MODULES, action: 'VIEW', mobile: true, query },
   async ({ ctx, query }) => {
     const rules = await loadFieldRules(ctx, 'LEAD');
-    const byId = query.q && z.string().cuid().safeParse(query.q).success ? query.q : null;
     const filter = query.preset && isNamedLeadFilter(query.preset) ? query.preset : undefined;
-    const { where, access, orderBy } = await leadListQuery(ctx, { filter, q: byId ? undefined : query.q }, rules);
-    const scoped = mergeWhere(where, byId ? { id: byId } : null);
+    const { where, access, orderBy } = await leadListQuery(ctx, { filter }, rules);
+    // The id as one more match of the search: "Christina" passes for a cuid, so neither replaces the other.
+    const scoped = mergeWhere(where, query.q ? { OR: [{ id: query.q }, ...leadSearch(ctx, rules, query.q).OR] } : null);
     const page = await leadPage('updated', query.cursor, false, scoped);
     // A cursor no longer in the list (deleted, moved out of scope) ends it rather than restarting it.
     if (query.cursor && !page) return { rows: [], nextCursor: null };
