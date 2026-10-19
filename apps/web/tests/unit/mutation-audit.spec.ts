@@ -34,6 +34,8 @@ const EXEMPT: Record<string, Exemption> = {
   'mobile/auth/sign-in POST': audited('src/lib/auth/login.ts'),
   'v1/leads/[id]/call-log POST': audited('src/services/leads/logCall.ts'),
   'mobile/leads/[leadId]/call POST': audited('src/services/leads/logCall.ts'),
+  'mobile/attendance/check-in POST': audited('src/services/hr/mobileAttendance.ts'),
+  'mobile/attendance/check-out POST': audited('src/services/hr/mobileAttendance.ts'),
   'v1/integrations/[provider]/deliveries POST': audited('src/services/leads/deliveries.ts'),
   'v1/leads/messages POST': audited('src/services/leads/leadMessages.ts'),
   'v1/leads/[id]/messages POST': audited('src/services/leads/leadMessages.ts'),
@@ -80,6 +82,11 @@ const EXEMPT: Record<string, Exemption> = {
   'v1/practice/[id] POST': nothing("A turn in the caller's own practice session; finishing it is audited."),
   'v1/devices POST': nothing("The caller's own push token, registered on every app start."),
   'v1/devices/unregister POST': nothing("Forgets the caller's own push token."),
+  'mobile/devices/push POST': nothing("This phone's push token for the caller, registered on every app start."),
+  'mobile/devices/push DELETE': nothing("Forgets this phone's push token."),
+  'mobile/attendance/challenge POST': nothing(
+    'A single-use liveness instruction kept in Redis; the punch that spends it is recorded and audited.',
+  ),
   'v1/notification-preferences/test POST': nothing(
     "A test notification to the caller's own phones; the only write drops tokens the transport rejected, as the delivery worker does.",
   ),

@@ -959,7 +959,14 @@ export async function punch(ctx: Ctx, input: PunchInput) {
 
   let message = input.punchType === 'CHECK_IN' ? 'Checked in.' : 'Checked out.';
   if (result === 'FLAGGED_REVIEW') message += ' Sent to HR for review — your device reported a simulated location.';
-  return { result, message, serverTime: row.serverTime, distanceM: context.distanceM };
+  return {
+    result,
+    message,
+    serverTime: row.serverTime,
+    distanceM: context.distanceM,
+    punchId: row.id,
+    locationName: context.assignment.location.name,
+  };
 }
 
 /** The day roll-up the attendance screens read. */

@@ -43,6 +43,12 @@ export interface PushMessage {
 export interface PushTarget {
   token: string;
   platform: string;
+  /**
+   * The app the token belongs to, when it said (`DeviceToken.bundleId`). APNs
+   * needs it as the topic: one key sends to every app of the team, but a push
+   * addressed to the wrong app is refused. Null is APNS_BUNDLE_ID's app.
+   */
+  bundleId?: string | null;
 }
 
 export interface PushResult {
@@ -213,7 +219,8 @@ async function sendApns(targets: PushTarget[], message: PushMessage): Promise<Pu
               ':method': 'POST',
               ':path': `/3/device/${target.token}`,
               authorization,
-              'apns-topic': env.APNS_BUNDLE_ID,
+              // The Lead Eagle app's token names its own bundle; YOUHAN ONE's need not.
+              'apns-topic': target.bundleId || env.APNS_BUNDLE_ID,
               'apns-push-type': 'alert',
               'apns-priority': '10',
             });

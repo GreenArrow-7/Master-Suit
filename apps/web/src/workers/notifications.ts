@@ -89,7 +89,7 @@ async function deliverPush(data: RecordPushJob) {
   const [devices, tenant] = await Promise.all([
     prisma.deviceToken.findMany({
       where: { userId: { in: data.userIds } },
-      select: { token: true, platform: true },
+      select: { token: true, platform: true, bundleId: true },
     }),
     prisma.tenant.findUnique({ where: { id: data.tenantId }, select: { slug: true } }),
   ]);

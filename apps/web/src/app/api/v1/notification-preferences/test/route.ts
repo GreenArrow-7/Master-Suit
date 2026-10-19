@@ -22,7 +22,10 @@ export const POST = route(
   },
   async ({ ctx }) => {
     const [devices, tenant] = await Promise.all([
-      prisma.deviceToken.findMany({ where: { userId: ctx.actor.id }, select: { token: true, platform: true } }),
+      prisma.deviceToken.findMany({
+        where: { userId: ctx.actor.id },
+        select: { token: true, platform: true, bundleId: true },
+      }),
       prisma.tenant.findUnique({ where: { id: ctx.tenantId }, select: { slug: true } }),
     ]);
     if (!pushConfigured()) return { configured: false, devices: devices.length, sent: 0 };
