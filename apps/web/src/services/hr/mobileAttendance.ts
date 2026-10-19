@@ -18,6 +18,16 @@ import { getHrPolicy } from './settings';
 /** Frames the phone sends per attempt: the first neutral, the last after the move (as the web console). */
 export const PHONE_FRAMES = 3;
 const MAX_FRAMES = 10;
+
+/**
+ * The cap on `challenge`, `check-in` and `check-out` together, per person: the
+ * key is `route:hr_self:VIEW:{user}`, so the three share one bucket and an
+ * attempt (challenge, then the punch) spends 2: fifteen attempts in ten minutes.
+ * Without it the default 1200 a minute let one bearer try printed photos against
+ * the face match without end, write a refused punch and a capture each time, and
+ * load the shared face engine until it times out for every workspace.
+ */
+export const PHONE_ATTEMPTS = { max: 30, windowSeconds: 600 };
 const PHOTO_TYPES = ['image/jpeg', 'image/png'];
 
 /** The check-in screen's header at launch: where to check in, and whether the face is on file. */
@@ -103,7 +113,18 @@ function formNumber(form: FormData, name: string): number | null {
  */
 export async function punchFromPhone(ctx: Ctx, req: Request, punchType: PunchType) {
   const multipart = (req.headers.get('content-type') ?? '').includes('multipart/form-data');
-  const form = multipart ? await req.formData().catch(() => null) : null;
+  // A multipart body that does not parse is almost always one the proxy cut off
+  // at 10 MiB (Next's proxyClientMaxBodySize): full-size camera frames. Saying
+  // "open the camera" would send the person round the same failure for ever.
+  const form = multipart
+    ? await req.formData().catch(() => {
+        throw new AppError(
+          413,
+          'photos-too-large',
+          'The photos did not arrive whole: they are too large (10 MB at most in all, 3 MB a frame). Update the app, or lower the camera quality, and try again.',
+        );
+      })
+    : null;
   const photos = (form?.getAll('photo') ?? []).filter((entry): entry is File => entry instanceof File);
   if (!form || photos.length === 0) {
     throw refuse(

@@ -30,6 +30,7 @@
  */
 import { createPrivateKey, sign } from 'node:crypto';
 import http2 from 'node:http2';
+import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
 
@@ -50,6 +51,17 @@ export interface PushTarget {
    */
   bundleId?: string | null;
 }
+
+/** The Lead Eagle phone app: the one APNs topic besides APNS_BUNDLE_ID's (YOUHAN ONE). */
+export const LEAD_EAGLE_BUNDLE_ID = 'ae.leadeagle.app';
+
+/**
+ * The team's key signs a push for any app the team owns, so the topic is ours
+ * alone: Lead Eagle's when the token says so, else APNS_BUNDLE_ID's. A row that
+ * names any other app cannot pick a topic.
+ */
+const apnsTopic = (bundleId?: string | null) =>
+  bundleId === LEAD_EAGLE_BUNDLE_ID ? LEAD_EAGLE_BUNDLE_ID : env.APNS_BUNDLE_ID;
 
 export interface PushResult {
   sent: number;
@@ -219,8 +231,7 @@ async function sendApns(targets: PushTarget[], message: PushMessage): Promise<Pu
               ':method': 'POST',
               ':path': `/3/device/${target.token}`,
               authorization,
-              // The Lead Eagle app's token names its own bundle; YOUHAN ONE's need not.
-              'apns-topic': target.bundleId || env.APNS_BUNDLE_ID,
+              'apns-topic': apnsTopic(target.bundleId),
               'apns-push-type': 'alert',
               'apns-priority': '10',
             });
@@ -259,6 +270,36 @@ async function sendApns(targets: PushTarget[], message: PushMessage): Promise<Pu
 }
 
 // ── The one entry point ─────────────────────────────────────────────────────
+
+/**
+ * The tokens to push to for these people. A token a phone registered under its
+ * device session goes only while that session lives: every revocation (sign out
+ * everywhere, a password change or reset, deactivation, a role change) and the
+ * 90-day expiry end it, and its token is deleted here rather than left showing
+ * the person's notifications on a lost phone. APNs and FCM keep a token valid as
+ * long as the app is installed, so nothing else would ever end it. A token with
+ * no session (`/api/v1/devices`) is kept as before.
+ */
+export async function pushTargets(userIds: string[]): Promise<PushTarget[]> {
+  const devices = await prisma.deviceToken.findMany({
+    where: { userId: { in: userIds } },
+    select: { token: true, platform: true, bundleId: true, deviceSessionId: true },
+  });
+  const sessionIds = [...new Set(devices.flatMap((device) => device.deviceSessionId ?? []))];
+  if (!sessionIds.length) return devices;
+  const live = new Set(
+    (
+      await prisma.platformSession.findMany({
+        where: { id: { in: sessionIds }, kind: 'MOBILE', revokedAt: null, expiresAt: { gt: new Date() } },
+        select: { id: true },
+      })
+    ).map((session) => session.id),
+  );
+  const dead = sessionIds.filter((id) => !live.has(id));
+  // By session, not token: a token re-registered by a live session meanwhile is kept.
+  if (dead.length) await prisma.deviceToken.deleteMany({ where: { deviceSessionId: { in: dead } } });
+  return devices.filter((device) => !device.deviceSessionId || live.has(device.deviceSessionId));
+}
 
 /**
  * Deliver to whichever transports are configured. Devices on a platform with no

@@ -238,10 +238,12 @@ Node 22 or newer (CI uses 24).
   the open shift) is the web check-in's `punch()` under `hr_self` self-service
   (`src/services/hr/mobileAttendance.ts`): multipart frames, the challenge and
   a position on check-in and on check-out, a refusal answered 422 with its
-  sentence (`changes/2026-10-19-le-mobile-attendance-push.md`); `me` reports the
+  sentence, 30 requests per 10 minutes across the three POSTs
+  (`changes/2026-10-19-le-mobile-attendance-push.md`); `me` reports the
   work location and enrolment. `devices/push` keeps the phone's native FCM or
-  APNs token (an Expo token is refused) with its bundle id and device session;
-  signing that phone out forgets it.
+  APNs token (an Expo token is refused) with its bundle id (Lead Eagle's or
+  `APNS_BUNDLE_ID`, nothing else) and device session; a token is pushed to only
+  while that session lives, so any revocation or expiry stops it.
 - **Audit.** The rule for new code: every write should leave an AuditLog row,
   through the route's `auditEvent`, or `audit(ctx, …)`
   (`src/lib/security/audit.ts`) where the route cannot say enough. A write no
@@ -330,8 +332,9 @@ Node 22 or newer (CI uses 24).
   Allocate, cross-team routing and the leaver hand-over through
   `notifyLeadMoves` inside the move's transaction (the previous owner too), then
   one push per receiving person (`ringNewOwner`), not one per lead. A push goes
-  straight to FCM or APNs (`src/lib/push/send.ts`), on iOS to the token's own
-  app (`DeviceToken.bundleId`, else `APNS_BUNDLE_ID`). A merge
+  straight to FCM or APNs (`src/lib/push/send.ts`), on iOS to Lead Eagle's
+  topic when `DeviceToken.bundleId` names it, else `APNS_BUNDLE_ID`, and only
+  to tokens whose device session still lives (`pushTargets`). A merge
   tells nobody. Reminders ring the owner 10–15 minutes before a follow-up,
   call follow-up or site visit is due (`src/services/crm/reminders.ts`, 15
   minutes ahead; swept every five minutes on the `reminders` queue, apart from

@@ -1,6 +1,6 @@
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { pushConfigured, sendPush } from '@/lib/push/send';
+import { pushConfigured, pushTargets, sendPush } from '@/lib/push/send';
 
 /**
  * "Send a test notification" on Profile -> Notifications (M17-02, M20-08).
@@ -22,10 +22,7 @@ export const POST = route(
   },
   async ({ ctx }) => {
     const [devices, tenant] = await Promise.all([
-      prisma.deviceToken.findMany({
-        where: { userId: ctx.actor.id },
-        select: { token: true, platform: true, bundleId: true },
-      }),
+      pushTargets([ctx.actor.id]),
       prisma.tenant.findUnique({ where: { id: ctx.tenantId }, select: { slug: true } }),
     ]);
     if (!pushConfigured()) return { configured: false, devices: devices.length, sent: 0 };

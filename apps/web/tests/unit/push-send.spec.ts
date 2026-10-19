@@ -164,7 +164,7 @@ describe('sendPush', () => {
     expect(outage).toEqual({ sent: 0, stale: [] });
   });
 
-  it("addresses each iOS push to its token's own app, and the rest to APNS_BUNDLE_ID", async () => {
+  it("addresses each iOS push to its token's own app if it is Lead Eagle, and the rest to APNS_BUNDLE_ID", async () => {
     stubFetch({ ok: true });
     const { sendPush } = await loadSender({
       // Escaped, as an env file holds a .p8.
@@ -179,15 +179,18 @@ describe('sendPush', () => {
         { token: 'apns-lead-eagle-aaaaaaaa', platform: 'ios', bundleId: 'ae.leadeagle.app' },
         { token: 'apns-youhan-one-bbbbbbbb', platform: 'ios', bundleId: null },
         { token: 'apns-legacy-cccccccccccc', platform: 'ios' },
+        // Another app of the same Apple team: the key would sign it, the topic is never it.
+        { token: 'apns-other-app-dddddddd', platform: 'ios', bundleId: 'com.other.teamapp' },
       ],
       { title: 'Lead assigned' },
     );
 
-    expect(result).toEqual({ sent: 3, stale: [] });
+    expect(result).toEqual({ sent: 4, stale: [] });
     expect(Object.fromEntries(apnsRequests.map((r) => [r[':path'], r['apns-topic']]))).toEqual({
       '/3/device/apns-lead-eagle-aaaaaaaa': 'ae.leadeagle.app',
       '/3/device/apns-youhan-one-bbbbbbbb': 'com.youhan.one',
       '/3/device/apns-legacy-cccccccccccc': 'com.youhan.one',
+      '/3/device/apns-other-app-dddddddd': 'com.youhan.one',
     });
     expect(calls).toHaveLength(0);
   });

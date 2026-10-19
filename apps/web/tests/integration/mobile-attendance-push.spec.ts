@@ -45,6 +45,9 @@ import { POST as checkInRoute } from '@/app/api/mobile/attendance/check-in/route
 import { POST as checkOutRoute } from '@/app/api/mobile/attendance/check-out/route';
 import { POST as pushRoute, DELETE as pushDelete } from '@/app/api/mobile/devices/push/route';
 import { signOutDevice } from '@/services/identity/accounts';
+import { revokeAllSessions } from '@/lib/auth/session';
+import { pushTargets } from '@/lib/push/send';
+import { PHONE_ATTEMPTS } from '@/services/hr/mobileAttendance';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import { createEmployee } from '../helpers/fixtures';
 
@@ -235,6 +238,20 @@ describe('checking in and out from the phone', () => {
     );
     expect(blank.status).toBe(422);
 
+    // A burst the proxy cut off at 10 MiB: the multipart has no closing boundary.
+    const cut = await checkIn(agent.token, {
+      method: 'POST',
+      headers: { 'content-type': 'multipart/form-data; boundary=cut' },
+      body: `--cut
+Content-Disposition: form-data; name="photo"; filename="frame-0.jpg"
+Content-Type: image/jpeg
+
+${'x'.repeat(4096)}`,
+    });
+    expect(cut.status).toBe(413);
+    expect(cut.body.type).toMatch(/photos-too-large$/);
+    expect(cut.body.detail).toMatch(/too large/);
+
     expect(await punches(agent.employeeId)).toHaveLength(0);
     expect(await redis.exists(`face:challenge:${challengeId}`)).toBe(1);
   });
@@ -338,6 +355,14 @@ describe('push registration', () => {
     });
   });
 
+  it('refuses a bundle id that is not one of our two apps, writing nothing', async () => {
+    const other = `apns-${randomBytes(24).toString('hex')}`;
+    const res = await register(agent.token, { pushToken: other, platform: 'ios', bundleId: 'com.other.teamapp' });
+    expect(res.status).toBe(422);
+    expect(res.body.errors[0].field).toBe('bundleId');
+    expect(await prisma.deviceToken.count({ where: { token: other } })).toBe(0);
+  });
+
   it('refuses an Expo push token, explaining the native token is needed, and a token with no platform', async () => {
     const expo = await register(agent.token, { pushToken: 'ExponentPushToken[abcdefghijklmnopqrstuv]' });
     expect(expo.status).toBe(422);
@@ -368,5 +393,52 @@ describe('push registration', () => {
     const [row] = await tokens(unenrolled.userId);
     await signOutDevice(buildCtx(buildActor({ id: unenrolled.userId, tenantId })), row!.deviceSessionId!);
     expect(await tokens(unenrolled.userId)).toHaveLength(0);
+  });
+});
+
+describe('pushing only to live phones', () => {
+  it("drops a phone's token once its session is revoked or expired, keeping a token with no session", async () => {
+    const lost = await phone('lost');
+    const register = (token: string, pushToken: string) =>
+      call(pushRoute, '/api/mobile/devices/push', token, json({ pushToken, platform: 'android' }));
+    const kept = `fcm-${randomBytes(24).toString('hex')}`;
+    const stolen = `fcm-${randomBytes(24).toString('hex')}`;
+    expect((await register(lost.token, stolen)).status).toBe(200);
+    // /api/v1/devices: no device session, as before.
+    await prisma.deviceToken.create({ data: { userId: lost.userId, token: kept, platform: 'ios' } });
+    expect((await pushTargets([lost.userId])).map((t) => t.token).sort()).toEqual([kept, stolen].sort());
+
+    // The password changed from the browser after the phone went missing.
+    await revokeAllSessions(lost.userId, undefined, 'PASSWORD_CHANGED');
+    expect((await pushTargets([lost.userId])).map((t) => t.token)).toEqual([kept]);
+    expect(await prisma.deviceToken.count({ where: { token: stolen } })).toBe(0);
+
+    // A session past its 90 days ends the same way.
+    const again = await phone('expired');
+    const old = `fcm-${randomBytes(24).toString('hex')}`;
+    await register(again.token, old);
+    await prisma.platformSession.updateMany({
+      where: { activeTenantId: tenantId, deviceLabel: 'expired phone' },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+    expect(await pushTargets([again.userId])).toEqual([]);
+    expect(await prisma.deviceToken.count({ where: { token: old } })).toBe(0);
+  });
+});
+
+describe('the attempt cap', () => {
+  it('shares one bucket across challenge, check-in and check-out, and leaves the shift read alone', async () => {
+    const busy = await phone('busy');
+    // No consent or enrolment: each challenge is refused, but still counted.
+    for (let i = 0; i < PHONE_ATTEMPTS.max; i += 1) {
+      const res = await call(challengeRoute, '/api/mobile/attendance/challenge', busy.token, { method: 'POST' });
+      expect(res.status).toBe(403);
+    }
+    expect(
+      (await call(challengeRoute, '/api/mobile/attendance/challenge', busy.token, { method: 'POST' })).status,
+    ).toBe(429);
+    expect((await checkIn(busy.token, burst({}))).status).toBe(429);
+    expect((await checkOut(busy.token, burst({}))).status).toBe(429);
+    expect((await call(shiftRoute, '/api/mobile/attendance', busy.token)).status).toBe(200);
   });
 });

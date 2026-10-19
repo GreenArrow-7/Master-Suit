@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
+import { env } from '@/lib/env';
 import { AppError, Invalid, Unauthorized } from '@/lib/errors';
+import { LEAD_EAGLE_BUNDLE_ID } from '@/lib/push/send';
 import type { Ctx } from '@/lib/security/rbac';
 
 const body = z
@@ -12,12 +14,15 @@ const body = z
      */
     pushToken: z.string().trim().min(16).max(4096).nullable(),
     platform: z.enum(['ios', 'android']).optional(),
-    /** The app's bundle id (`ae.leadeagle.app`): APNs addresses an iOS push to it. */
+    /**
+     * The app's bundle id: Lead Eagle's (`ae.leadeagle.app`) or YOUHAN ONE's
+     * (APNS_BUNDLE_ID), nothing else. APNs addresses an iOS push to it, and the
+     * team's key would sign a push for any app the team owns.
+     */
     bundleId: z
       .string()
       .trim()
-      .max(155)
-      .regex(/^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/)
+      .refine((id) => id === LEAD_EAGLE_BUNDLE_ID || id === env.APNS_BUNDLE_ID, 'Unknown app.')
       .optional(),
   })
   .strict();
@@ -63,7 +68,8 @@ export const POST = route({ ...spec, body }, async ({ ctx, body }) => {
   const fields = {
     userId: ctx.actor.id,
     platform: body.platform,
-    bundleId: body.bundleId ?? null,
+    // Null is APNS_BUNDLE_ID's app, so only Lead Eagle's id is kept.
+    bundleId: body.bundleId === LEAD_EAGLE_BUNDLE_ID ? LEAD_EAGLE_BUNDLE_ID : null,
     deviceSessionId: ctx.deviceSessionId ?? null,
   };
   // On the token, as /api/v1/devices: a handset belongs to whoever is signed in on it now.

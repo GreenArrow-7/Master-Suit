@@ -1,5 +1,5 @@
 import { route } from '@/lib/api/handler';
-import { punchFromPhone } from '@/services/hr/mobileAttendance';
+import { PHONE_ATTEMPTS, punchFromPhone } from '@/services/hr/mobileAttendance';
 
 /**
  * Check out from the phone, with the face as on the web: the same multipart as
@@ -7,6 +7,6 @@ import { punchFromPhone } from '@/services/hr/mobileAttendance';
  * sentence the app shows.
  */
 export const POST = route(
-  { module: 'hr_self', action: 'VIEW', selfService: true, mobile: true },
+  { module: 'hr_self', action: 'VIEW', selfService: true, mobile: true, rateLimit: PHONE_ATTEMPTS },
   async ({ ctx, req }) => punchFromPhone(ctx, req, 'CHECK_OUT'),
 );

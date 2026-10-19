@@ -41,6 +41,12 @@ const paramsSchema = z.object({
   ]),
 });
 
+// ponytail: no attempt cap here, only the default 1200 a minute per user, so one
+// browser session can retry challenge + punch against the face match and the
+// shared face engine without end. The phone's routes cap it (PHONE_ATTEMPTS in
+// services/hr/mobileAttendance.ts, the same `route:hr_self:VIEW:{user}` bucket);
+// give attendance-challenge and attendance-punch the same consume() here if the
+// browser is abused the same way. Not route-wide: preflight runs on every location read.
 export const POST = route(
   {
     module: 'hr_self',
