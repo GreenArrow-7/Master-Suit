@@ -319,11 +319,14 @@ From `apps/web`:
 | Types, lint, format | `npx tsc --noEmit`, `npm run lint`, `npm run format:check` |
 | Production build | `npx next build`, with `NODE_ENV` unset — `development` breaks prerendering |
 
-CI (`.github/workflows/ci.yml`, one `verify` job) also gates the permission
+CI (`.github/workflows/ci.yml`, the `verify` job) also gates the permission
 catalogue, schema drift, tenant isolation, raw-SQL scope, observability drift,
 Redis auth, the face token check, the backup round trip, the build and
 `npm audit`, and fails on any skipped test. Browser tests run only on PRs to
-`main` and on pushes to `main`.
+`main` and on pushes to `main`; so does the `face-e2e` job beside it, which
+starts the face sidecar (Compose `face`), derives the frames
+(`scripts/face-test-frames.mjs`) and runs `face-attendance.spec.ts` with
+`FACE_E2E=required` (fails, never skips).
 
 House rules: one finding per commit; a behaviour fix comes with a test that
 fails on the old code; a UI change is checked in a browser at phone and desktop

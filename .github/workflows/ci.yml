@@ -457,9 +457,8 @@ jobs:
         # still has to pass.
         #
         # The demo-workspace specs (E2E_DEMO_*, exported by "Demo credentials")
-        # add about a minute on a warm server; face-attendance still skips,
-        # because its frames are never committed and the face sidecar is not
-        # here.
+        # add about a minute on a warm server; face-attendance skips here (no
+        # frames, no face sidecar) and runs for real in the face-e2e job below.
         timeout-minutes: 35
         env:
           # The account-deletion journey uses the worker started above instead
@@ -536,3 +535,166 @@ jobs:
       # Production dependencies only. A dev-only advisory does not ship.
       - name: Audit
         run: npm audit --omit=dev --audit-level=high
+
+  # ── Face check-in against the real face engine (M15-01) ──────────────────
+  #
+  # tests/e2e/face-attendance.spec.ts skips in `verify`: its frames are never
+  # committed (docs/TEST-DATA-POLICY.md) and no face sidecar runs there. This job
+  # has both and sets FACE_E2E=required, so a missing piece fails the spec rather
+  # than skipping it. A job of its own so verify's E2E budget does not grow; it
+  # runs beside verify, on the same condition as that gate. The setup steps
+  # repeat verify's, whose comments explain them.
+  face-e2e:
+    if: github.event_name == 'push' || github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    # Install ~2 min, face image and weights ~2, the spec ~3 on a cold dev server.
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: leadflow
+          POSTGRES_PASSWORD: leadflow
+          POSTGRES_DB: leadflow
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U leadflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      CI: "true"
+      NODE_OPTIONS: "--max-old-space-size=6144"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Redis
+        run: |
+          docker run -d --name ci-redis -p 6379:6379 redis:7-alpine \
+            redis-server --requirepass leadflow
+          for i in $(seq 1 30); do
+            if docker exec -e REDISCLI_AUTH=leadflow ci-redis redis-cli ping 2>/dev/null | grep -q PONG; then
+              echo "redis ready after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::redis did not become ready"; docker logs ci-redis; exit 1
+
+      - name: Install
+        run: npm ci
+
+      - name: Generate .env
+        run: node scripts/generate-secrets.mjs .env
+
+      # Accepted punches keep their frames under attendance/ in object storage.
+      - name: Object storage
+        run: |
+          docker run -d --name ci-s3mock -p 9000:9090 \
+            adobe/s3mock:5.2.3@sha256:ab01a6946750f451ca215a47e91030695b260e4003b8a5a6201d25029b8fca92
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:9000/ >/dev/null; then
+              echo "object storage ready after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::object storage did not become ready"; docker logs ci-s3mock; exit 1
+
+      - name: Export test connections
+        run: |
+          {
+            echo "E2E_DATABASE_URL=$(grep '^MIGRATION_DATABASE_URL=' .env | cut -d= -f2-)"
+            echo "E2E_REDIS_URL=$(grep '^REDIS_URL=' .env | cut -d= -f2-)"
+            echo "E2E_ALLOW_UNMARKED_DATABASE=yes"
+          } >> "$GITHUB_ENV"
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      - name: Demo credentials
+        run: |
+          PASSWORD="$(openssl rand -hex 12)-$(openssl rand -hex 3 | tr a-f A-F)"
+          echo "::add-mask::$PASSWORD"
+          {
+            echo "E2E_DEMO_SLUG=manath-homes"
+            echo "E2E_DEMO_EMAIL=amina.alrashid@example.com"
+            echo "E2E_DEMO_PASSWORD=$PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Seed demo data
+        env:
+          ALLOW_DEMO_SEED: "yes"
+          NODE_ENV: development
+          DEMO_PASSWORD: ${{ env.E2E_DEMO_PASSWORD }}
+        run: npm run db:seed
+
+      # The service exactly as infra/docker-compose.yml defines `face`: the image
+      # built from apps/face, the buffalo_l weights fetched on first start from
+      # the pinned insightface v0.7 release (apps/face/download_models.py), and
+      # --wait holding until its health check says the engine is loaded. Built
+      # and ready in under two minutes, so no layer cache. A fresh token for this
+      # run goes to both sides, so the bearer check is exercised too; .env
+      # already points FACE_SERVICE_URL at 127.0.0.1:8081, where Compose binds it.
+      - name: Face sidecar
+        run: |
+          FACE_SERVICE_TOKEN="$(openssl rand -hex 24)"
+          echo "::add-mask::$FACE_SERVICE_TOKEN"
+          export FACE_SERVICE_TOKEN
+          sed -i "s|^FACE_SERVICE_TOKEN=.*|FACE_SERVICE_TOKEN=$FACE_SERVICE_TOKEN|" .env
+          docker compose -p ci -f infra/docker-compose.yml up -d --wait --wait-timeout 600 face \
+            || { docker compose -p ci -f infra/docker-compose.yml logs face; exit 1; }
+
+      # The three public-domain source photographs, pinned by SHA-256 in the
+      # script. Cached so a run does not depend on Wikimedia answering; never
+      # committed.
+      - name: Cache face test sources
+        uses: actions/cache@v4
+        with:
+          path: apps/web/tests/faces-local/sources
+          key: face-test-sources-${{ hashFiles('apps/web/scripts/face-test-frames.mjs') }}
+
+      - name: Face test frames
+        run: node scripts/face-test-frames.mjs
+
+      - name: Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - name: Install Playwright browser
+        timeout-minutes: 6
+        run: |
+          npx playwright install chromium
+          node -e "require('@playwright/test').chromium.launch().then((b) => b.close())" || npx playwright install-deps chromium
+
+      # Enrolment (too few and too-similar samples refused, four poses accepted),
+      # a different face refused, a spent nonce refused, the wrong head turn
+      # refused, an off-site punch refused, check-in and check-out accepted.
+      - name: Face E2E
+        id: face-e2e
+        timeout-minutes: 15
+        env:
+          FACE_E2E: required
+        run: npx playwright test tests/e2e/face-attendance.spec.ts
+
+      - name: Face E2E report
+        if: always() && steps.face-e2e.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: face-e2e-report-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: apps/web/playwright-report/
+          retention-days: 7
+          if-no-files-found: error
