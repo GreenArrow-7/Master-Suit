@@ -5,7 +5,7 @@ YOUHAN ONE with the same paths and JSON shapes, so the app can later point its
 server at YOUHAN ONE unchanged: sign in, sign out, `me`, the lead list, log a
 call, move a lead, today's follow-ups. A phone signs in with a 90-day bearer
 token held in the same session table as the browser's; Profile → Security lists
-the phones signed in, each with **Sign out**. PR —.
+the phones signed in, each with **Sign out**. PR #234.
 
 **Why.** Audit row M20-10 ("a mobile API: bearer-token device sessions in the
 same sessions table with the same revocation, idempotency keys bound to the
