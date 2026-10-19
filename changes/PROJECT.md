@@ -210,7 +210,9 @@ Node 22 or newer (CI uses 24).
   "already exists" or "not found" instead of reading first. `route()` honours
   `Idempotency-Key` on JSON POST and PATCH (24 h, `IdempotentRequest`, swept
   nightly); a route that answers with a credential declares `idempotent: false`
-  (`selfService` routes are out already). `route()` keeps its spec on the
+  (`selfService` routes are out already), and so does one that keys the header
+  itself after a record-scope check (the two call logs, in `logLeadCall`), since
+  `route()` replays before the handler runs. `route()` keeps its spec on the
   handler; `GET /api/v1/openapi.json` serves the OpenAPI 3.1 document built from
   them (`src/lib/api/openapi.ts`), generated into `public/openapi.json` and kept
   equal to the routes by `tests/unit/openapi.spec.ts` — after changing a

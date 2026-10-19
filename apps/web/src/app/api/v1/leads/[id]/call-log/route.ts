@@ -66,11 +66,15 @@ function onWorkspaceClock(at: string, timeZone: string) {
  * log runs too, with the follow-up read on the workspace's clock and the
  * dialog's `requestKey` kept with the call. With an `activityId` (the call the
  * phone app logged by itself, M9-09) the log corrects that call in place.
+ * `idempotent: false`: an `Idempotency-Key` (the outbox's, an API client's)
+ * is kept the same way when the body has no `requestKey`, so every repeat meets
+ * the lead, call and activity checks before it is replayed.
  */
 export const POST = route(
-  { module: 'leads', productModule: LEAD_MODULES, action: 'EDIT', params, body },
-  async ({ ctx, params, body }) => {
-    const { requestKey, followUpAt, durationMins, outcome, notes, occurredAt, callId, activityId } = body;
+  { module: 'leads', productModule: LEAD_MODULES, action: 'EDIT', idempotent: false, params, body },
+  async ({ ctx, params, body, req }) => {
+    const { followUpAt, durationMins, outcome, notes, occurredAt, callId, activityId } = body;
+    const requestKey = body.requestKey ?? req.headers.get('idempotency-key')?.trim();
     const leadId = params.id;
     const dueAt = followUpAt ? onWorkspaceClock(followUpAt, await workspaceTimezone(ctx)) : null;
     const key = requestKey

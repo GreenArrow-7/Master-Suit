@@ -202,6 +202,48 @@ describe('one POST logs the call and books the next follow-up (PROP-02.2, M4-27)
     expect(await followUps(leadId)).toHaveLength(1);
   });
 
+  it('a send repeated under its Idempotency-Key is checked before it is replayed', async () => {
+    const leadId = (
+      await prisma.lead.create({
+        data: {
+          tenantId,
+          reference: `CL-${randomBytes(3).toString('hex')}`,
+          fullName: 'Outbox Lead',
+          stageId: fixture.a.stageId,
+          ownerId: agentId,
+        },
+      })
+    ).id;
+    // As lib/offline.ts sends it: the outbox item's id in the header, beside any body key.
+    const send = async (body: Record<string, unknown>, key: string) => {
+      const res = await logCall(
+        new Request(`http://localhost${url(leadId)}`, {
+          method: 'POST',
+          headers: { cookie: agent, 'content-type': 'application/json', 'idempotency-key': key },
+          body: JSON.stringify(body),
+        }),
+        { params: Promise.resolve({ id: leadId }) },
+      );
+      return { status: res.status, body: await res.json() };
+    };
+    const queued = { outcome: 'Connected', requestKey: randomUUID() };
+    const outboxItem = randomUUID();
+    const first = await send(queued, outboxItem);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    expect((await send(queued, outboxItem)).body.activity.id).toBe(first.body.activity.id);
+    // The header alone (an API client) still keeps a repeat to one call.
+    const headerOnly = randomUUID();
+    const byHeader = await send({ outcome: 'No answer' }, headerOnly);
+    expect((await send({ outcome: 'No answer' }, headerOnly)).body.activity.id).toBe(byHeader.body.activity.id);
+    expect(await calls(leadId)).toHaveLength(2);
+
+    // The lead moved to another owner: both repeats answer 404, not their first answers.
+    await prisma.lead.updateMany({ where: { tenantId, id: leadId }, data: { ownerId: fixture.a.userId } });
+    expect((await send(queued, outboxItem)).status).toBe(404);
+    expect((await send({ outcome: 'No answer' }, headerOnly)).status).toBe(404);
+    expect(await calls(leadId)).toHaveLength(2);
+  });
+
   it("follows the lead's scope: another's lead or workspace answers 404, a view-only role 403, and nothing is written", async () => {
     const othersLead = fixture.a.leadIds[4]!;
     expect((await post(logCall, url(othersLead), { outcome: 'Connected' }, agent)).status).toBe(404);

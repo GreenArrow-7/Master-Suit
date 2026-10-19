@@ -46,10 +46,12 @@ const body = z
  * activity, score, follow-up and audit rows, under the lead's own `leads:EDIT`
  * scope. A send repeated with its Idempotency-Key is answered from the first,
  * and the key is kept in the call's own transaction: a retry sent while the
- * first is still running gets a 409, not a second call.
+ * first is still running gets a 409, not a second call. `idempotent: false`:
+ * `logLeadCall` keys the header itself, after the lead's scope, so a retry from
+ * someone who has since lost the lead gets 404, not route()'s stored answer.
  */
 export const POST = route(
-  { module: 'leads', productModule: LEAD_MODULES, action: 'EDIT', mobile: true, params, body },
+  { module: 'leads', productModule: LEAD_MODULES, action: 'EDIT', mobile: true, idempotent: false, params, body },
   async ({ ctx, params, body, req }) => {
     const requestKey = req.headers.get('idempotency-key')?.trim();
     const key = requestKey

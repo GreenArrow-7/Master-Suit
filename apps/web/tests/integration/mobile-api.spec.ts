@@ -481,9 +481,26 @@ describe('logging a call from a phone', () => {
     const second = await logCall(agentToken, agentLeadId, body, key);
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
-    expect(second.headers.get('idempotent-replay')).toBe('true');
     expect(second.body).toEqual(first.body);
     expect(await calls(agentLeadId)).toBe(before + 1);
+  });
+
+  it('checks the lead before a replay: a key resent after the lead was moved away answers 404', async () => {
+    const leadId = (
+      await prisma.lead.create({
+        data: {
+          tenantId,
+          reference: `MOB-${suffix}-moved`,
+          fullName: 'Moved Lead',
+          stageId: fixture.a.stageId,
+          ownerId: agentId,
+        },
+      })
+    ).id;
+    const key = `offline-queue-${suffix}-moved`;
+    expect((await logCall(agentToken, leadId, { outcome: 'CONNECTED' }, key)).status).toBe(200);
+    await prisma.lead.updateMany({ where: { tenantId, id: leadId }, data: { ownerId: fixture.a.userId } });
+    expect((await logCall(agentToken, leadId, { outcome: 'CONNECTED' }, key)).status).toBe(404);
   });
 
   it('logs a retry sent while the first is still running once: the later one is refused, not written', async () => {
