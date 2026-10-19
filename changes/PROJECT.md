@@ -250,7 +250,9 @@ Node 22 or newer (CI uses 24).
   lead page, the call log (list and lead page), the Follow-ups list (complete,
   reschedule, cancel, reopen, a new follow-up) and Cold Data's call outcome go
   through it; a write whose answer the screen needs (opening what it created)
-  still needs the connection.
+  still needs the connection. A sender with nobody to press again (a call that
+  logged itself, `{ retry: true }`) also keeps a 401, 429 or 5xx answer, to go
+  again under the same key.
 - **Direction.** A workspace's language (`OrganizationSetting.defaultLocale`,
   Company profile) sets the shell's `dir`: Arabic lays it out right to left,
   the words still English. Stylesheets use logical properties

@@ -22,8 +22,11 @@ placed from the app.
   (`CXCallObserver`), registered in `capacitorDidLoad`. No project file change.
 - `apps/web/src/lib/leads/callWatch.ts`: the plugin through `window.Capacitor`,
   `autoLog` (what a reported call logs) and `dialAndLog` (arm, dial, log once).
-- `sales/leads/CallLogDialog.tsx`: `useAfterDial` returns `{ dial, notice }`; the
-  dialog corrects a call by `activityId`. `LeadDetail.tsx`, `LeadGrid.tsx`: wired.
+- `sales/leads/CallLogDialog.tsx`: `useAfterDial(open, onLogged)` returns
+  `{ dial, notice, logFor }`; the dialog corrects a call by `activityId`.
+  `LeadDetail.tsx`, `LeadGrid.tsx`: wired, refreshing the page on a log.
+- `lib/offline.ts`: `sendOrQueue(..., { retry: true })` also keeps an unsure answer
+  (401, 429, 5xx) in the outbox, under the same key.
 - `api/v1/leads/[id]/call-log/route.ts`: takes `durationSecs` (the measured talk
   time) and `activityId` (the caller's own outbound call on this lead, rewritten in
   place, audited `RECORD_UPDATED`, 404 otherwise). `public/openapi.json` regenerated.
@@ -33,7 +36,16 @@ placed from the app.
 
 - One request key per armed call: a retry or a replayed send from the outbox is
   the same log, and a second report of the same call is ignored. Offline, the log
-  waits in the outbox like a manual one (the notice is the outbox's).
+  waits in the outbox like a manual one (the notice is the outbox's). So does a
+  5xx, 429 or 401 answer, which may come after the call was saved: it is sent
+  again with the same body and key, and the route replays the call already logged.
+  Only a refusal (4xx) opens the manual log, and nothing was logged then.
+- A logged call refreshes the page, so the timeline and its call counts show it.
+  While the notice is up, that lead's own Log call button (lead page, list row)
+  opens Edit for the same call, not a second log.
+- Armed, but no call within the minute while still away (the dialler left open,
+  a call placed later): back in the app, the manual log opens as before. Back
+  before the watch ends, or after another dial, it does not.
 - No call placed within 60 seconds: nothing is logged. A call ringing in while
   armed is ignored.
 - Android asks for `READ_PHONE_STATE` once, after a rationale, the first time Call
@@ -58,7 +70,10 @@ placed from the app.
   Android off-hook reading; refused permission and a failing plugin log nothing and
   open no dialler; a timeout logs nothing; a call reported twice logs once and a
   report for an earlier armed call is ignored; a refusal comes back for the manual
-  log; no plugin in a browser.
+  log; a 500, 502, 504, 429 or 401 is kept in the outbox and resent with the same
+  body and keys, with no manual log offered; no plugin in a browser.
+- `useAfterDial` (the refresh, Log call as Edit, the timeout fallback) has no unit
+  test: apps/web has no DOM test harness, and E2E does not drive the native path.
 - `tests/sales/lead-call-log.spec.ts`: `durationSecs` kept as sent; a correction
   rewrites the outcome, note and minutes of the same activity and books the
   follow-up, audited; another person's call or one on another lead answers 404

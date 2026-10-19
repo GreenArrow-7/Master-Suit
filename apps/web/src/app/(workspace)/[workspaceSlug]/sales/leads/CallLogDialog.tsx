@@ -31,48 +31,65 @@ const prefill = (log: AutoLog) => ({
  * so, with Edit; where it cannot (the phone permission refused), as before.
  *
  * Returns `dial`, for the link's click (true when it opened the dialler itself,
- * so a button does not open it again), and the notice to render.
+ * so a button does not open it again), the notice to render, and `logFor`, for
+ * a Log call button: while the notice is up, that lead's button edits the call
+ * just logged rather than logging it twice. `onLogged` refreshes the page.
  */
-export function useAfterDial(open: (lead: CallLogLead) => void) {
-  const dialled = useRef<{ lead: CallLogLead; at: number } | null>(null);
+export function useAfterDial(open: (lead: CallLogLead) => void, onLogged: () => void) {
+  /** The dial to log on return; `watching` while CallWatch may still log it. */
+  const dialled = useRef<{ lead: CallLogLead; at: number; watching?: true } | null>(null);
   const [auto, setAuto] = useState<CallLogLead | null>(null);
   useEffect(() => {
     const back = () => {
       if (document.visibilityState !== 'visible' || !dialled.current) return;
-      const { lead, at } = dialled.current;
-      open({ ...lead, dial: { ...afterDial(at, Date.now()), at: new Date(at).toISOString() } });
+      const { lead, at, watching } = dialled.current;
       dialled.current = null;
+      // Back while CallWatch watches: the call logs itself, or there was none.
+      if (watching) return;
+      open({ ...lead, dial: { ...afterDial(at, Date.now()), at: new Date(at).toISOString() } });
     };
     document.addEventListener('visibilitychange', back);
     return () => document.removeEventListener('visibilitychange', back);
   }, [open]);
   const dial = (lead: CallLogLead, tel: string, event: { preventDefault: () => void }) => {
     const who = { id: lead.id, fullName: lead.fullName };
-    const note = () => {
-      dialled.current = { lead: who, at: Date.now() };
-    };
+    const call = { lead: who, at: Date.now() };
     const watch = callWatch();
     if (!watch) {
-      note();
+      dialled.current = call;
       return false;
     }
     // Armed before the dialler opens, so the dialler is opened here.
     event.preventDefault();
     setAuto(null);
+    const watching = { ...call, watching: true as const };
+    dialled.current = watching;
     const openDialler = () => {
       window.location.href = `tel:${tel}`;
     };
     void dialAndLog(watch, who, openDialler).then((watched) => {
+      // Still away on this dial: no return since, and no later dial.
+      const away = dialled.current === watching;
+      if (away) dialled.current = null;
       if (watched.status === 'unarmed') {
-        note();
+        dialled.current = call;
         openDialler();
-      } else if (watched.status === 'logged' && watched.activityId) {
-        setAuto({ ...who, activityId: watched.activityId, dial: prefill(watched.log) });
-      } else if (watched.status === 'failed') {
+      } else if (watched.status === 'none') {
+        // No call within the minute, one placed later perhaps: back, the call log opens as before (M4-27).
+        if (away) dialled.current = call;
+      } else if (watched.status === 'logged') {
+        onLogged();
+        if (watched.activityId) setAuto({ ...who, activityId: watched.activityId, dial: prefill(watched.log) });
+      } else {
         open({ ...who, dial: prefill(watched.log) });
       }
     });
     return true;
+  };
+  const logFor = (lead: CallLogLead): CallLogLead => {
+    if (auto?.id !== lead.id) return lead;
+    setAuto(null);
+    return auto;
   };
 
   const talk = auto?.dial?.outcome === 'Connected' ? auto.dial.minutes : 0;
@@ -97,7 +114,7 @@ export function useAfterDial(open: (lead: CallLogLead) => void) {
       </div>
     </div>
   );
-  return { dial, notice };
+  return { dial, notice, logFor };
 }
 
 /**

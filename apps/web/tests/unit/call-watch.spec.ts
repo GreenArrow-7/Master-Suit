@@ -8,13 +8,19 @@ import type { CallWatchPlugin, CallWatchResult } from '@/lib/leads/callWatch';
  * (lib/offline.ts) and its fetch are real but for the network.
  */
 const fetchMock = vi.fn();
-vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+const stored = new Map<string, string>();
+vi.stubGlobal('localStorage', {
+  getItem: (k: string) => stored.get(k) ?? null,
+  setItem: (k: string, v: string) => stored.set(k, v),
+  removeItem: (k: string) => stored.delete(k),
+});
 vi.stubGlobal('window', { dispatchEvent: () => true });
 vi.stubGlobal('document', { querySelector: () => ({ dataset: { outboxOwner: 'tenant-x:agent-a' } }) });
 vi.stubGlobal('navigator', { onLine: true });
 vi.stubGlobal('fetch', fetchMock);
 
 const { ANSWERED_AFTER_SECS, autoLog, callWatch, dialAndLog } = await import('@/lib/leads/callWatch');
+const { flush, pending } = await import('@/lib/offline');
 
 const lead = { id: 'lead-1', fullName: 'Amira Haddad' };
 const startedAt = Date.UTC(2026, 9, 19, 9, 0, 0);
@@ -64,6 +70,7 @@ const sent = () =>
   fetchMock.mock.calls.map(([url, init]) => ({ url, body: JSON.parse(init.body), headers: init.headers }));
 
 beforeEach(() => {
+  stored.clear();
   fetchMock.mockReset();
   fetchMock.mockResolvedValue(new Response(JSON.stringify({ activity: { id: 'act-9' }, followUp: null })));
 });
@@ -150,6 +157,30 @@ describe('a call placed from the phone app logs itself (M9-09)', () => {
     const p = phone();
     const { watched } = await dialThen(p, () => p.ended({ connected: true, durationSeconds: 70 }));
     expect(watched).toMatchObject({ status: 'failed', message: 'Lead not found.' });
+  });
+
+  it('keeps a call whose answer a retry may change, under the same key, and offers no second log', async () => {
+    for (const status of [500, 502, 504, 429, 401]) {
+      stored.clear();
+      fetchMock.mockReset();
+      // The server may have logged it before the error: a 504 from the proxy, or touchLead failing after the commit.
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ detail: 'Gateway timeout' }), { status }));
+      fetchMock.mockResolvedValue(new Response(JSON.stringify({ activity: { id: 'act-9' }, followUp: null })));
+      const p = phone();
+      const { watched } = await dialThen(p, () => p.ended({ connected: true, durationSeconds: 125 }));
+      expect(watched).toEqual({
+        status: 'logged',
+        log: { outcome: 'Connected', durationSecs: 125, occurredAt: new Date(startedAt).toISOString() },
+      });
+      const [first] = sent();
+      expect(pending()).toEqual([
+        expect.objectContaining({ body: JSON.stringify(first!.body), id: first!.headers['idempotency-key'] }),
+      ]);
+      // Sent again as it was: the route replays the call already logged under that request key.
+      expect(await flush()).toEqual({ sent: 1, refused: [] });
+      expect(sent()[1]).toEqual(first);
+      expect(pending()).toEqual([]);
+    }
   });
 
   it('is not there in a browser', () => {

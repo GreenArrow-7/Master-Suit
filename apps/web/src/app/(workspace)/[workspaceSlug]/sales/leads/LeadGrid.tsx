@@ -118,7 +118,7 @@ export default function LeadGrid({
   const [logFor, setLogFor] = useState<CallLogLead | null>(null);
   /** The leads a Send template is for, while its dialog is open. */
   const [sendTo, setSendTo] = useState<string[] | null>(null);
-  const { dial, notice: autoLogged } = useAfterDial(setLogFor);
+  const { dial, notice: autoLogged, logFor: toLog } = useAfterDial(setLogFor, () => router.refresh());
 
   const sorted = useMemo(() => {
     const copy = [...rows];
@@ -687,7 +687,7 @@ export default function LeadGrid({
                           className="lf-btn lf-btn--secondary lf-btn--sm"
                           aria-label={`Log call for ${row.fullName}`}
                           style={{ whiteSpace: 'nowrap' }}
-                          onClick={() => setLogFor(row)}
+                          onClick={() => setLogFor(toLog(row))}
                         >
                           Log call
                         </button>

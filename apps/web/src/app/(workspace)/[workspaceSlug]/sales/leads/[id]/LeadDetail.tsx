@@ -280,7 +280,7 @@ export default function LeadDetail({
       setLogging({ id: lead.id, fullName: lead.fullName, dial: from?.dial, activityId: from?.activityId }),
     [lead.id, lead.fullName],
   );
-  const { dial, notice: autoLogged } = useAfterDial(openLog);
+  const { dial, notice: autoLogged, logFor } = useAfterDial(openLog, () => router.refresh());
 
   function withBusy(fn: () => Promise<void>) {
     return async () => {
@@ -514,7 +514,7 @@ export default function LeadDetail({
                 Phone
               </button>
               {canLog && (
-                <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => openLog()}>
+                <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => openLog(logFor(lead))}>
                   Log call
                 </button>
               )}

@@ -75,9 +75,13 @@ export type Watched =
   | { status: 'unarmed' }
   /** No call was placed within the minute: nothing logged. */
   | { status: 'none' }
-  /** Logged; no `activityId` when it waits in the outbox for a connection. */
+  /**
+   * Logged; no `activityId` when it waits in the outbox, for a connection or
+   * after an answer a retry may change (a 5xx can come after the save), to go
+   * again under the same request key.
+   */
   | { status: 'logged'; log: AutoLog; activityId?: string }
-  /** The server refused it: the caller offers the manual log. */
+  /** The server refused it (4xx), so nothing was logged: the caller offers the manual log. */
   | { status: 'failed'; log: AutoLog; message: string };
 
 /**
@@ -115,6 +119,7 @@ export async function dialAndLog(
     'POST',
     { ...log, requestKey: key },
     `${lead.fullName}: call`,
+    { retry: true },
   );
   if (res === 'queued') return { status: 'logged', log };
   const data = await res.json().catch(() => ({}));
