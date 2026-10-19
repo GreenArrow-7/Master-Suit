@@ -20,9 +20,11 @@ recording and HR document existed in exactly one place, on one VM's disk.
 
 The owner accepted a recovery point objective of **24 hours** (NFR-13): one
 complete backup a day is one restore point a day, and the worst case is losing
-the writes since the last one. The nightly timer takes one at 02:30, every
-release takes one more before it deploys and proves it with a restore drill,
-each is shipped off-site and verified, and production retains about seventy.
+the writes since the last one. The nightly timer takes one at 02:30 and ships
+it off-site and verified; every release takes one more before it deploys and
+proves it with a restore drill, but that one stays on this host (the preflight
+has no `BACKUP_REMOTE`). Production retains about seventy. The newest off-site
+restore point is the one the `off-site:` line below names.
 
 **Evidence on every release.** The release preflight
 (`docs/release/production-release.sh`, phase backup) runs `backup-status.sh` on
