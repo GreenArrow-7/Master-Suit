@@ -3,7 +3,8 @@ import { afterAll, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 
 // The transports are the owner's keys; the route's own logic is what is under test.
 const push = vi.hoisted(() => ({ configured: false, sent: 0, stale: [] as string[] }));
-vi.mock('@/lib/push/send', () => ({
+vi.mock('@/lib/push/send', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/push/send')>()),
   pushConfigured: () => push.configured,
   sendPush: vi.fn(async () => ({ sent: push.sent, stale: push.stale })),
 }));

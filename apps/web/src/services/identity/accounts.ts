@@ -333,6 +333,8 @@ export async function signOutDevice(ctx: Ctx, sessionId: string) {
     data: { revokedAt: new Date(), revokedReason: 'DEVICE_SIGNED_OUT' },
   });
   if (!count) throw NotFound('Device');
+  // A lost phone stops showing this person's notifications on its lock screen too.
+  await prisma.deviceToken.deleteMany({ where: { userId: ctx.actor.id, deviceSessionId: sessionId } });
   await audit(ctx, { event: 'LOGOUT', metadata: { scope: 'device', device: sessionId } });
   return { signedOut: true, id: sessionId };
 }

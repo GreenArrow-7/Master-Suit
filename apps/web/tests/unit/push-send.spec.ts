@@ -17,11 +17,36 @@
  * test that carries a private key in the repository is a test nobody can run
  * after the secret scanner finds it.
  */
+import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateKeyPairSync, verify } from 'node:crypto';
 
+/** APNs speaks HTTP/2, not fetch: each request's headers are kept and answered 200. */
+const apnsRequests = vi.hoisted(() => [] as Record<string, string>[]);
+vi.mock('node:http2', () => {
+  const connect = () => ({
+    request: (headers: Record<string, string>) => {
+      apnsRequests.push(headers);
+      const stream = Object.assign(new EventEmitter(), {
+        setEncoding: () => {},
+        end: () =>
+          setImmediate(() => {
+            stream.emit('response', { ':status': 200 });
+            stream.emit('end');
+          }),
+      });
+      return stream;
+    },
+    close: () => {},
+  });
+  return { default: { connect }, connect };
+});
+
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+const apnsKey = generateKeyPairSync('ec', { namedCurve: 'P-256' })
+  .privateKey.export({ type: 'pkcs8', format: 'pem' })
+  .toString();
 
 /** Load send.ts against a stubbed environment; `env` is parsed at import. */
 async function loadSender(overrides: Record<string, string>) {
@@ -54,6 +79,7 @@ function stubFetch(send: { ok: boolean; status?: number; body?: string }) {
 
 beforeEach(() => {
   calls = [];
+  apnsRequests.length = 0;
 });
 
 afterEach(() => {
@@ -136,5 +162,36 @@ describe('sendPush', () => {
     const outage = await (await loadSender(CONFIGURED)).sendPush(ANDROID, { title: 'Leave decided' });
     // Kept: a device deleted because Google had a bad minute never rings again.
     expect(outage).toEqual({ sent: 0, stale: [] });
+  });
+
+  it("addresses each iOS push to its token's own app if it is Lead Eagle, and the rest to APNS_BUNDLE_ID", async () => {
+    stubFetch({ ok: true });
+    const { sendPush } = await loadSender({
+      // Escaped, as an env file holds a .p8.
+      APNS_KEY: apnsKey.replace(/\n/g, '\\n'),
+      APNS_KEY_ID: 'KEY123',
+      APNS_TEAM_ID: 'TEAM123',
+      APNS_BUNDLE_ID: 'com.youhan.one',
+    });
+
+    const result = await sendPush(
+      [
+        { token: 'apns-lead-eagle-aaaaaaaa', platform: 'ios', bundleId: 'ae.leadeagle.app' },
+        { token: 'apns-youhan-one-bbbbbbbb', platform: 'ios', bundleId: null },
+        { token: 'apns-legacy-cccccccccccc', platform: 'ios' },
+        // Another app of the same Apple team: the key would sign it, the topic is never it.
+        { token: 'apns-other-app-dddddddd', platform: 'ios', bundleId: 'com.other.teamapp' },
+      ],
+      { title: 'Lead assigned' },
+    );
+
+    expect(result).toEqual({ sent: 4, stale: [] });
+    expect(Object.fromEntries(apnsRequests.map((r) => [r[':path'], r['apns-topic']]))).toEqual({
+      '/3/device/apns-lead-eagle-aaaaaaaa': 'ae.leadeagle.app',
+      '/3/device/apns-youhan-one-bbbbbbbb': 'com.youhan.one',
+      '/3/device/apns-legacy-cccccccccccc': 'com.youhan.one',
+      '/3/device/apns-other-app-dddddddd': 'com.youhan.one',
+    });
+    expect(calls).toHaveLength(0);
   });
 });

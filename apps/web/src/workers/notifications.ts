@@ -2,7 +2,7 @@ import { logger } from '@/lib/logger';
 import { prisma } from '@/lib/db';
 import { sendMail } from '@/lib/mailer';
 import { entityRoute } from '@/lib/nav/entityRoute';
-import { pushConfigured, sendPush } from '@/lib/push/send';
+import { pushConfigured, pushTargets, sendPush } from '@/lib/push/send';
 import { readPrefs } from '@/lib/notificationPrefs';
 import { env } from '@/lib/env';
 
@@ -87,10 +87,7 @@ async function deliverPush(data: RecordPushJob) {
   if (!pushConfigured() || data.userIds.length === 0) return { pushed: 0 };
 
   const [devices, tenant] = await Promise.all([
-    prisma.deviceToken.findMany({
-      where: { userId: { in: data.userIds } },
-      select: { token: true, platform: true },
-    }),
+    pushTargets(data.userIds),
     prisma.tenant.findUnique({ where: { id: data.tenantId }, select: { slug: true } }),
   ]);
   if (!devices.length || !tenant) return { pushed: 0 };

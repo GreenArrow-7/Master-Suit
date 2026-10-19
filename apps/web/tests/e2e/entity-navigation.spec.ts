@@ -46,8 +46,14 @@ test.describe('Clicking a record opens that record', () => {
    */
   async function expectModule(page: Page, firstCreate: 'Lead' | 'Employee') {
     const create = page.getByRole('button', { name: 'Create', exact: true });
-    await create.click();
-    await expect(page.getByRole('menu').getByRole('link').first()).toHaveText(firstCreate);
+    const menu = page.getByRole('menu');
+    // A click that lands before hydration does nothing, and the menu never opens
+    // (CI, 19 Oct). Click until it is open; never again once it is, which would shut it.
+    await expect(async () => {
+      if (!(await menu.isVisible())) await create.click();
+      await expect(menu).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
+    await expect(menu.getByRole('link').first()).toHaveText(firstCreate);
     await create.click();
   }
 
