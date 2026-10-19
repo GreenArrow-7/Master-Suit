@@ -72,6 +72,7 @@ const PLAN = {
   'Observability drift': { run: true },
   'Redis auth': { run: true },
   'Face token gate': { run: true },
+  'Face model download': { run: true },
   'Backup round trip': { run: true },
   Test: { run: true },
   // Needs E2E_DATABASE_URL and E2E_REDIS_URL, named explicitly and pointing at

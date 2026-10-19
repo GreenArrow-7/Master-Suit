@@ -108,12 +108,13 @@ test.describe('Face attendance', () => {
       'supervised consent',
     );
 
-    // Too few samples.
+    // Too few samples: refused on the count, before the engine is asked.
     const few = await enrol([frame('a-straight'), frame('a-mirror'), frame('a-turned-left')]);
-    test.skip(!required && few.status() === 503, 'face engine not running');
     expect(few.status(), await few.text()).toBe(409);
-    // Four shots of the same pose: refused as too similar.
+    // Four shots of the same pose: refused as too similar. The first call that
+    // reaches the face engine, so the one that tells whether it is running.
     const same = await enrol([frame('a-straight'), frame('a-straight'), frame('a-turned-right'), frame('a-mirror')]);
+    test.skip(!required && same.status() === 503, 'face engine not running');
     expect(same.status(), await same.text()).toBe(409);
     expect(await same.text()).toContain('too similar');
     // Four distinct poses: enrolled.

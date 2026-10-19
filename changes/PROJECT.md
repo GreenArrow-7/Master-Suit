@@ -321,8 +321,8 @@ From `apps/web`:
 
 CI (`.github/workflows/ci.yml`, the `verify` job) also gates the permission
 catalogue, schema drift, tenant isolation, raw-SQL scope, observability drift,
-Redis auth, the face token check, the backup round trip, the build and
-`npm audit`, and fails on any skipped test. Browser tests run only on PRs to
+Redis auth, the face token and model-download checks, the backup round trip,
+the build and `npm audit`, and fails on any skipped test. Browser tests run only on PRs to
 `main` and on pushes to `main`; so does the `face-e2e` job beside it, which
 starts the face sidecar (Compose `face`), derives the frames
 (`scripts/face-test-frames.mjs`) and runs `face-attendance.spec.ts` with
