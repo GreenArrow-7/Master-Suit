@@ -5,7 +5,7 @@ out: its attendance tab (`GET /api/mobile/attendance`, `POST
 /api/mobile/attendance/challenge`, `/check-in`, `/check-out`) on YOUHAN ONE's
 own face check-in, and `POST`/`DELETE /api/mobile/devices/push` registering the
 phone's native push token. `me` now reports the real work location and
-enrolment. PR #TBD, stacked on #235 (`batch/le-finish-r1`).
+enrolment. PR #237, stacked on #235 (`batch/le-finish-r1`).
 
 **Why.** Audit row M20-10, the two items `2026-10-19-le-mobile-api.md` left
 open. Owner defaults, decided for the owner on 19 Oct by the orchestrating
