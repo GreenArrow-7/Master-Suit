@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-19 | [A request whose body never arrived is refused, so an offline change is not lost on reconnect](2026-10-19-body-not-arrived.md) | #235 | Platform, offline, fix |
 | 2026-10-19 | [The phone app's API: device sessions, idempotent writes and call times that stay true](2026-10-19-le-mobile-api.md) | #234 | Lead Eagle, mobile, sign-in, API |
 | 2026-10-19 | [Calls placed from the phone app log themselves](2026-10-19-le-call-watch.md) | #233 | Lead Eagle, calls, mobile, feature |
 | 2026-10-19 | [Every release records the backup timer, the daily cadence and the off-site copy](2026-10-19-backup-evidence.md) | #231 | Operations, backups |

@@ -93,6 +93,29 @@ export interface HandlerArgs<P, Q, B> {
  * contract described in docs/03-API.md §1 — a route that does not go through here
  * is a review blocker.
  */
+/**
+ * The JSON body, or `{}` when there is none. A body that did not arrive (the
+ * client hung up while authentication ran, as a page reload does to the outbox's
+ * send) or is not JSON is refused before the handler runs. Read as `{}`, a
+ * PATCH whose fields are all optional ran as a no-op, answered 200 and kept its
+ * Idempotency-Key with an empty body's fingerprint, so the outbox's honest
+ * resend met a 409 and was dropped: a follow-up completed offline stayed open.
+ */
+async function readJsonBody(req: Request): Promise<unknown> {
+  let text: string;
+  try {
+    text = await req.text();
+  } catch {
+    throw Invalid([{ field: 'body', code: 'incomplete', message: 'The request body did not arrive in full.' }]);
+  }
+  if (!text.trim()) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw Invalid([{ field: 'body', code: 'invalid-json', message: 'The request body is not valid JSON.' }]);
+  }
+}
+
 export function route<
   PS extends ZodTypeAny = ZodTypeAny,
   QS extends ZodTypeAny = ZodTypeAny,
@@ -186,8 +209,7 @@ export function route<
       // `req.arrayBuffer()` a disturbed stream. Routes that declare a body
       // schema still get the old behaviour whatever the content-type says.
       const wantsJson = Boolean(spec.body) || (req.headers.get('content-type') ?? '').includes('json');
-      const rawBody =
-        wantsJson && ['POST', 'PATCH', 'PUT'].includes(req.method) ? await req.json().catch(() => ({})) : {};
+      const rawBody = wantsJson && ['POST', 'PATCH', 'PUT'].includes(req.method) ? await readJsonBody(req) : {};
 
       const params = spec.params ? spec.params.parse(rawParams) : (rawParams as P);
       const query = spec.query ? spec.query.parse(rawQuery) : (rawQuery as unknown as Q);
