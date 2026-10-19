@@ -4,7 +4,7 @@
 now also prints the nightly backup timer's state and last run, how many of the
 last seven days have a complete backup, and the newest backup that left the
 machine. `backup-ship.sh` records where and how much in its `.shipped-at`
-marker. PR —.
+marker. PR #231.
 
 **Why** — NFR-13 ("daily PITR and an off-site copy"). The owner accepted RPO
 24 h: a restore point a day, which the nightly timer and each release already
