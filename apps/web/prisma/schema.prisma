@@ -5920,19 +5920,26 @@ model Notification {
 /// every read here is already inside one workspace. See `GLOBAL_MODELS` in
 /// src/lib/db.ts, where the guard exemption this needs is argued.
 model DeviceToken {
-  id         String   @id @default(cuid())
-  userId     String
-  token      String   @unique
+  id              String   @id @default(cuid())
+  userId          String
+  token           String   @unique
   /// 'ios' or 'android'. It decides which of the two push transports sends —
   /// APNs speaks to iOS directly, FCM to Android — so a wrong value is a device
-  /// that silently never rings. Written only by /api/v1/devices, behind a
-  /// closed zod enum.
-  platform   String
+  /// that silently never rings. Written only by /api/v1/devices and
+  /// /api/mobile/devices/push, behind a closed zod enum.
+  platform        String
+  /// The app's bundle id when the app said it (the Lead Eagle phone app sends
+  /// `ae.leadeagle.app` to /api/mobile/devices/push). APNs addresses the push
+  /// to it; null falls back to APNS_BUNDLE_ID, the YOUHAN ONE app. FCM ignores it.
+  bundleId        String?
+  /// The phone's device session (PlatformSession, kind MOBILE) that registered
+  /// it, so signing that phone out forgets its token. Null from /api/v1/devices.
+  deviceSessionId String?
   /// Stamped on every re-registration, which the app does at each launch. A
   /// token that has not been seen for months belongs to an app that was deleted
   /// without telling anyone; the transports prune those on rejection.
-  lastSeenAt DateTime @default(now())
-  createdAt  DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

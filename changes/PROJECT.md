@@ -234,7 +234,16 @@ Node 22 or newer (CI uses 24).
   itself or from Profile → Security → Phones signed in. `me`, `leads` (the
   grid's query, keyset), `leads/{id}/call` (`logLeadCall`, the key in its transaction, the call's own time,
   refused over 2 minutes ahead or a week old), `leads/{id}/status`,
-  `follow-ups`. Attendance and push from that app are not served.
+  `follow-ups`. `attendance` (`challenge`, `check-in`, `check-out`, and GET for
+  the open shift) is the web check-in's `punch()` under `hr_self` self-service
+  (`src/services/hr/mobileAttendance.ts`): multipart frames, the challenge and
+  a position on check-in and on check-out, a refusal answered 422 with its
+  sentence, 30 requests per 10 minutes across the three POSTs
+  (`changes/2026-10-19-le-mobile-attendance-push.md`); `me` reports the
+  work location and enrolment. `devices/push` keeps the phone's native FCM or
+  APNs token (an Expo token is refused) with its bundle id (Lead Eagle's or
+  `APNS_BUNDLE_ID`, nothing else) and device session; a token is pushed to only
+  while that session lives, so any revocation or expiry stops it.
 - **Audit.** The rule for new code: every write should leave an AuditLog row,
   through the route's `auditEvent`, or `audit(ctx, …)`
   (`src/lib/security/audit.ts`) where the route cannot say enough. A write no
@@ -322,7 +331,10 @@ Node 22 or newer (CI uses 24).
   take-back through `notifyCrm` `lead.assigned` after the commit; bulk assign,
   Allocate, cross-team routing and the leaver hand-over through
   `notifyLeadMoves` inside the move's transaction (the previous owner too), then
-  one push per receiving person (`ringNewOwner`), not one per lead. A merge
+  one push per receiving person (`ringNewOwner`), not one per lead. A push goes
+  straight to FCM or APNs (`src/lib/push/send.ts`), on iOS to Lead Eagle's
+  topic when `DeviceToken.bundleId` names it, else `APNS_BUNDLE_ID`, and only
+  to tokens whose device session still lives (`pushTargets`). A merge
   tells nobody. Reminders ring the owner 10–15 minutes before a follow-up,
   call follow-up or site visit is due (`src/services/crm/reminders.ts`, 15
   minutes ahead; swept every five minutes on the `reminders` queue, apart from
@@ -419,10 +431,13 @@ Waiting on the owner:
 - **Microsoft 365 calendar** — a Microsoft Entra app registration (any organisational directory and personal accounts, redirect `{APP_URL}/api/v1/integrations/microsoft/callback`, delegated `offline_access Calendars.ReadWrite User.Read`, a client secret; steps in `.env.example`) in `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET`; until then the card reads not configured (`changes/2026-10-18-le-outlook-calendar.md`).
 - **Real AI and telephony** — a Gemini API key; a Twilio account with Media Streams, and one real call round trip on staging; whether to build handset call detection, which Google Play allows only for the default dialler (`changes/2026-10-18-le-calls.md`).
 - **Store submissions** — iOS and Android, in the owner's store consoles.
-- **The standalone Lead Eagle phone app on YOUHAN ONE** — its API is built
-  (`changes/2026-10-19-le-mobile-api.md`). Its attendance tab needs a decision
-  (YOUHAN ONE checks out with the face; the app sends only a position), its
-  notifications an Expo push sender, and pointing it here a store build.
+- **The standalone Lead Eagle phone app on YOUHAN ONE** — its API is built,
+  attendance and push included (`changes/2026-10-19-le-mobile-api.md`,
+  `changes/2026-10-19-le-mobile-attendance-push.md`). Pointing it here is a
+  store build that also checks out through the camera and registers its native
+  push token; Lead Eagle's iOS pushes need the APNs key of the team that owns
+  `ae.leadeagle.app`, and its Android app added to the Firebase project in
+  `FCM_PROJECT_ID`.
 - **Store submissions** — iOS and Android, in the owner's store consoles; the next build carries CallWatch, so Play's Data safety form declares call logs and `READ_PHONE_STATE` (`apps/mobile/README.md`).
 - **Read-only CRM monitoring of every workspace** — built (v1.4.0), but nobody
   can be granted it until `openCoverage` takes a `kind`; that edit needs the
