@@ -8,7 +8,7 @@ import { reachedOut, touchLead } from '@/services/leads/touch';
 import { scoreActivity } from '@/services/leads/scoring';
 import { withRecompute } from '@/services/leads/nextFollowUp';
 import { queueCalendarSync } from '@/services/integrations/calendarSync';
-import { findReplay, recordOutcome, type IdempotencyRequest } from '@/services/idempotency';
+import { claimKey, completeClaim, findReplay, type IdempotencyRequest } from '@/services/idempotency';
 
 export interface CallLogInput {
   outcome: (typeof CALL_LOG_OUTCOMES)[number];
@@ -93,6 +93,7 @@ export async function logLeadCall(ctx: Ctx, leadId: string, input: CallLogInput,
 
   if (placed) {
     const result = await withTx(ctx.tenantId, async (tx) => {
+      if (key) await claimKey(tx, key);
       await tx.call.updateMany({
         where: { tenantId: ctx.tenantId, id: placed.id },
         // After what the live screen saved during the call, never over it.
@@ -108,7 +109,7 @@ export async function logLeadCall(ctx: Ctx, leadId: string, input: CallLogInput,
       );
       const followUp = dueAt ? await bookFollowUp(tx, { callId: placed.id }) : null;
       const done = { call: { id: placed.id, outcome: CALL_OUTCOME_OF[outcome] }, followUp };
-      if (key) await recordOutcome(tx, key, done);
+      if (key) await completeClaim(tx, key, done);
       return done;
     });
     await touchLead(ctx.tenantId, leadId, undefined, reachedOut(placed));
@@ -119,6 +120,7 @@ export async function logLeadCall(ctx: Ctx, leadId: string, input: CallLogInput,
 
   if (ownCall) {
     const corrected = await withTx(ctx.tenantId, async (tx) => {
+      if (key) await claimKey(tx, key);
       const { count } = await tx.activity.updateMany({
         where: ownCall,
         data: {
@@ -137,7 +139,7 @@ export async function logLeadCall(ctx: Ctx, leadId: string, input: CallLogInput,
       );
       const followUp = dueAt ? await bookFollowUp(tx, { activityId: ownCall.id }) : null;
       const result = { activity: { id: ownCall.id, outcome }, followUp };
-      if (key) await recordOutcome(tx, key, result);
+      if (key) await completeClaim(tx, key, result);
       return result;
     });
     await queueCalendarSync(ctx.tenantId, 'followUp', corrected.followUp?.id);
@@ -145,6 +147,7 @@ export async function logLeadCall(ctx: Ctx, leadId: string, input: CallLogInput,
   }
 
   const logged = await withTx(ctx.tenantId, async (tx) => {
+    if (key) await claimKey(tx, key);
     // The outbound-call type, as the cold-call log and the move tool find it.
     const type = await tx.activityType.upsert({
       where: { tenantId_key: { tenantId: ctx.tenantId, key: 'call_out' } },
@@ -173,7 +176,7 @@ export async function logLeadCall(ctx: Ctx, leadId: string, input: CallLogInput,
     );
     const followUp = dueAt ? await bookFollowUp(tx, { activityId: activity.id }) : null;
     const result = { activity, followUp };
-    if (key) await recordOutcome(tx, key, result);
+    if (key) await completeClaim(tx, key, result);
     return result;
   });
   await touchLead(ctx.tenantId, leadId, new Date(logged.activity.occurredAt));
