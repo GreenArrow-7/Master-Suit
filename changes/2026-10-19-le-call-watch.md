@@ -6,7 +6,7 @@ list, in the app, arms it before the dialler opens. When the call ends it is
 logged on the lead through the one-step call log, with its real start time,
 its talk time and Connected or No answer. The page then says "Call logged
 automatically", with Edit, which corrects that call rather than adding one.
-Branch `feat/le-call-watch`, PR —.
+Branch `feat/le-call-watch`, PR #233.
 
 **Why.** Audit row M9-09: the phone app detects calls to and from lead numbers,
 logs them and uploads the recording. It was declined because reading the phone's
