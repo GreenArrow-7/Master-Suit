@@ -5,35 +5,116 @@ import Field from '@/components/forms/Field';
 import { DateTimeInput } from '@/components/forms/DateInput';
 import { sendOrQueue } from '@/lib/offline';
 import { CALL_LOG_OUTCOMES, afterDial, tomorrowAtTen } from '@/lib/leads/callLog';
+import { callWatch, dialAndLog, type AutoLog } from '@/lib/leads/callWatch';
 
 export interface CallLogLead {
   id: string;
   fullName: string;
   /** Back from the dialler (M20-06): the time away as the estimate, and when the call began. */
   dial?: { minutes: number; outcome?: string; at: string };
+  /** The call the phone app logged by itself (M9-09): the log corrects it rather than adding one. */
+  activityId?: string;
 }
+
+/** An automatic log as the dialog's prefill: whole minutes, at least one when it connected. */
+const prefill = (log: AutoLog) => ({
+  minutes: log.durationSecs ? Math.max(1, Math.round(log.durationSecs / 60)) : 0,
+  outcome: log.outcome,
+  at: log.occurredAt,
+});
 
 /**
  * After a `tel:` link: when the page is visible again, the call log opens for
  * the lead just dialled (M4-27), with the minutes estimated from the time away
- * and, back within 8 seconds, No answer picked (M20-06). Returns what the link
- * calls on click.
+ * and, back within 8 seconds, No answer picked (M20-06). In the phone app the
+ * call logs itself instead (M9-09, `lib/leads/callWatch.ts`) and a notice says
+ * so, with Edit; where it cannot (the phone permission refused), as before.
+ *
+ * Returns `dial`, for the link's click (true when it opened the dialler itself,
+ * so a button does not open it again), the notice to render, and `logFor`, for
+ * a Log call button: while the notice is up, that lead's button edits the call
+ * just logged rather than logging it twice. `onLogged` refreshes the page.
  */
-export function useAfterDial(open: (lead: CallLogLead) => void) {
-  const dialled = useRef<{ lead: CallLogLead; at: number } | null>(null);
+export function useAfterDial(open: (lead: CallLogLead) => void, onLogged: () => void) {
+  /** The dial to log on return; `watching` while CallWatch may still log it. */
+  const dialled = useRef<{ lead: CallLogLead; at: number; watching?: true } | null>(null);
+  const [auto, setAuto] = useState<CallLogLead | null>(null);
   useEffect(() => {
     const back = () => {
       if (document.visibilityState !== 'visible' || !dialled.current) return;
-      const { lead, at } = dialled.current;
-      open({ ...lead, dial: { ...afterDial(at, Date.now()), at: new Date(at).toISOString() } });
+      const { lead, at, watching } = dialled.current;
       dialled.current = null;
+      // Back while CallWatch watches: the call logs itself, or there was none.
+      if (watching) return;
+      open({ ...lead, dial: { ...afterDial(at, Date.now()), at: new Date(at).toISOString() } });
     };
     document.addEventListener('visibilitychange', back);
     return () => document.removeEventListener('visibilitychange', back);
   }, [open]);
-  return (lead: CallLogLead) => {
-    dialled.current = { lead: { id: lead.id, fullName: lead.fullName }, at: Date.now() };
+  const dial = (lead: CallLogLead, tel: string, event: { preventDefault: () => void }) => {
+    const who = { id: lead.id, fullName: lead.fullName };
+    const call = { lead: who, at: Date.now() };
+    const watch = callWatch();
+    if (!watch) {
+      dialled.current = call;
+      return false;
+    }
+    // Armed before the dialler opens, so the dialler is opened here.
+    event.preventDefault();
+    setAuto(null);
+    const watching = { ...call, watching: true as const };
+    dialled.current = watching;
+    const openDialler = () => {
+      window.location.href = `tel:${tel}`;
+    };
+    void dialAndLog(watch, who, openDialler).then((watched) => {
+      // Still away on this dial: no return since, and no later dial.
+      const away = dialled.current === watching;
+      if (away) dialled.current = null;
+      if (watched.status === 'unarmed') {
+        dialled.current = call;
+        openDialler();
+      } else if (watched.status === 'none') {
+        // No call within the minute, one placed later perhaps: back, the call log opens as before (M4-27).
+        if (away) dialled.current = call;
+      } else if (watched.status === 'logged') {
+        onLogged();
+        if (watched.activityId) setAuto({ ...who, activityId: watched.activityId, dial: prefill(watched.log) });
+      } else {
+        open({ ...who, dial: prefill(watched.log) });
+      }
+    });
+    return true;
   };
+  const logFor = (lead: CallLogLead): CallLogLead => {
+    if (auto?.id !== lead.id) return lead;
+    setAuto(null);
+    return auto;
+  };
+
+  const talk = auto?.dial?.outcome === 'Connected' ? auto.dial.minutes : 0;
+  const notice = auto && (
+    <div role="status" className="lf-toast lf-outbox">
+      <div>
+        Call logged automatically: {auto.dial?.outcome}
+        {talk ? `, ${talk} min` : ''}.{' '}
+        <button
+          type="button"
+          className="lf-toast__action"
+          onClick={() => {
+            setAuto(null);
+            open(auto);
+          }}
+        >
+          Edit
+        </button>{' '}
+        <button type="button" className="lf-toast__action" onClick={() => setAuto(null)}>
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+  return { dial, notice, logFor };
 }
 
 /**
@@ -86,7 +167,11 @@ export default function CallLogDialog({
         outcome,
         ...(callId && { callId }),
         ...(notes.trim() && { notes: notes.trim() }),
-        ...(minutes && !callId && { durationMins: Number(minutes) }),
+        ...(lead.activityId && { activityId: lead.activityId }),
+        // Correcting an automatic log, minutes left as prefilled keep the measured seconds.
+        ...(minutes &&
+          !callId &&
+          !(lead.activityId && minutes === String(lead.dial?.minutes)) && { durationMins: Number(minutes) }),
         ...(book && followUpAt && { followUpAt }),
         requestKey,
         // Back from the dialler, the call began when the dialler opened.
@@ -108,7 +193,7 @@ export default function CallLogDialog({
     <dialog ref={ref} className="lf-calllog" aria-labelledby={`${id}-title`} onClose={onClose}>
       <form onSubmit={submit} style={{ display: 'grid', gap: 'var(--lf-space-3)' }}>
         <h2 id={`${id}-title`} className="lf-h2" style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>
-          Log call · {lead.fullName}
+          {lead.activityId ? 'Edit call' : 'Log call'} · {lead.fullName}
         </h2>
         <fieldset style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
           <legend className="lf-label" style={{ marginBottom: 6 }}>
@@ -151,9 +236,9 @@ export default function CallLogDialog({
               inputMode="numeric"
               value={minutes}
               onChange={(e) => setMinutes(e.target.value)}
-              aria-describedby={lead.dial ? `${id}-estimate` : undefined}
+              aria-describedby={lead.dial && !lead.activityId ? `${id}-estimate` : undefined}
             />
-            {lead.dial && (
+            {lead.dial && !lead.activityId && (
               <span id={`${id}-estimate`} className="lf-hint">
                 Estimated from your time in the phone app; correct it if it is off.
               </span>
@@ -172,7 +257,7 @@ export default function CallLogDialog({
         )}
         <div style={{ display: 'flex', gap: 'var(--lf-space-2)', flexWrap: 'wrap' }}>
           <button className="lf-btn lf-btn--sm" type="submit" disabled={busy}>
-            {busy ? 'Saving…' : 'Log call'}
+            {busy ? 'Saving…' : lead.activityId ? 'Save' : 'Log call'}
           </button>
           <button className="lf-btn lf-btn--secondary lf-btn--sm" type="button" onClick={() => ref.current?.close()}>
             Cancel

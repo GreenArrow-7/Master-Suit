@@ -18,6 +18,7 @@ export default function SecurityScreen({
   consentGiven,
   deletionRequest,
   deletionExecutionEnabled,
+  devices: signedInDevices,
 }: {
   selfBase: string;
   hrBase: string;
@@ -32,6 +33,8 @@ export default function SecurityScreen({
   } | null;
   /** Whether the worker erases at all right now. Off: requests queue and nothing runs. */
   deletionExecutionEnabled: boolean;
+  /** Phones signed in to this workspace as the viewer (the mobile app's sessions). */
+  devices: { id: string; name: string; platform: string | null; lastUsed: string }[];
 }) {
   const router = useRouter();
 
@@ -57,6 +60,11 @@ export default function SecurityScreen({
   const [delConfirm, setDelConfirm] = useState('');
   const [delBusy, setDelBusy] = useState(false);
   const [delNote, setDelNote] = useState<{ text: string; bad?: boolean } | null>(null);
+
+  // ── Phones ────────────────────────────────────────────────────────────────
+  const [devices, setDevices] = useState(signedInDevices);
+  const [deviceBusy, setDeviceBusy] = useState<string | null>(null);
+  const [deviceNote, setDeviceNote] = useState<{ text: string; bad?: boolean } | null>(null);
 
   // ── Password ──────────────────────────────────────────────────────────────
   const [currentPassword, setCurrentPassword] = useState('');
@@ -196,6 +204,19 @@ export default function SecurityScreen({
       setDelNote({ text: (err as Error).message, bad: true });
     }
     setDelBusy(false);
+  }
+
+  async function signOutDevice(id: string) {
+    setDeviceBusy(id);
+    setDeviceNote(null);
+    try {
+      await call(selfBase, 'device-sign-out', { id });
+      setDevices((held) => held.filter((device) => device.id !== id));
+      setDeviceNote({ text: 'Signed out. That phone has to sign in again.' });
+    } catch (err) {
+      setDeviceNote({ text: (err as Error).message, bad: true });
+    }
+    setDeviceBusy(null);
   }
 
   async function changePassword(event: React.FormEvent) {
@@ -382,6 +403,45 @@ export default function SecurityScreen({
             {pwBusy ? 'Changing…' : 'Change password'}
           </button>
         </form>
+      </section>
+
+      <section className="lf-card lf-security__card">
+        <header className="lf-security__head">
+          <h2>Phones signed in</h2>
+        </header>
+        <p className="lf-security__copy">
+          The phone app stays signed in for 90 days. Sign out a phone you no longer use or have lost.
+        </p>
+        {devices.length ? (
+          <ul className="lf-security__devices">
+            {devices.map((device) => (
+              <li key={device.id}>
+                <div>
+                  <strong>{device.name}</strong>
+                  <div className="lf-security__helper">
+                    {device.platform === 'ios' ? 'iPhone · ' : device.platform === 'android' ? 'Android · ' : ''}
+                    Last used {device.lastUsed}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="lf-btn lf-btn--secondary"
+                  onClick={() => void signOutDevice(device.id)}
+                  disabled={deviceBusy !== null}
+                >
+                  {deviceBusy === device.id ? 'Signing out…' : 'Sign out'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="lf-security__helper">No phone is signed in to this workspace.</p>
+        )}
+        {deviceNote && (
+          <p className="lf-security__note" data-bad={deviceNote.bad} role="status">
+            {deviceNote.text}
+          </p>
+        )}
       </section>
 
       <section className="lf-card lf-security__card">

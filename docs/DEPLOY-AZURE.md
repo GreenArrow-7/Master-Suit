@@ -559,7 +559,8 @@ name:
 - **Single point of failure.** One VM. Postgres, Redis and object storage share
   it with the application. There is no failover and no point-in-time recovery —
   only the daily backup you scheduled above, which means the worst case is
-  losing up to a day of work. That backup is copied off the machine
+  losing up to a day of work (the accepted RPO, 24 hours; WAL-based PITR is the
+  upgrade path, `docs/BACKUP-RECOVERY.md`). That backup is copied off the machine
   automatically and the copy is verified (`BACKUP_REMOTE`, see
   `docs/BACKUP-RECOVERY.md`); restoring *from* that copy is still a drill
   somebody runs rather than a timer.

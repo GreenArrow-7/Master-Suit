@@ -301,8 +301,20 @@ esac
        The local backup is intact; the off-host copy is not. Do not prune."
 
 # A marker beside the backup that was shipped, so scripts/backup-status.sh can
-# report how long ago one last left the machine. Written only on success — a
-# failed shipment must not leave evidence that one happened.
-[ "${VERIFY_ONLY}" = "1" ] || date -u +%Y-%m-%dT%H:%M:%SZ > "${SRC}/.shipped-at" 2>/dev/null || true
+# report when one last left the machine, where to and how much, without
+# BACKUP_REMOTE or the remote's credentials — the release preflight runs it with
+# neither. Written only on success — a failed shipment must not leave evidence
+# that one happened.
+#
+# The destination is named, never copied whole: an rclone connection string can
+# carry keys (`rclone::s3,secret_access_key=...:bucket`) and an ssh target a user.
+case "${MODE}" in
+  rclone) WHERE="${REMOTE#rclone:}"; WHERE="rclone:${WHERE%%[:,]*}" ;;
+  rsync)  WHERE="${REMOTE%%:*}";     WHERE="rsync:${WHERE#*@}" ;;
+  s3)     WHERE="${REMOTE#s3://}";   WHERE="s3://${WHERE%%/*}" ;;
+  local)  WHERE="${REMOTE}" ;;
+esac
+[ "${VERIFY_ONLY}" = "1" ] || printf '%s to %s, %s artefact(s) verified\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${WHERE}" "${#ARTEFACTS[@]}" > "${SRC}/.shipped-at" 2>/dev/null || true
 
 say "$([ "${VERIFY_ONLY}" = "1" ] && echo "verified" || echo "shipped and verified"): ${#ARTEFACTS[@]} artefact(s) at ${DEST}"

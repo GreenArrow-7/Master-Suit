@@ -72,6 +72,7 @@ const PLAN = {
   'Observability drift': { run: true },
   'Redis auth': { run: true },
   'Face token gate': { run: true },
+  'Face model download': { run: true },
   'Backup round trip': { run: true },
   Test: { run: true },
   // Needs E2E_DATABASE_URL and E2E_REDIS_URL, named explicitly and pointing at
@@ -146,9 +147,11 @@ function stepsOf(file) {
     }
   }
 
-  const declared = readFileSync(file, 'utf8')
-    .split('\n')
-    .filter((l) => /^ {6}- name:/.test(l)).length;
+  // Over the `verify` job only, the span the loop above reads: the face-e2e job
+  // has named steps of its own.
+  const start = lines.findIndex((l) => /^ {2}verify:/.test(l));
+  const end = lines.findIndex((l, i) => i > start && /^ {2}\S/.test(l));
+  const declared = lines.slice(start, end === -1 ? undefined : end).filter((l) => /^ {6}- name:/.test(l)).length;
   if (steps.length !== declared) {
     console.error(
       `[verify] Parsed ${steps.length} named steps out of ${declared} in ci.yml. This script's parser is\n` +

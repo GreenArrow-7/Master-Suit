@@ -3,7 +3,7 @@ import { Forbidden, MethodNotAllowed } from '@/lib/errors';
 import { route } from '@/lib/api/handler';
 import { currentSessionToken } from '@/lib/auth/session';
 import { requireWorkspace } from '@/lib/workspace';
-import { changeOwnPassword, mustChangePassword } from '@/services/identity/accounts';
+import { changeOwnPassword, mustChangePassword, signOutDevice } from '@/services/identity/accounts';
 import { cancelAccountDeletion, myDeletionRequest, requestAccountDeletion } from '@/services/identity/accountDeletion';
 import {
   beginTotpEnrolment,
@@ -39,6 +39,7 @@ const paramsSchema = z.object({
     'account-deletion-request',
     'account-deletion-cancel',
     'lead-availability',
+    'device-sign-out',
   ]),
 });
 
@@ -133,6 +134,9 @@ export const POST = route(
       // "Available for new leads" (audit M7-07): automatic assignment passes over whoever is off.
       case 'lead-availability':
         return setOwnAvailability(ctx, z.object({ isAvailable: z.boolean() }).parse(body).isAvailable);
+      // One of your own phones (M20-10): a lost one is signed out here.
+      case 'device-sign-out':
+        return signOutDevice(ctx, z.object({ id: z.string().cuid() }).parse(body).id);
       case 'two-factor-recovery-regenerate': {
         const input = z.object({ code: z.string().length(6) }).parse(body);
         return regenerateRecoveryCodes(ctx, input.code);

@@ -3091,6 +3091,14 @@ model PlatformSession {
   /// revoked credential bumps the version, so its sessions stop resolving on the
   /// next request even if a revocation write was missed.
   credentialVersion Int?
+  /// WEB is a browser's cookie session. MOBILE is a phone's bearer token from
+  /// /api/mobile/auth/sign-in: pinned to `activeTenantId`, accepted only in the
+  /// Authorization header on /api/mobile, never as a cookie (`loadSession`
+  /// reads WEB only). One table, so every revocation ends both. A MOBILE
+  /// session's `deviceLabel` is the name the app gave.
+  kind              String                     @default("WEB")
+  /// A MOBILE session's 'ios' or 'android', as the app said. Shown, never trusted.
+  platform          String?
   expiresAt         DateTime
   lastSeenAt        DateTime                   @default(now())
   revokedAt         DateTime?

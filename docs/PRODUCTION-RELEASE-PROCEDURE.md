@@ -189,6 +189,9 @@ df -h / /var/backups /var/lib/docker | sort -u; free -m
 cd /opt/mastersuite
 apps/web/scripts/backup.sh /var/backups/master-suite
 apps/web/scripts/backup-status.sh /var/backups/master-suite
+# prints, as evidence: the nightly timer's state and next run, its last result,
+# "N of the last 7 full days have a complete backup", the newest off-site copy
+# (from the .shipped-at markers) — `note:` lines never fail the step
 ```
 
 ### The recovery boundary is the dump's start, read from the manifest **[C12]**

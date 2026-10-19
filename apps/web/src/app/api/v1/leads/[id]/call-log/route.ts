@@ -1,19 +1,10 @@
 import { z } from 'zod';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { route } from '@/lib/api/handler';
-import { prisma, withTx, type TxClient } from '@/lib/db';
-import { audit } from '@/lib/security/audit';
-import { assertCallInScope, assertLeadInScope } from '@/lib/security/record-scope';
-import { can } from '@/lib/security/rbac';
-import { NotFound } from '@/lib/errors';
-import { CALL_LOG_OUTCOMES, CALL_OUTCOME_OF, FOLLOW_UP_TITLE } from '@/lib/leads/callLog';
-import { reachedOut, touchLead } from '@/services/leads/touch';
-import { scoreActivity } from '@/services/leads/scoring';
-import { withRecompute } from '@/services/leads/nextFollowUp';
-import { queueCalendarSync } from '@/services/integrations/calendarSync';
+import { CALL_LOG_OUTCOMES } from '@/lib/leads/callLog';
+import { logLeadCall } from '@/services/leads/logCall';
 import { workspaceTimezone } from '@/services/hr/attendance';
 import { dayBounds } from '@/services/targets/dailyBoard';
-import { findReplay, recordOutcome } from '@/services/idempotency';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -38,8 +29,16 @@ const body = z
      * go onto that call, which is already on the timeline, and no second call is logged.
      */
     callId: z.string().cuid().optional(),
+    /**
+     * The call logged automatically from the phone app that this log corrects (M9-09):
+     * its outcome, note and minutes are rewritten and no second call is logged. The
+     * caller's own call on this lead, else 404.
+     */
+    activityId: z.string().cuid().optional(),
     notes: z.string().trim().max(2000).optional(),
     durationMins: z.number().int().min(0).max(600).optional(),
+    /** The talk time as the phone app measured it (M9-09); takes the place of `durationMins`. */
+    durationSecs: z.number().int().min(0).max(36_000).optional(),
     /** The next follow-up, on the workspace's clock; none when left out. */
     followUpAt: wallClock.optional(),
     /** A client's key for this one call, so a send repeated after a lost answer is not logged twice. */
@@ -62,132 +61,54 @@ function onWorkspaceClock(at: string, timeZone: string) {
 }
 
 /**
- * The one-step call log (PROP-02.2, M4-27): what the call found, a note and
- * the next follow-up, in one request and one transaction. The call is an
- * outbound-call Activity on the lead, scored as one logged from the timeline
- * (M4-11); the follow-up is the caller's, on the lead, and moves its next
- * follow-up date. Both are audited in the transaction. Outside the caller's
- * `leads:EDIT` scope the lead answers 404 and nothing is written. With a
- * `callId` (the dialog that opens when a provider call ends) the outcome is
- * that call's own, and a call outside the caller's `calls:EDIT` reach or on
- * another lead answers 404.
+ * The one-step call log (PROP-02.2, M4-27) from the lead page and the lead
+ * lists: `logLeadCall` (`services/leads/logCall.ts`), which the phone's call
+ * log runs too, with the follow-up read on the workspace's clock and the
+ * dialog's `requestKey` kept with the call. With an `activityId` (the call the
+ * phone app logged by itself, M9-09) the log corrects that call in place.
+ * `idempotent: false`: an `Idempotency-Key` (the outbox's, an API client's)
+ * is kept the same way when the body has no `requestKey`, so every repeat meets
+ * the lead, call and activity checks before it is replayed.
  */
 export const POST = route(
-  { module: 'leads', productModule: LEAD_MODULES, action: 'EDIT', params, body },
-  async ({ ctx, params, body }) => {
-    const { requestKey, followUpAt, durationMins, outcome, notes, occurredAt, callId } = body;
+  { module: 'leads', productModule: LEAD_MODULES, action: 'EDIT', idempotent: false, params, body },
+  async ({ ctx, params, body, req }) => {
+    const { followUpAt, durationMins, outcome, notes, occurredAt, callId, activityId } = body;
+    const requestKey = body.requestKey ?? req.headers.get('idempotency-key')?.trim();
     const leadId = params.id;
     const dueAt = followUpAt ? onWorkspaceClock(followUpAt, await workspaceTimezone(ctx)) : null;
-    const key = requestKey && {
-      tenantId: ctx.tenantId,
-      operation: 'lead.call-log',
-      requestKey,
-      actorUserId: ctx.actor.id,
-      input: {
-        leadId,
-        outcome,
-        notes: notes ?? null,
-        durationMins: durationMins ?? null,
-        followUpAt: followUpAt ?? null,
-        callId: callId ?? null,
-      },
-    };
-
-    // 404 outside the caller's scope before anything else, a replay included.
-    await assertLeadInScope(ctx, leadId, prisma, 'EDIT');
-    // A write to a call takes calls:EDIT, as PATCH /calls/:id does: callScope's
-    // own-calls fallback is for reading a call under `leads`, not changing it.
-    if (callId && !can(ctx, 'calls', 'EDIT')) throw NotFound('Call');
-    const placed = callId ? await assertCallInScope(ctx, callId, 'EDIT') : null;
-    if (placed && placed.leadId !== leadId) throw NotFound('Call');
-    const replay = key ? await findReplay<{ activity: { id: string; occurredAt: string } }>(key) : null;
-    if (replay) return replay.result;
-
-    /** The next follow-up, the caller's, on the lead (and the call it follows), audited with what it follows. */
-    async function bookFollowUp(tx: TxClient, follows: Record<string, string>) {
-      const followUp = await withRecompute(tx, ctx.tenantId, [leadId], () =>
-        tx.followUpTask.create({
-          data: {
-            tenantId: ctx.tenantId,
-            leadId,
-            callId: placed?.id ?? null,
-            ownerId: ctx.actor.id,
-            createdById: ctx.actor.id,
-            title: FOLLOW_UP_TITLE,
-            description: notes || null,
-            dueAt: dueAt!,
-          },
-          select: { id: true, dueAt: true },
-        }),
-      );
-      await audit(
-        ctx,
-        { event: 'RECORD_CREATED', objectType: 'follow-up', recordId: followUp.id, metadata: { leadId, ...follows } },
-        tx,
-      );
-      return followUp;
-    }
-
-    if (placed) {
-      const result = await withTx(ctx.tenantId, async (tx) => {
-        await tx.call.updateMany({
-          where: { tenantId: ctx.tenantId, id: placed.id },
-          // After what the live screen saved during the call, never over it.
-          data: {
-            outcome: CALL_OUTCOME_OF[outcome],
-            ...(notes && { notes: [placed.notes, notes].filter(Boolean).join('\n') }),
-          },
-        });
-        await audit(
-          ctx,
-          { event: 'RECORD_UPDATED', objectType: 'call', recordId: placed.id, metadata: { leadId, outcome } },
-          tx,
-        );
-        const followUp = dueAt ? await bookFollowUp(tx, { callId: placed.id }) : null;
-        const done = { call: { id: placed.id, outcome: CALL_OUTCOME_OF[outcome] }, followUp };
-        if (key) await recordOutcome(tx, key, done);
-        return done;
-      });
-      await touchLead(ctx.tenantId, leadId, undefined, reachedOut(placed));
-      // On the workspace's calendars where they hold every follow-up (M8-08, M8-09).
-      await queueCalendarSync(ctx.tenantId, 'followUp', result.followUp?.id);
-      return result;
-    }
-
-    const logged = await withTx(ctx.tenantId, async (tx) => {
-      // The outbound-call type, as the cold-call log and the move tool find it.
-      const type = await tx.activityType.upsert({
-        where: { tenantId_key: { tenantId: ctx.tenantId, key: 'call_out' } },
-        update: {},
-        create: { tenantId: ctx.tenantId, key: 'call_out', name: 'Outbound call', scoreDelta: 3 },
-        select: { id: true },
-      });
-      const activity = await tx.activity.create({
-        data: {
+    const key = requestKey
+      ? {
           tenantId: ctx.tenantId,
-          typeId: type.id,
-          leadId,
-          ownerId: ctx.actor.id,
-          outcome,
-          notes: notes || undefined,
-          durationSecs: durationMins === undefined ? undefined : durationMins * 60,
-          occurredAt,
-        },
-        select: { id: true, leadId: true, typeId: true, outcome: true, occurredAt: true },
-      });
-      await scoreActivity(tx, ctx, activity);
-      await audit(
-        ctx,
-        { event: 'RECORD_CREATED', objectType: 'activity', recordId: activity.id, metadata: { leadId, outcome } },
-        tx,
-      );
-      const followUp = dueAt ? await bookFollowUp(tx, { activityId: activity.id }) : null;
-      const result = { activity, followUp };
-      if (key) await recordOutcome(tx, key, result);
-      return result;
-    });
-    await touchLead(ctx.tenantId, leadId, new Date(logged.activity.occurredAt));
-    await queueCalendarSync(ctx.tenantId, 'followUp', logged.followUp?.id);
-    return logged;
+          operation: 'lead.call-log',
+          requestKey,
+          actorUserId: ctx.actor.id,
+          input: {
+            leadId,
+            outcome,
+            notes: notes ?? null,
+            durationMins: durationMins ?? null,
+            followUpAt: followUpAt ?? null,
+            callId: callId ?? null,
+            // Only when sent, so a key recorded before these existed still replays.
+            ...(body.durationSecs !== undefined && { durationSecs: body.durationSecs }),
+            ...(activityId && { activityId }),
+          },
+        }
+      : undefined;
+    return logLeadCall(
+      ctx,
+      leadId,
+      {
+        outcome,
+        notes,
+        durationSecs: body.durationSecs ?? (durationMins === undefined ? undefined : durationMins * 60),
+        dueAt,
+        occurredAt,
+        callId,
+        activityId,
+      },
+      key,
+    );
   },
 );

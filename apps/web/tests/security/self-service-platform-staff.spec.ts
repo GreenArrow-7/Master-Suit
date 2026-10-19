@@ -36,11 +36,15 @@ const twoFactorStatus = vi.fn(async () => ({ enabled: false }));
 const myDeletionRequest = vi.fn(async () => null);
 const mustChangePassword = vi.fn(async () => false);
 const myEmployee = vi.fn(async () => null);
+const myDevices = vi.fn(async () => []);
 
-vi.mock('@/services/identity/accounts', () => ({ mustChangePassword }));
+vi.mock('@/services/identity/accounts', () => ({ mustChangePassword, myDevices }));
 vi.mock('@/services/identity/twoFactor', () => ({ twoFactorStatus }));
 vi.mock('@/services/identity/accountDeletion', () => ({ myDeletionRequest, executionEnabled: () => false }));
-vi.mock('@/services/hr/attendance', () => ({ activeConsent: vi.fn(async () => null) }));
+vi.mock('@/services/hr/attendance', () => ({
+  activeConsent: vi.fn(async () => null),
+  workspaceTimezone: vi.fn(async () => 'Asia/Dubai'),
+}));
 vi.mock('@/services/hr/leave', () => ({ myEmployee }));
 vi.mock('../../src/app/(workspace)/[workspaceSlug]/profile/security/SecurityScreen', () => ({
   default: () => null,
@@ -66,6 +70,7 @@ describe('the security screen and platform identities', () => {
     forbidden.mockClear();
     twoFactorStatus.mockClear();
     myDeletionRequest.mockClear();
+    myDevices.mockClear();
   });
 
   // 'break-glass' is the regression: it is the mode the reported crash ran in.
@@ -79,6 +84,7 @@ describe('the security screen and platform identities', () => {
     // These are the two that threw NotFound and produced the error page.
     expect(twoFactorStatus).not.toHaveBeenCalled();
     expect(myDeletionRequest).not.toHaveBeenCalled();
+    expect(myDevices).not.toHaveBeenCalled();
   });
 
   it('still renders for an ordinary member, who does hold one', async () => {

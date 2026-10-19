@@ -191,6 +191,48 @@ describe('Idempotency-Key', () => {
     );
   });
 
+  it('keeps no key for a body that never arrived, so the resend under it runs', async () => {
+    // The outbox's PATCH, cut off by a page reload while route() authenticated:
+    // the body stream errors when it is finally read.
+    const leadId = fixture.a.leadIds[1]!;
+    const path = `/api/v1/leads/${leadId}`;
+    const cut = await updateLead(
+      new Request(`http://localhost${path}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie: fixture.a.cookie, 'idempotency-key': 'cut-off' },
+        body: new ReadableStream({ start: (controller) => controller.error(new Error('aborted')) }),
+        duplex: 'half',
+      } as RequestInit),
+      { params: Promise.resolve({ id: leadId }) },
+    );
+    expect(cut.status).toBe(422);
+    expect(
+      await prisma.idempotentRequest.count({ where: { tenantId: fixture.a.tenantId, requestKey: 'cut-off' } }),
+    ).toBe(0);
+
+    const resent = await send(updateLead, 'PATCH', path, fixture.a.cookie, { company: 'Arrived Co' }, 'cut-off');
+    expect(resent.status).toBe(200);
+    expect((await prisma.lead.findFirstOrThrow({ where: { tenantId: fixture.a.tenantId, id: leadId } })).company).toBe(
+      'Arrived Co',
+    );
+  });
+
+  it('refuses a body that is not JSON instead of running it as an empty change', async () => {
+    const leadId = fixture.a.leadIds[1]!;
+    const res = await updateLead(
+      new Request(`http://localhost/api/v1/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie: fixture.a.cookie, 'idempotency-key': 'not-json' },
+        body: '{"company": "Half',
+      }),
+      { params: Promise.resolve({ id: leadId }) },
+    );
+    expect(res.status).toBe(422);
+    expect(
+      await prisma.idempotentRequest.count({ where: { tenantId: fixture.a.tenantId, requestKey: 'not-json' } }),
+    ).toBe(0);
+  });
+
   it('changes nothing without the header: a second POST of a known number is still a duplicate', async () => {
     const body = { fullName: 'Idem Plain', phone: phone(5), source: 'API' };
     expect((await send(createLead, 'POST', '/api/v1/leads', fixture.a.cookie, body)).status).toBe(200);
