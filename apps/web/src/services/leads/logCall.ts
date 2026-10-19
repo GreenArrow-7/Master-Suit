@@ -22,6 +22,8 @@ export interface CallLogInput {
   occurredAt?: Date;
   /** The provider call this log is the outcome of (M9-02). */
   callId?: string;
+  /** The call the phone app logged by itself that this log corrects in place (M9-09). */
+  activityId?: string;
 }
 
 /**
@@ -34,11 +36,22 @@ export interface CallLogInput {
  * the transaction. Outside the caller's `leads:EDIT` scope the lead answers 404
  * and nothing is written. With a `callId` the outcome is that call's own, and a
  * call outside the caller's `calls:EDIT` reach or on another lead answers 404.
- * `key`, the caller's own request key, is checked after the scope and recorded
- * in the transaction.
+ * With an `activityId` (the call the phone app logged by itself, M9-09) the log
+ * corrects that call in place: the caller's own outbound call on this lead,
+ * else 404. `key`, the caller's own request key, is checked after the scope and
+ * recorded in the transaction.
  */
 export async function logLeadCall(ctx: Ctx, leadId: string, input: CallLogInput, key?: IdempotencyRequest) {
-  const { outcome, notes, durationSecs, dueAt, occurredAt, callId } = input;
+  const { outcome, notes, durationSecs, dueAt, occurredAt, callId, activityId } = input;
+  /** The call `activityId` may correct: the caller's own outbound call on this lead. */
+  const ownCall = activityId && {
+    tenantId: ctx.tenantId,
+    id: activityId,
+    leadId,
+    ownerId: ctx.actor.id,
+    deletedAt: null,
+    type: { key: 'call_out' },
+  };
 
   // 404 outside the caller's scope before anything else, a replay included.
   await assertLeadInScope(ctx, leadId, prisma, 'EDIT');
@@ -47,6 +60,9 @@ export async function logLeadCall(ctx: Ctx, leadId: string, input: CallLogInput,
   if (callId && !can(ctx, 'calls', 'EDIT')) throw NotFound('Call');
   const placed = callId ? await assertCallInScope(ctx, callId, 'EDIT') : null;
   if (placed && placed.leadId !== leadId) throw NotFound('Call');
+  if (ownCall && !placed && !(await prisma.activity.findFirst({ where: ownCall, select: { id: true } }))) {
+    throw NotFound('Activity');
+  }
   const replay = key ? await findReplay<{ activity: { id: string; occurredAt: string } }>(key) : null;
   if (replay) return replay.result;
 
@@ -99,6 +115,33 @@ export async function logLeadCall(ctx: Ctx, leadId: string, input: CallLogInput,
     // On the workspace's calendars where they hold every follow-up (M8-08, M8-09).
     await queueCalendarSync(ctx.tenantId, 'followUp', result.followUp?.id);
     return result;
+  }
+
+  if (ownCall) {
+    const corrected = await withTx(ctx.tenantId, async (tx) => {
+      const { count } = await tx.activity.updateMany({
+        where: ownCall,
+        data: {
+          outcome,
+          ...(notes && { notes }),
+          ...(durationSecs !== undefined && { durationSecs }),
+          updatedById: ctx.actor.id,
+        },
+      });
+      // Deleted since the check above.
+      if (!count) throw NotFound('Activity');
+      await audit(
+        ctx,
+        { event: 'RECORD_UPDATED', objectType: 'activity', recordId: ownCall.id, metadata: { leadId, outcome } },
+        tx,
+      );
+      const followUp = dueAt ? await bookFollowUp(tx, { activityId: ownCall.id }) : null;
+      const result = { activity: { id: ownCall.id, outcome }, followUp };
+      if (key) await recordOutcome(tx, key, result);
+      return result;
+    });
+    await queueCalendarSync(ctx.tenantId, 'followUp', corrected.followUp?.id);
+    return corrected;
   }
 
   const logged = await withTx(ctx.tenantId, async (tx) => {

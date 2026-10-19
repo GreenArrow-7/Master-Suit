@@ -29,8 +29,16 @@ const body = z
      * go onto that call, which is already on the timeline, and no second call is logged.
      */
     callId: z.string().cuid().optional(),
+    /**
+     * The call logged automatically from the phone app that this log corrects (M9-09):
+     * its outcome, note and minutes are rewritten and no second call is logged. The
+     * caller's own call on this lead, else 404.
+     */
+    activityId: z.string().cuid().optional(),
     notes: z.string().trim().max(2000).optional(),
     durationMins: z.number().int().min(0).max(600).optional(),
+    /** The talk time as the phone app measured it (M9-09); takes the place of `durationMins`. */
+    durationSecs: z.number().int().min(0).max(36_000).optional(),
     /** The next follow-up, on the workspace's clock; none when left out. */
     followUpAt: wallClock.optional(),
     /** A client's key for this one call, so a send repeated after a lost answer is not logged twice. */
@@ -56,12 +64,13 @@ function onWorkspaceClock(at: string, timeZone: string) {
  * The one-step call log (PROP-02.2, M4-27) from the lead page and the lead
  * lists: `logLeadCall` (`services/leads/logCall.ts`), which the phone's call
  * log runs too, with the follow-up read on the workspace's clock and the
- * dialog's `requestKey` kept with the call.
+ * dialog's `requestKey` kept with the call. With an `activityId` (the call the
+ * phone app logged by itself, M9-09) the log corrects that call in place.
  */
 export const POST = route(
   { module: 'leads', productModule: LEAD_MODULES, action: 'EDIT', params, body },
   async ({ ctx, params, body }) => {
-    const { requestKey, followUpAt, durationMins, outcome, notes, occurredAt, callId } = body;
+    const { requestKey, followUpAt, durationMins, outcome, notes, occurredAt, callId, activityId } = body;
     const leadId = params.id;
     const dueAt = followUpAt ? onWorkspaceClock(followUpAt, await workspaceTimezone(ctx)) : null;
     const key = requestKey
@@ -77,6 +86,9 @@ export const POST = route(
             durationMins: durationMins ?? null,
             followUpAt: followUpAt ?? null,
             callId: callId ?? null,
+            // Only when sent, so a key recorded before these existed still replays.
+            ...(body.durationSecs !== undefined && { durationSecs: body.durationSecs }),
+            ...(activityId && { activityId }),
           },
         }
       : undefined;
@@ -86,10 +98,11 @@ export const POST = route(
       {
         outcome,
         notes,
-        durationSecs: durationMins === undefined ? undefined : durationMins * 60,
+        durationSecs: body.durationSecs ?? (durationMins === undefined ? undefined : durationMins * 60),
         dueAt,
         occurredAt,
         callId,
+        activityId,
       },
       key,
     );

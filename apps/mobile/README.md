@@ -17,7 +17,8 @@ production-supported architecture is chosen. Do not submit them to a store.
 | Server | `MOBILE_SERVER_URL` at sync time — an https origin only (enforced) |
 | Navigation | The server origin only; every other host opens in the system browser (no `allowNavigation`) |
 | Session | The web app's httpOnly session cookie, first-party in the WebView; no passwords or tokens stored by the app |
-| Permissions | Android: `INTERNET`, `CAMERA`, `ACCESS_COARSE_LOCATION`/`ACCESS_FINE_LOCATION`, `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`. iOS: camera, location when in use and microphone usage descriptions (`ios/App/App/Info.plist`) |
+| Permissions | Android: `INTERNET`, `CAMERA`, `ACCESS_COARSE_LOCATION`/`ACCESS_FINE_LOCATION`, `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `READ_PHONE_STATE` (CallWatch, below). iOS: camera, location when in use and microphone usage descriptions (`ios/App/App/Info.plist`); CallWatch needs none |
+| Calls | CallWatch, the app's own plugin: a call placed from a lead in the app logs itself on the lead (below) |
 | Backup | Android backup and device transfer disabled (the WebView cookie store holds the session) |
 | FileProvider | Limited to the camera capture folder (`external-files-path` `Pictures/`) |
 | Push | `@capacitor/push-notifications` 8.1.2 is in the build; it stays off until the owner's Firebase file and APNs key exist (`changes/2026-10-17-native-push-plugin.md`) |
@@ -139,6 +140,58 @@ the plugin is present. `@capacitor/push-notifications` is installed and synced
 3. Server: the `FCM_*` and `APNS_*` variables (`.env.example`); `APNS_BUNDLE_ID`
    must equal `appId`.
 
+## Calls placed from the app log themselves (CallWatch)
+
+`CallWatch` is a local Capacitor plugin in this project, not an npm package:
+`android/app/src/main/java/com/youhan/one/CallWatchPlugin.java` (registered in
+`MainActivity`) and the `CallWatchPlugin` class in
+`ios/App/App/YouhanBridgeViewController.swift` (registered in `capacitorDidLoad`). The
+web half is `apps/web/src/lib/leads/callWatch.ts`.
+
+- `start({ key })` arms it for the next outgoing call and answers `{ armed }`. One
+  `callEnded` event follows with the key: `{ startedAt, connectedAt, endedAt,
+  durationSeconds, connected, timedOut }` (epoch ms), when that call ends, or with
+  `timedOut` after 60 seconds with no call. A call coming in while armed is ignored.
+- The lead page and the lead list arm it before opening `tel:`; the phone's own dialler
+  places the call. When it ends the call is logged on the lead through the one-step call
+  log (start time, talk time, Connected or No answer, one request key per call so a retry
+  is not a second log), and the page says "Call logged automatically" with Edit, which
+  corrects that call rather than adding one. In a browser, or in an app built before
+  CallWatch, nothing changes.
+- **Android**: `TelephonyCallback.CallStateListener` on API 31+, `PhoneStateListener`
+  below. Needs `READ_PHONE_STATE`, asked for once, after a rationale, the first time an
+  agent taps Call; refused, the manual call log opens after the dialler as before (the
+  agent can allow it later under the app's Phone permission). Android tells an ordinary
+  app only idle, ringing and off hook: not the number and not when an outgoing call was
+  answered. So `connected` and `connectedAt` are null and `durationSeconds` is the time off
+  hook, ringing included; the page counts 45 seconds or more off hook as answered
+  (`ANSWERED_AFTER_SECS`, changed with a web deploy) and the agent corrects with Edit.
+- **iOS**: `CXCallObserver`, no permission. It reports the answer (`connected`). iOS
+  suspends the app soon after the call screen opens; a background task keeps it awake
+  for about 30 seconds to see the answer, and an answer learnt only at the end is counted
+  from the start of the call.
+- **Not detected**: inbound calls and calls dialled outside the app. Those need the phone's
+  call log (`READ_CALL_LOG`), which Google Play restricts to the default dialler, so the
+  app never asks for it, nor for `PROCESS_OUTGOING_CALLS`, `ANSWER_PHONE_CALLS`,
+  `CALL_PHONE` or the dialler role.
+- **No recordings**: a third-party app cannot record cellular call audio on Android 10+ or
+  on iOS. Recorded calls come from calls bridged through the workspace's telephony
+  provider (Call with AI assistance), whose recordings the server already stores.
+- The Swift half has not been compiled here (no Mac); it follows the Capacitor 8 plugin
+  shape (`CAPPlugin`, `CAPBridgedPlugin`, `registerPluginInstance`). Build it in Xcode
+  before an iOS release.
+- It reaches users only with a new store build (the web half is live with a deploy and
+  does nothing until the app carries the plugin).
+
+Store forms:
+
+- **Play Data safety**: `READ_PHONE_STATE` is declared. The app sends the start time and
+  length of calls placed from it to the workspace, with the lead they were for: declare
+  *Calls and SMS → Call logs*, collected, not shared, for app functionality, linked to the
+  user. Nothing is read from the phone's call history.
+- **App Store App Privacy**: the same call start times and lengths, under *Other user
+  content* or *Other data types*, linked to the user, for app functionality.
+
 ## Before any release build
 
 - **Architecture** — `server.url` is not production-supported (see top).
@@ -146,4 +199,4 @@ the plugin is present. `@capacitor/push-notifications` is installed and synced
 - **A stable, approved HTTPS origin** — dev tunnels show Microsoft's one-time "developer tunnel" warning page to browsers and WebViews.
 - **Release signing** — upload key ownership (Android), Apple team, certificates and provisioning (iOS).
 - **App Store guideline 4.2** — apps that are only a website are rejected.
-- **Privacy** — privacy policy URL, Play Data safety form, App Privacy labels, iOS privacy manifest.
+- **Privacy** — privacy policy URL, Play Data safety form (with `READ_PHONE_STATE` and call logs, see CallWatch above), App Privacy labels, iOS privacy manifest.
