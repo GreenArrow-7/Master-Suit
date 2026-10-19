@@ -10,10 +10,15 @@
  * to +5.5°, which is the ≥ 12° left/right liveness swing; no 2D warp moves its
  * pitch estimate by the 10° an "up" challenge needs, so the spec re-draws "up".
  *
+ * Each source is pinned by SHA-256, so CI (the face-e2e job) always tests the
+ * same pictures: a file Commons replaces fails here by name instead of moving
+ * the scores the spec relies on.
+ *
  *   node scripts/face-test-frames.mjs            # from apps/web
  *   FACE_TEST_IMAGES=C:\somewhere node scripts/face-test-frames.mjs
  */
 import sharp from 'sharp';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -21,24 +26,43 @@ const dir = process.env.FACE_TEST_IMAGES || path.resolve('tests', 'faces-local')
 const sources = path.join(dir, 'sources');
 mkdirSync(sources, { recursive: true });
 
+/** File:Ellen Ochoa.jpg, File:Ellen Ochoa, official portrait (cropped).jpg, File:Mae Jemison.jpg */
 const SOURCES = {
-  'ellen-ochoa.jpg': 'Ellen Ochoa.jpg',
-  'ellen-ochoa-portrait.jpg': 'Ellen Ochoa, official portrait (cropped).jpg',
-  'mae-jemison.jpg': 'Mae Jemison.jpg',
+  'ellen-ochoa.jpg': ['e/e8/Ellen_Ochoa.jpg', 'fad48e8e3d1a7e38fa328c2059040fcde95b0cc4b9f6647f48a91274bf8e7928'],
+  'ellen-ochoa-portrait.jpg': [
+    'a/ac/Ellen_Ochoa%2C_official_portrait_%28cropped%29.jpg',
+    '05992260d250a73b6a3a63be7a6797376c91f322939ff56a8c3c1ba54ca14887',
+  ],
+  'mae-jemison.jpg': ['5/55/Mae_Carol_Jemison.jpg', '7f9c8203cbf9e1304e30eedc2577d245818790f74cb817c45b17fecf7f188776'],
 };
 
-async function source(name) {
-  const file = path.join(sources, name);
-  if (!existsSync(file)) {
-    const url = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(SOURCES[name])}`;
+/** Wikimedia answers a burst with 429; a cold CI cache is exactly a burst. */
+async function download(url) {
+  for (let attempt = 1; ; attempt += 1) {
     const res = await fetch(url, {
       headers: { 'user-agent': 'youhan-one-face-test-frames/1.0 (development test data)' },
     });
-    if (!res.ok) throw new Error(`${url}: ${res.status}`);
-    writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+    if (res.ok) return Buffer.from(await res.arrayBuffer());
+    if (attempt === 5 || (res.status !== 429 && res.status < 500)) throw new Error(`${url}: ${res.status}`);
+    await new Promise((resolve) => setTimeout(resolve, attempt * 5_000));
+  }
+}
+
+async function source(name) {
+  const [upload, sha256] = SOURCES[name];
+  const file = path.join(sources, name);
+  if (!existsSync(file)) {
+    writeFileSync(file, await download(`https://upload.wikimedia.org/wikipedia/commons/${upload}`));
     console.log('downloaded', name);
   }
-  return sharp(readFileSync(file)).resize({ width: 640, withoutEnlargement: true }).toBuffer();
+  const bytes = readFileSync(file);
+  const actual = createHash('sha256').update(bytes).digest('hex');
+  if (actual !== sha256) {
+    throw new Error(
+      `${file} is not the pinned source (sha256 ${actual}). Delete it and re-run; if Commons replaced the picture, check the spec still passes and update SOURCES.`,
+    );
+  }
+  return sharp(bytes).resize({ width: 640, withoutEnlargement: true }).toBuffer();
 }
 
 const jpeg = (image) => image.jpeg({ quality: 85 }).toBuffer();

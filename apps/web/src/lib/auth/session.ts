@@ -261,14 +261,114 @@ async function sessionTokens(req: Request, allowPurpose: readonly SessionPurpose
   return tokens;
 }
 
-/** One session by token, or null when it does not exist, is revoked or has expired. */
+/**
+ * One browser session by token, or null when it does not exist, is revoked or
+ * has expired — or is a phone's: a MOBILE token copied into a cookie is no
+ * session here (it works only as the bearer on /api/mobile, `resolveDeviceCtx`).
+ */
 export async function loadSession(token: string, now: Date) {
   const session = await prisma.platformSession.findUnique({
     where: { tokenHash: sha256(token) },
     include: { platformUser: true },
   });
-  if (!session || session.revokedAt || session.expiresAt < now) return null;
+  if (!session || session.kind !== 'WEB' || session.revokedAt || session.expiresAt < now) return null;
   return session;
+}
+
+/** Ninety days: a phone that asked for the password every fortnight would not be used. */
+export const DEVICE_SESSION_DAYS = 90;
+
+/**
+ * A phone's session (M20-10): a MOBILE row in the same table, so every
+ * revocation that ends a person's browser sessions ends their phones too.
+ * Pinned to one workspace for its life — nothing on /api/mobile switches it.
+ *
+ * The token is `{tenantId}.{secret}`, 256 random bits after the dot, and only
+ * the secret's hash is kept. The prefix names the workspace the phone thinks it
+ * is in; a token whose prefix is not its row's workspace is refused.
+ */
+export async function createDeviceSession(input: {
+  platformUserId: string;
+  tenantId: string;
+  deviceName: string | null;
+  platform: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  mfaSatisfied: boolean;
+}) {
+  const secret = randomBytes(32).toString('base64url');
+  const expiresAt = new Date(Date.now() + DEVICE_SESSION_DAYS * 86_400_000);
+  await prisma.platformSession.create({
+    data: {
+      platformUserId: input.platformUserId,
+      activeTenantId: input.tenantId,
+      tokenHash: sha256(secret),
+      kind: 'MOBILE',
+      deviceLabel: input.deviceName,
+      platform: input.platform,
+      ipAddress: input.ip,
+      userAgent: input.userAgent,
+      mfaSatisfied: input.mfaSatisfied,
+      expiresAt,
+    },
+  });
+  return { token: `${input.tenantId}.${secret}`, expiresAt };
+}
+
+const SIGN_IN_AGAIN = 'This device needs to sign in again.';
+
+/**
+ * The Ctx for a phone's request: the bearer from the Authorization header and
+ * nothing else — a cookie is never read here, as a MOBILE token is never read
+ * from a cookie. Then the checks `resolveCtx` makes of a member, on every
+ * request: the account active, a workspace user (platform staff and machine
+ * identities sign in on the web), the membership, the workspace and the user
+ * active. No idle timeout: the phone's session lives its 90 days unless revoked.
+ */
+export async function resolveDeviceCtx(req: Request, requestId: string): Promise<Ctx> {
+  const [, tenantId, secret] = /^Bearer ([^.\s]+)\.(\S+)$/.exec(req.headers.get('authorization') ?? '') ?? [];
+  if (!tenantId || !secret) throw Unauthorized(SIGN_IN_AGAIN);
+
+  const now = new Date();
+  const session = await prisma.platformSession.findUnique({
+    where: { tokenHash: sha256(secret) },
+    include: { platformUser: { select: { id: true, status: true, deletedAt: true, platformRole: true } } },
+  });
+  if (
+    !session ||
+    session.kind !== 'MOBILE' ||
+    session.revokedAt ||
+    session.expiresAt < now ||
+    session.activeTenantId !== tenantId
+  ) {
+    throw Unauthorized(SIGN_IN_AGAIN);
+  }
+  const user = session.platformUser;
+  if (user.deletedAt || user.status !== 'ACTIVE' || user.platformRole !== 'USER') throw Unauthorized(SIGN_IN_AGAIN);
+
+  const membership = await prisma.workspaceMembership.findFirst({
+    where: {
+      platformUserId: user.id,
+      tenantId,
+      status: 'ACTIVE',
+      tenant: { status: 'ACTIVE', deletedAt: null },
+      salesUser: { status: 'ACTIVE', deletedAt: null },
+    },
+    select: { salesUserId: true },
+  });
+  if (!membership?.salesUserId) throw Unauthorized('Your workspace access is not active.');
+
+  if (now.getTime() - session.lastSeenAt.getTime() > 60_000) {
+    await prisma.platformSession.updateMany({ where: { id: session.id }, data: { lastSeenAt: now } });
+  }
+  return {
+    tenantId,
+    actor: await buildActor(membership.salesUserId, tenantId),
+    requestId,
+    ip: clientIp(req),
+    userAgent: req.headers.get('user-agent'),
+    deviceSessionId: session.id,
+  };
 }
 
 /**

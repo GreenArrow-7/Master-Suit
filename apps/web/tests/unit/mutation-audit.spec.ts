@@ -30,6 +30,10 @@ const nothing = (why: string): Exemption => ({ nothing: why });
 const EXEMPT: Record<string, Exemption> = {
   // Audited by the service the route calls.
   'v1/auth/accept-invite POST': audited('src/services/identity/invitations.ts'),
+  'v1/auth/login POST': audited('src/lib/auth/login.ts'),
+  'mobile/auth/sign-in POST': audited('src/lib/auth/login.ts'),
+  'v1/leads/[id]/call-log POST': audited('src/services/leads/logCall.ts'),
+  'mobile/leads/[leadId]/call POST': audited('src/services/leads/logCall.ts'),
   'v1/integrations/[provider]/deliveries POST': audited('src/services/leads/deliveries.ts'),
   'v1/leads/messages POST': audited('src/services/leads/leadMessages.ts'),
   'v1/leads/[id]/messages POST': audited('src/services/leads/leadMessages.ts'),

@@ -4,7 +4,7 @@
  * raw input is why "+971 50 123 4567" and "0501234567" end up as two leads.
  */
 /** A number typed without a country code is a UAE one: every caller dials from there. */
-const UAE = '971';
+export const UAE = '971';
 
 const NATIONAL_TRUNK_PREFIX = '0';
 

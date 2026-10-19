@@ -12232,6 +12232,9 @@
                   "callId": {
                     "type": "string"
                   },
+                  "activityId": {
+                    "type": "string"
+                  },
                   "notes": {
                     "type": "string",
                     "maxLength": 2000
@@ -12240,6 +12243,11 @@
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 600
+                  },
+                  "durationSecs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 36000
                   },
                   "followUpAt": {
                     "type": "string",
@@ -25414,7 +25422,8 @@
                 "account-deletion-status",
                 "account-deletion-request",
                 "account-deletion-cancel",
-                "lead-availability"
+                "lead-availability",
+                "device-sign-out"
               ]
             }
           }
@@ -25470,7 +25479,8 @@
                 "account-deletion-status",
                 "account-deletion-request",
                 "account-deletion-cancel",
-                "lead-availability"
+                "lead-availability",
+                "device-sign-out"
               ]
             }
           }

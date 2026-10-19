@@ -30,6 +30,8 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // The app's own plugin (M9-09): registered before the bridge starts, as Capacitor requires.
+        registerPlugin(CallWatchPlugin.class);
         super.onCreate(savedInstanceState);
         if (bridge == null) return; // no WebView on this device: Capacitor showed its own screen
 

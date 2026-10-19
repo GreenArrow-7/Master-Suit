@@ -799,6 +799,16 @@ revoked as `LEGACY_SESSION_WITHOUT_CREDENTIAL_PURPOSE`). Before restoring access
 Needed for data loss, and as step 2 of §9.1.1. Run from `apps/web/infra` on the
 host, with the backup environment the schedule uses.
 
+**Recovery point: 24 hours** (NFR-13, accepted by the owner): one restore point
+a day from the 02:30 timer, plus one per release. The release preflight's
+`[backup-status]` lines record the evidence from production on every release —
+the timer's state and next run, the service's last result, how many of the
+last seven days have a complete backup, and the newest off-site copy from the
+`.shipped-at` markers; they print `note:` lines and never change the exit code.
+WAL-based continuous PITR is the upgrade path if a recovery point under a day is
+ever wanted; it is not built (Postgres settings and a restart). Details:
+`docs/BACKUP-RECOVERY.md`, "Recovery point".
+
 **Take and prove a backup — VERIFIED (isolated, Linux):**
 
 ```bash
