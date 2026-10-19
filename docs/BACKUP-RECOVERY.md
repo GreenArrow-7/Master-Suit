@@ -16,6 +16,55 @@ Until 2026-08-20 the only documented procedure was a single `pg_dump` line in
 `docs/DEPLOY-AZURE.md`. Object storage was not backed up at all — every call
 recording and HR document existed in exactly one place, on one VM's disk.
 
+## Recovery point: 24 hours
+
+The owner accepted a recovery point objective of **24 hours** (NFR-13): one
+complete backup a day is one restore point a day, and the worst case is losing
+the writes since the last one. The nightly timer takes one at 02:30 and ships
+it off-site and verified; every release takes one more before it deploys and
+proves it with a restore drill, but that one stays on this host (the preflight
+has no `BACKUP_REMOTE`). Production retains about seventy. The newest off-site
+restore point is the one the `off-site:` line below names.
+
+**Evidence on every release.** The release preflight
+(`docs/release/production-release.sh`, phase backup) runs `backup-status.sh` on
+production after its own backup, so each release's log records, with nobody
+signing in to the host:
+
+```
+[backup-status] timer master-suite-backup.timer: active, last fired Sun 2026-10-18 02:30:04 UTC, next Mon 2026-10-19 02:30:00 UTC
+[backup-status] last nightly run: success, exited Sun 2026-10-18 02:41:12 UTC (status 0)
+[backup-status] 70 backup(s) retained, newest 20261019T094500Z (0h old)
+[backup-status] daily cadence: 7 of the last 7 full days have a complete backup
+[backup-status] off-site: newest shipped backup 20261019T023000Z (7h old), shipped 2026-10-19T02:41:07Z to s3://master-suite-backups, 1204 artefact(s) verified
+[backup-status] last restore verification: 0d ago (off-host)
+```
+
+Those lines are evidence, not checks. An inactive timer, a failed last run, a
+day in the last seven (today excluded) with no complete backup, or an off-site
+copy older than `BACKUP_MAX_AGE_HOURS` prints a `note:`; the exit code is still
+decided only by freshness, completeness and, when `BACKUP_REMOTE` is set, the
+newest backup having been shipped. Where there is no systemd (CI, containers)
+the timer line says it was not checked.
+
+The off-site line reads the `.shipped-at` marker `backup-ship.sh` writes beside
+a backup only after its shipment verified: the UTC time, the destination by name
+(the transport and host, bucket or rclone remote — never the whole
+`BACKUP_REMOTE`, which can carry keys) and the artefact count. So it needs
+neither `BACKUP_REMOTE` nor the remote's credentials; the preflight has neither,
+and used to print "nothing has left this machine" while the nightly timer
+shipped every night. That note now appears only when no marker exists. Markers
+written before 19 Oct 2026 hold only the time.
+
+**Under 24 hours — continuous PITR, not built.** If a recovery point under a
+day is ever wanted, the upgrade is WAL archiving: `wal_level=replica`,
+`archive_mode=on` and an `archive_command` (or pgBackRest / WAL-G) shipping
+every WAL segment off-site, plus a periodic base backup; a restore then replays
+to any moment (`recovery_target_time`). It changes Postgres settings, needs a
+database restart and somewhere for the WAL stream to land, so it is a planned
+maintenance window, not a script change. Azure Database for PostgreSQL provides
+the same without running it (`docs/DEPLOY-AZURE.md`).
+
 ---
 
 ## Taking a backup
@@ -170,7 +219,9 @@ apps/web/scripts/backup-status.sh /var/backups/master-suite   # by hand
 
 It also refuses to count a run with no manifest, or a manifest with no dump
 beside it, as the newest backup — a half-finished run must not hide the fact
-that the last complete one is older.
+that the last complete one is older. Before deciding, it prints the timer's
+state, the daily cadence and the newest off-site copy (see "Recovery point"
+above).
 
 ---
 
@@ -361,6 +412,13 @@ Verified on 2026-08-20, off the deployment:
   having copied the artefacts and then failed to place a manifest that does not
   exist. An exit-code assertion proved nothing. It asserts on the message and on
   the remote being untouched instead.
+- **The evidence lines** (2026-10-19, same script, "backup status evidence").
+  With a stub `systemctl` and backups dated relative to today, two days left
+  out: the timer and last-run lines, "5 of the last 7" with the two dates named,
+  the newest shipped backup read from its marker and the "nothing has left"
+  note dropped (kept once the markers are removed), the inactive-timer note,
+  exit 1 still when `BACKUP_REMOTE` is set and the newest is unshipped, and exit
+  0 with a `systemctl` that has no systemd behind it and with none on `PATH`.
 
 **What has not been proved:** the `s3`, `rclone` and `rsync` branches of the
 pull and the listing. They need those binaries and a real remote; the round-trip

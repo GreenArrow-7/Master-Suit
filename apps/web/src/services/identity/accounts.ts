@@ -301,6 +301,42 @@ export async function changeOwnPassword(
   return { changed: true };
 }
 
+/** The live device sessions (`kind` MOBILE) of the caller's own login in this workspace: Profile → Security. */
+async function ownDeviceSessions(ctx: Ctx) {
+  const membership = await prisma.workspaceMembership.findUnique({
+    where: { salesUserId: ctx.actor.id },
+    select: { platformUserId: true },
+  });
+  if (!membership) throw NotFound('User');
+  return {
+    platformUserId: membership.platformUserId,
+    activeTenantId: ctx.tenantId,
+    kind: 'MOBILE',
+    revokedAt: null,
+    expiresAt: { gt: new Date() },
+  };
+}
+
+/** The phones signed in to this workspace as the caller (M20-10), most recently used first. */
+export async function myDevices(ctx: Ctx) {
+  return prisma.platformSession.findMany({
+    where: await ownDeviceSessions(ctx),
+    select: { id: true, deviceLabel: true, platform: true, lastSeenAt: true, createdAt: true },
+    orderBy: { lastSeenAt: 'desc' },
+  });
+}
+
+/** Signs one of the caller's own phones out: the lost-phone button. Another person's, or a browser session, is not found. */
+export async function signOutDevice(ctx: Ctx, sessionId: string) {
+  const { count } = await prisma.platformSession.updateMany({
+    where: { ...(await ownDeviceSessions(ctx)), id: sessionId },
+    data: { revokedAt: new Date(), revokedReason: 'DEVICE_SIGNED_OUT' },
+  });
+  if (!count) throw NotFound('Device');
+  await audit(ctx, { event: 'LOGOUT', metadata: { scope: 'device', device: sessionId } });
+  return { signedOut: true, id: sessionId };
+}
+
 /**
  * An administrator resets someone else's password to a temporary value. The
  * returned password is shown once and never stored in readable form.

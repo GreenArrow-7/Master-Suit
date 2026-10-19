@@ -2337,6 +2337,26 @@ a:hover {
   font-size: 13px;
   text-align: center;
 }
+/* Phones signed in: one row each, its Sign out at the end. */
+.lf-security__devices {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+.lf-security__devices li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block-end: 10px;
+  border-block-end: 1px solid var(--lf-line);
+}
+.lf-security__devices li > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 /* Callouts: blue for information, gold for the biometric warning. */
 .lf-callout {
   margin: 0;

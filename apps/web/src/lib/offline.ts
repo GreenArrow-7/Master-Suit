@@ -72,8 +72,22 @@ const send = (item: Pick<Pending, 'id' | 'url' | 'method' | 'body'>) =>
     body: item.body,
   });
 
-/** Sends now, or keeps it for later when there is no connection. `'queued'` means kept. */
-export async function sendOrQueue(url: string, method: string, body: unknown, label: string) {
+/** An answer a later try may change: a signed-out session, too many requests, a server error. */
+const unsure = (status: number) => status === 401 || status === 429 || status >= 500;
+
+/**
+ * Sends now, or keeps it for later when there is no connection. `'queued'` means kept.
+ * With `retry`, an unsure answer is kept too, to go again under the same key: a
+ * server error can come after the change was saved, and a sender with nobody to
+ * press again (a call that logged itself) would otherwise lose or double it.
+ */
+export async function sendOrQueue(
+  url: string,
+  method: string,
+  body: unknown,
+  label: string,
+  { retry = false }: { retry?: boolean } = {},
+) {
   const item = { id: crypto.randomUUID(), url, method, body: JSON.stringify(body) };
   const keep = () => {
     save([...all(), { ...item, owner: owner(), label, at: new Date().toISOString() }]);
@@ -81,7 +95,8 @@ export async function sendOrQueue(url: string, method: string, body: unknown, la
   };
   if (navigator.onLine === false) return keep();
   try {
-    return await send(item);
+    const res = await send(item);
+    return retry && unsure(res.status) ? keep() : res;
   } catch {
     return keep();
   }
@@ -105,7 +120,7 @@ async function drain(): Promise<Flushed> {
     } catch {
       break;
     }
-    if (res.status === 401 || res.status === 429 || res.status >= 500) break;
+    if (unsure(res.status)) break;
     if (res.ok) sent += 1;
     else {
       const data = await res.json().catch(() => ({}));

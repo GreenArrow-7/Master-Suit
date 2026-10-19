@@ -7,20 +7,25 @@ import { login, resetLoginThrottle, ok } from './helpers';
  * §3 face attendance against the real face engine: supervised consent →
  * enrolment refuses too few and too-similar samples, accepts four poses → the
  * employee draws a liveness challenge → a different person is refused → the
- * enrolled person turning the asked way is checked in → the nonce cannot be
- * replayed → check-out.
+ * nonce cannot be replayed → the enrolled person turning the wrong way is
+ * refused (liveness) → turning the asked way from 2 km off is refused
+ * (geofence) → turning the asked way on site is checked in → check-out.
  *
  * Face images are never committed (docs/TEST-DATA-POLICY.md): the frames come
  * from FACE_TEST_IMAGES (default tests/faces-local/), produced from public-domain
  * portraits by scripts/face-test-frames.mjs. Needs the demo workspace (E2E_DEMO_*)
- * and the face sidecar; skips cleanly without any of the three so CI stays green.
+ * and the face sidecar. Without any of the three it skips, except under
+ * FACE_E2E=required — set by CI's face-e2e job, which starts the sidecar and
+ * makes the frames, so a missing piece there fails instead of passing empty.
  */
 const slug = process.env.E2E_DEMO_SLUG!;
 const email = process.env.E2E_DEMO_EMAIL!;
 const password = process.env.E2E_DEMO_PASSWORD!;
 const base = () => process.env.APP_URL ?? 'http://localhost:3000';
+const required = process.env.FACE_E2E === 'required';
 const run = Date.now().toString(36);
 const here = { latitude: 25.2048, longitude: 55.2708, gpsAccuracyM: 8 };
+const twoKmNorth = { ...here, latitude: here.latitude + 0.018 };
 
 const imagesDir = process.env.FACE_TEST_IMAGES || path.join(__dirname, '..', 'faces-local');
 const FRAMES = [
@@ -45,12 +50,14 @@ const turn = (person: 'a' | 'b', direction: string) =>
     : [frame(`${person}-turned-left`), frame(`${person}-turned-right`)];
 
 test.describe('Face attendance', () => {
-  test.skip(!slug || !email || !password, 'E2E_DEMO_SLUG / E2E_DEMO_EMAIL / E2E_DEMO_PASSWORD not set');
-  test.skip(!framesPresent, `face frames not present in ${imagesDir} — run scripts/face-test-frames.mjs`);
+  test.skip(!required && (!slug || !email || !password), 'E2E_DEMO_SLUG / E2E_DEMO_EMAIL / E2E_DEMO_PASSWORD not set');
+  test.skip(!required && !framesPresent, `face frames not present in ${imagesDir} — run scripts/face-test-frames.mjs`);
   test.beforeEach(resetLoginThrottle);
-  test.setTimeout(5 * 60_000);
+  // A cold `next dev` compiles each of the dozen routes on first use, and the
+  // check-out waits out the 61-second punch interval.
+  test.setTimeout(10 * 60_000);
 
-  test('consent → enrolment → challenge → wrong face refused → check-in → replay refused → check-out', async ({
+  test('consent → enrolment → challenge → wrong face, replay, wrong way and off-site refused → check-in → check-out', async ({
     page,
     browser,
   }) => {
@@ -101,12 +108,13 @@ test.describe('Face attendance', () => {
       'supervised consent',
     );
 
-    // Too few samples.
+    // Too few samples: refused on the count, before the engine is asked.
     const few = await enrol([frame('a-straight'), frame('a-mirror'), frame('a-turned-left')]);
-    test.skip(few.status() === 503, 'face engine not running');
     expect(few.status(), await few.text()).toBe(409);
-    // Four shots of the same pose: refused as too similar.
+    // Four shots of the same pose: refused as too similar. The first call that
+    // reaches the face engine, so the one that tells whether it is running.
     const same = await enrol([frame('a-straight'), frame('a-straight'), frame('a-turned-right'), frame('a-mirror')]);
+    test.skip(!required && same.status() === 503, 'face engine not running');
     expect(same.status(), await same.text()).toBe(409);
     expect(await same.text()).toContain('too similar');
     // Four distinct poses: enrolled.
@@ -139,9 +147,9 @@ test.describe('Face attendance', () => {
       }
       throw new Error('twelve "up" challenges in a row');
     };
-    const punch = (punchType: 'CHECK_IN' | 'CHECK_OUT', nonce: string, frames: string[]) =>
+    const punch = (punchType: 'CHECK_IN' | 'CHECK_OUT', nonce: string, frames: string[], at = here) =>
       me.post(self('attendance-punch'), {
-        data: { punchType, nonce, frames, ...here, deviceFingerprint: `e2e-${run}` },
+        data: { punchType, nonce, frames, ...at, deviceFingerprint: `e2e-${run}` },
       });
 
     // Someone else, turning the right way: liveness passes, recognition refuses.
@@ -152,7 +160,18 @@ test.describe('Face attendance', () => {
     const replay = await punch('CHECK_IN', first.nonce, turn('a', first.direction));
     expect(replay.status(), await replay.text()).toBe(409);
 
-    // The enrolled person, turning as asked.
+    // The enrolled person turning the other way: the face matches, liveness refuses.
+    const wrongWay = await challenge();
+    const backwards = turn('a', wrongWay.direction === 'left' ? 'right' : 'left');
+    const unlive = await ok(await punch('CHECK_IN', wrongWay.nonce, backwards), 'wrong-way punch');
+    expect(unlive.result, JSON.stringify(unlive)).toBe('REJECTED_LIVENESS');
+
+    // The enrolled person, turning as asked, 2 km from the 200 m site: the geofence refuses.
+    const away = await challenge();
+    const far = await ok(await punch('CHECK_IN', away.nonce, turn('a', away.direction), twoKmNorth), 'off-site punch');
+    expect(far.result, JSON.stringify(far)).toBe('REJECTED_GEOFENCE');
+
+    // The enrolled person, turning as asked, on site.
     const second = await challenge();
     const checkIn = await ok(await punch('CHECK_IN', second.nonce, turn('a', second.direction)), 'check-in');
     expect(checkIn.result, JSON.stringify(checkIn)).toBe('ACCEPTED');

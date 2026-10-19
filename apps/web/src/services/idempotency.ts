@@ -162,6 +162,44 @@ export async function recordOutcome<T>(tx: TxClient, req: IdempotencyRequest, re
   }
 }
 
+/**
+ * Claim the key as the **first write** of the operation's transaction, then
+ * finish it with {@link completeClaim} once the work is done.
+ *
+ * {@link recordOutcome} writes the key last, after the operation's own locks.
+ * Two copies of one request racing through an operation that locks several rows
+ * (the call log: activity type, lead score, follow-up) can then take those locks
+ * in crossing order, and Postgres kills one with a deadlock — a 500 where the
+ * loser should hear 409. Claimed first, the second copy waits on the key's
+ * unique index before it locks anything else: when the first commits it skips
+ * (409), and when the first rolls back it goes ahead.
+ */
+export async function claimKey(tx: TxClient, req: IdempotencyRequest): Promise<void> {
+  const { count } = await tx.idempotentRequest.createMany({
+    data: [
+      {
+        tenantId: req.tenantId,
+        operation: req.operation,
+        requestKey: req.requestKey,
+        fingerprint: fingerprint({ ...req.input, actorUserId: req.actorUserId }),
+        actorUserId: req.actorUserId,
+        scopeRef: req.scopeRef ?? null,
+        expiresAt: new Date(Date.now() + DEFAULT_TTL_MS),
+      },
+    ],
+    skipDuplicates: true,
+  });
+  if (count === 0) throw Conflict('That request is already being processed.');
+}
+
+/** The result for a key {@link claimKey} took, in the same transaction. */
+export async function completeClaim<T>(tx: TxClient, req: IdempotencyRequest, result: T): Promise<void> {
+  await tx.idempotentRequest.updateMany({
+    where: { tenantId: req.tenantId, operation: req.operation, requestKey: req.requestKey },
+    data: { result: JSON.parse(JSON.stringify(result)) },
+  });
+}
+
 /** Remove expired records. Nothing depends on them; see the header. */
 export async function sweepExpiredIdempotency(now = new Date()): Promise<{ removed: number }> {
   const removed = await withPlatformTx(
