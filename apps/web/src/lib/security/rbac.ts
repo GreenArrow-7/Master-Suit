@@ -103,6 +103,8 @@ export interface Ctx {
   passwordChangedAt?: Date | null;
   /** Set when the request authenticated with an API key rather than a session. */
   apiKeyId?: string;
+  /** Set when the request authenticated with a phone's device session (/api/mobile): that session's id. */
+  deviceSessionId?: string;
   /**
    * Set when the request authenticated as a platform service identity.
    *

@@ -55,7 +55,9 @@ export const POST = bareRoute('/api/v1/auth/refresh', async (req, requestId) => 
       },
     },
   });
-  if (!session) throw Unauthorized('Your session has expired.');
+  // A phone's token copied into the cookie is no browser session: it never
+  // rotates into one (M20-10).
+  if (!session || session.kind !== 'WEB') throw Unauthorized('Your session has expired.');
 
   if (session.revokedAt) {
     // A token that was already rotated away is being presented again.

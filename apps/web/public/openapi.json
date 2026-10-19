@@ -25414,7 +25414,8 @@
                 "account-deletion-status",
                 "account-deletion-request",
                 "account-deletion-cancel",
-                "lead-availability"
+                "lead-availability",
+                "device-sign-out"
               ]
             }
           }
@@ -25470,7 +25471,8 @@
                 "account-deletion-status",
                 "account-deletion-request",
                 "account-deletion-cancel",
-                "lead-availability"
+                "lead-availability",
+                "device-sign-out"
               ]
             }
           }

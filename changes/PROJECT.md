@@ -214,7 +214,22 @@ Node 22 or newer (CI uses 24).
   handler; `GET /api/v1/openapi.json` serves the OpenAPI 3.1 document built from
   them (`src/lib/api/openapi.ts`), generated into `public/openapi.json` and kept
   equal to the routes by `tests/unit/openapi.spec.ts` — after changing a
-  route's schemas (or adding a route), run it with `OPENAPI_WRITE=1`.
+  route's schemas (or adding a route), run it with `OPENAPI_WRITE=1`. A replay
+  answers with `Idempotent-Replay: true`.
+- **Phone API.** `/api/mobile/*` is the standalone Lead Eagle Expo app's API
+  on YOUHAN ONE, same paths and shapes (`changes/2026-10-19-le-mobile-api.md`).
+  `auth/sign-in` (workspace slug, email, password) runs the web login's code
+  (`src/lib/auth/login.ts`, `MobileDoor`: throttle, lockout, refused accounts,
+  the second factor as a second request; workspace users only; an unenrolled
+  required factor or a temporary password is sent to the web) and answers a
+  90-day bearer, `{tenantId}.{secret}`, on a `MOBILE` `PlatformSession` pinned
+  to that workspace. `route({ mobile: true })` takes that bearer and nothing
+  else, and `loadSession` and refresh never take it as a cookie; every
+  revocation of a person's sessions ends their phones, and each phone signs out
+  itself or from Profile → Security → Phones signed in. `me`, `leads` (the
+  grid's query, keyset), `leads/{id}/call` (`logLeadCall`, the call's own time,
+  refused over 2 minutes ahead or a week old), `leads/{id}/status`,
+  `follow-ups`. Attendance and push from that app are not served.
 - **Audit.** The rule for new code: every write should leave an AuditLog row,
   through the route's `auditEvent`, or `audit(ctx, …)`
   (`src/lib/security/audit.ts`) where the route cannot say enough. A write no
@@ -389,6 +404,10 @@ Waiting on the owner:
 - **Microsoft 365 calendar** — a Microsoft Entra app registration (any organisational directory and personal accounts, redirect `{APP_URL}/api/v1/integrations/microsoft/callback`, delegated `offline_access Calendars.ReadWrite User.Read`, a client secret; steps in `.env.example`) in `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET`; until then the card reads not configured (`changes/2026-10-18-le-outlook-calendar.md`).
 - **Real AI and telephony** — a Gemini API key; a Twilio account with Media Streams, and one real call round trip on staging; whether to build handset call detection, which Google Play allows only for the default dialler (`changes/2026-10-18-le-calls.md`).
 - **Store submissions** — iOS and Android, in the owner's store consoles.
+- **The standalone Lead Eagle phone app on YOUHAN ONE** — its API is built
+  (`changes/2026-10-19-le-mobile-api.md`). Its attendance tab needs a decision
+  (YOUHAN ONE checks out with the face; the app sends only a position), its
+  notifications an Expo push sender, and pointing it here a store build.
 - **Read-only CRM monitoring of every workspace** — built (v1.4.0), but nobody
   can be granted it until `openCoverage` takes a `kind`; that edit needs the
   owner's permission.

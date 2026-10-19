@@ -1,9 +1,9 @@
 import { forbidden } from 'next/navigation';
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
-import { mustChangePassword } from '@/services/identity/accounts';
+import { mustChangePassword, myDevices } from '@/services/identity/accounts';
 import { twoFactorStatus } from '@/services/identity/twoFactor';
 import { executionEnabled, myDeletionRequest } from '@/services/identity/accountDeletion';
-import { activeConsent } from '@/services/hr/attendance';
+import { activeConsent, workspaceTimezone } from '@/services/hr/attendance';
 import { myEmployee } from '@/services/hr/leave';
 import SecurityScreen from './SecurityScreen';
 
@@ -44,11 +44,13 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
   if (ctx.actor.platformMode) forbidden();
 
   const employee = await myEmployee(ctx);
-  const [status, forced, consent, deletionRequest] = await Promise.all([
+  const [status, forced, consent, deletionRequest, devices, timeZone] = await Promise.all([
     twoFactorStatus(ctx),
     mustChangePassword(ctx),
     employee ? activeConsent(ctx, employee.id) : Promise.resolve(null),
     myDeletionRequest(ctx),
+    myDevices(ctx),
+    workspaceTimezone(ctx),
   ]);
 
   return (
@@ -76,6 +78,12 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
         consentGiven={!!consent}
         deletionRequest={deletionRequest}
         deletionExecutionEnabled={executionEnabled()}
+        devices={devices.map((device) => ({
+          id: device.id,
+          name: device.deviceLabel ?? 'Phone',
+          platform: device.platform,
+          lastUsed: device.lastSeenAt.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone }),
+        }))}
       />
     </div>
   );

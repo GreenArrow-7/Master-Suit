@@ -4,7 +4,7 @@ import { z, ZodError, type ZodTypeAny } from 'zod';
 import { AppError, Conflict, Forbidden, Invalid, MethodNotAllowedError, NotFound, Unauthorized } from '../errors';
 import { logger } from '../logger';
 import { TenantGuardError, withTx } from '../db';
-import { resolveCtx, clientIp } from '../auth/session';
+import { resolveCtx, resolveDeviceCtx, clientIp } from '../auth/session';
 import { authenticateApiKey } from '../auth/apiKey';
 import { requirePlatformServiceActor, recordPlatformAccess } from '../auth/service-identity';
 import { assertSensitiveAccess } from '../auth/sensitive-access';
@@ -71,6 +71,13 @@ export interface RouteSpec<PS extends ZodTypeAny, QS extends ZodTypeAny, BS exte
    * authenticator and its recovery codes) are left out without saying so.
    */
   idempotent?: false;
+  /**
+   * The phone's API (`/api/mobile`): a device session's bearer, from the mobile
+   * sign-in, and nothing else — a browser cookie, an API key or a service token
+   * is refused here, as the device session is refused everywhere else
+   * (`loadSession` reads browser sessions only; it never parses as an API key).
+   */
+  mobile?: true;
 }
 
 export interface HandlerArgs<P, Q, B> {
@@ -107,11 +114,13 @@ export function route<
         // a separate header, so a caller cannot pick which verifier examines its
         // token. `lf_svc_` is the cross-tenant platform service identity; a
         // service credential presented as anything else simply fails to parse.
-        ctx = bearer?.startsWith('Bearer lf_svc_')
-          ? await requirePlatformServiceActor(req, requestId)
-          : bearer?.startsWith('Bearer ')
-            ? await authenticateApiKey(bearer.slice(7), req, requestId)
-            : await resolveCtx(req, requestId);
+        ctx = spec.mobile
+          ? await resolveDeviceCtx(req, requestId)
+          : bearer?.startsWith('Bearer lf_svc_')
+            ? await requirePlatformServiceActor(req, requestId)
+            : bearer?.startsWith('Bearer ')
+              ? await authenticateApiKey(bearer.slice(7), req, requestId)
+              : await resolveCtx(req, requestId);
       }
 
       // 2. Rate limit ──────────────────────────────────────────────────────────
@@ -271,7 +280,9 @@ export function route<
         return result;
       }
 
-      return NextResponse.json(result ?? { ok: true }, { headers: { 'x-request-id': requestId } });
+      return NextResponse.json(result ?? { ok: true }, {
+        headers: { 'x-request-id': requestId, ...(replay ? { 'idempotent-replay': 'true' } : {}) },
+      });
     } catch (err) {
       const response = toResponse(err, requestId, {
         module: spec.module,
