@@ -72,6 +72,10 @@ fi
   || bad "no manifest at the destination"
 [ -f "${SRC}/.shipped-at" ] && ok "a .shipped-at marker was written beside the source" \
   || bad "no .shipped-at marker — backup-status.sh would report this backup as never shipped"
+case "$(cat "${SRC}/.shipped-at" 2>/dev/null)" in
+  *Z" to ${REMOTE}, 4 artefact(s) verified") ok "the marker names the time, the destination and the artefact count" ;;
+  *) bad "the marker says '$(cat "${SRC}/.shipped-at" 2>/dev/null)'" ;;
+esac
 
 # ── 2 · listing, which a disaster needs before anything else ────────────────
 LISTED="$(BACKUP_REMOTE="${REMOTE}" BACKUP_SHIP_LIST=1 "${SHIP}" 2>/dev/null || true)"
@@ -169,6 +173,76 @@ case "${OUT}" in
   *"dump checksum matches the manifest"*) ok "reads the dump checksum in the form backup.sh writes it" ;;
   *) bad "did not read the dump checksum backup.sh writes; said: ${OUT}" ;;
 esac
+
+# ── 9 · backup-status.sh: the evidence a release preflight records ──────────
+#
+# The timer, the daily cadence and the newest off-site copy, read on production
+# by the release preflight with no backup environment. A fake systemctl stands
+# in for systemd; the backups are dated relative to today, two days left out.
+echo
+echo "backup status evidence"
+STATUS="${HERE}/backup-status.sh"
+ROOT9="${WORK}/status"
+TODAY0=$(( $(date -u +%s) / 86400 * 86400 ))
+day_stamp() { date -u -d "@$(( TODAY0 - $1 * 86400 + 9000 ))" +%Y%m%dT%H%M%SZ; }   # 02:30, $1 days ago
+day_iso()   { date -u -d "@$(( TODAY0 - $1 * 86400 ))" +%F; }
+status_backup() { mkdir -p "${ROOT9}/$1" && printf 'x\n' > "${ROOT9}/$1/manifest.txt" && printf 'x\n' > "${ROOT9}/$1/database.dump"; }
+for k in 1 2 4 6 7; do status_backup "$(day_stamp "${k}")"; done
+status_backup "$(date -u -d "@$(( $(date -u +%s) - 60 ))" +%Y%m%dT%H%M%SZ)"   # the preflight's own, unshipped
+printf '2026-10-17T02:41:07Z to rclone:offsite, 3 artefact(s) verified\n' > "${ROOT9}/$(day_stamp 2)/.shipped-at"
+
+FAKE="${WORK}/fake-systemd"
+mkdir -p "${FAKE}"
+cat > "${FAKE}/systemctl" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *backup.timer*)   printf 'LoadState=loaded\nActiveState=%s\nLastTriggerUSec=Sun 2026-10-18 02:30:04 UTC\nNextElapseUSecRealtime=Mon 2026-10-19 02:30:00 UTC\n' "${FAKE_TIMER_STATE:-active}" ;;
+  *backup.service*) printf 'Result=success\nExecMainExitTimestamp=Sun 2026-10-18 02:41:12 UTC\nExecMainStatus=0\n' ;;
+esac
+EOF
+chmod +x "${FAKE}/systemctl"
+
+RC=0; OUT="$(PATH="${FAKE}:${PATH}" BACKUP_REMOTE= "${STATUS}" "${ROOT9}" 2>&1)" || RC=$?
+[ "${RC}" -eq 0 ] && ok "a missed day and an unshipped newest backup are reported, not failed" \
+  || bad "exited ${RC}; said: ${OUT}"
+expect() { case "${OUT}" in *"$1"*) ok "$2" ;; *) bad "$2 — missing '$1'; said: ${OUT}" ;; esac; }
+expect "timer master-suite-backup.timer: active, last fired Sun 2026-10-18 02:30:04 UTC, next Mon 2026-10-19 02:30:00 UTC" \
+  "prints the timer's state, last trigger and next run"
+expect "last nightly run: success, exited Sun 2026-10-18 02:41:12 UTC (status 0)" "prints the service's last result"
+expect "daily cadence: 5 of the last 7 full days have a complete backup" "counts the days with a backup"
+expect "no complete backup on $(day_iso 5) $(day_iso 3)" "names the days that have none"
+expect "off-site: newest shipped backup $(day_stamp 2) (" "names the newest shipped backup from its marker"
+expect "shipped 2026-10-17T02:41:07Z to rclone:offsite, 3 artefact(s) verified" "repeats what the marker recorded"
+case "${OUT}" in
+  *"nothing has left this machine"*) bad "still says nothing has left, with a marker present" ;;
+  *) ok "drops the 'nothing has left' note when a marker exists" ;;
+esac
+
+OUT="$(PATH="${FAKE}:${PATH}" FAKE_TIMER_STATE=inactive BACKUP_REMOTE= "${STATUS}" "${ROOT9}" 2>&1 || true)"
+expect "the nightly backup timer is not active" "warns when the timer is not active"
+
+# Exit codes as before: with a remote configured an unshipped newest backup fails.
+RC=0; PATH="${FAKE}:${PATH}" BACKUP_REMOTE=/nowhere "${STATUS}" "${ROOT9}" >/dev/null 2>&1 || RC=$?
+[ "${RC}" -eq 1 ] && ok "still fails when BACKUP_REMOTE is set and the newest is unshipped" \
+  || bad "exited ${RC} with BACKUP_REMOTE set and the newest unshipped"
+
+# A container: systemctl present, no systemd behind it.
+printf '#!/usr/bin/env bash\necho "System has not been booted with systemd" >&2\nexit 1\n' > "${FAKE}/systemctl"
+RC=0; OUT="$(PATH="${FAKE}:${PATH}" BACKUP_REMOTE= "${STATUS}" "${ROOT9}" 2>&1)" || RC=$?
+[ "${RC}" -eq 0 ] && ok "a systemctl with no systemd behind it does not fail the check" || bad "exited ${RC}; said: ${OUT}"
+expect "timer state not checked" "says the timer state was not checked"
+
+# CI: no systemctl at all. Only the tools the script uses are on PATH.
+BARE="${WORK}/bare-path"
+mkdir -p "${BARE}"
+for t in env bash find sort date cat awk tail; do ln -s "$(command -v "${t}")" "${BARE}/${t}"; done
+RC=0; OUT="$(PATH="${BARE}" BACKUP_REMOTE= "${STATUS}" "${ROOT9}" 2>&1)" || RC=$?
+[ "${RC}" -eq 0 ] && ok "no systemctl on PATH does not fail the check" || bad "exited ${RC}; said: ${OUT}"
+expect "systemctl is not available here" "says systemctl is not available"
+
+rm -f "${ROOT9}"/*/.shipped-at
+OUT="$(PATH="${FAKE}:${PATH}" BACKUP_REMOTE= "${STATUS}" "${ROOT9}" 2>&1 || true)"
+expect "BACKUP_REMOTE is unset — nothing has left this machine." "keeps the note when no marker exists"
 
 echo
 if [ "${FAILURES}" -eq 0 ]; then

@@ -357,6 +357,11 @@ width.
    gate, backup and restore drill, production and the smoke test; it stops at
    the first failure. Claude cannot SSH to production, and merging is the
    owner's too unless allowed in Claude Code's settings.
+4. Backups: RPO 24 hours (a restore point a day, NFR-13). The preflight's
+   `[backup-status]` lines are the production evidence — the nightly timer,
+   its last run, the daily cadence over seven days, the newest off-site copy —
+   so read them in the release log rather than asking for SSH
+   (`docs/BACKUP-RECOVERY.md`, `changes/2026-10-19-backup-evidence.md`).
 
 ## Requirements and status
 
