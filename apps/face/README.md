@@ -20,8 +20,10 @@ one that needs a 7 GB toolchain.
 docker compose -f ../web/infra/docker-compose.yml up -d face
 ```
 
-First boot downloads the buffalo_l pack (~275 MB) into the `facemodels` volume,
-so it survives image rebuilds. The health check allows five minutes for that.
+First boot downloads the buffalo_l pack (~275 MB), refuses it unless its SHA-256
+matches the one pinned in `download_models.py`, and unpacks it into the
+`facemodels` volume, so it survives image rebuilds. A failed or truncated
+download is retried. The health check allows five minutes for that.
 
 Point the web app at it with `FACE_SERVICE_URL`. Unset means face check-in is
 unavailable and attendance fails closed with a 503 naming what is missing —
