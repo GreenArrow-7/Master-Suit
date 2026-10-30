@@ -211,12 +211,21 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput, o
   await queueCalendarSync(ctx.tenantId, 'visit', booked?.visitId);
   await queueCalendarSync(ctx.tenantId, 'task', booked?.taskId);
 
-  await enqueue('automation', 'trigger', {
-    tenantId: ctx.tenantId,
-    event: 'record.updated',
-    object: 'LEAD',
-    recordId: id,
-  });
+  // `fresh`, because a job id is a hash of its payload and this payload is the
+  // same on every edit of one lead: without it the second edit converges on the
+  // first job BullMQ still retains (removeOnComplete: 1_000) and is dropped, so
+  // a workspace's rules ran once per lead and never again.
+  await enqueue(
+    'automation',
+    'trigger',
+    {
+      tenantId: ctx.tenantId,
+      event: 'record.updated',
+      object: 'LEAD',
+      recordId: id,
+    },
+    { fresh: true },
+  );
   /**
    * Reassignment tells both ends. The new owner needs to know they have it; the
    * previous owner otherwise watches a record leave their list with no
