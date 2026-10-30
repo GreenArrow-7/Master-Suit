@@ -15,6 +15,8 @@ vi.mock('next/headers', () => ({
 }));
 
 import { prisma } from '@/lib/db';
+import { workspaceTimezone } from '@/services/hr/attendance';
+import { todayKey } from '@/services/targets/dailyBoard';
 import { PATCH as patchActivity } from '@/app/api/v1/activities/[id]/route';
 import { POST as audience } from '@/app/api/v1/campaigns/[id]/audience/route';
 import { GET as listCalls } from '@/app/api/v1/calls/route';
@@ -1003,7 +1005,11 @@ describe('the lists and screens of events and calls', () => {
     const [ours, theirs] = [await anEvent(h.repA2.id), await anEvent(h.repB1.id)];
     const [ourCall, theirCall] = [await aCall(h.repA2.id), await aCall(h.repB1.id)];
     cookieJar.value = h.teamManagerA.cookie;
-    const month = (at: Date) => `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}`;
+    // The workspace's clock, which is the one the calendar windows a month by.
+    // The server's zone made this fail at a month's end, where the two disagree
+    // about which month a time a day ahead falls in.
+    const timeZone = await workspaceTimezone({ tenantId: h.tenantId });
+    const month = (at: Date) => todayKey(timeZone, at).slice(0, 7);
     const drawn = async (at: Date) => {
       const tree = await CalendarPage({ searchParams: Promise.resolve({ month: month(at) }) });
       const items = elements(tree).find((el) => Array.isArray(el.props.items))?.props.items as { id: string }[];
