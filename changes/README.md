@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-30 | [Automation rules fire on every edit, sign-out keeps another workspace's offline work, and a wrong API key is limited before it is hashed](2026-10-30-automation-outbox-apikey.md) | — | automation, offline, security, fix |
 | 2026-10-30 | [The handover, the current position and the assistant's instructions travel with the repository](2026-10-30-handover-docs.md) | — | documentation, handover |
 | 2026-10-19 | [The phone app checks in and receives pushes through the mobile API](2026-10-19-le-mobile-attendance-push.md) | #237 | Lead Eagle, mobile, attendance, notifications |
 | 2026-10-19 | [The module check in the navigation test waits until the Create menu has opened](2026-10-19-e2e-create-menu-hydration.md) | #236 | Test, CI |
