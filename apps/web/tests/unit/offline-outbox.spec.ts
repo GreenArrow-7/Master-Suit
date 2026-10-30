@@ -124,11 +124,42 @@ describe('offline outbox', () => {
     expect(request).toHaveBeenCalledWith('youhan.outbox.v1', expect.any(Function));
   });
 
-  it('forgets what waited on signing out', async () => {
+  it('forgets what this session had waiting on signing out', async () => {
     net.onLine = false;
     await sendOrQueue('/a', 'PATCH', {}, 'First');
     forget();
-    expect(store.has('youhan.outbox.v1')).toBe(false);
     expect(pending()).toHaveLength(0);
+    // The list is emptied rather than the key removed, because another owner's
+    // changes may still be in it. The two tests below are why.
+    expect(JSON.parse(store.get('youhan.outbox.v1') ?? '[]')).toEqual([]);
+  });
+
+  /**
+   * `flush()` above it can only send the current owner's, because `pending()`
+   * filters to them. So removing the whole key took changes nothing had
+   * offered to send: work offline in one workspace, switch to a second, sign
+   * out, and the first one's completed follow-up was gone — no banner, no
+   * refusal, the lead still waiting.
+   */
+  it('keeps another workspace’s changes, which this session cannot send', async () => {
+    net.onLine = false;
+    await sendOrQueue('/a', 'PATCH', {}, 'In workspace A');
+    frame.dataset.outboxOwner = 'tenant-y:agent-a';
+    await sendOrQueue('/b', 'PATCH', {}, 'In workspace B');
+
+    forget(); // Signing out of B.
+    expect(pending()).toHaveLength(0);
+
+    frame.dataset.outboxOwner = 'tenant-x:agent-a';
+    expect(pending().map((item) => item.label)).toEqual(['In workspace A']);
+  });
+
+  it('keeps everything when no frame names an owner', async () => {
+    net.onLine = false;
+    await sendOrQueue('/a', 'PATCH', {}, 'First');
+    frame.dataset.outboxOwner = '';
+    forget();
+    frame.dataset.outboxOwner = 'tenant-x:agent-a';
+    expect(pending()).toHaveLength(1);
   });
 });
