@@ -37,6 +37,24 @@ jobs:
       - name: Build
         working-directory: apps/mobile/android
         run: bash ./gradlew --no-daemon assembleDebug
+      - name: Signed release bundle and APK
+        working-directory: apps/mobile/android
+        env:
+          KS_B64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_B64 }}
+          KS_PW: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: |
+          echo "$KS_B64" | base64 -d > app/upload.jks
+          printf 'storeFile=upload.jks\nstorePassword=%s\nkeyAlias=upload\nkeyPassword=%s\n' "$KS_PW" "$KS_PW" > keystore.properties
+          bash ./gradlew --no-daemon bundleRelease assembleRelease
+          rm -f app/upload.jks keystore.properties
+      - uses: actions/upload-artifact@v4
+        with:
+          name: youhan-one-android-release
+          path: |
+            apps/mobile/android/app/build/outputs/bundle/release/app-release.aab
+            apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: youhan-one-android-debug-apk
