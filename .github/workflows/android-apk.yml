@@ -32,7 +32,7 @@ jobs:
       - name: Sync the shell against staging
         working-directory: apps/mobile
         env:
-          MOBILE_SERVER_URL: ${{ vars.IOS_STAGING_URL }}
+          MOBILE_SERVER_URL: https://one.youhan.in
         run: npm ci && npm run sync
       - name: Build
         working-directory: apps/mobile/android
