@@ -58,6 +58,11 @@ a database holding 25 later migrations. It now carries the verified figures
 digests, the preflight's count, 18/18 smoke) and asks for the same in the
 change that releases the next one.
 
+**Also here.** The browser suite reached 199 tests and stopped fitting its
+35-minute step budget: run 41844625940 was cut 25 seconds after test 197
+passed, nothing failed, the server still answering in 168 ms. The step takes 45
+and the job 75.
+
 **Left open.** The zod 4 upgrade, before 2026-12-15, when the exception expires
 and the build fails again on purpose. `fast-uri` clears itself whenever `ajv`
 ships a release that takes 3.1.9.
