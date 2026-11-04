@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-11-04 | [A Gemini connection in ERROR can be re-tested and re-saved, and "Open Router" means openrouter](2026-11-04-gemini-provider-label-and-error-trap.md) | — | Integrations, AI, settings, fix |
 | 2026-10-19 | [The phone app checks in and receives pushes through the mobile API](2026-10-19-le-mobile-attendance-push.md) | #237 | Lead Eagle, mobile, attendance, notifications |
 | 2026-10-19 | [The module check in the navigation test waits until the Create menu has opened](2026-10-19-e2e-create-menu-hydration.md) | #236 | Test, CI |
 | 2026-10-19 | [A request whose body never arrived is refused, so an offline change is not lost on reconnect](2026-10-19-body-not-arrived.md) | #235 | Platform, offline, fix |
