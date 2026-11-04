@@ -398,6 +398,38 @@ Remaining blockers, all external:
 4. **CL-09 / OF-07 / HR-06** need a run longer than a reminder window.
 5. `gh pr close 240` is refused by the session's write classifier; #240 is fully superseded by #242 and should be closed by hand.
 
+## G2. Incidents during this run
+
+Two things went wrong in the running of the test, not in the product. Both are
+recorded here because a reader comparing branches would otherwise find them
+unexplained.
+
+**A rig `.env` reached a pushed branch.** Setting up the rig, `apps/web/.env`
+was copied to `apps/web/.env.qa-backup`, and a `git add -A` committed it. Seven
+values were non-empty: `PLATFORM_OWNER_PASSWORD`, `FIELD_ENCRYPTION_KEY`,
+`METRICS_TOKEN`, `REDIS_PASSWORD` and the MinIO access pair. They are the
+scratch rig's own generated values — Postgres and Redis on `127.0.0.1`, MinIO
+defaults, an owner password for a disposable database — and `GEMINI_API_KEY`
+was empty. Any that were copied from production should be rotated; that cannot
+be determined from here.
+
+The blob was removed from the branch history and the work re-opened as a clean
+branch (#245) rather than rewriting a published ref. `.gitignore` now ignores
+`**/.env.*` with the templates excepted, because the three patterns already
+there were three guesses at what a backup gets called and this was a fourth.
+The two branches that still carry it — behind #243 and #244 — must be closed
+unmerged and deleted.
+
+**`business-journey` is fragile across the workspace midnight.** Its
+`pendingWork` assertion (`:300`) expects the work-gate counter to fall by one.
+`pendingWork` is zero when no check-in is open, and `pendingLeadWork` is scoped
+to the workspace day, so a run that crosses midnight in `Asia/Dubai` reads 0
+instead of 4. The CI run that failed this way reached that line at 20:31 UTC —
+00:31 Dubai. Not a product defect and not caused by either fix, but it will
+recur for roughly half an hour each day. Worth pinning the clock in that spec;
+not changed here, because altering a release candidate's own evidence to make
+it pass is the wrong order of operations.
+
 ## H. Cleanup
 
 Confined to this run's synthetic data:
