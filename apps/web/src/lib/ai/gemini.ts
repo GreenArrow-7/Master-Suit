@@ -84,9 +84,15 @@ export async function geminiCredential(tenantId?: string | null): Promise<Gemini
      * The choice is honoured instead: no fallback, and the reason travels so
      * the feature can say that the connection needs re-testing rather than
      * reporting an outage. Nothing switches credentials to make a call succeed.
+     *
+     * ERROR only, deliberately. DISCONNECTED is the status a row carries before
+     * it has ever been verified as well as after it is switched off, so it does
+     * not mean "this was working and now is not"; `gemini-key.spec.ts` pins the
+     * deployment key as the answer there, and widening this rule to cover it
+     * would overturn that decision as a side effect of fixing a different one.
      */
     const state = await connectionState(tenantId, 'gemini').catch(() => null);
-    if (state && state.status !== 'CONNECTED' && state.storedKeys.includes('apiKey')) {
+    if (state?.status === 'ERROR' && state.storedKeys.includes('apiKey')) {
       logger.warn({ tenantId, status: state.status }, 'gemini connection holds a key but is not connected');
       return { key: null, source: 'simulated', provider: await geminiProvider(tenantId), reason: 'connection-broken' };
     }
