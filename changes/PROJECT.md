@@ -1,7 +1,22 @@
 # YOUHAN ONE — project state
 
-Updated 2026-10-11. Production runs `main` at f9c0c1a, released 11 Oct, with
-101 migrations; `main` is ahead of production where the index says so.
+Updated 2026-11-04. Production runs `main` at
+`4861a72f83e320c00973f654043aa709e84813e1`, released 19 Oct and re-verified
+20 Oct, with **126 migrations**; `main` is ahead of production where the index
+says so.
+
+Verified from that release, not from memory — the deploy recorded
+`BUILD_COMMIT=4861a72f83e320c00973f654043aa709e84813e1` and
+`production current=4861a72f83e3 previous=532f959554dd`, the images answering
+are `web sha256:634fa327…43dd2f` and `worker sha256:19a7a18b…4d22241`, the
+preflight gate read `production { db: 'leadflow', applied: 126 }`, and the
+smoke test passed 18/18. Health re-checked 2026-11-04.
+
+**Keep these four facts true in the same change that releases them.** This line
+said 11 Oct, `f9c0c1a`, 101 migrations for three weeks after it stopped being
+so, and a hotfix (#241) was cut from that commit on the strength of it — code
+from 11 Oct would have been put in front of a database holding 25 later
+migrations.
 
 ## The product
 

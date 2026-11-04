@@ -29,6 +29,8 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-11-04 | [A request body may carry 20,000 list entries, and the audit gate names what it allows](2026-11-04-body-array-cap.md) | — | Platform, security, CI |
+| 2026-11-04 | [A Gemini connection in ERROR can be re-tested and re-saved, and "Open Router" means openrouter](2026-11-04-gemini-provider-label-and-error-trap.md) | — | Integrations, AI, settings, fix |
 | 2026-11-04 | [CI refuses a Windows iOS package manifest](2026-11-04-ios-spm-paths-gate.md) | — | mobile, iOS, CI |
 | 2026-11-04 | [The iOS package manifest resolves on a Mac again](2026-11-04-ios-spm-backslash-paths.md) | — | mobile, iOS, fix |
 | 2026-11-04 | [Production graphs what Prometheus already collects](2026-11-04-grafana-metrics-dashboard.md) | — | Operations, observability |

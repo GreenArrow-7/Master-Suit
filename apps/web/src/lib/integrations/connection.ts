@@ -52,6 +52,35 @@ export async function connectionCredentials(
   return decryptCredentials((conn.credentials ?? {}) as Record<string, unknown>);
 }
 
+/**
+ * What is actually stored, whatever the connection's status.
+ *
+ * `connectionCredentials` refuses anything but CONNECTED, which is right for
+ * every runtime caller — a broken connection must not be used — and wrong for
+ * the two administration paths, because it made ERROR a trap nobody could get
+ * out of: Test connection read no key and wrote "No API key is saved for this
+ * connection" over a row that held one, and re-saving with the key box left
+ * blank (the documented way to keep it) merged over nothing and was refused as
+ * "API key is required". The settings screen then showed a saved key, a Remove
+ * key button and "no key saved" at once, and neither button could fix it.
+ *
+ * Only Settings → Integrations may call this.
+ */
+export async function savedCredentials(tenantId: string, provider: string): Promise<Record<string, string>> {
+  const conn = await prisma.integrationConnection.findUnique({
+    where: { tenantId_provider: { tenantId, provider } },
+    select: { credentials: true },
+  });
+  return conn ? decryptCredentials((conn.credentials ?? {}) as Record<string, unknown>) : {};
+}
+
+/** Which credential fields hold a value — names only, never values. */
+export function storedCredentialKeys(credentials: unknown): string[] {
+  return Object.entries((credentials ?? {}) as Record<string, unknown>)
+    .filter(([, v]) => typeof v === 'string' && v !== '')
+    .map(([k]) => k);
+}
+
 /** Non-secret operational settings stored beside the credentials. */
 export async function connectionMetadata(tenantId: string, provider: string): Promise<Record<string, unknown>> {
   const conn = await prisma.integrationConnection.findUnique({

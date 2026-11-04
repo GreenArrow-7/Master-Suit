@@ -6,6 +6,7 @@ import { can } from '@/lib/security/rbac';
 import { callbackSecrets, UNSIGNED_VENDORS } from '@/lib/integrations/telephony';
 import { defaultVendor } from '@/lib/integrations/telephony/resolve';
 import { PROVIDERS } from '@/lib/integrations/registry';
+import { storedCredentialKeys } from '@/lib/integrations/connection';
 import { CALENDARS, isCalendarProvider } from '@/services/integrations/calendarSync';
 import { isAppUserAgent } from '@/lib/mobile/iosApp';
 import { headers } from 'next/headers';
@@ -41,6 +42,9 @@ export default async function IntegrationsPage({
       select: {
         provider: true,
         status: true,
+        // The wrapped blob, read here only for which fields hold a value; the
+        // names go to the browser, never the values.
+        credentials: true,
         webhookKey: true,
         metadata: true,
         lastSyncAt: true,
@@ -75,6 +79,7 @@ export default async function IntegrationsPage({
         credentialFields: spec.credentials.map(({ key, label, secret, hint }) => ({ key, label, secret, hint })),
         settingFields: settingFields.map(({ key, label, hint, toggle }) => ({ key, label, hint, toggle: !!toggle })),
         status: conn?.status ?? 'NOT_CONFIGURED',
+        storedCredentials: storedCredentialKeys(conn?.credentials),
         settings,
         lastSyncAt: conn?.lastSyncAt?.toISOString() ?? null,
         errorMessage: conn?.errorMessage ?? null,
