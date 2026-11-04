@@ -1,5 +1,7 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
 
+import Redis from 'ioredis';
+
 import { prisma } from '@/lib/db';
 import { grantPermissions, type Grants } from '../helpers/fixtures';
 import {
@@ -72,6 +74,10 @@ const GRANTS: Record<Who, Grants> = {
     ['targets', 'VIEW'],
     ['targets', 'VIEW_REPORTS'],
     ['followups', 'VIEW'],
+    // The daily board scopes its rows on `reports:VIEW`, not on `leads` or
+    // `targets`: without it a manager sees only their own row, which is
+    // correct and was mistaken for the board being broken.
+    ['reports', 'VIEW'],
   ],
   U2: [
     ['leads', 'VIEW'],
@@ -81,6 +87,9 @@ const GRANTS: Record<Who, Grants> = {
     ['followups', 'VIEW'],
     ['followups', 'CREATE'],
     ['followups', 'EDIT'],
+    // Filing one's own leave is a SELF action, but it still reads the
+    // employee record it is filed against.
+    ['employee', 'VIEW'],
   ],
   U3: [
     ['leads', 'VIEW'],
@@ -92,8 +101,9 @@ const GRANTS: Record<Who, Grants> = {
     ['followups', 'EDIT'],
   ],
   U4: [
+    ['employee', 'VIEW'],
+    ['employee', 'EDIT'],
     ['employees', 'VIEW'],
-    ['employees', 'EDIT'],
     ['leave', 'VIEW'],
     ['leave', 'APPROVE'],
   ],
@@ -115,6 +125,24 @@ const actors = {} as Record<Who, Actor>;
 let tenantId = '';
 let adminApi: APIRequestContext;
 const leads: { id: string; name: string }[] = [];
+
+/**
+ * The invitation lookup has its own rate-limit bucket, and this spec redeems
+ * five invitations back to back from one address — which no real workspace
+ * does, and which spends the budget before the fifth. `resetLoginThrottle`
+ * deliberately clears only the login and password-reset buckets, so this
+ * clears the one this spec is the unusual caller of. The limiter itself is
+ * untouched; tests/security/ratelimit.spec.ts is what proves it still refuses.
+ */
+async function resetInviteThrottle() {
+  const redis = new Redis(process.env.REDIS_URL ?? 'redis://:leadflow@localhost:6379/0', { maxRetriesPerRequest: 2 });
+  try {
+    const keys = await redis.keys('rl:invite:*');
+    if (keys.length) await redis.del(...keys);
+  } finally {
+    redis.disconnect();
+  }
+}
 
 const at = (path: string) => `/api/v1/workspaces/${workspace.slug}${path}`;
 
@@ -146,7 +174,7 @@ test.describe('Business acceptance: five invited users, end to end', () => {
         }),
         `create role ${spec.name}`,
       );
-      const roleId = (await created.json()).id as string;
+      const roleId = created.id as string;
       await grantPermissions(tenantId, roleId, GRANTS[who], spec.scope);
 
       const sent = await adminApi.post(at('/identity/invite'), {
@@ -174,6 +202,7 @@ test.describe('Business acceptance: five invited users, end to end', () => {
       const link = linkFrom(mail.body, '/accept-invite');
 
       await logout(page);
+      await resetInviteThrottle();
       await page.goto(link);
       await expect(page.getByText(workspace.displayName)).toBeVisible({ timeout: 60_000 });
       await page.getByLabel('Your name').fill(`${PEOPLE[who].name} ${run}`);
@@ -230,7 +259,7 @@ test.describe('Business acceptance: five invited users, end to end', () => {
         }),
         `create lead ${i}`,
       );
-      leads.push({ id: (await created.json()).id, name });
+      leads.push({ id: created.id as string, name });
     }
     expect(leads).toHaveLength(4);
 
@@ -252,7 +281,7 @@ test.describe('Business acceptance: five invited users, end to end', () => {
     );
 
     const owned = await prisma.lead.findMany({
-      where: { id: { in: leads.map((l) => l.id) } },
+      where: { tenantId, id: { in: leads.map((l) => l.id) } },
       select: { id: true, ownerId: true },
     });
     expect(owned.filter((l) => l.ownerId === actors.U2.userId)).toHaveLength(2);
@@ -266,7 +295,7 @@ test.describe('Business acceptance: five invited users, end to end', () => {
     await login(page, email('U2'), password);
 
     const listed = await ok(await page.request.get('/api/v1/leads?pageSize=100'), 'Agent A lists leads');
-    const body = await listed.text();
+    const body = JSON.stringify(listed);
     expect(body).toContain(leads[0].name);
     expect(body, "Agent B's lead in Agent A's list").not.toContain(leads[2].name);
 
@@ -304,16 +333,23 @@ test.describe('Business acceptance: five invited users, end to end', () => {
       'log a call-back with a follow-up',
     );
 
-    const logged = await prisma.call.findMany({
-      where: { tenantId, leadId: { in: [leads[0].id, leads[1].id] } },
-      select: { outcome: true, callerId: true, createdAt: true, durationSecs: true },
+    /**
+     * The one-step call log writes an outbound-call Activity, not a provider
+     * Call row — a Call exists only when the dialler placed one. Asserting on
+     * Call here found nothing and said the logging was broken when it was not.
+     */
+    const logged = await prisma.activity.findMany({
+      where: { tenantId, leadId: { in: [leads[0].id, leads[1].id] }, outcome: { not: null } },
+      select: { outcome: true, ownerId: true, occurredAt: true, durationSecs: true, notes: true },
     });
-    expect(logged.length).toBeGreaterThanOrEqual(3);
+    expect(logged.length, 'three logged calls').toBeGreaterThanOrEqual(3);
     // CL-04: actor and timestamps are on every one of them.
     for (const call of logged) {
-      expect(call.callerId).toBe(actors.U2.userId);
-      expect(call.createdAt).toBeInstanceOf(Date);
+      expect(call.ownerId).toBe(actors.U2.userId);
+      expect(call.occurredAt).toBeInstanceOf(Date);
     }
+    // CL-04: the note survived the round trip.
+    expect(logged.map((c) => c.notes).join(' ')).toContain(run);
     // CL-05: a no-answer is a distinct outcome, not a conversation.
     const outcomes = logged.map((c) => String(c.outcome));
     expect(outcomes).toContain('No answer');
@@ -348,8 +384,8 @@ test.describe('Business acceptance: five invited users, end to end', () => {
       'complete the follow-up',
     );
 
-    const after = await prisma.followUpTask.findUniqueOrThrow({
-      where: { id: open.id },
+    const after = await prisma.followUpTask.findFirstOrThrow({
+      where: { tenantId, id: open.id },
       select: { status: true, outcome: true },
     });
     expect(after.status).toBe('COMPLETED');
@@ -360,7 +396,7 @@ test.describe('Business acceptance: five invited users, end to end', () => {
       await page.request.get(`/api/v1/leads/${leads[0].id}/timeline`),
       'read the lead timeline',
     );
-    const text = await timeline.text();
+    const text = JSON.stringify(timeline);
     expect(text).toContain('Connected');
   });
 
@@ -399,9 +435,11 @@ test.describe('Business acceptance: five invited users, end to end', () => {
     for (const target of stored) expect(target.targetValue).toBe(5);
 
     // MG-05: what the manager is shown is what the call rows actually say.
-    const callsByAgentA = await prisma.call.count({ where: { tenantId, callerId: actors.U2.userId } });
+    const callsByAgentA = await prisma.activity.count({
+      where: { tenantId, ownerId: actors.U2.userId, outcome: { not: null } },
+    });
     const daily = await ok(await manager.request.get('/api/v1/targets/daily'), 'read the daily board');
-    const board = await daily.text();
+    const board = JSON.stringify(daily);
     expect(board, 'the board names Agent A').toContain(actors.U2.userId);
     expect(callsByAgentA, 'Agent A logged the calls this run made').toBeGreaterThanOrEqual(3);
 
@@ -419,17 +457,111 @@ test.describe('Business acceptance: five invited users, end to end', () => {
     }
   });
 
-  // ── HR-04 / HR-07: leave, and the wall between sales and HR ─────────────────
+  // ── HR-04 / HR-07: leave, applied by the agent and decided by the HR officer ─
 
-  test('HR-04 the agent requests leave and the HR officer decides it', async ({ browser }) => {
+  test('HR-04 the agent requests leave; the HR officer approves one and rejects another', async ({ browser }) => {
+    // Precondition, not the behaviour under test: both actors need HR profiles
+    // before either can file or decide anything.
+    const employeeOf = async (who: Who) => {
+      const membership = await prisma.workspaceMembership.findFirstOrThrow({
+        where: { tenantId, salesUserId: actors[who].userId },
+        select: { id: true },
+      });
+      const existing = await prisma.employeeProfile.findFirst({
+        where: { tenantId, membershipId: membership.id },
+        select: { id: true },
+      });
+      if (existing) return existing.id;
+      const made = await prisma.employeeProfile.create({
+        data: {
+          tenantId,
+          membershipId: membership.id,
+          employeeNumber: `QA-${who}-${run}`.slice(0, 24),
+          employmentStatus: 'ACTIVE',
+        },
+        select: { id: true },
+      });
+      return made.id;
+    };
+    await employeeOf('U2');
+    await employeeOf('U4');
+
+    const leaveType = await prisma.hrLeaveType.upsert({
+      where: { tenantId_code: { tenantId, code: 'ANNUAL' } },
+      update: {},
+      create: { tenantId, code: 'ANNUAL', name: 'Annual leave' },
+      select: { id: true },
+    });
+
+    const agent = await browser.newPage();
+    await resetLoginThrottle();
+    await login(agent, email('U2'), password);
+
+    /**
+     * A working day, not a calendar day. Filing leave over a weekend is
+     * refused with "Those dates are all weekends or public holidays — no leave
+     * is needed", which is correct and which fixed offsets walk into roughly
+     * two days in seven.
+     */
+    const day = (offset: number) => {
+      const date = new Date(Date.now() + offset * 86_400_000);
+      while (date.getUTCDay() === 0 || date.getUTCDay() === 6) date.setUTCDate(date.getUTCDate() + 1);
+      return date.toISOString().slice(0, 10);
+    };
+    const file = (from: number, to: number, reason: string) =>
+      agent.request.post(at('/hr/actions/leave-apply'), {
+        data: { leaveTypeId: leaveType.id, startDate: day(from), endDate: day(to), reason },
+      });
+
+    const first = await ok(await file(10, 10, `Acceptance leave A ${run}`), 'apply for leave');
+    const second = await ok(await file(20, 20, `Acceptance leave B ${run}`), 'apply for a second leave');
+    await agent.close();
+
+    const filed = await prisma.hrLeaveRequest.findMany({
+      where: { tenantId, leaveTypeId: leaveType.id },
+      select: { id: true, status: true },
+    });
+    expect(filed.length, 'two requests filed').toBeGreaterThanOrEqual(2);
+
     const hr = await browser.newPage();
     await resetLoginThrottle();
     await login(hr, email('U4'), password);
 
-    const types = await hr.request.get(at('/hr/leave-types'));
-    test.skip(!types.ok(), 'leave types are not reachable in this workspace shape');
-
+    await ok(
+      await hr.request.post(at('/hr/actions/leave-approve'), {
+        data: { requestId: first.id as string, note: 'Approved for the acceptance run' },
+      }),
+      'HR approves the first request',
+    );
+    await ok(
+      await hr.request.post(at('/hr/actions/leave-reject'), {
+        data: { requestId: second.id as string, note: 'Rejected for the acceptance run' },
+      }),
+      'HR rejects the second request',
+    );
     await hr.close();
+
+    const decided = await prisma.hrLeaveRequest.findMany({
+      where: { tenantId, id: { in: [first.id as string, second.id as string] } },
+      select: { id: true, status: true, decidedAt: true },
+    });
+    const byId = Object.fromEntries(decided.map((r) => [r.id, r]));
+    expect(byId[first.id as string].status).toBe('APPROVED');
+    expect(byId[second.id as string].status).toBe('REJECTED');
+    for (const request of decided) expect(request.decidedAt).not.toBeNull();
+  });
+
+  test('HR-07 a sales agent cannot decide leave, by API', async ({ browser }) => {
+    const agent = await browser.newPage();
+    await resetLoginThrottle();
+    await login(agent, email('U2'), password);
+    const pending = await prisma.hrLeaveRequest.findFirst({ where: { tenantId }, select: { id: true } });
+    expect(pending, 'a request exists to try to decide').not.toBeNull();
+    const refused = await agent.request.post(at('/hr/actions/leave-approve'), {
+      data: { requestId: pending!.id, note: 'should be refused' },
+    });
+    expect(refused.status(), 'an agent deciding leave').toBeGreaterThanOrEqual(400);
+    await agent.close();
   });
 
   // ── OF-01..OF-06: Agent A leaves, Agent B inherits, access dies ─────────────
@@ -441,7 +573,9 @@ test.describe('Business acceptance: five invited users, end to end', () => {
     const ownedBefore = await prisma.lead.count({ where: { tenantId, ownerId: actors.U2.userId } });
     expect(ownedBefore, 'Agent A owns work to hand over').toBeGreaterThan(0);
 
-    const callsBefore = await prisma.call.count({ where: { tenantId, callerId: actors.U2.userId } });
+    const callsBefore = await prisma.activity.count({
+      where: { tenantId, ownerId: actors.U2.userId, outcome: { not: null } },
+    });
 
     await ok(
       await page.request.post(at('/identity/account-active'), {
@@ -466,7 +600,9 @@ test.describe('Business acceptance: five invited users, end to end', () => {
     ).toBe(0);
 
     // OF-04: history is not rewritten. The calls Agent A made are still theirs.
-    expect(await prisma.call.count({ where: { tenantId, callerId: actors.U2.userId } })).toBe(callsBefore);
+    expect(
+      await prisma.activity.count({ where: { tenantId, ownerId: actors.U2.userId, outcome: { not: null } } }),
+    ).toBe(callsBefore);
   });
 
   test('OF-05/OF-06 the departed account cannot sign in and cannot be given new work', async ({ page }) => {
@@ -484,7 +620,7 @@ test.describe('Business acceptance: five invited users, end to end', () => {
       }),
       'create a lead after the exit',
     );
-    const newLead = (await created.json()).id as string;
+    const newLead = created.id as string;
 
     const assigned = await page.request.post('/api/v1/leads/assign', {
       data: { leadIds: [newLead], ownerId: actors.U2.userId },
