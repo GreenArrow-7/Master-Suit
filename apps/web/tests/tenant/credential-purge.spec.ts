@@ -303,7 +303,9 @@ describe('verification names the service that refused', () => {
   });
 
   it('refuses an OpenRouter connection with no model before spending a request', () => {
-    const orBranch = verify.slice(verify.indexOf("if (c.provider === 'openrouter')"));
+    // `selected`, not `c.provider`: the branch reads the provider through
+    // `aiProviderKey` now, so "Open Router" reaches it as 'openrouter'.
+    const orBranch = verify.slice(verify.indexOf("if (selected === 'openrouter')"));
     const modelCheck = orBranch.indexOf('!c.model');
     const theCall = orBranch.indexOf('openrouter.ai/api/v1/key');
     expect(modelCheck).toBeGreaterThan(-1);
