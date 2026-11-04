@@ -17,7 +17,7 @@
  */
 import { logger } from '../logger';
 import { connectionCredentials, connectionMetadata } from '../integrations/connection';
-import type { AiProviderKey } from './provider';
+import { aiProviderKey, type AiProviderKey } from './provider';
 
 /**
  * Which key, and — the part that matters for budgeting — whose it is.
@@ -51,7 +51,9 @@ export type GeminiCredential =
 export async function geminiProvider(tenantId?: string | null): Promise<AiProviderKey> {
   if (!tenantId) return 'google';
   const settings = await connectionMetadata(tenantId, 'gemini').catch(() => ({}) as Record<string, unknown>);
-  return settings.provider === 'openrouter' ? 'openrouter' : 'google';
+  // Read through `aiProviderKey`, not compared: rows saved before the Provider
+  // box was validated hold the vendor's own spelling ("Open Router").
+  return aiProviderKey(settings.provider) ?? 'google';
 }
 
 /** Resolved per call rather than cached: a key can be rotated mid-session. */
