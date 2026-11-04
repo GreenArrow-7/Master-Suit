@@ -53,6 +53,14 @@ cloudflared.exe
 .env.bak*
 .env.*.bak
 *.env.bak
+# And any other suffix, because the list above was three guesses at what a
+# backup gets called and `.env.qa-backup` was not one of them — it reached a
+# pushed branch carrying PLATFORM_OWNER_PASSWORD, FIELD_ENCRYPTION_KEY and
+# METRICS_TOKEN. Anything named `.env.<something>` is ignored unless it is one
+# of the templates that belong here.
+**/.env.*
+!**/.env.example
+!**/.env.*.example
 
 # next 16.3 writes these on every build ("Generated AGENTS.md and CLAUDE.md for
 # AI agents"). They are build output that restates the installed Next version's
