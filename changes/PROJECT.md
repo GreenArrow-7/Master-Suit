@@ -23,7 +23,7 @@ Control Center, monitoring grants).
 
 Also in the repo: `apps/mobile` (iOS and Android WebView shells — a web change
 never needs a new store build; a native one, such as the CallWatch plugin, does), `apps/face` (the face-recognition service,
-Python), `apps/web/infra` (compose files, Dockerfile, Prometheus), `docs/`.
+Python), `apps/web/infra` (compose files, Dockerfile, Prometheus, and Grafana over it in production), `docs/`.
 
 Stack: Next.js 16 (App Router, Turbopack), React 19, TypeScript, Prisma 7 on
 Postgres with row-level security, Redis and BullMQ, zod, vitest, Playwright.
