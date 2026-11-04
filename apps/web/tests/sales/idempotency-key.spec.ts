@@ -5,6 +5,7 @@ import { POST as createLead } from '@/app/api/v1/leads/route';
 import { PATCH as updateLead } from '@/app/api/v1/leads/[id]/route';
 import { POST as selfAction } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/self/[action]/route';
 import { POST as adminAction } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/[action]/route';
+import { POST as importLeads } from '@/app/api/v1/leads/import/route';
 import { createWorkspaceUser, grantPermissions, seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { createPlatformSessionToken, createSessionToken } from '../helpers/session';
 
@@ -189,6 +190,40 @@ describe('Idempotency-Key', () => {
     expect((await prisma.lead.findFirstOrThrow({ where: { tenantId: fixture.a.tenantId, id: leadId } })).company).toBe(
       'Changed Since',
     );
+  });
+
+  it('refuses a body carrying more list entries than any route can mean, before the schema runs', async () => {
+    // zod keeps an issue per failing element and `.max()` does not stop it, so
+    // the count is checked before the schema sees it (GHSA-mrhx-c7xc-m3w5).
+    const rows = Array.from({ length: 20_001 }, (_, i) => ({ line: i + 1, values: { fullName: 1 } }));
+    const res = await importLeads(
+      new Request('http://localhost/api/v1/leads/import', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: fixture.a.cookie },
+        body: JSON.stringify({ rows }),
+      }),
+      { params: Promise.resolve({}) },
+    );
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(JSON.stringify(body)).toContain('too-many-items');
+    expect(await prisma.lead.count({ where: { tenantId: fixture.a.tenantId, fullName: 'Idem Flood' } })).toBe(0);
+  });
+
+  it('leaves a body under that ceiling to the limit the route sets itself', async () => {
+    // 1,001 rows is over the import's own `.max(1000)` and far under the
+    // body ceiling: the route answers, not the guard.
+    const rows = Array.from({ length: 1001 }, (_, i) => ({ line: i + 1, values: { fullName: `Row ${i}` } }));
+    const res = await importLeads(
+      new Request('http://localhost/api/v1/leads/import', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: fixture.a.cookie },
+        body: JSON.stringify({ rows }),
+      }),
+      { params: Promise.resolve({}) },
+    );
+    expect(res.status).toBe(422);
+    expect(JSON.stringify(await res.json())).not.toContain('too-many-items');
   });
 
   it('keeps no key for a body that never arrived, so the resend under it runs', async () => {

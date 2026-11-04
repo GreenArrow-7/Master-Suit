@@ -539,8 +539,12 @@ jobs:
       # ── Gate 8 ────────────────────────────────────────────────────────────
       #
       # Production dependencies only. A dev-only advisory does not ship.
+      # Same threshold as `npm audit --omit=dev --audit-level=high`, plus named
+      # exceptions that carry their mitigation and expire on a date, so one
+      # advisory with no upgrade path cannot block every merge and cannot be
+      # forgotten either.
       - name: Audit
-        run: npm audit --omit=dev --audit-level=high
+        run: node scripts/audit-gate.mjs
 
   # ── Face check-in against the real face engine (M15-01) ──────────────────
   #
