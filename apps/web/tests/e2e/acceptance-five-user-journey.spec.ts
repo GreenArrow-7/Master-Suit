@@ -1,4 +1,4 @@
-import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
+import { test, expect, type APIRequestContext } from '@playwright/test';
 
 import { prisma } from '@/lib/db';
 import { grantPermissions, type Grants } from '../helpers/fixtures';
