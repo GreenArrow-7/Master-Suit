@@ -109,10 +109,54 @@ async function readJsonBody(req: Request): Promise<unknown> {
     throw Invalid([{ field: 'body', code: 'incomplete', message: 'The request body did not arrive in full.' }]);
   }
   if (!text.trim()) return {};
+  let parsed: unknown;
   try {
-    return JSON.parse(text);
+    parsed = JSON.parse(text);
   } catch {
     throw Invalid([{ field: 'body', code: 'invalid-json', message: 'The request body is not valid JSON.' }]);
+  }
+  assertArraysAreSane(parsed);
+  return parsed;
+}
+
+/**
+ * The most array elements one body may carry, counted across every array in it.
+ *
+ * zod keeps one issue object per failing element with no cap of its own, so a
+ * body of a million wrong values costs a million issue objects — about 0.4 KB
+ * each — and the process dies of it (GHSA-mrhx-c7xc-m3w5, measured here at
+ * 200,000 elements to +94 MB). A schema's own `.max()` does not help: zod
+ * records the length issue *and* still parses every element.
+ *
+ * The largest array any route legitimately accepts is 4,000 (`.max(4000)`), and
+ * the spreadsheet imports cap at 1,000 rows, so 20,000 is five times the real
+ * ceiling and still bounds the cost at a few megabytes. Counted before the
+ * schema runs, so it covers the 47 route files whose arrays carry no `.max()`.
+ */
+const MAX_BODY_ARRAY_ITEMS = 20_000;
+
+/** Refuses a body whose arrays together hold more elements than any route can mean. */
+function assertArraysAreSane(body: unknown): void {
+  let items = 0;
+  // An explicit stack, not recursion: the depth of the input is the caller's.
+  const stack: unknown[] = [body];
+  while (stack.length) {
+    const node = stack.pop();
+    if (Array.isArray(node)) {
+      items += node.length;
+      if (items > MAX_BODY_ARRAY_ITEMS) {
+        throw Invalid([
+          {
+            field: 'body',
+            code: 'too-many-items',
+            message: `A request may carry at most ${MAX_BODY_ARRAY_ITEMS.toLocaleString('en-GB')} list entries. Send it in smaller batches.`,
+          },
+        ]);
+      }
+      for (const child of node) if (child !== null && typeof child === 'object') stack.push(child);
+    } else if (node !== null && typeof node === 'object') {
+      for (const child of Object.values(node)) if (child !== null && typeof child === 'object') stack.push(child);
+    }
   }
 }
 

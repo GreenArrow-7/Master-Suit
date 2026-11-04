@@ -22,8 +22,8 @@ defaults:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    # E2E below may take 25; the gates before it take ~10 and Build/Audit ~5.
-    timeout-minutes: 60
+    # E2E below may take 45; the gates before it take ~10 and Build/Audit ~5.
+    timeout-minutes: 75
 
     services:
       postgres:
@@ -465,7 +465,12 @@ jobs:
         # The demo-workspace specs (E2E_DEMO_*, exported by "Demo credentials")
         # add about a minute on a warm server; face-attendance skips here (no
         # frames, no face sidecar) and runs for real in the face-e2e job below.
-        timeout-minutes: 35
+        #
+        # 35 stopped fitting at 199 tests: run 41844625940 was cut 25 seconds
+        # after test 197 passed, with nothing failed and the server still
+        # answering in 168ms — two tests from the end. The suite grows with the
+        # product, so the budget does too.
+        timeout-minutes: 45
         env:
           # The account-deletion journey uses the worker started above instead
           # of an in-process one: two consumers on one queue would race.
@@ -539,8 +544,12 @@ jobs:
       # ── Gate 8 ────────────────────────────────────────────────────────────
       #
       # Production dependencies only. A dev-only advisory does not ship.
+      # Same threshold as `npm audit --omit=dev --audit-level=high`, plus named
+      # exceptions that carry their mitigation and expire on a date, so one
+      # advisory with no upgrade path cannot block every merge and cannot be
+      # forgotten either.
       - name: Audit
-        run: npm audit --omit=dev --audit-level=high
+        run: node scripts/audit-gate.mjs
 
   # ── Face check-in against the real face engine (M15-01) ──────────────────
   #
