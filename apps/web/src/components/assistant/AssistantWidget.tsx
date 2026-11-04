@@ -183,7 +183,23 @@ export default function AssistantWidget({ slug }: { slug: string }) {
           ...(context ? { context } : {}),
         }),
       });
-      if (!res.ok || !res.body) throw new Error(String(res.status));
+      /**
+       * A refusal is problem+json, and it says why: no Sales entitlement, the
+       * per-user rate limit, a role without VIEW on leads. Throwing the bare
+       * status sent every one of them to the generic "temporarily unavailable"
+       * below, so a permission problem looked like an outage.
+       */
+      if (!res.ok) {
+        const problem: { detail?: string; requestId?: string } | null = await res.json().catch(() => null);
+        patch(idx, (m) => ({
+          ...m,
+          error: problem?.detail
+            ? `${problem.detail}${problem.requestId ? ` (ref ${problem.requestId.slice(0, 8)})` : ''}`
+            : OFFLINE,
+        }));
+        return;
+      }
+      if (!res.body) throw new Error('no body');
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
