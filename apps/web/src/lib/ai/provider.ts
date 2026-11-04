@@ -38,6 +38,27 @@ import { PRODUCT_NAME } from '@/lib/branding';
 
 export type AiProviderKey = 'google' | 'openrouter';
 
+/**
+ * The internal key behind whatever an administrator typed, or `undefined` when
+ * it is neither provider.
+ *
+ * The Provider box is free text, and a human writes the vendor's own spelling:
+ * "Open Router", "OpenRouter", "Google". Stored as typed, none of those equals
+ * `'openrouter'`, so an OpenRouter key was checked and then run against Google
+ * AI Studio, which answers "API key not valid" — a working key reported dead,
+ * with the Model field pointing at a model Google has never heard of.
+ *
+ * Case and the separators people put inside a two-word name are the whole
+ * difference; anything else is a typo the caller should refuse rather than
+ * quietly resolve to google.
+ */
+export function aiProviderKey(value: unknown): AiProviderKey | undefined {
+  const slug = String(value ?? '')
+    .toLowerCase()
+    .replace(/[^a-z]/g, '');
+  return slug === 'openrouter' ? 'openrouter' : slug === 'google' ? 'google' : undefined;
+}
+
 /** Normalised token accounting. Each provider reports it under its own names. */
 export interface ModelUsage {
   promptTokens: number;

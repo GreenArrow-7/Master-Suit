@@ -12,6 +12,7 @@
  */
 import { basic, vendorFetch } from './telephony/http';
 import { GRAPH_VERSION } from './meta/send';
+import { aiProviderKey, type AiProviderKey } from '../ai/provider';
 
 export type VerifyResult = { ok: true; detail?: string } | { ok: false; detail: string } | { ok: null; detail: string };
 
@@ -77,7 +78,12 @@ export async function verifyConnection(provider: string, c: Record<string, strin
          * OpenRouter token with a flat "API key not valid", which reads as a
          * dead key and sends people to re-issue one that was fine.
          */
-        const mismatch = keyVendorMismatch(c.apiKey ?? '', c.provider);
+        // Normalised, never compared raw: a connection saved before the
+        // Provider box was validated holds "Open Router", which is not
+        // `'openrouter'` and sent its key to Google to be called invalid.
+        const selected = aiProviderKey(c.provider) ?? 'google';
+
+        const mismatch = keyVendorMismatch(c.apiKey ?? '', selected);
         if (mismatch) return { ok: false, detail: mismatch };
 
         /**
@@ -88,7 +94,7 @@ export async function verifyConnection(provider: string, c: Record<string, strin
          * on, which is precisely the state this integration was already found
          * in once.
          */
-        if (c.provider === 'openrouter') {
+        if (selected === 'openrouter') {
           if (!c.model) {
             return {
               ok: false,
@@ -213,7 +219,7 @@ function redactSecrets(text: string, credentials: Record<string, string>): strin
  * else's is passed through to the vendor, which is the real authority on whether
  * it works.
  */
-function keyVendorMismatch(apiKey: string, provider: string | undefined): string | undefined {
+function keyVendorMismatch(apiKey: string, provider: AiProviderKey): string | undefined {
   const key = apiKey.trim();
   if (!key) return 'No API key is saved for this connection.';
   const usingOpenRouter = provider === 'openrouter';

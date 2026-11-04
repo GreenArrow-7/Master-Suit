@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-11-04 | [Hotfix: a Gemini connection in ERROR can be re-tested and re-saved, and "Open Router" means openrouter](2026-11-04-hotfix-gemini-provider-label.md) | — | Integrations, AI, settings, hotfix |
 | 2026-10-08 | [Records could name any contact, call or event in the workspace](2026-10-08-record-attach-scope.md) | #145 | security |
 | 2026-10-11 | [Release 8370b22](2026-10-11-release-8370b22.md) | #157–#162 | release |
 | 2026-10-11 | [Lead Eagle move tool: the report names the people and rows it drops](2026-10-11-move-tool-orphans.md) | #162 | Lead Eagle, platform |

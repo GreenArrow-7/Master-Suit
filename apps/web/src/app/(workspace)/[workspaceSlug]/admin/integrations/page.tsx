@@ -6,6 +6,7 @@ import { can } from '@/lib/security/rbac';
 import { callbackSecrets, UNSIGNED_VENDORS } from '@/lib/integrations/telephony';
 import { defaultVendor } from '@/lib/integrations/telephony/resolve';
 import { PROVIDERS } from '@/lib/integrations/registry';
+import { storedCredentialKeys } from '@/lib/integrations/connection';
 import { buildId } from '@/lib/build';
 import IntegrationBoard, { type ProviderCard } from '@/components/workspace/IntegrationBoard';
 import ChannelOverview from '@/components/workspace/ChannelOverview';
@@ -29,6 +30,9 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ w
       select: {
         provider: true,
         status: true,
+        // The wrapped blob, read here only for which fields hold a value; the
+        // names go to the browser, never the values.
+        credentials: true,
         webhookKey: true,
         metadata: true,
         lastSyncAt: true,
@@ -57,6 +61,7 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ w
       credentialFields: spec.credentials.map(({ key, label, secret, hint }) => ({ key, label, secret, hint })),
       settingFields: spec.settings.map(({ key, label, hint }) => ({ key, label, hint })),
       status: conn?.status ?? 'NOT_CONFIGURED',
+      storedCredentials: storedCredentialKeys(conn?.credentials),
       settings: (conn?.metadata ?? {}) as Record<string, unknown>,
       lastSyncAt: conn?.lastSyncAt?.toISOString() ?? null,
       errorMessage: conn?.errorMessage ?? null,

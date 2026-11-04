@@ -14,6 +14,15 @@ export interface ProviderCard {
   credentialFields: { key: string; label: string; secret: boolean; hint?: string }[];
   settingFields: { key: string; label: string; hint?: string }[];
   status: string;
+  /**
+   * Which credential fields actually hold a stored value. Names only — the
+   * values are never sent to the browser.
+   *
+   * The "Stored — leave empty to keep" hint used to be drawn from the status,
+   * so a connection that held no key still promised one was kept, next to an
+   * error saying none was saved.
+   */
+  storedCredentials: string[];
   settings: Record<string, unknown>;
   lastSyncAt: string | null;
   errorMessage: string | null;
@@ -520,7 +529,7 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
           style={{ marginTop: 16, ['--lf-stack-gap' as string]: '12px' } as React.CSSProperties}
         >
           {[...provider.credentialFields, ...provider.settingFields].map((field) => {
-            const stored = 'secret' in field && field.secret ? configured : false;
+            const stored = 'secret' in field && field.secret && provider.storedCredentials.includes(field.key);
             const settingValue = provider.settings[field.key];
             return (
               <div className="lf-field" key={field.key}>
