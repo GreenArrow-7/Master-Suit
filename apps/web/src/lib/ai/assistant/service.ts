@@ -208,6 +208,26 @@ export async function* runAssistant(
       }
     } else {
       // ── Template mode: keyword router over the same tools ───────────────
+      /**
+       * Template mode still answers from real CRM data, so the feature stays
+       * usable — but running it because the workspace's own connection is
+       * broken is a thing the person must be told, or a degraded answer reads
+       * as the product working normally.
+       */
+      if (credential.source === 'simulated' && credential.reason === 'connection-broken')
+        yield {
+          type: 'delta',
+          text:
+            'Your AI connection is saved but marked as not working, so this answer was assembled from your CRM records without the model. ' +
+            'Open Settings → Integrations → Intelligence and use Test connection to bring it back.\n\n',
+        };
+      if (credential.source === 'simulated' && credential.reason === 'no-model')
+        yield {
+          type: 'delta',
+          text:
+            'Your AI connection names OpenRouter but no model, and OpenRouter has no default, so this answer was assembled from your CRM records without the model. ' +
+            'Set the Model field in Settings → Integrations → Intelligence.\n\n',
+        };
       yield* templateMode(messages, page, runTool);
     }
 
