@@ -20,7 +20,7 @@ import {
   storedCredentialKeys,
   wrapCredentials,
 } from '@/lib/integrations/connection';
-import { geminiProvider } from '@/lib/ai/gemini';
+import { geminiCredential, geminiModel, geminiProvider } from '@/lib/ai/gemini';
 
 const suffix = randomBytes(4).toString('hex');
 const workspace = { broken: '', other: '' };
@@ -69,6 +69,26 @@ describe('a Gemini connection parked in ERROR', () => {
 
   it('reads the vendor spelling of the provider as the provider', async () => {
     expect(await geminiProvider(workspace.broken)).toBe('openrouter');
+  });
+
+  /**
+   * The consequence the workspace actually noticed: with the label unread, every
+   * feature either posted an OpenRouter key to Google or fell back to
+   * simulation behind a screen that said otherwise. Once the row is CONNECTED
+   * the work runs on the workspace's own key, through OpenRouter.
+   */
+  it('runs a feature on the workspace key through OpenRouter, not in simulation', async () => {
+    await prisma.integrationConnection.update({
+      where: { tenantId_provider: { tenantId: workspace.broken, provider: 'gemini' } },
+      data: { status: 'CONNECTED', errorMessage: null },
+    });
+
+    expect(await geminiCredential(workspace.broken)).toEqual({
+      key: 'sk-or-v1-stored',
+      source: 'workspace',
+      provider: 'openrouter',
+    });
+    expect(await geminiModel(workspace.broken)).toBe('google/gemini-2.0-flash-001');
   });
 
   it('never reads one workspace’s stored key for another', async () => {
