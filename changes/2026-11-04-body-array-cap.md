@@ -50,11 +50,13 @@ blocks — by moving the date and the id and watching each one exit 1. `npm audi
 --omit=dev` now reports one high (allowed, in date) and one moderate
 (`fast-uri`, below the threshold, and absent from the production tree).
 
-**Also here.** 's header said "Updated 2026-10-11 … f9c0c1a …
-101 migrations" for three weeks after it stopped being true, and #241 was cut
-from that commit on the strength of it. It now carries the verified figures
-(, 126 migrations, both image digests, the preflight count, 18/18
-smoke) and says to keep them true in the change that releases them.
+**Also here.** `changes/PROJECT.md`'s header said "Updated 2026-10-11 …
+f9c0c1a … 101 migrations" for three weeks after it stopped being true, and
+#241 was cut from that commit on the strength of it — 11 Oct code in front of
+a database holding 25 later migrations. It now carries the verified figures
+(`4861a72f83e320c00973f654043aa709e84813e1`, 126 migrations, both image
+digests, the preflight's count, 18/18 smoke) and asks for the same in the
+change that releases the next one.
 
 **Left open.** The zod 4 upgrade, before 2026-12-15, when the exception expires
 and the build fails again on purpose. `fast-uri` clears itself whenever `ajv`
