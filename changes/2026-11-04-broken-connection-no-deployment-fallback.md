@@ -1,10 +1,10 @@
 # A workspace whose AI connection is broken is not moved onto the deployment's key
 
 **What.** `geminiCredential` now tells "this workspace never connected a
-provider" apart from "this workspace connected one and the connection is marked
-broken". The first still falls back to `GEMINI_API_KEY`, which is what the
-fallback is for. The second does not fall back at all: it runs the assistant's
-template mode and says, on screen, that the connection needs re-testing.
+provider" apart from "this workspace connected one and it is in `ERROR`". The
+first still falls back to `GEMINI_API_KEY`, which is what the fallback is for.
+The second does not fall back at all: it runs the assistant's template mode and
+says, on screen, that the connection needs re-testing.
 
 **Why.** The owner reported ONE AI answering "Show my overdue follow-ups" with
 "AI Assistant is temporarily unavailable". Reading the resolution path for that
@@ -40,13 +40,22 @@ code did both.
 - `apps/web/src/lib/ai/assistant/service.ts` — template mode now opens by
   naming the broken connection, or the missing OpenRouter model.
 
-**Behaviour.** Nothing changes for a workspace with a working connection, or
-for one that never connected a provider. A workspace whose connection is broken
+**Behaviour.** Nothing changes for a workspace with a working connection, for
+one that never connected a provider, or for a `DISCONNECTED` row. A workspace
+whose connection is in `ERROR`
 keeps getting answers — template mode reads the same permission-scoped CRM
 records — but each one opens with "Your AI connection is saved but marked as
 not working … use Test connection to bring it back", and no request is made on
-anyone else's credential. Disconnecting deletes the row, so there is no third
-case.
+anyone else's credential.
+
+`ERROR` only, deliberately. `DISCONNECTED` is the status a row carries before
+it has ever been verified as well as after it is switched off, so it does not
+mean "this was working and now is not". `tests/tenant/gemini-key.spec.ts` pins
+the deployment key as the answer there, and the first version of this change
+widened the rule far enough to break it — CI caught that, 5,075 passed and 1
+failed. Overturning that decision as a side effect of fixing a different one
+would have been wrong, so the rule names the one status that carries the
+meaning.
 
 **Verified.** `tests/tenant/gemini-broken-connection-no-fallback.spec.ts`: with
 `GEMINI_API_KEY` set, a broken connection resolves to no key and the reason
