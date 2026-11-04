@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-11-04 | [CI refuses a Windows iOS package manifest](2026-11-04-ios-spm-paths-gate.md) | — | mobile, iOS, CI |
 | 2026-11-04 | [The iOS package manifest resolves on a Mac again](2026-11-04-ios-spm-backslash-paths.md) | — | mobile, iOS, fix |
 | 2026-11-04 | [Production graphs what Prometheus already collects](2026-11-04-grafana-metrics-dashboard.md) | — | Operations, observability |
 | 2026-10-30 | [The calendar specs ask for a month on the workspace's clock](2026-10-30-calendar-month-workspace-clock.md) | — | Test, CI |
