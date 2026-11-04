@@ -204,3 +204,206 @@ No real payment is initiated in any finance scenario.
 | XC-06 | P1  | U2    | A notification                 | Follow its link                                                 | Lands on the correct record the user may see                |
 | XC-07 | P2  | QA    | Core journeys                  | Measure                                                         | Timings recorded                                            |
 | XC-08 | P0  | QA    | After fixes                    | Re-run the affected journeys on the release candidate           | Green on the actual candidate, SHA recorded                 |
+
+## D. Results
+
+Tested SHA for every row below: **`6b01e1e1`** (branch `fix/ai-credential-policy`, which carries #243 and #244 on top of production `8c3a41ec`), unless the row names another.
+
+Runtime: `next build` + `next start` on `http://127.0.0.1:3300`, Postgres `master_suite_e2e` (126 migrations), Redis DB 12, MinIO, Mailpit, worker running except where a row says otherwise.
+
+### Evidence sources
+
+| Tag     | What it is                                                                                                                                                                                                                              |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SUITE` | The repository's Playwright suite, full run on the production build: **183 passed / 4 failed / 5 skipped**, 25.2 min. Written before this run and not modified to make anything pass. Regression evidence, not an independent reviewer. |
+| `FIVE`  | `tests/e2e/acceptance-five-user-journey.spec.ts`, written for this run: **13 passed / 0 failed**, 1.0 min. Five people invited and onboarded through the product.                                                                       |
+| `UNIT`  | Vitest. CI on #243: 5,063 passed. CI on #244: 5,075 passed, then green after the narrowing.                                                                                                                                             |
+| `RERUN` | A spec re-run under corrected rig conditions, named in the row.                                                                                                                                                                         |
+| `CODE`  | Read from the source and named by file and line. Used only where it is the honest basis, and never on its own for a PASS of observable behaviour.                                                                                       |
+
+### Onboarding and access
+
+| ID    | Actual                                                                                                                                                                                   | Status | Evidence                                                                                                | Defect |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------- | ------ |
+| ON-01 | Five roles created through `roles/create`, five invitations sent through `identity/invite`, each into its own non-admin role. The invite response was asserted not to contain the token. | PASS   | `FIVE` ON-01                                                                                            | —      |
+| ON-02 | Each invitee's email was read from Mailpit, the link opened, a password set, and the account signed in. All five reached `ACTIVE` with the intended `roleId`.                            | PASS   | `FIVE` ON-02; `SUITE` invitation.spec 3/3                                                               | —      |
+| ON-03 | A redeemed link is refused on reuse.                                                                                                                                                     | PASS   | `SUITE` `invitation.spec.ts` "the link cannot be used twice"                                            | —      |
+| ON-04 | Password reset end to end; MFA enrolment, a wrong code refused, a real one accepted, and a recovery code usable once.                                                                    | PASS   | `SUITE` `password-reset.spec.ts`, `auth-mfa.spec.ts` (4 cases), `RERUN` account-deletion "a fresh code" | —      |
+| ON-05 | Each role's navigation and record scope checked per actor.                                                                                                                               | PASS   | `SUITE` `workspace-navigation.spec.ts`, `modules.spec.ts`, `record-scope.spec.ts`                       | —      |
+| ON-06 | HR officer reading `/api/v1/leads` and the agent reading `hr/payroll` were both refused ≥400.                                                                                            | PASS   | `FIVE` ON-06; `SUITE` "a hidden screen still refuses by URL and by API"                                 | —      |
+| ON-07 | Role change against a live session.                                                                                                                                                      | PASS   | `SUITE` `record-scope.spec.ts`, `ui-roles`                                                              | —      |
+| ON-08 | Employee ↔ user link and manager chain.                                                                                                                                                  | PASS   | `SUITE` `employee-record-scope.spec.ts`                                                                 | —      |
+
+### Lead capture and ownership
+
+| ID    | Actual                                                                                                   | Status | Evidence                                                                | Defect |
+| ----- | -------------------------------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------- | ------ |
+| LD-01 | Four leads created; a lead with no name refused 422.                                                     | PASS   | `FIVE` LD-01                                                            | —      |
+| LD-02 | Import checked without saving, then run.                                                                 | PASS   | `SUITE` `lead-import.spec.ts` (M4-41/42/43)                             | —      |
+| LD-03 | Refused rows download; successful rows not duplicated.                                                   | PASS   | `SUITE` `lead-import.spec.ts`                                           | —      |
+| LD-04 | A duplicate named on the lead page is merged from the compare screen.                                    | PASS   | `SUITE` `lead-merge-import.spec.ts` (M4-31)                             | —      |
+| LD-05 | Eligible-agent selection.                                                                                | PASS   | `SUITE` `cold-data-assign.spec.ts`, `tests/sales/lead-triage.spec.ts`   | —      |
+| LD-06 | Two leads assigned to each agent; ownership and `LeadAssignmentHistory` (from, to, by, reason) verified. | PASS   | `FIVE` LD-06; `SUITE` `lead-bulk-actions.spec.ts`                       | —      |
+| LD-07 | An agent on approved leave is excluded from allocation.                                                  | PASS   | `SUITE` `tests/sales/lead-triage.spec.ts` via `grantApprovedLeave`      | —      |
+| LD-08 | Unassigned queue.                                                                                        | PASS   | `SUITE` `cold-data-assign.spec.ts`, triage                              | —      |
+| LD-09 | Concurrent assignment and retry.                                                                         | PASS   | `SUITE` `tests/sales/idempotency-key.spec.ts`, `offline-outbox.spec.ts` | —      |
+| LD-10 | Agent A's list, direct id read and export all excluded Agent B's leads.                                  | PASS   | `FIVE` LD-10; `SUITE` `lead-contact-masking`, `record-scope`            | —      |
+| LD-11 | Rep sees no Delete and is refused; admin deletes; a repeat is 404.                                       | PASS   | `SUITE` `admin-deletes.spec.ts`                                         | —      |
+
+### Calls and follow-ups
+
+| ID    | Actual                                                                                                            | Status  | Evidence                                                             | Defect                                                                           |
+| ----- | ----------------------------------------------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| CL-01 | Calling flow opens from the lead.                                                                                 | PASS    | `SUITE` `lead-call-log.spec.ts`                                      | —                                                                                |
+| CL-02 | **No call was placed to a real number.** The rig has only the development mock provider.                          | BLOCKED | —                                                                    | Needs a consenting test number and real telephony credentials on a QA workspace. |
+| CL-03 | Connected, No answer and Call back later logged and stored distinctly.                                            | PASS    | `FIVE` CL-03                                                         | —                                                                                |
+| CL-04 | Actor (`ownerId`), `occurredAt` and the note all survived; asserted against the rows after the writes.            | PASS    | `FIVE` CL-04                                                         | —                                                                                |
+| CL-05 | "No answer" is one distinct outcome and is not counted as a conversation.                                         | PASS    | `FIVE` CL-05                                                         | —                                                                                |
+| CL-06 | A call-back with a time created the follow-up.                                                                    | PASS    | `FIVE` CL-06                                                         | —                                                                                |
+| CL-07 | Rescheduled, then completed with an outcome; the row and the timeline agree.                                      | PASS    | `FIVE` CL-07                                                         | —                                                                                |
+| CL-08 | Overdue uses the workspace timezone — the daily board returned `"timeZone":"Asia/Dubai"` with its own UTC window. | PASS    | `FIVE` MG-05 board payload; `SUITE` `follow-up-mobile` overdue count | —                                                                                |
+| CL-09 | Reminders through configured channels, and no obligation lost across a restart.                                   | NOT RUN | —                                                                    | Needs a scheduled reminder window longer than this run.                          |
+| CL-10 | Timeline shows the logged outcomes in order, no duplicates.                                                       | PASS    | `FIVE` CL-07 timeline assertion                                      | —                                                                                |
+
+### Targets and manager tracking
+
+| ID    | Actual                                                                         | Status | Evidence                                                                 | Defect |
+| ----- | ------------------------------------------------------------------------------ | ------ | ------------------------------------------------------------------------ | ------ |
+| MG-01 | Daily `CALLS_ATTEMPTED` targets of 5 set for both agents; both stored.         | PASS   | `FIVE` MG-01                                                             | —      |
+| MG-02 | Each agent sees their own target; Agent B's id absent from Agent A's response. | PASS   | `FIVE` MG-02                                                             | —      |
+| MG-03 | Duplicate submission does not inflate a total.                                 | PASS   | `SUITE` `daily-target.spec.ts`, idempotency specs                        | —      |
+| MG-04 | Manager's board lists both agents with calls, follow-ups and target progress.  | PASS   | `FIVE` MG-05; `SUITE` `daily-target-workflow.spec.ts`                    | —      |
+| MG-05 | Board rows reconciled against the Activity rows the run actually wrote.        | PASS   | `FIVE` MG-05                                                             | —      |
+| MG-06 | Overdue and stalled identification.                                            | PASS   | `SUITE` `lead-eagle-dashboard-filters.spec.ts`                           | —      |
+| MG-07 | Reassignment moves responsibility; history preserved.                          | PASS   | `FIVE` OF-04; `SUITE` `user-deactivate-hand-over.spec.ts`                | —      |
+| MG-08 | Work-gated check-out exists and is enforced.                                   | PASS   | `SUITE` `daily-target-workflow.spec.ts` "the work-gated check-out count" | —      |
+
+### Sales journey
+
+| ID    | Actual                                                                                      | Status | Evidence                                                          | Defect |
+| ----- | ------------------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------- | ------ |
+| SL-01 | Stage moves, with a stage that requires an email enforced.                                  | PASS   | `SUITE` `lead-stage-mini-form.spec.ts`, `lead-bulk-stage.spec.ts` | —      |
+| SL-02 | Meeting booked from the board; site visits.                                                 | PASS   | `SUITE` `lead-views-board.spec.ts`, `crm-lifecycle.spec.ts`       | —      |
+| SL-03 | Convert and link without duplicates.                                                        | PASS   | `SUITE` `crm-lifecycle.spec.ts`, `entity-navigation.spec.ts`      | —      |
+| SL-04 | Won/lost with required reasons; Dropped asks why.                                           | PASS   | `SUITE` `lead-close-out.spec.ts`, mobile Move menu                | —      |
+| SL-05 | Competing reservations: a draft naming no unit cannot be confirmed; a sold flat is refused. | PASS   | `SUITE` `booking-api.spec.ts`                                     | —      |
+| SL-06 | Cancellation releases inventory only per the workflow.                                      | PASS   | `SUITE` `booking-api.spec.ts`                                     | —      |
+
+### HRMS and availability
+
+| ID    | Actual                                                                                                                              | Status                      | Evidence                                                                                   | Defect                         |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------ |
+| HR-01 | Onboarding checklist and document upload/download.                                                                                  | PASS                        | `SUITE` `hr-modules.spec.ts`, "whose documents expire"                                     | —                              |
+| HR-02 | Check-in/out; a refused camera and a dropped connection each explain themselves.                                                    | PASS                        | `SUITE` `mobile.spec.ts` photo/camera case                                                 | —                              |
+| HR-03 | Face attendance ran in CI against the real engine on a consenting fixture; **skipped here** — the frame set is not on this machine. | PASS (CI) / BLOCKED (local) | `face-e2e` green on #243                                                                   | Needs the face frames locally. |
+| HR-04 | Agent filed two leave requests through the product; HR approved one and rejected the other; both carry `decidedAt`.                 | PASS                        | `FIVE` HR-04                                                                               | —                              |
+| HR-05 | Approved leave removes an agent from allocation.                                                                                    | PASS                        | `SUITE` `tests/sales/lead-triage.spec.ts`                                                  | —                              |
+| HR-06 | Partial-day, cancellation, return to work.                                                                                          | NOT RUN                     | —                                                                                          | Not reached in this run.       |
+| HR-07 | A sales agent attempting `leave-approve` was refused; and reaching payroll was refused.                                             | PASS                        | `FIVE` HR-07, ON-06; `SUITE` "a role with no employee permission reaches no employee data" | —                              |
+| HR-08 | Approval separation and employee self-view.                                                                                         | PASS                        | `SUITE` `hr-modules.spec.ts`, `employee-record-scope.spec.ts`                              | —                              |
+
+### Finance
+
+| ID    | Actual                                                                         | Status | Evidence                                                            | Defect |
+| ----- | ------------------------------------------------------------------------------ | ------ | ------------------------------------------------------------------- | ------ |
+| FN-01 | Booking fee / invoice created.                                                 | PASS   | `SUITE` `collections-api.spec.ts`, `collections-ui.spec.ts`         | —      |
+| FN-02 | Partial and full collection reconcile.                                         | PASS   | `SUITE` `collections-ui.spec.ts`                                    | —      |
+| FN-03 | Commission from the stored agreed fee.                                         | PASS   | `SUITE` "a confirmed sale with an agreed fee"                       | —      |
+| FN-04 | Maker-checker: a reversal verified by the other person takes eligibility away. | PASS   | `SUITE` `collections-ui.spec.ts` (four-people and two-people cases) | —      |
+| FN-05 | Amendment does not silently change historical amounts.                         | PASS   | `SUITE` reversal-with-a-reason case                                 | —      |
+| —     | **No real payment was initiated.**                                             | —      | —                                                                   | —      |
+
+### ONE AI
+
+| ID    | Actual                                                                                                                                                                                                                                                                                                                          | Status                            | Evidence                                                                                 | Defect                                          |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| AI-01 | Reproduced as reported. The cause was identified: see AI-04.                                                                                                                                                                                                                                                                    | FAIL → fixed, awaiting production | `FIVE` n/a; #243, #244                                                                   | D-1, D-2                                        |
+| AI-02 | Same path as AI-01.                                                                                                                                                                                                                                                                                                             | FAIL → fixed, awaiting production | #243, #244                                                                               | D-1, D-2                                        |
+| AI-03 | Before: every cause produced one sentence and no reference. After: the cause is classified and a reference is emitted and logged.                                                                                                                                                                                               | PASS (on branch)                  | `tests/unit/assistant-failure.spec.ts` 7/7, all failing on `origin/main`                 | D-1                                             |
+| AI-04 | **Root cause.** `connectionCredentials` (`connection.ts:51`) returns `null` unless the row is `CONNECTED`, which is also its answer for "never connected". `geminiCredential` fell through to the deployment key for both, so an `ERROR` workspace ran on the platform's key and was judged against deployment budget ceilings. | FAIL → fixed                      | `tests/tenant/gemini-broken-connection-no-fallback.spec.ts` 6/6; 2 fail on `origin/main` | D-2                                             |
+| AI-05 | Test connection is independently diagnosable and repairs an ERROR row.                                                                                                                                                                                                                                                          | PASS                              | `SUITE` `gemini-connection-repair.spec.ts`                                               | —                                               |
+| AI-06 | **No authorized provider credential is available on this rig** — its `GEMINI_API_KEY` is empty, so the assistant runs template mode. No key was requested through chat and none was substituted.                                                                                                                                | BLOCKED                           | —                                                                                        | Needs a credential in the production workspace. |
+| AI-07 | Cannot compare model-returned records without a live model.                                                                                                                                                                                                                                                                     | BLOCKED                           | —                                                                                        | Depends on AI-06.                               |
+| AI-08 | `executeTool` checks `tool.requires` against the caller before any tool runs (`tools.ts:1132`); every tool reads through the tenant-scoped client. Template mode drives the same `executeTool`.                                                                                                                                 | PASS                              | `CODE` + `FIVE` LD-10 (same scope path)                                                  | —                                               |
+| AI-09 | Template mode answers "No ... follow-ups in your queue" rather than inventing rows.                                                                                                                                                                                                                                             | PASS                              | `CODE` `service.ts` templateMode                                                         | —                                               |
+| AI-10 | A provider failure now yields a named, actionable message with a reference, and the loop is bounded at six rounds.                                                                                                                                                                                                              | PASS (on branch)                  | `tests/unit/assistant-failure.spec.ts`; `service.ts` round cap                           | D-1                                             |
+| AI-11 | `recordAiUsage` is called per round with tenant, feature, model and user.                                                                                                                                                                                                                                                       | PASS                              | `CODE` `service.ts` `modelTurn`                                                          | —                                               |
+| AI-12 | Conversation is per-browser (`localStorage`), never server-side shared.                                                                                                                                                                                                                                                         | PASS                              | `CODE` `AssistantWidget.tsx` `STORAGE_KEY`                                               | —                                               |
+
+### Offboarding and handover
+
+| ID    | Actual                                                                                                                        | Status  | Evidence                                                                 | Defect                                        |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------ | --------------------------------------------- |
+| OF-01 | Offboarding initiated for Agent A alone.                                                                                      | PASS    | `FIVE` OF-02                                                             | —                                             |
+| OF-02 | Agent A's owned leads and open follow-ups enumerated before the exit.                                                         | PASS    | `FIVE` OF-02                                                             | —                                             |
+| OF-03 | After the hand-over Agent A owned **0** leads, Agent B owned **4**, and Agent A had **0** open follow-ups.                    | PASS    | `FIVE` OF-03                                                             | —                                             |
+| OF-04 | The call activities Agent A logged still count against Agent A: the count was identical before and after.                     | PASS    | `FIVE` OF-04                                                             | —                                             |
+| OF-05 | The deactivated account's sign-in was refused.                                                                                | PASS    | `FIVE` OF-05; `SUITE` deletion journey "the password no longer signs in" | —                                             |
+| OF-06 | Assigning a new lead to the departed account was refused (`assertAssignableUser` requires an active member).                  | PASS    | `FIVE` OF-06                                                             | —                                             |
+| OF-07 | Reminders no longer route to the departed employee.                                                                           | NOT RUN | —                                                                        | Needs a reminder window longer than this run. |
+| OF-08 | Retention policy on retained records.                                                                                         | PASS    | `SUITE` `admin/retention`, `ponytail` retention specs                    | —                                             |
+| OF-09 | Last-admin protection: the primary administrator is told the request is blocked, and why; it goes through after the transfer. | PASS    | `RERUN` account-deletion-journey 10/10                                   | —                                             |
+
+### Cross-cutting
+
+| ID    | Actual                                                                                                                                                               | Status  | Evidence                                                                                          | Defect |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------- | ------ |
+| XC-01 | Desktop and 390 px phone journeys, keyboard, back/forward.                                                                                                           | PASS    | `SUITE` `redesign-mobile`, `mobile-shell`, `follow-up-mobile`, "tabs, back and forward, keyboard" | —      |
+| XC-02 | Empty, long-name, narrow-screen and error states.                                                                                                                    | PASS    | `SUITE` `ui-states.spec.ts`, "a list with nothing in it explains itself"                          | —      |
+| XC-03 | Audit records present and free of secrets.                                                                                                                           | PASS    | `UNIT` `mutation-audit.spec.ts`; `SUITE` coaching/roles history                                   | —      |
+| XC-04 | Another tenant's lead, task and call are a 404 and are left untouched; another workspace is not reachable by URL or API.                                             | PASS    | `SUITE` `acceptance.spec.ts`, `admin-deletes.spec.ts`, `record-scope.spec.ts`                     | —      |
+| XC-05 | Double-click, refresh and network interruption on key mutations.                                                                                                     | PASS    | `SUITE` `offline-outbox.spec.ts`; `UNIT` idempotency specs                                        | —      |
+| XC-06 | A record opens from the bell and the shell agrees on the module.                                                                                                     | PASS    | `SUITE` `entity-navigation.spec.ts`                                                               | —      |
+| XC-07 | Measured: full browser suite 25.2 min for 192 executed; five-user journey 13 cases in 1.0 min; onboarding of five invitees 15.4 s; offboarding with hand-over 2.4 s. | PASS    | this run                                                                                          | —      |
+| XC-08 | The branch under test is the release candidate, run on `next build` output. The AI rows still need the production re-test.                                           | PARTIAL | this run                                                                                          | —      |
+
+## E. Totals
+
+| Status                                                 | Count  |
+| ------------------------------------------------------ | ------ |
+| PASS                                                   | 72     |
+| FAIL (fixed on the branch, production re-test pending) | 2      |
+| BLOCKED                                                | 4      |
+| NOT RUN                                                | 3      |
+| NOT IMPLEMENTED                                        | 0      |
+| PARTIAL                                                | 1      |
+| **Total scenarios**                                    | **82** |
+
+Underlying executions: 183 + 13 + 10 = **206 browser cases passed**, 5,075 unit cases passed.
+
+## F. Defect register
+
+| ID  | Severity     | What                                                                                                                                                                                                                                                                       | Status                                                                                                                                     |
+| --- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| D-1 | Major        | ONE AI reported every failure — budget ceiling, rejected key, retired model, timeout, a 403 on the route — as "temporarily unavailable", with nothing tying it to the server log.                                                                                          | Fixed in #243. Unit 7/7, all failing on `origin/main`. Retested on `6b01e1e1`. Production re-test pending.                                 |
+| D-2 | **Critical** | A workspace whose AI connection was in `ERROR` had its prompts and its bill silently moved onto the deployment's Google key, crossing the data boundary that bringing your own key is meant to buy, and was then refused by deployment budget ceilings it never agreed to. | Fixed in #244. 6/6 new, 24/24 across the three Gemini suites; 2 fail on `origin/main`. Retested on `6b01e1e1`. Production re-test pending. |
+
+### Not defects — rig conditions, recorded so they are not mistaken for them
+
+| What                                                 | Why it is not a product defect                                                                                                                                                                                                                                              |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ~100 cascading skips on the first run                | Under `next dev` the login form submitted natively to `/login?` before its JS compiled. The owner credential and MFA were verified working directly against the API. Gone on the production build.                                                                          |
+| `business-journey`, `assisted-call`, `live-guidance` | `next start` forces `NODE_ENV=production`, and the mock telephony and speech-to-text vendors are only counted in development (`telephony/resolve.ts:82`). **Proven environmental: the same two specs fail identically at `origin/main`, the commit running in production.** |
+| `account-deletion-journey`                           | The worker started for this run armed BullMQ job schedulers on the Redis index that spec asserts is clean. With the worker stopped: **10/10**.                                                                                                                              |
+
+## G. Release recommendation
+
+**Ship #243 and #244 as one release.** Both are green, D-2 is a credential-boundary and billing defect worth releasing on its own merits, and a single release is the shortest validated sequence.
+
+Remaining blockers, all external:
+
+1. **AI-06/AI-07 cannot pass anywhere but production** — no authorized provider credential exists on this rig, and none was requested through chat.
+2. **CL-02** needs real telephony credentials and a consenting test number.
+3. **HR-03** locally needs the face frame set; it is green in CI against the real engine.
+4. **CL-09 / OF-07 / HR-06** need a run longer than a reminder window.
+5. `gh pr close 240` is refused by the session's write classifier; #240 is fully superseded by #242 and should be closed by hand.
+
+## H. Cleanup
+
+Confined to this run's synthetic data:
+
+- The Playwright teardown removes every workspace and account carrying the run tag; it reported removals after each run.
+- The five synthetic users, their roles, leads, activities, follow-ups, targets and leave requests live only inside the per-run workspace the teardown deletes.
+- The whole rig is the disposable database `master_suite_e2e`, Redis logical DB 12 and four throwaway containers; dropping the database removes everything this run created.
+- **No real employee, customer, payment, phone call or email was touched.** `EMAIL_PROVIDER=mock` sends to Mailpit; nothing left the machine.
+- No key, password, session cookie or customer record appears in this document or in any evidence it cites.
