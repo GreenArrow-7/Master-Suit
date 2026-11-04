@@ -74,6 +74,28 @@ export async function savedCredentials(tenantId: string, provider: string): Prom
   return conn ? decryptCredentials((conn.credentials ?? {}) as Record<string, unknown>) : {};
 }
 
+/**
+ * Whether a provider is connected, and whether a credential is sitting behind
+ * that status — without decrypting anything.
+ *
+ * `connectionCredentials` answers null both for "this tenant never connected
+ * the provider" and for "this tenant connected it and the connection is
+ * currently marked broken". Those are different situations and a caller that
+ * cannot tell them apart will fall back as though no choice had been made,
+ * which is how a tenant's own credential stopped being used without anyone
+ * being told.
+ */
+export async function connectionState(
+  tenantId: string,
+  provider: string,
+): Promise<{ status: string; storedKeys: string[] } | null> {
+  const conn = await prisma.integrationConnection.findUnique({
+    where: { tenantId_provider: { tenantId, provider } },
+    select: { status: true, credentials: true },
+  });
+  return conn ? { status: conn.status, storedKeys: storedCredentialKeys(conn.credentials) } : null;
+}
+
 /** Which credential fields hold a value — names only, never values. */
 export function storedCredentialKeys(credentials: unknown): string[] {
   return Object.entries((credentials ?? {}) as Record<string, unknown>)

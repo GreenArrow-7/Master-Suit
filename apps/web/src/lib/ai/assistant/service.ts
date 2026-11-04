@@ -1,4 +1,7 @@
+import { randomUUID } from 'node:crypto';
+
 import { logger } from '@/lib/logger';
+import { AppError } from '@/lib/errors';
 import { ASSISTANT_NAME, PRODUCT_NAME } from '@/lib/branding';
 import { geminiCredential, geminiModel, type GeminiCredential } from '../gemini';
 import { assertAiBudget, recordAiUsage } from '../usage';
@@ -105,6 +108,30 @@ const STATUS: Record<string, string> = {
   createTask: 'Preparing the task…',
 };
 
+/**
+ * What to tell the person, from what actually failed.
+ *
+ * `AppError`s raised by the budget ceilings are written for users and carry
+ * `expose`, so they are shown as written — replacing "you have used your
+ * monthly allowance" with "temporarily unavailable" is how a configuration
+ * problem became an apparent outage. Provider statuses are named by category,
+ * never by the provider's own body, which can quote the request.
+ */
+export function assistantFailure(err: unknown, status: number | undefined, message: string): string {
+  if (err instanceof AppError && err.expose) return err.message;
+  if (status === 429) return 'The AI provider is rate-limited right now. Try again in a moment.';
+  if (status === 401 || status === 403)
+    return 'The AI provider rejected the connected key. Check it in Settings → Integrations → Intelligence.';
+  if (status === 404)
+    return 'The AI provider does not know the configured model. Check the Model field in Settings → Integrations → Intelligence.';
+  if (status === 400)
+    return 'The AI provider refused the request. This usually means the key and the provider do not match.';
+  if (status && status >= 500)
+    return 'The AI provider is having an outage. Your CRM data and other features are still available.';
+  if (/timeout|aborted|AbortError/i.test(message)) return 'The AI provider did not answer in time. Try again.';
+  return 'AI Assistant is temporarily unavailable. Your CRM data and other features are still available.';
+}
+
 export async function* runAssistant(
   ctx: Ctx,
   messages: ChatMessage[],
@@ -181,6 +208,26 @@ export async function* runAssistant(
       }
     } else {
       // ── Template mode: keyword router over the same tools ───────────────
+      /**
+       * Template mode still answers from real CRM data, so the feature stays
+       * usable — but running it because the workspace's own connection is
+       * broken is a thing the person must be told, or a degraded answer reads
+       * as the product working normally.
+       */
+      if (credential.source === 'simulated' && credential.reason === 'connection-broken')
+        yield {
+          type: 'delta',
+          text:
+            'Your AI connection is saved but marked as not working, so this answer was assembled from your CRM records without the model. ' +
+            'Open Settings → Integrations → Intelligence and use Test connection to bring it back.\n\n',
+        };
+      if (credential.source === 'simulated' && credential.reason === 'no-model')
+        yield {
+          type: 'delta',
+          text:
+            'Your AI connection names OpenRouter but no model, and OpenRouter has no default, so this answer was assembled from your CRM records without the model. ' +
+            'Set the Model field in Settings → Integrations → Intelligence.\n\n',
+        };
       yield* templateMode(messages, page, runTool);
     }
 
@@ -188,15 +235,23 @@ export async function* runAssistant(
     if (action) yield { type: 'action', action };
     yield { type: 'done' };
   } catch (err) {
+    /**
+     * Every cause used to arrive here and leave as one sentence: a budget
+     * ceiling, a rejected key, a retired model and a timeout all read "AI
+     * Assistant is temporarily unavailable", with nothing in the UI tying the
+     * message to the log line that holds the real reason. Nobody could tell a
+     * misconfiguration from an outage, which is the state this feature was
+     * found in.
+     *
+     * So the cause is classified and a correlation id travels with it. The id
+     * is the only thing that identifies the request; the key, the prompt and
+     * the provider's body never leave the server.
+     */
+    const ref = randomUUID().slice(0, 8);
     const status = (err as { status?: number }).status;
-    logger.error({ err: (err as Error).message }, 'assistant request failed');
-    yield {
-      type: 'error',
-      detail:
-        status === 429
-          ? 'The AI provider is rate-limited right now. Try again in a moment.'
-          : 'AI Assistant is temporarily unavailable. Your CRM data and other features are still available.',
-    };
+    const message = (err as Error).message ?? '';
+    logger.error({ err: message, status, ref, tenantId: ctx.tenantId }, 'assistant request failed');
+    yield { type: 'error', detail: `${assistantFailure(err, status, message)} (ref ${ref})` };
   } finally {
     logger.info({ userId: ctx.actor.id, tenantId: ctx.tenantId, toolsUsed, page: page?.entityType }, 'assistant query');
   }
