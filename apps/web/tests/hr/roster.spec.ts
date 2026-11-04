@@ -31,6 +31,16 @@ import { createEmployee } from '../helpers/fixtures';
 
 const day = (value: string) => new Date(`${value}T00:00:00Z`);
 
+/**
+ * A day ahead of today, for the shift-change cases — never a literal.
+ *
+ * `requestShiftChange` refuses a shift that has already passed, so a fixed
+ * date there is a test that passes until the date quietly goes by.
+ * `2026-11-02` was one of those and failed on 2026-11-04; the two December
+ * dates beside it were the same bomb with a longer fuse.
+ */
+const inDays = (n: number) => day(new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10));
+
 // ── Pure scheduling arithmetic ─────────────────────────────────────────────
 
 describe('shiftWindow', () => {
@@ -393,12 +403,12 @@ describe('shift change and swap', () => {
     const aminaEntry = await assignShift(ctx, {
       employeeId: employees.amina!,
       shiftId: shifts.early!,
-      workDate: day('2026-11-02'),
+      workDate: inDays(7),
     });
     const bilalEntry = await assignShift(ctx, {
       employeeId: employees.bilal!,
       shiftId: shifts.late!,
-      workDate: day('2026-11-03'),
+      workDate: inDays(8),
     });
 
     const request = await requestShiftChange(ctxFor('amina', STAFF), {
@@ -425,12 +435,12 @@ describe('shift change and swap', () => {
     const mine = await assignShift(ctx, {
       employeeId: employees.amina!,
       shiftId: shifts.early!,
-      workDate: day('2026-12-07'),
+      workDate: inDays(14),
     });
     const theirs = await assignShift(ctx, {
       employeeId: employees.bilal!,
       shiftId: shifts.late!,
-      workDate: day('2026-12-08'),
+      workDate: inDays(15),
     });
     const request = await requestShiftChange(ctxFor('amina', STAFF), {
       entryId: mine.id,
@@ -451,7 +461,7 @@ describe('shift change and swap', () => {
     const entry = await assignShift(ctx, {
       employeeId: employees.amina!,
       shiftId: shifts.early!,
-      workDate: day('2026-12-14'),
+      workDate: inDays(21),
     });
     const request = await requestShiftChange(ctxFor('amina', STAFF), {
       entryId: entry.id,

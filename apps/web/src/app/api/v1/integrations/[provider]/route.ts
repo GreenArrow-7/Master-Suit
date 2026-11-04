@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
 import { Invalid, NotFound } from '@/lib/errors';
-import { connectionMetadata, connectionCredentials, wrapCredentials } from '@/lib/integrations/connection';
+import { connectionMetadata, savedCredentials, wrapCredentials } from '@/lib/integrations/connection';
+import { aiProviderKey } from '@/lib/ai/provider';
 import { CREDENTIAL_ALSO_SETTINGS, providerSpec } from '@/lib/integrations/registry';
 import { fieldMapOf, isLeadSource, MAPPABLE_FIELDS, type MappableField } from '@/lib/integrations/leadSources';
 import { audit } from '@/lib/security/audit';
@@ -84,9 +85,26 @@ export const PUT = route(
       }
     }
 
+    /**
+     * The Provider box is free text and a human types the vendor's own
+     * spelling. "Open Router" is not `openrouter`, so it was stored as typed
+     * and every reader fell through to google — the key was verified against,
+     * and would have run against, the wrong API. Refused rather than guessed:
+     * a third value here has no safe meaning.
+     */
+    if (params.provider === 'gemini' && typeof body.settings.provider === 'string' && body.settings.provider.trim()) {
+      const selected = aiProviderKey(body.settings.provider);
+      if (!selected) {
+        throw Invalid([{ field: 'provider', code: 'invalid', message: 'Provider is either google or openrouter.' }]);
+      }
+      body.settings.provider = selected;
+    }
+
     // Merge over what is stored, so a partial edit does not wipe a token the
-    // admin was never shown.
-    const existing = (await connectionCredentials(ctx.tenantId, params.provider)) ?? {};
+    // admin was never shown. Read without the CONNECTED gate: a connection in
+    // ERROR is exactly the one being re-saved, and merging over nothing would
+    // refuse the save for a key the admin cannot re-type.
+    const existing = await savedCredentials(ctx.tenantId, params.provider);
     const credentials: Record<string, string> = { ...existing };
     for (const [key, value] of Object.entries(body.credentials)) {
       if (value === '') delete credentials[key];
@@ -213,7 +231,9 @@ export const POST = route(
     });
     if (!credentials) throw NotFound('Connection');
 
-    const stored = (await connectionCredentials(ctx.tenantId, params.provider)) ?? {};
+    // Not `connectionCredentials`: re-testing a connection in ERROR is the
+    // whole point of this route, and the gate made that report "no key saved".
+    const stored = await savedCredentials(ctx.tenantId, params.provider);
     const settings = await connectionMetadata(ctx.tenantId, params.provider);
     const verdict = await verifyConnection(params.provider, verifyInput(stored, settings));
 
