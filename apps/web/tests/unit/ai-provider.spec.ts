@@ -43,6 +43,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { TOOLS as ASSISTANT_TOOLS } from '@/lib/ai/assistant/tools';
 import {
   generateStructured,
   generateWithTools,
@@ -57,6 +58,67 @@ const received: { path: string; auth: string | undefined; body: any }[] = [];
 let googleReply: unknown = {};
 let openRouterReply: unknown = {};
 let status = 200;
+/**
+ * Google's own validation of `functionDeclarations`, which the plain fake does
+ * not perform — and that omission is why a request this provider rejects every
+ * single time passed this suite for as long as it existed.
+ */
+let strictGoogleSchema = false;
+
+/**
+ * Google's `Schema`, as the REST API enforces it: a closed set of keywords, and
+ * an OBJECT must carry properties. Anything else is 400 INVALID_ARGUMENT, and
+ * the whole request fails — not the one declaration.
+ */
+const SCHEMA_KEYS = new Set([
+  'type',
+  'format',
+  'description',
+  'nullable',
+  'enum',
+  'items',
+  'properties',
+  'required',
+  'minItems',
+  'maxItems',
+]);
+
+/** The path of the first thing Google would refuse, or undefined. */
+function schemaFault(schema: any, path: string): string | undefined {
+  if (!schema || typeof schema !== 'object') return undefined;
+  for (const key of Object.keys(schema)) {
+    if (!SCHEMA_KEYS.has(key)) return `${path}.${key}`;
+  }
+  if (schema.type === 'object' && Object.keys(schema.properties ?? {}).length === 0) {
+    return `${path}.properties`;
+  }
+  for (const [name, child] of Object.entries(schema.properties ?? {})) {
+    const fault = schemaFault(child, `${path}.properties.${name}`);
+    if (fault) return fault;
+  }
+  return schemaFault(schema.items, `${path}.items`);
+}
+
+/** The 400 Google returns for a declaration it will not accept. */
+function schemaRejection(body: any) {
+  const declarations = body?.tools?.[0]?.functionDeclarations ?? [];
+  for (const [index, fn] of declarations.entries()) {
+    if (!fn?.parameters) continue;
+    const fault = schemaFault(
+      fn.parameters,
+      `GenerateContentRequest.tools[0].function_declarations[${index}].parameters`,
+    );
+    if (!fault) continue;
+    return {
+      error: {
+        code: 400,
+        status: 'INVALID_ARGUMENT',
+        message: `Invalid JSON payload received. ${fault}: should be non-empty for OBJECT type`,
+      },
+    };
+  }
+  return undefined;
+}
 
 let server: Server;
 let base: string;
@@ -72,8 +134,15 @@ beforeAll(async () => {
         auth: req.headers.authorization,
         body: raw ? JSON.parse(raw) : null,
       });
+      const google = !req.url?.includes('/chat/completions');
+      const rejection = google && strictGoogleSchema ? schemaRejection(raw ? JSON.parse(raw) : null) : undefined;
+      if (rejection) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(rejection));
+        return;
+      }
       res.writeHead(status, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(req.url?.includes('/chat/completions') ? openRouterReply : googleReply));
+      res.end(JSON.stringify(google ? googleReply : openRouterReply));
     });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -90,6 +159,7 @@ afterAll(async () => {
 beforeEach(() => {
   received.length = 0;
   status = 200;
+  strictGoogleSchema = false;
 });
 
 const google: AiTransportCredential = { key: 'google-key', provider: 'google' };
@@ -219,6 +289,153 @@ describe('tool calling', () => {
       ['function', 'searchLeads'],
       ['function', 'getLead'],
     ]);
+  });
+
+  /**
+   * The defect this reproduces: `getMyDay` takes no arguments, so it was
+   * declared `{type:'object',properties:{}}` — valid OpenAI, and a 400 from
+   * Google for the *whole* request. Every ONE AI question failed, whatever was
+   * asked, while "Test connection" stayed green because it lists models and
+   * sends no tools at all.
+   */
+  it('omits parameters for a no-argument tool, which Google rejects as an empty OBJECT', async () => {
+    strictGoogleSchema = true;
+    googleReply = { candidates: [{ content: { parts: [{ text: 'ok' }] } }] };
+    const withNoArgs: ToolDeclaration[] = [
+      {
+        name: 'getLead',
+        description: 'One lead',
+        parameters: { type: 'object', properties: { id: { type: 'string' } } },
+      },
+      { name: 'getMyDay', description: 'Today', parameters: { type: 'object', properties: {} } },
+    ];
+
+    const out = await generateWithTools({
+      credential: google,
+      model: 'm',
+      system: 's',
+      turns: [{ role: 'user', text: 'Show my overdue follow-ups' }],
+      tools: withNoArgs,
+    });
+
+    expect(out.text).toBe('ok');
+    const sent = last().body.tools[0].functionDeclarations;
+    // Declared, so the model can still call it — just without a parameters key.
+    expect(sent.map((f: any) => f.name)).toEqual(['getLead', 'getMyDay']);
+    expect(sent[1]).not.toHaveProperty('parameters');
+    expect(sent[0].parameters.properties.id).toEqual({ type: 'string' });
+  });
+
+  it('still sends the empty object to OpenRouter, whose schema accepts it', async () => {
+    openRouterReply = { choices: [{ message: { content: 'ok' } }] };
+    await generateWithTools({
+      credential: openrouter,
+      model: 'm',
+      system: 's',
+      turns: [],
+      tools: [{ name: 'getMyDay', description: 'Today', parameters: { type: 'object', properties: {} } }],
+    });
+    expect(last().body.tools[0].function.parameters).toEqual({ type: 'object', properties: {} });
+  });
+
+  /**
+   * The real declarations, through the real translation, against Google's own
+   * rules — the check that was missing. `getMyDay` was the only tool taking no
+   * arguments, so a hand-written fixture could not have found it; the list
+   * itself has to be the input.
+   */
+  it('sends all sixteen declared tools in a shape Google accepts', async () => {
+    strictGoogleSchema = true;
+    googleReply = { candidates: [{ content: { parts: [{ text: 'ok' }] } }] };
+    const declarations: ToolDeclaration[] = ASSISTANT_TOOLS.map((t) => ({
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters,
+    }));
+    expect(declarations).toHaveLength(16);
+
+    await generateWithTools({
+      credential: google,
+      model: 'm',
+      system: 's',
+      turns: [{ role: 'user', text: 'Which leads have breached SLA?' }],
+      tools: declarations,
+    });
+
+    const sent = last().body.tools[0].functionDeclarations;
+    // Every tool still reaches the model, argument-free ones included.
+    expect(sent.map((f: any) => f.name)).toEqual(ASSISTANT_TOOLS.map((t) => t.name));
+    // Only the argument-free one loses its schema; the rest keep theirs whole.
+    const withoutParameters = sent.filter((f: any) => !f.parameters).map((f: any) => f.name);
+    expect(withoutParameters).toEqual(['getMyDay']);
+    const createTask = sent.find((f: any) => f.name === 'createTask');
+    expect(createTask.parameters.required).toEqual(['title', 'dueAt']);
+  });
+
+  /**
+   * The whole round trip, because the two halves failed in different places:
+   * the declarations are refused on the way out, and a result sent back in the
+   * wrong envelope is refused on the second leg — which no test reached while
+   * the first leg never succeeded.
+   */
+  it('completes a call, a result and a final answer against Google’s rules', async () => {
+    strictGoogleSchema = true;
+    const declarations: ToolDeclaration[] = ASSISTANT_TOOLS.map((t) => ({
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters,
+    }));
+
+    // Leg 1: the model asks for the argument-free tool, by name.
+    googleReply = {
+      candidates: [{ content: { parts: [{ functionCall: { name: 'getMyDay', args: {} } }] } }],
+      usageMetadata: { promptTokenCount: 40, candidatesTokenCount: 6 },
+    };
+    const first = await generateWithTools({
+      credential: google,
+      model: 'm',
+      system: 's',
+      turns: [{ role: 'user', text: 'Show my overdue follow-ups' }],
+      tools: declarations,
+    });
+    expect(first.calls).toHaveLength(1);
+    expect(first.calls[0]!.name).toBe('getMyDay');
+    expect(first.calls[0]!.args).toEqual({});
+
+    // Leg 2: the result goes back and the model answers from it.
+    googleReply = {
+      candidates: [{ content: { parts: [{ text: '2 follow-ups are overdue: Dana Haddad, Omar Said.' }] } }],
+      usageMetadata: { promptTokenCount: 95, candidatesTokenCount: 14, totalTokenCount: 109 },
+    };
+    const second = await generateWithTools({
+      credential: google,
+      model: 'm',
+      system: 's',
+      turns: [
+        { role: 'user', text: 'Show my overdue follow-ups' },
+        { role: 'model', calls: first.calls },
+        {
+          role: 'tool',
+          results: [
+            {
+              id: first.calls[0]!.id,
+              name: 'getMyDay',
+              data: { overdueFollowUps: 2, names: ['Dana Haddad', 'Omar Said'] },
+            },
+          ],
+        },
+      ],
+      tools: declarations,
+    });
+
+    expect(second.text).toContain('2 follow-ups are overdue');
+    expect(second.usage.totalTokens).toBe(109);
+    // Google carries a result on a user turn, as a functionResponse keyed by
+    // the function's name — not as a tool role, and not by id.
+    const sentBack = last().body.contents[2];
+    expect(sentBack.role).toBe('user');
+    expect(sentBack.parts[0].functionResponse.name).toBe('getMyDay');
+    expect(sentBack.parts[0].functionResponse.response.data.overdueFollowUps).toBe(2);
   });
 
   it('reads a Google functionCall and synthesises an id for it', async () => {
