@@ -2,7 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
-import { Invalid, NotFound } from '@/lib/errors';
+import { AppError, Invalid, NotFound } from '@/lib/errors';
+import { checkModel, describeCheck } from '@/lib/ai/catalogue';
 import { connectionMetadata, savedCredentials, wrapCredentials } from '@/lib/integrations/connection';
 import { aiProviderKey } from '@/lib/ai/provider';
 import { CREDENTIAL_ALSO_SETTINGS, providerSpec } from '@/lib/integrations/registry';
@@ -133,6 +134,34 @@ export const PUT = route(
       select: { metadata: true },
     });
     const metadata = { ...((previous?.metadata ?? {}) as Record<string, unknown>), ...body.settings };
+
+    /**
+     * The model id is checked against the provider's own catalogue before
+     * anything is written, whatever `skipVerification` says: an id that does
+     * not exist is a bad input, not an unreachable vendor. A workspace saved
+     * the display name "Google Gemini" here and every ONE AI question 400'd
+     * behind a Connected badge. Refusing leaves the stored row as it was.
+     */
+    if (
+      params.provider === 'gemini' &&
+      ('model' in body.settings || 'provider' in body.settings || 'apiKey' in body.credentials)
+    ) {
+      const selected = aiProviderKey(metadata.provider) ?? 'google';
+      const model = typeof metadata.model === 'string' ? metadata.model.trim() : '';
+      if (model) {
+        const check = await checkModel(selected, model, credentials.apiKey ?? '');
+        if (!check.ok) {
+          const message = describeCheck(selected, model, check);
+          if (check.reason === 'unavailable') throw new AppError(503, 'catalogue-unavailable', message);
+          throw Invalid([{ field: 'model', code: 'invalid', message }]);
+        }
+        metadata.model = credentials.model = check.model.id;
+        // Shown beside the id, never sent: the label is what was typed here by mistake.
+        metadata.modelLabel = check.model.label;
+      } else {
+        delete metadata.modelLabel;
+      }
+    }
 
     const verdict = body.skipVerification
       ? ({ ok: null, detail: 'Saved without verification.' } as const)

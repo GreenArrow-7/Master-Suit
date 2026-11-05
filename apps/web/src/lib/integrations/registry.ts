@@ -255,7 +255,7 @@ export const PROVIDERS: ProviderSpec[] = [
         setting: true,
         // Google retires model ids on its own schedule, so this is editable
         // rather than pinned in a deployment.
-        hint: 'Google defaults to gemini-flash-latest. OpenRouter has no default and requires an explicit id, e.g. google/gemini-2.0-flash-001.',
+        hint: 'Google defaults to gemini-flash-latest. OpenRouter has no default: pick a model from the list. The id is what is sent, not its display name.',
       },
     ],
     capabilities: ['ANALYSE', 'AUDIT', 'COACH', 'DRAFT'],
