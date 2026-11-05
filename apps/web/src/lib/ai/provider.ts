@@ -365,7 +365,19 @@ export async function generateWithTools(request: ToolTurnRequest): Promise<ToolT
           functionDeclarations: tools.map((t) => ({
             name: t.name,
             description: t.description,
-            parameters: t.parameters,
+            /**
+             * A no-argument tool must omit `parameters` entirely.
+             *
+             * Google's `Schema` requires an OBJECT to carry properties, and
+             * rejects `{type:'object',properties:{}}` with a 400 naming the
+             * declaration's index — which fails the *whole* request, so one
+             * such tool takes every assistant question down with it. OpenAI's
+             * schema accepts the empty object, which is why the neutral
+             * declaration carries it and only this translation drops it.
+             */
+            ...(Object.keys((t.parameters?.properties as Record<string, unknown>) ?? {}).length
+              ? { parameters: t.parameters }
+              : {}),
           })),
         },
       ],
