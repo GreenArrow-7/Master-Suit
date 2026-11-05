@@ -68,7 +68,9 @@ createServer((req, res) => {
         for (const c of JSON.parse(body).contents ?? [])
           for (const p of c.parts ?? [])
             if (p.functionResponse) handed.push(JSON.stringify(p.functionResponse.response ?? p.functionResponse));
-      } catch {}
+      } catch {
+        // An unparseable body means round 1 as far as this stand-in is concerned.
+      }
       res.writeHead(200, { 'content-type': 'application/json' });
       if (handed.length === 0)
         return res.end(
