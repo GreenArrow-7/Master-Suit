@@ -23,9 +23,30 @@ const port = Number(process.argv[2] || 8099);
 const mode = process.argv[3] || 'ok';
 
 const BODIES = {
-  'bad-key': [401, { error: { code: 401, status: 'UNAUTHENTICATED', message: 'API key not valid. Key AIzaSyFAKE-DO-NOT-USE was rejected.' } }],
-  'no-model': [404, { error: { code: 404, status: 'NOT_FOUND', message: 'models/gemini-retired-1.0 is not found for API version v1beta.' } }],
-  mismatch: [400, { error: { code: 400, status: 'INVALID_ARGUMENT', message: 'API key not valid. Please pass a valid API key.' } }],
+  'bad-key': [
+    401,
+    {
+      error: {
+        code: 401,
+        status: 'UNAUTHENTICATED',
+        message: 'API key not valid. Key AIzaSyFAKE-DO-NOT-USE was rejected.',
+      },
+    },
+  ],
+  'no-model': [
+    404,
+    {
+      error: {
+        code: 404,
+        status: 'NOT_FOUND',
+        message: 'models/gemini-retired-1.0 is not found for API version v1beta.',
+      },
+    },
+  ],
+  mismatch: [
+    400,
+    { error: { code: 400, status: 'INVALID_ARGUMENT', message: 'API key not valid. Please pass a valid API key.' } },
+  ],
   outage: [503, { error: { code: 503, status: 'UNAVAILABLE', message: 'The model is overloaded.' } }],
 };
 
@@ -52,15 +73,15 @@ createServer((req, res) => {
       if (handed.length === 0)
         return res.end(
           JSON.stringify({
-            candidates: [{ content: { parts: [{ functionCall: { name: 'getFollowUps', args: { due: 'overdue' } } }] } }],
+            candidates: [
+              { content: { parts: [{ functionCall: { name: 'getFollowUps', args: { due: 'overdue' } } }] } },
+            ],
             usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 10, totalTokenCount: 110 },
           }),
         );
       return res.end(
         JSON.stringify({
-          candidates: [
-            { content: { parts: [{ text: `GROUNDED-IN: ${handed.join(' | ')}` }] } },
-          ],
+          candidates: [{ content: { parts: [{ text: `GROUNDED-IN: ${handed.join(' | ')}` }] } }],
           usageMetadata: { promptTokenCount: 200, candidatesTokenCount: 40, totalTokenCount: 240 },
         }),
       );
