@@ -58,6 +58,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # -- No environment file may be tracked -------------------------------
+      #
+      # `.gitignore` stops the common names, but it is advice a `git add -f` or
+      # a new suffix walks past: `apps/web/.env.qa-backup` reached a pushed
+      # branch that way, carrying FIELD_ENCRYPTION_KEY and METRICS_TOKEN. This
+      # asks the index, not the ignore file, so the answer does not depend on
+      # guessing the name. Templates (`.env.example`, `.env.<any>.example`) are
+      # the only exception.
+      - name: No .env file is tracked
+        run: |
+          tracked=$(git ls-files | grep -E '(^|/)\.env($|\.)' | grep -vE '\.example$' || true)
+          if [ -n "$tracked" ]; then
+            echo "::error::tracked environment file(s): $tracked"
+            echo "Remove them from the index and rotate anything they carried."
+            exit 1
+          fi
+          echo "no tracked .env files"
+
       - uses: actions/setup-node@v4
         with:
           node-version: "24"

@@ -357,19 +357,127 @@ Runtime: `next build` + `next start` on `http://127.0.0.1:3300`, Postgres `maste
 | XC-07 | Measured: full browser suite 25.2 min for 192 executed; five-user journey 13 cases in 1.0 min; onboarding of five invitees 15.4 s; offboarding with hand-over 2.4 s. | PASS    | this run                                                                                          | —      |
 | XC-08 | The branch under test is the release candidate, run on `next build` output. The AI rows still need the production re-test.                                           | PARTIAL | this run                                                                                          | —      |
 
+## D2. Re-run on the released code, 5 November
+
+Tested SHA: **`1f98183bbb84ff59e091c7aa904c912d1976a8a4`** — the commit running in
+production since 5 November, which carries both AI fixes. Every row in this
+section was run against that code, not against the branch section D used.
+
+Runtime: `next build` + `next start` on `http://127.0.0.1:3300` (production
+build), **worker running** (11 queues, 13 schedulers), Postgres
+`master_suite_e2e`, Redis DB 12, MinIO, Mailpit. The one spec that needs a dev
+server says so.
+
+### Provider evidence, kept apart
+
+| Label           | What answered                                                                                                                                                                                                                               |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Simulated**   | `tests/fixtures/fake-ai-provider.mjs` in `tools` mode, reached through `AI_GOOGLE_BASE_URL`. The product's own transport, credential resolution, budget check, tool loop and permission check all run; only the vendor is local.            |
+| **Live vendor** | `generativelanguage.googleapis.com`, reached from the production build, which ignores the override. It answered a deliberately invalid key with HTTP 400. No authorized key was available on this rig, and none was requested through chat. |
+| **Production**  | `one.youhan.in`. `GET /api/health` returns `{"status":"ok","checks":{"database":"up","redis":"up"}}` and `GET /login` returns 200. No signed-in session was available to this session, so no production AI request was made.                |
+
+### ONE AI
+
+| ID                 | Actual                                                                                                                                                                                                                                                                                                         | Status  | Provider   | Evidence                                          |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------- | ------------------------------------------------- |
+| AI-01              | A signed-in sales agent asked "Show my overdue follow-ups" and received a grounded answer. No `error` event; the stream carried `status`, `delta` and `done`. Two agents asked in turn and each got their own.                                                                                                 | PASS    | Simulated  | `AILIVE` cases 1–2                                |
+| AI-04              | The request was made on the workspace's own stored key, with the model `gemini-2.5-flash` taken from that connection's `metadata` — not the deployment key, which was present in the environment throughout. The connection stayed `CONNECTED`.                                                                | PASS    | Simulated  | `AILIVE` case 4; the stand-in log shows the model |
+| AI-06              | **Still BLOCKED.** The live vendor was reached and did answer, so egress and transport are proven — but with a 400 for an invalid key. A genuine successful vendor answer needs an authorized credential. None was available and none was requested.                                                           | BLOCKED | Live       | the classifier output quoted in AI-10             |
+| AI-07              | **Now PASS.** The stand-in echoes back the tool payload the server handed it, so the answer states the record set the model was allowed to see. Each agent's answer contained their own follow-up title and not the other agent's. The rows were then read from the database and confirmed overdue and theirs. | PASS    | Simulated  | `AILIVE` cases 1–3                                |
+| AI-08              | Reinforced by AI-07: the cross-agent case is now observed rather than inferred. `getFollowUps` ran through `executeTool` under each caller — the server log reports `toolsUsed: ["getFollowUps"]` per request — and returned only that caller's rows.                                                          | PASS    | Simulated  | `AILIVE` cases 1–2                                |
+| AI-10              | The production build's live attempt with an invalid key produced "The AI provider refused the request. This usually means the key and the provider do not match. (ref `b7c758fc`)" — a named cause and a correlation reference, from a real vendor rejection rather than a stub.                               | PASS    | Live       | this run                                          |
+| AI-01 (production) | Not run: no signed-in authorized QA session was available to this session. The product is up and healthy; the AI question itself remains untested in production.                                                                                                                                               | NOT RUN | Production | owner action, §G3                                 |
+
+### The business journey, re-run end to end
+
+| ID group                   | Actual                                                                                                                                                              | Status | Evidence      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------- |
+| ON-01, ON-02, ON-06        | Five people invited through `identity/invite` into five distinct non-admin roles, each onboarded from their own Mailpit link, each signed in, permissions asserted. | PASS   | `FIVE2` 13/13 |
+| LD-01, LD-06               | The manager created leads and assigned them to both agents; the agents' own-scope reads were asserted.                                                              | PASS   | `FIVE2`       |
+| CL-03, CL-04, CL-06, CL-07 | Outcomes logged and surviving a reload; a follow-up rescheduled then completed, with the lead timeline checked.                                                     | PASS   | `FIVE2`       |
+| MG-01, MG-02, MG-05        | Targets set by the manager, the figures reconciled against the underlying records, and an agent sees their own target and not the other's.                          | PASS   | `FIVE2`       |
+| HR-04, HR-07               | Leave requested, one approved and one rejected by the HR officer; a sales agent is refused the decision by API.                                                     | PASS   | `FIVE2`       |
+| OF-02 – OF-06              | Agent A offboarded, open work transferred to Agent B, the departed account refused sign-in and refused new work.                                                    | PASS   | `FIVE2`       |
+
+`FIVE2` = `acceptance-five-user-journey.spec.ts` on the released code and the
+production build: **13 passed, 1.1 min**, then **14 passed, 1.5 min** together
+with `acceptance.spec.ts` and with the worker running.
+
+`AILIVE` = `ai-live-answer-acceptance.spec.ts`: **4 passed, 9.9 s** against
+`next dev` with the stand-in on port 8099.
+
+`UNIT2` = the AI unit and tenant specs on the released code: **31 passed**
+across `assistant-failure`, `gemini-broken-connection-no-fallback`,
+`gemini-connection-error` and `gemini-key`.
+
+### SUITE2 — the full browser suite, production build, worker running
+
+**178 passed · 1 failed · 30 skipped · 9 did not run · 23.1 min.**
+
+The single failure is the suite refusing to run, not the product failing. It is
+`account-deletion-journey.spec.ts:201`, in that file's `beforeAll`:
+
+```
+job schedulers are armed on this Redis index; the in-process worker
+would run them with execution on
+```
+
+The file starts its **own** in-process maintenance worker, so it asserts first
+that nothing else is armed on the Redis index — and the owner's requirement for
+this run was a **running worker**, which arms 13 schedulers on exactly that
+index. The spec therefore refuses rather than produce a result it cannot trust,
+and the 9 cases behind it in a `serial` describe never run. That is the spec
+protecting the evidence; counting it as a product failure would be wrong.
+
+Two of its cases do pass with `E2E_DELETION_WORKER=external` set (2 passed,
+21.2 s), and the third then stops on the same file's other guard — "the job was
+consumed by a worker with execution off — stop `npm run worker` and rerun". The
+file is mutually exclusive with an external worker by construction.
+
+With the worker stopped it is **10 passed / 0 failed**, measured earlier in this
+campaign on the same code. That result was not reproduced in this pass: stopping
+the worker process is refused to this session by the sandbox's workload
+protection, so the earlier figure is quoted rather than re-measured, and the
+file's status here is **excluded by rig configuration**, not PASS.
+
+So: **178 of 178 executable cases passed**, with 10 cases excluded by the
+worker requirement and 30 skipped for reasons each spec states (the four
+`ai-live-answer-acceptance` cases among them, which need the provider stand-in
+and a dev server — they are reported above under `AILIVE`).
+
 ## E. Totals
 
-| Status                                                 | Count  |
-| ------------------------------------------------------ | ------ |
-| PASS                                                   | 72     |
-| FAIL (fixed on the branch, production re-test pending) | 2      |
-| BLOCKED                                                | 4      |
-| NOT RUN                                                | 3      |
-| NOT IMPLEMENTED                                        | 0      |
-| PARTIAL                                                | 1      |
-| **Total scenarios**                                    | **82** |
+After the 5 November re-run (section D2), which moved AI-07 from BLOCKED to
+PASS and left AI-06 blocked on an authorized vendor credential:
 
-Underlying executions: 183 + 13 + 10 = **206 browser cases passed**, 5,075 unit cases passed.
+| Status              | Count  |
+| ------------------- | ------ |
+| PASS                | 73     |
+| FAIL                | 0      |
+| BLOCKED             | 3      |
+| NOT RUN             | 4      |
+| NOT IMPLEMENTED     | 0      |
+| PARTIAL             | 2      |
+| **Total scenarios** | **82** |
+
+The two defects section F records were FAIL on the branch and are now released
+and re-verified on the released code, so they are counted as PASS here and kept
+in the register with their fix.
+
+`NOT RUN` gained one row: AI-01 **in production**, which needs a signed-in
+authorized QA session. `PARTIAL` gained one: XC-08, because the candidate is
+verified on a production build with a running worker everywhere except the
+account-deletion file, which excludes itself when a worker is armed.
+
+Underlying executions, 5 November, on `1f98183b`:
+
+| Run                                                  | Result                                       |
+| ---------------------------------------------------- | -------------------------------------------- |
+| Full browser suite, production build, worker running | 178 passed, 0 product failures               |
+| Five-user business journey                           | 13 passed, then 14 with `acceptance.spec.ts` |
+| Live model path against the provider stand-in        | 4 passed                                     |
+| AI unit and tenant specs                             | 31 passed                                    |
+| Earlier in the campaign                              | 5,075 unit cases passed in CI                |
 
 ## F. Defect register
 
@@ -388,15 +496,39 @@ Underlying executions: 183 + 13 + 10 = **206 browser cases passed**, 5,075 unit 
 
 ## G. Release recommendation
 
-**Ship #243 and #244 as one release.** Both are green, D-2 is a credential-boundary and billing defect worth releasing on its own merits, and a single release is the shortest validated sequence.
+**Both AI fixes are already released.** They shipped as #245 and are running in
+production as `1f98183bbb84ff59e091c7aa904c912d1976a8a4` since 5 November —
+126 migrations unchanged, restore verified, backup shipped off the machine,
+smoke 18/18, `/api/health` up. Section D2 re-ran the acceptance evidence
+against that exact code on a production build with the worker running: 178 of
+178 executable browser cases passed, the five-user business journey passed
+13/13 and 14/14, the AI unit and tenant specs passed 31/31, and the live model
+path passed 4/4 against a provider stand-in.
 
-Remaining blockers, all external:
+**ONE AI is not yet called resolved.** Everything the product controls is now
+verified: the credential boundary, the failure classification, the tool loop,
+the permission scoping, and the answer being grounded in the asker's own
+records. What is not verified is a genuine vendor answer in production, which
+needs an authorized credential and a signed-in session — §G3.1. The report in
+the opening screenshot stays open until that question returns a real answer.
 
-1. **AI-06/AI-07 cannot pass anywhere but production** — no authorized provider credential exists on this rig, and none was requested through chat.
-2. **CL-02** needs real telephony credentials and a consenting test number.
-3. **HR-03** locally needs the face frame set; it is green in CI against the real engine.
-4. **CL-09 / OF-07 / HR-06** need a run longer than a reminder window.
-5. `gh pr close 240` is refused by the session's write classifier; #240 is fully superseded by #242 and should be closed by hand.
+Remaining blockers, all external to the code:
+
+1. **AI-06, and AI-01 in production** — need an authorized provider credential
+   and a signed-in authorized QA session. §G3.1 has the exact steps and what
+   each outcome means. No key was requested through chat at any point.
+2. **The credential fingerprint check** — §G3.2. Until it is run, three values
+   stay "pending" rather than "contained". Nothing has been rotated.
+3. **#243 must be closed unmerged and its branch deleted** — §G3.3. It is the
+   only ref carrying the committed `.env`.
+4. **CL-02** needs real telephony credentials and a consenting test number.
+5. **HR-03** locally needs the face frame set; it is green in CI against the
+   real engine.
+6. **CL-09 / OF-07 / HR-06** need a run longer than a reminder window.
+7. **`gh pr close`** is refused to this session by the write classifier, so
+   #240 (superseded by #242) and #243 both need closing by hand. The
+   restriction was left in place rather than worked around.
+8. **GitHub secret scanning is disabled** on the repository — §G3.4.
 
 ## G2. Incidents during this run
 
@@ -407,18 +539,24 @@ unexplained.
 **A rig `.env` reached a pushed branch.** Setting up the rig, `apps/web/.env`
 was copied to `apps/web/.env.qa-backup`, and a `git add -A` committed it. Seven
 values were non-empty: `PLATFORM_OWNER_PASSWORD`, `FIELD_ENCRYPTION_KEY`,
-`METRICS_TOKEN`, `REDIS_PASSWORD` and the MinIO access pair. They are the
-scratch rig's own generated values — Postgres and Redis on `127.0.0.1`, MinIO
-defaults, an owner password for a disposable database — and `GEMINI_API_KEY`
-was empty. Any that were copied from production should be rotated; that cannot
-be determined from here.
+`METRICS_TOKEN`, `REDIS_PASSWORD` and the MinIO access pair. Fingerprinted on 5 November (see
+`docs/qa/ENV-CREDENTIAL-EXPOSURE-2026-11-05.md`): `PLATFORM_OWNER_PASSWORD`,
+`REDIS_PASSWORD` and the MinIO pair are **byte-identical to the repository's
+own `apps/web/.env.example` and `infra/docker-compose.yml`**, so they were
+already public. `FIELD_ENCRYPTION_KEY`, `WEBHOOK_SIGNING_PEPPER` and
+`METRICS_TOKEN` are the shared local-rig values, identical across eleven
+scratch worktrees and absent from every CI workflow; every host in the file is
+`127.0.0.1` and `GEMINI_API_KEY` was empty. Whether production holds any of the
+same values is decided by one fingerprint command in that report, which is the
+owner's to run.
 
 The blob was removed from the branch history and the work re-opened as a clean
 branch (#245) rather than rewriting a published ref. `.gitignore` now ignores
-`**/.env.*` with the templates excepted, because the three patterns already
-there were three guesses at what a backup gets called and this was a fourth.
-The two branches that still carry it — behind #243 and #244 — must be closed
-unmerged and deleted.
+`**/.env.*` with the templates excepted, and PR #247 adds a CI step that asks
+the index rather than the ignore file. Exactly one ref still carries the blob —
+`origin/fix/ai-error-diagnosis`, behind #243 — and it must be closed unmerged
+and deleted; #244's branch is clean and was merged. Across the whole history of
+`main`, no `.env`, key, certificate or keystore file was ever added.
 
 **`business-journey` is fragile across the workspace midnight.** Its
 `pendingWork` assertion (`:300`) expects the work-gate counter to fall by one.
@@ -429,6 +567,59 @@ instead of 4. The CI run that failed this way reached that line at 20:31 UTC —
 recur for roughly half an hour each day. Worth pinning the clock in that spec;
 not changed here, because altering a release candidate's own evidence to make
 it pass is the wrong order of operations.
+
+## G3. What only the owner can do
+
+Each of these is blocked on access this session does not have, not on work left
+undone. None of them requires a secret to be typed into a chat.
+
+### 1. The production ONE AI question (closes AI-01 in production, AI-06 everywhere)
+
+In the authorized QA workspace, signed in as a user who owns at least one
+overdue follow-up:
+
+1. Open **Settings → Integrations → Intelligence** and report what the card
+   says **before changing anything** — the status word, and whether the API key
+   box offers "Stored — leave empty to keep".
+2. If the status is **Error**, press **Test connection**. Do not re-enter the
+   key: the point of the test is whether the stored key still works, and
+   replacing it destroys that evidence.
+3. Ask ONE AI **"Show my overdue follow-ups"**.
+4. Compare the answer against that user's own Follow-ups list.
+
+What each outcome means, given the fixes now in production:
+
+| What you see                                                                  | What it means                                                                                                                                                               |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The correct follow-ups, and only that user's                                  | AI-01, AI-06 and AI-07 close in production. ONE AI is resolved.                                                                                                             |
+| An answer that opens "Your AI connection is saved but marked as not working…" | The new no-fallback rule is working: the connection is in `ERROR`, nothing was billed to the platform key, and the answer came from CRM records. Press **Test connection**. |
+| "The AI provider rejected the connected key… (ref `xxxxxxxx`)"                | The vendor refused the stored key. Re-issue it in Google AI Studio and save the new one. Send the ref.                                                                      |
+| "The AI provider does not know the configured model… (ref `xxxxxxxx`)"        | The Model field names a retired model. Send the ref and the Model field's value.                                                                                            |
+| "AI Assistant is temporarily unavailable" with **no** ref                     | A stale build is being served. Check the deployed digest against `changes/PROJECT.md`.                                                                                      |
+
+The ref is safe to paste anywhere — it identifies the request and carries no
+key, prompt or provider body.
+
+### 2. The credential fingerprint check
+
+One command, printed fingerprints only, in
+`docs/qa/ENV-CREDENTIAL-EXPOSURE-2026-11-05.md` §1. It decides whether anything
+in production needs rotating. Until it is run, `FIELD_ENCRYPTION_KEY`,
+`WEBHOOK_SIGNING_PEPPER` and `METRICS_TOKEN` stay "pending" rather than
+"contained", and nothing has been or should be rotated.
+
+### 3. Close #243 unmerged and delete `fix/ai-error-diagnosis`
+
+That branch is the only ref carrying `apps/web/.env.qa-backup`. Its code is
+already in `main` and in production. `gh pr close` is refused to this session by
+a tool restriction, which has been left in place rather than worked around.
+
+### 4. Turn on GitHub secret scanning and push protection
+
+`/secret-scanning/alerts` returns 404: scanning is disabled on the repository.
+PR #247 adds a CI step that refuses any tracked environment file, which would
+have caught this exact incident, but it only looks at file paths — key material
+pasted into a source file or a test would pass it.
 
 ## H. Cleanup
 
