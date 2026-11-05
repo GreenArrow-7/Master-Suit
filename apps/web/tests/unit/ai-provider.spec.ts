@@ -372,6 +372,72 @@ describe('tool calling', () => {
     expect(createTask.parameters.required).toEqual(['title', 'dueAt']);
   });
 
+  /**
+   * The whole round trip, because the two halves failed in different places:
+   * the declarations are refused on the way out, and a result sent back in the
+   * wrong envelope is refused on the second leg — which no test reached while
+   * the first leg never succeeded.
+   */
+  it('completes a call, a result and a final answer against Google’s rules', async () => {
+    strictGoogleSchema = true;
+    const declarations: ToolDeclaration[] = ASSISTANT_TOOLS.map((t) => ({
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters,
+    }));
+
+    // Leg 1: the model asks for the argument-free tool, by name.
+    googleReply = {
+      candidates: [{ content: { parts: [{ functionCall: { name: 'getMyDay', args: {} } }] } }],
+      usageMetadata: { promptTokenCount: 40, candidatesTokenCount: 6 },
+    };
+    const first = await generateWithTools({
+      credential: google,
+      model: 'm',
+      system: 's',
+      turns: [{ role: 'user', text: 'Show my overdue follow-ups' }],
+      tools: declarations,
+    });
+    expect(first.calls).toHaveLength(1);
+    expect(first.calls[0]!.name).toBe('getMyDay');
+    expect(first.calls[0]!.args).toEqual({});
+
+    // Leg 2: the result goes back and the model answers from it.
+    googleReply = {
+      candidates: [{ content: { parts: [{ text: '2 follow-ups are overdue: Dana Haddad, Omar Said.' }] } }],
+      usageMetadata: { promptTokenCount: 95, candidatesTokenCount: 14, totalTokenCount: 109 },
+    };
+    const second = await generateWithTools({
+      credential: google,
+      model: 'm',
+      system: 's',
+      turns: [
+        { role: 'user', text: 'Show my overdue follow-ups' },
+        { role: 'model', calls: first.calls },
+        {
+          role: 'tool',
+          results: [
+            {
+              id: first.calls[0]!.id,
+              name: 'getMyDay',
+              data: { overdueFollowUps: 2, names: ['Dana Haddad', 'Omar Said'] },
+            },
+          ],
+        },
+      ],
+      tools: declarations,
+    });
+
+    expect(second.text).toContain('2 follow-ups are overdue');
+    expect(second.usage.totalTokens).toBe(109);
+    // Google carries a result on a user turn, as a functionResponse keyed by
+    // the function's name — not as a tool role, and not by id.
+    const sentBack = last().body.contents[2];
+    expect(sentBack.role).toBe('user');
+    expect(sentBack.parts[0].functionResponse.name).toBe('getMyDay');
+    expect(sentBack.parts[0].functionResponse.response.data.overdueFollowUps).toBe(2);
+  });
+
   it('reads a Google functionCall and synthesises an id for it', async () => {
     googleReply = {
       candidates: [
