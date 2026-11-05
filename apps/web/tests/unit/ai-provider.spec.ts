@@ -57,6 +57,34 @@ const received: { path: string; auth: string | undefined; body: any }[] = [];
 let googleReply: unknown = {};
 let openRouterReply: unknown = {};
 let status = 200;
+/**
+ * Google's own validation of `functionDeclarations`, which the plain fake does
+ * not perform — and that omission is why a request this provider rejects every
+ * single time passed this suite for as long as it existed.
+ */
+let strictGoogleSchema = false;
+
+/** The 400 Google returns for an OBJECT schema carrying no properties. */
+function schemaRejection(body: any) {
+  const declarations = body?.tools?.[0]?.functionDeclarations ?? [];
+  for (const [index, fn] of declarations.entries()) {
+    const parameters = fn?.parameters;
+    if (!parameters) continue;
+    if (parameters.type === 'object' && Object.keys(parameters.properties ?? {}).length === 0) {
+      return {
+        error: {
+          code: 400,
+          status: 'INVALID_ARGUMENT',
+          message:
+            'Invalid JSON payload received. GenerateContentRequest.tools[0].function_declarations[' +
+            index +
+            '].parameters.properties: should be non-empty for OBJECT type',
+        },
+      };
+    }
+  }
+  return undefined;
+}
 
 let server: Server;
 let base: string;
@@ -72,8 +100,15 @@ beforeAll(async () => {
         auth: req.headers.authorization,
         body: raw ? JSON.parse(raw) : null,
       });
+      const google = !req.url?.includes('/chat/completions');
+      const rejection = google && strictGoogleSchema ? schemaRejection(raw ? JSON.parse(raw) : null) : undefined;
+      if (rejection) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(rejection));
+        return;
+      }
       res.writeHead(status, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(req.url?.includes('/chat/completions') ? openRouterReply : googleReply));
+      res.end(JSON.stringify(google ? googleReply : openRouterReply));
     });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -90,6 +125,7 @@ afterAll(async () => {
 beforeEach(() => {
   received.length = 0;
   status = 200;
+  strictGoogleSchema = false;
 });
 
 const google: AiTransportCredential = { key: 'google-key', provider: 'google' };
@@ -219,6 +255,53 @@ describe('tool calling', () => {
       ['function', 'searchLeads'],
       ['function', 'getLead'],
     ]);
+  });
+
+  /**
+   * The defect this reproduces: `getMyDay` takes no arguments, so it was
+   * declared `{type:'object',properties:{}}` — valid OpenAI, and a 400 from
+   * Google for the *whole* request. Every ONE AI question failed, whatever was
+   * asked, while "Test connection" stayed green because it lists models and
+   * sends no tools at all.
+   */
+  it('omits parameters for a no-argument tool, which Google rejects as an empty OBJECT', async () => {
+    strictGoogleSchema = true;
+    googleReply = { candidates: [{ content: { parts: [{ text: 'ok' }] } }] };
+    const withNoArgs: ToolDeclaration[] = [
+      {
+        name: 'getLead',
+        description: 'One lead',
+        parameters: { type: 'object', properties: { id: { type: 'string' } } },
+      },
+      { name: 'getMyDay', description: 'Today', parameters: { type: 'object', properties: {} } },
+    ];
+
+    const out = await generateWithTools({
+      credential: google,
+      model: 'm',
+      system: 's',
+      turns: [{ role: 'user', text: 'Show my overdue follow-ups' }],
+      tools: withNoArgs,
+    });
+
+    expect(out.text).toBe('ok');
+    const sent = last().body.tools[0].functionDeclarations;
+    // Declared, so the model can still call it — just without a parameters key.
+    expect(sent.map((f: any) => f.name)).toEqual(['getLead', 'getMyDay']);
+    expect(sent[1]).not.toHaveProperty('parameters');
+    expect(sent[0].parameters.properties.id).toEqual({ type: 'string' });
+  });
+
+  it('still sends the empty object to OpenRouter, whose schema accepts it', async () => {
+    openRouterReply = { choices: [{ message: { content: 'ok' } }] };
+    await generateWithTools({
+      credential: openrouter,
+      model: 'm',
+      system: 's',
+      turns: [],
+      tools: [{ name: 'getMyDay', description: 'Today', parameters: { type: 'object', properties: {} } }],
+    });
+    expect(last().body.tools[0].function.parameters).toEqual({ type: 'object', properties: {} });
   });
 
   it('reads a Google functionCall and synthesises an id for it', async () => {
