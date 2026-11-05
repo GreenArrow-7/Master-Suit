@@ -124,8 +124,17 @@ export function assistantFailure(err: unknown, status: number | undefined, messa
     return 'The AI provider rejected the connected key. Check it in Settings → Integrations → Intelligence.';
   if (status === 404)
     return 'The AI provider does not know the configured model. Check the Model field in Settings → Integrations → Intelligence.';
+  /**
+   * 400 says the request was malformed, and nothing about the key.
+   *
+   * This read "the key and the provider do not match", which sent the owner to
+   * re-issue a key that was working while the real cause was a tool
+   * declaration Google refuses — a sentence that cost a day of looking in the
+   * wrong place. Google answers an invalid key with 400 too, so the status
+   * cannot separate them; only the logged body can, and the ref leads to it.
+   */
   if (status === 400)
-    return 'The AI provider refused the request. This usually means the key and the provider do not match.';
+    return 'The AI provider rejected the request as malformed. The server log holds its reason under this reference.';
   if (status && status >= 500)
     return 'The AI provider is having an outage. Your CRM data and other features are still available.';
   if (/timeout|aborted|AbortError/i.test(message)) return 'The AI provider did not answer in time. Try again.';

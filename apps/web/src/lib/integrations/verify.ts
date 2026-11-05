@@ -13,7 +13,7 @@
 import { basic, vendorFetch } from './telephony/http';
 import { GRAPH_VERSION } from './meta/send';
 import { GRAPH_EVENTS, googleOAuthConfigured, googleToken, microsoftOAuthConfigured, microsoftToken } from './calendar';
-import { aiProviderKey, type AiProviderKey } from '../ai/provider';
+import { aiProviderKey, generateWithTools, type AiProviderKey } from '../ai/provider';
 
 export type VerifyResult = { ok: true; detail?: string } | { ok: false; detail: string } | { ok: null; detail: string };
 
@@ -165,7 +165,49 @@ export async function verifyConnection(provider: string, c: Record<string, strin
          * so the health line is where that answer belongs.
          */
         const chosen = usable.find((n) => n === 'gemini-flash-latest') ?? usable[0]!;
-        return { ok: true, detail: `${usable.length} models available, e.g. ${chosen}` };
+
+        /**
+         * And then the assistant's own request, because listing models proves
+         * only that the key is live.
+         *
+         * ONE AI was down in production for every question while this card
+         * read Connected: one of its sixteen tools took no arguments, Google
+         * refused the declaration, and nothing that ran here sent a tool at
+         * all. A health check that exercises a different request than the
+         * feature it reports on is how that stayed invisible. So the real
+         * declarations go to the real endpoint, and "Connected" means the
+         * payload ONE AI sends is accepted.
+         *
+         * Imported here rather than at module load: the tool layer pulls in the
+         * CRM services, and nothing else in this file needs them.
+         */
+        const { TOOLS } = await import('../ai/assistant/tools');
+        const model = c.model || chosen;
+        try {
+          await generateWithTools({
+            credential: { key: c.apiKey ?? '', provider: 'google' },
+            model,
+            system: 'Connection check. Reply with OK.',
+            turns: [{ role: 'user', text: 'OK' }],
+            tools: TOOLS.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })),
+            maxOutputTokens: 16,
+          });
+        } catch (err) {
+          // Through `redactSecrets` like every other vendor body on this
+          // screen: a 400 quotes the payload it refused, and this one carries
+          // the whole tool layer.
+          const detail = redactSecrets((err as Error).message ?? '', c).slice(0, 200);
+          return {
+            ok: false,
+            // Named apart from a bad key on purpose: the key is fine and
+            // re-issuing it changes nothing.
+            detail: `The key works, but ${model} refused the assistant's tool declarations — ${detail}`,
+          };
+        }
+        return {
+          ok: true,
+          detail: `${usable.length} models available, e.g. ${chosen}. Tool calling verified on ${model}.`,
+        };
       }
 
       case 'knowlarity':

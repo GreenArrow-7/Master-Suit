@@ -11,7 +11,7 @@
  *
  * No network: both cases return before any request is made.
  */
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { aiProviderKey } from '@/lib/ai/provider';
 import { verifyConnection } from '@/lib/integrations/verify';
 
@@ -56,5 +56,64 @@ describe('verifying a Gemini connection', () => {
     const verdict = await verifyConnection('gemini', { apiKey: '', provider: 'google' });
     expect(verdict.ok).toBe(false);
     expect(verdict.detail).toContain('No API key is saved');
+  });
+});
+
+/**
+ * The card used to say Connected on the strength of a model *listing*, while
+ * every ONE AI question was failing: listing sends no tools, and the request
+ * the assistant actually makes was never tried. These drive the two outcomes
+ * through `verifyConnection` with the network stubbed — the wire translation
+ * itself is covered against a real server in `ai-provider.spec.ts`.
+ */
+describe('a Gemini connection proves tool calling, not just a live key', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** Google's own answers: a models list, then whatever `generateContent` gives. */
+  const stubGoogle = (generateContent: { status: number; body: unknown }) =>
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes(':generateContent')) {
+        return new Response(JSON.stringify(generateContent.body), { status: generateContent.status });
+      }
+      return new Response(
+        JSON.stringify({
+          models: [{ name: 'models/gemini-flash-latest', supportedGenerationMethods: ['generateContent'] }],
+        }),
+        { status: 200 },
+      );
+    });
+
+  it('refuses the connection when the assistant’s declarations are rejected', async () => {
+    stubGoogle({
+      status: 400,
+      body: {
+        error: {
+          code: 400,
+          status: 'INVALID_ARGUMENT',
+          message:
+            'Invalid JSON payload received. GenerateContentRequest.tools[0].function_declarations[13].parameters.properties: should be non-empty for OBJECT type',
+        },
+      },
+    });
+
+    const verdict = await verifyConnection('gemini', { apiKey: 'AIzaSyTestKeyNotReal', provider: 'google' });
+
+    expect(verdict.ok).toBe(false);
+    // The key is not the problem, and the message must not send anyone to re-issue it.
+    expect(verdict.detail).toContain('The key works');
+    expect(verdict.detail).toContain('tool declarations');
+    expect(verdict.detail).not.toMatch(/rejected the connected key|API key not valid/i);
+    // The key itself never reaches the screen, whatever the vendor echoed.
+    expect(verdict.detail).not.toContain('AIzaSyTestKeyNotReal');
+  });
+
+  it('says tool calling was verified when the real payload is accepted', async () => {
+    stubGoogle({ status: 200, body: { candidates: [{ content: { parts: [{ text: 'OK' }] } }] } });
+
+    const verdict = await verifyConnection('gemini', { apiKey: 'AIzaSyTestKeyNotReal', provider: 'google' });
+
+    expect(verdict.ok).toBe(true);
+    expect(verdict.detail).toContain('Tool calling verified');
   });
 });

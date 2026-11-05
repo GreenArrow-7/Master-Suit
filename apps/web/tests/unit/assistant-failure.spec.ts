@@ -28,7 +28,12 @@ describe('assistantFailure', () => {
 
   it('distinguishes a provider outage from a client-side mistake', () => {
     expect(assistantFailure(new Error('x'), 503, 'x')).toMatch(/having an outage/);
-    expect(assistantFailure(new Error('x'), 400, 'x')).toMatch(/key and the provider do not match/);
+    const malformed = assistantFailure(new Error('x'), 400, 'x');
+    expect(malformed).toMatch(/rejected the request as malformed/);
+    // A 400 is Google's answer to a bad payload *and* to an invalid key, so it
+    // must not accuse either one; the log line behind the ref decides.
+    expect(malformed).not.toMatch(/key/i);
+    expect(malformed).toMatch(/server log/);
   });
 
   it('reports a timeout as a timeout', () => {
