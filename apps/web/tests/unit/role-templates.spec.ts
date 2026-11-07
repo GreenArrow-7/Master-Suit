@@ -215,10 +215,11 @@ describe('the six role templates', () => {
     });
 
     it('offers the sales pair to any lead module, and Real Estate Operations only where it belongs', () => {
-      for (const module of ['SALES', 'REAL_ESTATE', 'LEAD_EAGLE']) {
-        const keys = templatesFor([module]).map((t) => t.key);
-        expect(keys, module).toContain('sales_manager');
-        expect(keys, module).toContain('sales_agent');
+      // Not named `module`: Next forbids assigning to that identifier.
+      for (const productModule of ['SALES', 'REAL_ESTATE', 'LEAD_EAGLE']) {
+        const keys = templatesFor([productModule]).map((t) => t.key);
+        expect(keys, productModule).toContain('sales_manager');
+        expect(keys, productModule).toContain('sales_agent');
       }
       expect(templatesFor(['LEAD_EAGLE']).map((t) => t.key)).not.toContain('realestate_ops');
       expect(templatesFor(['REAL_ESTATE']).map((t) => t.key)).toContain('realestate_ops');
