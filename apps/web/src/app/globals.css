@@ -5182,6 +5182,18 @@ body,
   color: var(--lf-ink-2);
   font-size: var(--lf-text-sm);
 }
+/*
+ * The greeting's right-hand side: the day's primary action over the workspace
+ * name. Right-aligned so the action sits at the end of the line on a desktop,
+ * and the whole block wraps under the greeting on a phone — where the button
+ * is the first thing a thumb reaches rather than the last.
+ */
+.lf-dash-head__side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
 .lf-dash-meta {
   font-size: var(--lf-text-xs);
   color: var(--lf-ink-3);
