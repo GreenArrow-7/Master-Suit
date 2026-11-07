@@ -129,7 +129,7 @@ export default async function WorkspaceLayout({
           {children}
         </main>
         {/* Phone-tier primary navigation; hidden by CSS above it. */}
-        <MobileTabBar slug={shell.slug} modules={shell.modules} />
+        <MobileTabBar slug={shell.slug} modules={shell.modules} permitted={shell.permitted} />
       </div>
       <AssistantWidget slug={shell.slug} />
       {/* ⌘K. Same navigation model as the rail, so it can only offer what the

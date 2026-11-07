@@ -1,6 +1,7 @@
 import type { PermissionAction, StageCategory, VisibilityScope } from '@prisma/client';
 import type { TxClient } from '@/lib/db';
 import { LEAD_MODULES } from '@/lib/security/entitlements';
+import { templatesFor } from '@/lib/roles/templates';
 import { ensureLeadSources } from '@/services/leads/leadSources';
 
 type Grants = Record<string, PermissionAction[]>;
@@ -136,10 +137,28 @@ const STARTER_ROLES = [
  * (names compared ignoring case). A role that exists is never touched, so an
  * administrator's edits stand.
  */
-async function provisionStarterRoles(tx: TxClient, tenantId: string) {
+interface RoleSeed {
+  key: string;
+  name: string;
+  rank: number;
+  defaultScope: VisibilityScope;
+  description: string;
+  grants: { module: string; action: PermissionAction; scope: VisibilityScope }[];
+}
+
+/**
+ * Adds each role whose key and name the workspace does not already use.
+ *
+ * The skip is what makes this safe to run again and again, and safe to run
+ * against a workspace that has been in service for a year: a role that exists
+ * is never touched, so an administrator's rename, re-scope or trimmed
+ * permission list stands. It never widens an existing role — the only write is
+ * creating one that is absent.
+ */
+async function addRoles(tx: TxClient, tenantId: string, specs: readonly RoleSeed[]) {
   const existing = await tx.role.findMany({ where: { tenantId }, select: { key: true, name: true } });
   const taken = new Set(existing.flatMap((role) => [role.key, role.name.trim().toLowerCase()]));
-  const missing = STARTER_ROLES.filter((role) => !taken.has(role.key) && !taken.has(role.name.toLowerCase()));
+  const missing = specs.filter((role) => !taken.has(role.key) && !taken.has(role.name.toLowerCase()));
   if (missing.length === 0) return;
 
   const roles = await tx.role.createManyAndReturn({
@@ -168,6 +187,48 @@ async function provisionStarterRoles(tx: TxClient, tenantId: string) {
         }),
     ),
   });
+}
+
+/** Lead Eagle's five starter roles. Unchanged; see STARTER_ROLES above. */
+const provisionStarterRoles = (tx: TxClient, tenantId: string) => addRoles(tx, tenantId, STARTER_ROLES);
+
+/**
+ * The six business role templates, for the modules a workspace has just gained.
+ *
+ * Company Administrator is not among them: `createWorkspace.ts` creates it with
+ * the whole catalogue, and `addRoles` would skip it anyway. The rest arrive by
+ * entitlement — HR Administrator with HRMS, the sales pair with any lead
+ * module, Real Estate Operations with Real Estate or Sales — so a workspace is
+ * never offered a role for a product it has not bought.
+ *
+ * ── Why this keys on what is *new* ─────────────────────────────────────────
+ *
+ * The console's editor sends the full module list with every save. Keyed on the
+ * list alone, every save would re-create a template the administrator had
+ * deleted — the same trap the starter roles avoid by comparing against
+ * `before`, and the reason `provision-lead-work.spec.ts` asserts that a save
+ * adds no roles. So a template is created only when a module that enables it
+ * has just arrived; `before` is empty for a new workspace, which is when the
+ * module-less Employee template is created too.
+ *
+ * An existing workspace therefore never has roles appear underneath it, and
+ * adopting a template there stays an explicit choice. On top of that, a key or
+ * name already in use is left alone and no existing grant is ever touched.
+ */
+export function provisionRoleTemplates(
+  tx: TxClient,
+  tenantId: string,
+  /** The workspace's modules after this change. */
+  modules: readonly string[],
+  /** Its modules before it; empty for a new workspace. */
+  before: readonly string[] = [],
+) {
+  const arrived = modules.filter((module) => !before.includes(module));
+  const fresh = before.length === 0;
+  const due = templatesFor(modules).filter((template) =>
+    template.modules.length === 0 ? fresh : template.modules.some((module) => arrived.includes(module)),
+  );
+  return due.length ? addRoles(tx, tenantId, due) : Promise.resolve();
 }
 
 type StageSeed = {

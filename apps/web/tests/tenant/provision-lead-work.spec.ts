@@ -212,15 +212,41 @@ describe('the catalogue backfill in 20261012004000_lead_record_fields', () => {
  * Eagle on neither brings back a role they deleted nor backfills a workspace.
  */
 describe('the Lead Eagle starter roles', () => {
+  /**
+   * What Admin > Roles lists for a Lead Eagle workspace: the administrator, the
+   * five starter roles, and the three six-role templates a lead module brings
+   * (Sales Manager, Sales Agent and Employee — no Real Estate Operations,
+   * which needs Real Estate or Sales, and no HR Administrator without HRMS).
+   *
+   * Compared sorted by name, not in rank order: the templates share ranks with
+   * the starter roles (Sales Manager 30 with Team Lead, Sales Agent 50 with
+   * Telecaller) and a tie has no defined order.
+   */
   const ADMIN_ROLES = [
-    { name: 'Company Administrator', defaultScope: 'ORGANIZATION', isSystem: true },
-    { name: 'Manager', defaultScope: 'ORGANIZATION', isSystem: false },
-    { name: 'Team Lead', defaultScope: 'TEAM', isSystem: false },
     { name: 'Agent', defaultScope: 'OWN', isSystem: false },
+    { name: 'Company Administrator', defaultScope: 'ORGANIZATION', isSystem: true },
+    { name: 'Employee', defaultScope: 'OWN', isSystem: false },
+    { name: 'Manager', defaultScope: 'ORGANIZATION', isSystem: false },
+    { name: 'Sales Agent', defaultScope: 'OWN', isSystem: false },
+    { name: 'Sales Manager', defaultScope: 'TEAM', isSystem: false },
+    { name: 'Team Lead', defaultScope: 'TEAM', isSystem: false },
     { name: 'Telecaller', defaultScope: 'OWN', isSystem: false },
     { name: 'Viewer', defaultScope: 'ORGANIZATION', isSystem: false },
   ];
   const STARTER = ['Manager', 'Team Lead', 'Agent', 'Telecaller', 'Viewer'];
+  /**
+   * Lead Eagle's five starter roles plus the two six-role templates that any
+   * lead module brings (lib/roles/templates.ts), sorted by name.
+   */
+  const STARTER_WITH_TEMPLATES = [
+    'Agent',
+    'Manager',
+    'Sales Agent',
+    'Sales Manager',
+    'Team Lead',
+    'Telecaller',
+    'Viewer',
+  ];
   let ownerCookie = '';
   let planCode = '';
   let hrPlanCode = '';
@@ -246,6 +272,13 @@ describe('the Lead Eagle starter roles', () => {
     (await prisma.role.findMany({ where: { tenantId }, orderBy: { rank: 'asc' }, select: { name: true } })).map(
       (role) => role.name,
     );
+  /**
+   * The same names, sorted. The six-role templates share ranks with Lead
+   * Eagle's starter roles (Sales Manager 30 with Team Lead, Sales Agent 50 with
+   * Telecaller), and Postgres does not define the order within a tie — so the
+   * lists below compare as sets, not as a rank order that happens to hold.
+   */
+  const sorted = async (tenantId: string) => (await names(tenantId)).sort();
   /** One role's grants, `module:ACTION` → scope. */
   async function grants(tenantId: string, name: string) {
     const rows = await prisma.rolePermission.findMany({
@@ -321,9 +354,13 @@ describe('the Lead Eagle starter roles', () => {
     wizardMade = await wizard('le', ['LEAD_EAGLE']);
   });
 
-  it('a Lead Eagle workspace from the wizard lists the five in Admin > Roles, editable, each at its scope', async () => {
+  it('a Lead Eagle workspace from the wizard lists its roles in Admin > Roles, editable, each at its scope', async () => {
     const roles = await adminRoles(wizardMade);
-    expect(roles.map(({ name, defaultScope, isSystem }) => ({ name, defaultScope, isSystem }))).toEqual(ADMIN_ROLES);
+    expect(
+      roles
+        .map(({ name, defaultScope, isSystem }) => ({ name, defaultScope, isSystem }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    ).toEqual(ADMIN_ROLES);
     expect(roles.filter((role) => !role.isSystem).every((role) => role.editable)).toBe(true);
   });
 
@@ -358,14 +395,20 @@ describe('the Lead Eagle starter roles', () => {
           const name = text(parts.find((el) => el.type === 'strong'));
           return `${name} ${text(parts.find((el) => el.props.className === 'lf-roles__scope'))}`;
         });
-    expect(await rows()).toEqual([
-      'Agent · Own',
-      'Company Administrator · Organization',
-      'Manager · Organization',
-      'Team Lead · Team',
-      'Telecaller · Own',
-      'Viewer · Organization',
-    ]);
+    expect((await rows()).sort()).toEqual(
+      [
+        'Agent · Own',
+        'Company Administrator · Organization',
+        'Employee · Own',
+        'Manager · Organization',
+        // Team by default, and its inventory reads reach the whole workspace.
+        'Sales Manager · Team (up to Organization)',
+        'Sales Agent · Own',
+        'Team Lead · Team',
+        'Telecaller · Own',
+        'Viewer · Organization',
+      ].sort(),
+    );
 
     // A role's own scope is only the default for new grants; access follows each
     // grant. A role made at Own (the New role form's default) whose grants reach
@@ -533,9 +576,23 @@ describe('the Lead Eagle starter roles', () => {
     }
   });
 
-  it('a Sales-only workspace from the wizard still gets the administrator alone', async () => {
+  it('a Sales-only workspace from the wizard gets its business roles, not the administrator alone', async () => {
     const id = await wizard('sales', ['SALES']);
-    expect(await names(id)).toEqual(['Company Administrator']);
+    /**
+     * This used to be `['Company Administrator']` — one role, and an
+     * administrator who had to hand-build Sales Manager, Sales Agent and the
+     * rest across 64 permission modules. The six-role templates
+     * (lib/roles/templates.ts) are provisioned for the modules a workspace
+     * owns, so a Sales workspace now starts with the roles a brokerage
+     * recognises. No HR Administrator: this workspace has no HRMS.
+     */
+    expect(await sorted(id)).toEqual([
+      'Company Administrator',
+      'Employee',
+      'Real Estate Operations',
+      'Sales Agent',
+      'Sales Manager',
+    ]);
     // ...and the general pipeline, not Lead Eagle's.
     expect(await pipeline(id)).toEqual(GENERAL_PIPELINE);
   });
@@ -544,14 +601,18 @@ describe('the Lead Eagle starter roles', () => {
     const id = await workspace('edit-on');
     await prisma.moduleEntitlement.create({ data: { tenantId: id, module: 'HRMS', state: 'ACTIVE' } });
     expect((await save(id, { enabledModules: ['HRMS', 'LEAD_EAGLE'] })).status).toBe(200);
-    expect(await names(id)).toEqual(STARTER);
+    // Lead Eagle's five, and the two templates any lead module brings.
+    expect(await sorted(id)).toEqual(STARTER_WITH_TEMPLATES);
 
     await prisma.role.deleteMany({ where: { tenantId: id, name: 'Telecaller' } });
     // The console form sends the modules with every save.
     expect((await save(id, { companyPhone: '+971 4 000 0000', enabledModules: ['HRMS', 'LEAD_EAGLE'] })).status).toBe(
       200,
     );
-    expect(await names(id)).toEqual(['Manager', 'Team Lead', 'Agent', 'Viewer']);
+    // Telecaller stays deleted, and the save brings no template back either:
+    // `provisionRoleTemplates` keys on the modules that have just arrived, and
+    // this save changes none.
+    expect(await sorted(id)).toEqual(['Agent', 'Manager', 'Sales Agent', 'Sales Manager', 'Team Lead', 'Viewer']);
   });
 
   it('saving a workspace that already had Lead Eagle adds no roles (no backfill)', async () => {
@@ -578,7 +639,7 @@ describe('the Lead Eagle starter roles', () => {
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(await counts(id)).toEqual({ stages: LEAD_EAGLE_PIPELINE.length, activityTypes: 6, taskTypes: 4 });
     expect(await pipeline(id)).toEqual(LEAD_EAGLE_PIPELINE);
-    expect(await names(id)).toEqual(STARTER);
+    expect(await sorted(id)).toEqual(STARTER_WITH_TEMPLATES);
   });
 
   it('a plan change that keeps Lead Eagle adds no role and brings back none', async () => {
@@ -608,7 +669,10 @@ describe('the Lead Eagle starter roles', () => {
       { subscriptionId: subscription.id },
     );
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(await names(id)).toEqual(['Manager', 'Team Lead', 'Agent', 'Viewer']);
+    // Lead Eagle's roles are unchanged and the deleted Telecaller stays gone.
+    // HR Administrator arrives because HRMS is new to this workspace — the
+    // template for a module it has just bought.
+    expect(await sorted(id)).toEqual(['Agent', 'HR Administrator', 'Manager', 'Team Lead', 'Viewer']);
   });
 
   it('switched on again, adds only what is missing and leaves an edited role as the administrator left it', async () => {

@@ -141,11 +141,27 @@ describe('self-serve sign-up', () => {
       },
     );
     expect(roles.status).toBe(200);
-    expect(roles.body.map((role: { name: string; defaultScope: string }) => [role.name, role.defaultScope])).toEqual([
-      ['Company Administrator', 'ORGANIZATION'],
-      ['Manager', 'ORGANIZATION'],
-      ['Team Lead', 'TEAM'],
+    /**
+     * The administrator, Lead Eagle's five starter roles, and the three
+     * six-role templates a lead module brings (lib/roles/templates.ts): Sales
+     * Manager, Sales Agent and Employee. No Real Estate Operations and no HR
+     * Administrator — this plan carries neither module.
+     *
+     * Sorted by name, because the templates share ranks with the starter roles
+     * and a tie has no defined order.
+     */
+    expect(
+      roles.body
+        .map((role: { name: string; defaultScope: string }) => [role.name, role.defaultScope])
+        .sort((a: string[], b: string[]) => a[0]!.localeCompare(b[0]!)),
+    ).toEqual([
       ['Agent', 'OWN'],
+      ['Company Administrator', 'ORGANIZATION'],
+      ['Employee', 'OWN'],
+      ['Manager', 'ORGANIZATION'],
+      ['Sales Agent', 'OWN'],
+      ['Sales Manager', 'TEAM'],
+      ['Team Lead', 'TEAM'],
       ['Telecaller', 'OWN'],
       ['Viewer', 'ORGANIZATION'],
     ]);

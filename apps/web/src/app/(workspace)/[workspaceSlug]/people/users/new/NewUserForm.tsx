@@ -12,6 +12,22 @@ interface Option {
   name: string;
 }
 
+/**
+ * A role, with enough beside its name to choose it without guessing.
+ *
+ * The picker used to be a bare list of names, which is fine for "Sales Agent"
+ * and useless for a workspace holding Agent, Telecaller, Viewer and whatever
+ * the last administrator built. `scope` and `modules` come from the role's own
+ * grants, so a role trimmed by hand describes itself accurately.
+ */
+interface RoleOption extends Option {
+  description: string | null;
+  scope: string;
+  modules: number;
+  /** One of the six business roles, listed before the rest. */
+  primary: boolean;
+}
+
 interface Created {
   fullName: string;
   employeeId: string;
@@ -24,6 +40,98 @@ interface Created {
 }
 
 const EMPLOYMENT_TYPES = ['FULL_TIME', 'PART_TIME', 'CONTRACT', 'PROBATION', 'INTERN'];
+
+/** The scope as a sentence, because OWN and ORGANIZATION are not English. */
+const scopeWords = (scope: string) =>
+  ({
+    OWN: 'only their own records',
+    TEAM: 'their team’s records',
+    BRANCH: 'their branch’s records',
+    REGION: 'their region’s records',
+    ORGANIZATION: 'the whole workspace',
+  })[scope] ?? scope.toLowerCase();
+
+interface MatrixGrant {
+  module: string;
+  action: string;
+  scope: string;
+}
+
+/**
+ * What the role actually permits, before anyone is given it.
+ *
+ * Fetched on expand rather than with the page: a workspace can hold dozens of
+ * roles and nobody opens this for more than one. The endpoint is the same
+ * `matrix` the Roles screen reads, and it is gated on `roles:VIEW` — which an
+ * administrator who may add users does not necessarily hold. So a refusal is
+ * reported as what it is rather than as an empty list, because "this role
+ * permits nothing" and "you may not read this" must not look alike.
+ */
+function RolePreview({ workspaceSlug, roleId }: { workspaceSlug: string; roleId: string }) {
+  const [state, setState] = useState<{ roleId: string; grants: MatrixGrant[] } | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = async () => {
+    if (state?.roleId === roleId || loading) return;
+    setLoading(true);
+    setProblem(null);
+    try {
+      const res = await fetch(`/api/v1/workspaces/${workspaceSlug}/roles/matrix?roleId=${roleId}`);
+      if (!res.ok) {
+        setProblem(
+          res.status === 403
+            ? 'Reading the full permission list needs access to Roles & permissions.'
+            : 'The permission list could not be loaded.',
+        );
+        return;
+      }
+      // `permissionMatrix` returns the whole catalogue with a scope of NONE for
+      // what the role does not hold, so the held ones are the granted rows.
+      const body = (await res.json()) as {
+        permissions?: { module: string; action: string; scope: string; granted: boolean }[];
+      };
+      setState({
+        roleId,
+        grants: (body.permissions ?? []).filter((row) => row.granted && row.scope !== 'NONE'),
+      });
+    } catch {
+      setProblem('The permission list could not be loaded.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const byModule = new Map<string, MatrixGrant[]>();
+  for (const grant of state?.roleId === roleId ? state.grants : [])
+    byModule.set(grant.module, [...(byModule.get(grant.module) ?? []), grant]);
+
+  return (
+    <details className="lf-role-brief__preview">
+      {/*
+       * The fetch hangs off the summary's click rather than the element's
+       * `toggle` event: `onToggle` did not fire here, so the panel opened on
+       * nothing. A click is what a person does either way, and the handler runs
+       * before the open state flips — `load` is idempotent per role, so the
+       * close-then-open case costs nothing.
+       */}
+      <summary onClick={() => void load()}>Preview effective permissions</summary>
+      <div className="lf-role-brief__preview-body">
+        {loading && <p>Loading…</p>}
+        {problem && <p data-bad>{problem}</p>}
+        {!loading && !problem && state?.roleId === roleId && byModule.size === 0 && (
+          <p>This role grants no permissions. Someone holding it can reach only their own self-service screens.</p>
+        )}
+        {[...byModule.entries()].map(([module, grants]) => (
+          <p key={module}>
+            <strong>{module}</strong> —{' '}
+            {grants.map((grant) => `${grant.action.toLowerCase()} (${grant.scope.toLowerCase()})`).join(', ')}
+          </p>
+        ))}
+      </div>
+    </details>
+  );
+}
 
 /**
  * The add-user form.
@@ -49,7 +157,7 @@ export default function NewUserForm({
   workspaceSlug: string;
   /** Employee, resolved by key on the server — never the most senior grantable role. */
   defaultRoleId: string;
-  roles: Option[];
+  roles: RoleOption[];
   departments: Option[];
   designations: Option[];
   branches: Option[];
@@ -86,6 +194,8 @@ export default function NewUserForm({
 
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
+
+  const chosen = roles.find((role) => role.id === form.roleId);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -219,12 +329,38 @@ export default function NewUserForm({
             onChange={(e) => set('roleId', e.target.value)}
             required
           >
-            {roles.map((role) => (
-              <option key={role.id} value={role.id}>
-                {role.name}
-              </option>
-            ))}
+            {/*
+             * Grouped, so the six a brokerage recognises are not interleaved
+             * with specialist and custom roles. Both groups are offered: the
+             * point is which to read first, not which exist.
+             */}
+            {[
+              { label: 'Business roles', items: roles.filter((role) => role.primary) },
+              { label: 'Advanced & custom roles', items: roles.filter((role) => !role.primary) },
+            ]
+              .filter((group) => group.items.length > 0)
+              .map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.items.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
           </select>
+          {chosen && (
+            <div className="lf-role-brief">
+              {chosen.description && <p className="lf-role-brief__what">{chosen.description}</p>}
+              <p className="lf-role-brief__meta">
+                Sees <strong>{scopeWords(chosen.scope)}</strong>
+                {chosen.modules > 0
+                  ? ` · ${chosen.modules} permission module${chosen.modules === 1 ? '' : 's'}`
+                  : ' · no permissions yet'}
+              </p>
+              <RolePreview workspaceSlug={workspaceSlug} roleId={chosen.id} />
+            </div>
+          )}
         </div>
         <Field label="Department" htmlFor="nu-dept">
           <select

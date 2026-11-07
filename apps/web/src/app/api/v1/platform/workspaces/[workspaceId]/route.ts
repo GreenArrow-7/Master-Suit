@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
-import { provisionLeadWork } from '@/services/platform/provisioning';
+import { provisionLeadWork, provisionRoleTemplates } from '@/services/platform/provisioning';
 import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
@@ -144,6 +144,14 @@ export const PATCH = bareRoute(
         // Switching on a module that works leads in a workspace that never had one
         // (an HR-only workspace adding Lead Eagle) needs the same starting lists.
         await provisionLeadWork(
+          tx,
+          current.id,
+          body.enabledModules,
+          before.map((row) => row.module),
+        );
+        // And the templates for whatever it now owns: a workspace that adds
+        // HRMS gets HR Administrator. Existing roles are left alone.
+        await provisionRoleTemplates(
           tx,
           current.id,
           body.enabledModules,
