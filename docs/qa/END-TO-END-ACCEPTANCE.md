@@ -213,13 +213,13 @@ Runtime: `next build` + `next start` on `http://127.0.0.1:3300`, Postgres `maste
 
 ### Evidence sources
 
-| Tag     | What it is                                                                                                                                                                                                                              |
-| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SUITE` | The repository's Playwright suite, full run on the production build: **183 passed / 4 failed / 5 skipped**, 25.2 min. Written before this run and not modified to make anything pass. Regression evidence, not an independent reviewer. |
-| `FIVE`  | `tests/e2e/acceptance-five-user-journey.spec.ts`, written for this run: **13 passed / 0 failed**, 1.0 min. Five people invited and onboarded through the product.                                                                       |
-| `UNIT`  | Vitest. CI on #243: 5,063 passed. CI on #244: 5,075 passed, then green after the narrowing.                                                                                                                                             |
-| `RERUN` | A spec re-run under corrected rig conditions, named in the row.                                                                                                                                                                         |
-| `CODE`  | Read from the source and named by file and line. Used only where it is the honest basis, and never on its own for a PASS of observable behaviour.                                                                                       |
+| Tag     | What it is                                                                                                                                                                                                                                                                                                                                                          |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SUITE` | The repository's Playwright suite, full run on the production build: **183 passed / 4 failed / 5 skipped**, 25.2 min. Written before this run and not modified to make anything pass. **Regression evidence only** — the repository's own suite, not an independent human review and not a security review. Nothing in this report was reviewed by a second person. |
+| `FIVE`  | `tests/e2e/acceptance-five-user-journey.spec.ts`, written for this run: **13 passed / 0 failed**, 1.0 min. Five people invited and onboarded through the product.                                                                                                                                                                                                   |
+| `UNIT`  | Vitest. CI on #243: 5,063 passed. CI on #244: 5,075 passed, then green after the narrowing.                                                                                                                                                                                                                                                                         |
+| `RERUN` | A spec re-run under corrected rig conditions, named in the row.                                                                                                                                                                                                                                                                                                     |
+| `CODE`  | Read from the source and named by file and line. Used only where it is the honest basis, and never on its own for a PASS of observable behaviour.                                                                                                                                                                                                                   |
 
 ### Onboarding and access
 
@@ -447,44 +447,81 @@ and a dev server — they are reported above under `AILIVE`).
 
 ## E. Totals
 
-After the 5 November re-run (section D2), which moved AI-07 from BLOCKED to
-PASS and left AI-06 blocked on an authorized vendor credential:
+**Corrected 5 November.** The previous table read 82 and was not a count of
+this report: section C defines **85** scenario IDs and section D records a
+result for all 85, with none missing, none duplicated and none defined without
+a result. Two of those scenarios carry two different results and are split here
+into separate checks rather than averaged into one word, and the production
+variant of AI-01 is listed as its own line because it is a different
+environment. That gives **88 checks over 85 scenarios**.
 
-| Status              | Count  |
-| ------------------- | ------ |
-| PASS                | 73     |
-| FAIL                | 0      |
-| BLOCKED             | 3      |
-| NOT RUN             | 4      |
-| NOT IMPLEMENTED     | 0      |
-| PARTIAL             | 2      |
-| **Total scenarios** | **82** |
+| Status           | Checks | Which                                   |
+| ---------------- | -----: | --------------------------------------- |
+| PASS             |     80 | including the two split halves below    |
+| BLOCKED          |      3 | AI-06, CL-02, HR-03 (local)             |
+| NOT RUN          |      4 | CL-09, HR-06, OF-07, AI-01 (production) |
+| EXCLUDED BY RIG  |      1 | XC-08 (account deletion)                |
+| FAIL             |      0 | —                                       |
+| **Total checks** | **88** | over 85 scenario IDs                    |
 
-The two defects section F records were FAIL on the branch and are now released
-and re-verified on the released code, so they are counted as PASS here and kept
-in the register with their fix.
+The two scenarios that were one word for two outcomes:
 
-`NOT RUN` gained one row: AI-01 **in production**, which needs a signed-in
-authorized QA session. `PARTIAL` gained one: XC-08, because the candidate is
-verified on a production build with a running worker everywhere except the
-account-deletion file, which excludes itself when a worker is armed.
+| Scenario | Split into                                                                          | Status          |
+| -------- | ----------------------------------------------------------------------------------- | --------------- |
+| HR-03    | (a) the real face engine in CI                                                      | PASS            |
+|          | (b) the same check locally, which needs the face frame set                          | BLOCKED         |
+| XC-08    | (a) the production build with the worker running, every file but account deletion   | PASS            |
+|          | (b) `account-deletion-journey.spec.ts`, which refuses to run beside an armed worker | EXCLUDED BY RIG |
 
-Underlying executions, 5 November, on `1f98183b`:
+### The raw suite result, unrounded
 
-| Run                                                  | Result                                       |
-| ---------------------------------------------------- | -------------------------------------------- |
-| Full browser suite, production build, worker running | 178 passed, 0 product failures               |
-| Five-user business journey                           | 13 passed, then 14 with `acceptance.spec.ts` |
-| Live model path against the provider stand-in        | 4 passed                                     |
-| AI unit and tenant specs                             | 31 passed                                    |
-| Earlier in the campaign                              | 5,075 unit cases passed in CI                |
+**178 passed · 1 failed · 30 skipped · 9 did not run · 23.1 min** (SUITE2, the
+production build with the worker running). The sentence "178 of 178 executable
+cases passed" is true and is not the raw figure; both belong here.
+
+- **1 failed** — `account-deletion-journey.spec.ts:201`, in `beforeAll`. The
+  spec refuses to run because 13 job schedulers are armed on its Redis index by
+  the running worker. A guard firing, not a product failure.
+- **9 did not run** — the rest of that file's `serial` describe, behind the
+  same `beforeAll`.
+- **30 skipped** — each spec states its own reason. The four
+  `ai-live-answer-acceptance` cases are among them: they need the provider
+  stand-in and a dev server, and are reported separately as `AILIVE`.
+
+### What each PASS actually rests on
+
+A PASS is not one kind of evidence, and the differences decide what it proves.
+
+| Class                    | What ran                                                             | Checks |
+| ------------------------ | -------------------------------------------------------------------- | -----: |
+| Code inspection (`CODE`) | Source read and cited. Never the sole basis for observable behaviour |      0 |
+| Mocked / stand-in        | The product's own transport, with a local process as the vendor      |      5 |
+| Real provider            | `generativelanguage.googleapis.com` answered                         |      1 |
+| Product, no vendor       | The suite and the journey specs, which involve no AI vendor          |     74 |
+| Production               | Observed on `one.youhan.in`                                          |      0 |
+
+The one real-provider check is AI-10, and what the vendor returned there was a
+**rejection** of a deliberately invalid key, not an answer. **No check in this
+report was satisfied by a genuine successful answer from Google**, and none was
+observed in production.
+
+### AI-01, AI-04, AI-07 and AI-08 are downgraded by D-3
+
+Those four passed against `fake-ai-provider.mjs`, which replies 200 to any
+request and never validates `tools[].functionDeclarations`. Google does
+validate them, and refused the ones this product sends (D-3). So the stand-in
+accepted a payload the real vendor rejects, and those four rows establish that
+the tool loop, the credential resolution and the permission scoping are
+correct — **not** that ONE AI answers against Google. They are PASS for what
+they test and are not evidence of a working integration.
 
 ## F. Defect register
 
-| ID  | Severity     | What                                                                                                                                                                                                                                                                       | Status                                                                                                                                     |
-| --- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| D-1 | Major        | ONE AI reported every failure — budget ceiling, rejected key, retired model, timeout, a 403 on the route — as "temporarily unavailable", with nothing tying it to the server log.                                                                                          | Fixed in #243. Unit 7/7, all failing on `origin/main`. Retested on `6b01e1e1`. Production re-test pending.                                 |
-| D-2 | **Critical** | A workspace whose AI connection was in `ERROR` had its prompts and its bill silently moved onto the deployment's Google key, crossing the data boundary that bringing your own key is meant to buy, and was then refused by deployment budget ceilings it never agreed to. | Fixed in #244. 6/6 new, 24/24 across the three Gemini suites; 2 fail on `origin/main`. Retested on `6b01e1e1`. Production re-test pending. |
+| ID  | Severity     | What                                                                                                                                                                                                                                                                                                                 | Status                                                                                                                                                          |
+| --- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D-1 | Major        | ONE AI reported every failure — budget ceiling, rejected key, retired model, timeout, a 403 on the route — as "temporarily unavailable", with nothing tying it to the server log.                                                                                                                                    | Fixed in #243. Unit 7/7, all failing on `origin/main`. Retested on `6b01e1e1`. Production re-test pending.                                                      |
+| D-2 | **Critical** | A workspace whose AI connection was in `ERROR` had its prompts and its bill silently moved onto the deployment's Google key, crossing the data boundary that bringing your own key is meant to buy, and was then refused by deployment budget ceilings it never agreed to.                                           | Fixed in #244. 6/6 new, 24/24 across the three Gemini suites; 2 fail on `origin/main`. Retested on `6b01e1e1`. Production re-test pending.                      |
+| D-3 | **Critical** | `getMyDay` takes no arguments and was declared `{type:'object',properties:{}}`. Google refuses that schema and fails the whole request, so **every** ONE AI question was refused on a `google` credential, whatever was asked. The connection card read Connected throughout: it lists models, which sends no tools. | Fixed in #248. `ai-provider` 18/18; the new case fails on the previous code with the production 400 verbatim. Not yet verified against Google or in production. |
 
 ### Not defects — rig conditions, recorded so they are not mistaken for them
 
@@ -511,6 +548,18 @@ the permission scoping, and the answer being grounded in the asker's own
 records. What is not verified is a genuine vendor answer in production, which
 needs an authorized credential and a signed-in session — §G3.1. The report in
 the opening screenshot stays open until that question returns a real answer.
+
+**Corrected 5 November: one blocker was not external to the code.** D-3 is a
+product defect that refused every ONE AI question on a Google credential, and
+it was live in production the whole time this report called ONE AI "everything
+the product controls is now verified". That sentence was wrong. It rested on
+the stand-in, which accepts the payload Google refuses.
+
+**Two causes produce the owner's screen, and this report cannot separate
+them.** AI-10 obtained a 400 from the live vendor for a deliberately invalid
+key — the same status, and before #248 the same sentence, as D-3 produces. So
+the owner's `ref 0631cda5` is either D-3, an unauthorized key, or both, and
+only the logged response body decides. Reading that line is §G3.5.
 
 Remaining blockers, all external to the code:
 
@@ -613,6 +662,24 @@ in production needs rotating. Until it is run, `FIELD_ENCRYPTION_KEY`,
 That branch is the only ref carrying `apps/web/.env.qa-backup`. Its code is
 already in `main` and in production. `gh pr close` is refused to this session by
 a tool restriction, which has been left in place rather than worked around.
+
+### 5. The 400 body behind `ref 0631cda5`
+
+One command on the production host, output safe to paste — it holds `err`,
+`status`, `tenantId`, and no key, prompt or provider body beyond the 200
+characters the transport already truncates:
+
+```bash
+docker compose -f apps/web/infra/docker-compose.prod.yml logs web | grep 0631cda5
+```
+
+- `…function_declarations[…].parameters.properties: should be non-empty for
+OBJECT type` → D-3 was the cause and #248 is the whole fix.
+- `API key not valid` → a second, separate cause: the stored key is not
+  authorized. #248 is still required, and a key re-issue is then also required.
+
+Until that line is read, the production cause is **undetermined**, and #248 is
+a confirmed defect fix rather than a confirmed cure.
 
 ### 4. Turn on GitHub secret scanning and push protection
 
