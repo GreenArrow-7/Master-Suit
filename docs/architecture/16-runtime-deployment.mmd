@@ -1,0 +1,35 @@
+flowchart TB
+  net["Internet"]
+  caddy["Caddy — TLS, reverse proxy<br/>infra/Caddyfile"]
+  subgraph host["One Docker host — infra/docker-compose.prod.yml"]
+    web["web (PROCESS_ROLE=web)<br/>127.0.0.1:3000"]
+    worker["worker (PROCESS_ROLE=worker)<br/>restart: unless-stopped"]
+  end
+  subgraph deps["Dependencies (compose, infra/docker-compose.yml for local)"]
+    pg[("postgres")]
+    redis[("redis")]
+    minio[("minio — S3")]
+    clam["clamav — upload scanning"]
+    facec["face — Python engine"]
+    mail["mailpit (local SMTP)"]
+  end
+  subgraph obs["Observability"]
+    prom["prometheus — scrapes /api/metrics"]
+    am["alertmanager — prometheus-alerts.yml"]
+    graf["grafana"]
+  end
+
+  net --> caddy --> web
+  web --> pg
+  web --> redis
+  web --> minio
+  web --> clam
+  web --> facec
+  web --> mail
+  worker --> pg
+  worker --> redis
+  worker --> minio
+  prom --> web
+  prom --> am
+  graf --> prom
+  web -.->|"/api/health, /api/health/live"| prom
