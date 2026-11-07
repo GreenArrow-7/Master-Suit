@@ -14,14 +14,14 @@ built against it.
 `A`=ORGANIZATION, `T`=TEAM, `O`=OWN. Everything not listed is withheld, and
 withheld means refused.
 
-| Role | Key | Rank | Scope | Reaches | Deliberately cannot |
-| --- | --- | --- | --- | --- | --- |
-| Company Administrator | `company_admin` | 10 | A | The whole catalogue — unchanged, created by `createWorkspace.ts` | Bypass entitlement, tenant isolation, audit or the record-level approval controls |
-| Sales Manager | `sales_manager` | 30 | T | Leads with assignment and import, pipeline, calls with AI coaching and review, visits, targets, reports; inventory read-only at A | Approve pool allocation; any money module; users, roles, settings, integrations |
-| HR Administrator | `hr_administrator` | 35 | A | Employees, departments, attendance, leave, shifts, overtime, holidays, documents, recruitment, performance, **payroll preparation** | Approve payroll; decide recruitment offers; read salary; reach any sales or money module |
-| Real Estate Operations | `realestate_ops` | 40 | A | Projects, listings, bookings, visits with approval, requirements, events, reports; collection and commission **status** | Approve collections or commissions; any payout or agency fee; payroll |
-| Sales Agent | `sales_agent` | 50 | O | Their own leads, contacts, opportunities, tasks, calls, **dialer**, visits, requirements, documents | Assign, reassign, bulk-update, import or export leads; any administrative or money module |
-| Employee | `employee_self` | 90 | O | Their own attendance, leave and tasks — everything else is self-service, which needs no permission | Read another employee, a lead, a call, payroll, HR documents or any money record |
+| Role                   | Key                | Rank | Scope | Reaches                                                                                                                             | Deliberately cannot                                                                       |
+| ---------------------- | ------------------ | ---- | ----- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Company Administrator  | `company_admin`    | 10   | A     | The whole catalogue — unchanged, created by `createWorkspace.ts`                                                                    | Bypass entitlement, tenant isolation, audit or the record-level approval controls         |
+| Sales Manager          | `sales_manager`    | 30   | T     | Leads with assignment and import, pipeline, calls with AI coaching and review, visits, targets, reports; inventory read-only at A   | Approve pool allocation; any money module; users, roles, settings, integrations           |
+| HR Administrator       | `hr_administrator` | 35   | A     | Employees, departments, attendance, leave, shifts, overtime, holidays, documents, recruitment, performance, **payroll preparation** | Approve payroll; decide recruitment offers; read salary; reach any sales or money module  |
+| Real Estate Operations | `realestate_ops`   | 40   | A     | Projects, listings, bookings, visits with approval, requirements, events, reports; collection and commission **status**             | Approve collections or commissions; any payout or agency fee; payroll                     |
+| Sales Agent            | `sales_agent`      | 50   | O     | Their own leads, contacts, opportunities, tasks, calls, **dialer**, visits, requirements, documents                                 | Assign, reassign, bulk-update, import or export leads; any administrative or money module |
+| Employee               | `employee_self`    | 90   | O     | Their own attendance, leave and tasks — everything else is self-service, which needs no permission                                  | Read another employee, a lead, a call, payroll, HR documents or any money record          |
 
 Templates are offered by entitlement: HR Administrator with HRMS, the sales
 pair with any lead module, Real Estate Operations with Real Estate or Sales,
@@ -29,15 +29,15 @@ Employee always. `src/lib/roles/templates.ts`.
 
 ## 2. Changes made
 
-| Commit | Change |
-| --- | --- |
-| `33cf8668` | The six specs and their grants. Wired to nothing — no behaviour change. |
-| `5c4575a9` | Provisioning, at all three paths that create a workspace or change its modules. |
+| Commit     | Change                                                                                                     |
+| ---------- | ---------------------------------------------------------------------------------------------------------- |
+| `33cf8668` | The six specs and their grants. Wired to nothing — no behaviour change.                                    |
+| `5c4575a9` | Provisioning, at all three paths that create a workspace or change its modules.                            |
 | `b07959a1` | Both role pickers: business roles first, descriptions, scope, module count, effective-permissions preview. |
-| `67748630` | Permission-filtered phone tabs; the Start AI-assisted call action. |
-| `f519a50e` | The suite stops leaving test roles in a workspace it did not create. |
-| `29fdb8e1` | The `changes/` entry. |
-| `24092ef1` | Payroll's maker-checker, tested. |
+| `67748630` | Permission-filtered phone tabs; the Start AI-assisted call action.                                         |
+| `f519a50e` | The suite stops leaving test roles in a workspace it did not create.                                       |
+| `29fdb8e1` | The `changes/` entry.                                                                                      |
+| `24092ef1` | Payroll's maker-checker, tested.                                                                           |
 
 ### Files modified
 
@@ -68,7 +68,7 @@ Three properties make that true, and each is tested rather than asserted:
    26 roles: the templates named "HR Administrator" and "Employee" were not
    created, because roles with those names already existed.
 2. **Nothing is re-widened.** A role an administrator trimmed — `leads:VIEW_SENSITIVE_FIELDS`
-   revoked — stays trimmed. This matters because revoking *deletes* the row, so
+   revoked — stays trimmed. This matters because revoking _deletes_ the row, so
    a gap cannot be told apart from a deliberate revocation.
 3. **Nothing appears underneath an existing workspace.** Templates arrive only
    with a module that has just been switched on. The console editor sends the
@@ -89,21 +89,21 @@ route, API or deep link was removed.
 The audit established what gates each feature, and the templates grant those
 permissions rather than inventing new ones:
 
-| Feature | Gate | Who holds it |
-| --- | --- | --- |
-| Live call workspace | `dialer:VIEW` + SALES | Sales Agent, Sales Manager |
-| Live coaching, Ask Next, Handle Objection, Recommend Property, Payment Plan, Closing Line, Summarize Customer | `calls:EDIT` | Sales Agent (own), Sales Manager (team) |
-| Recording, consent, transcripts | `calls:VIEW` / `calls:EDIT` | as above |
-| Post-call analysis, AI summaries | `calls:EDIT` | as above |
-| Call audit scoring | `calls:EDIT` + record scope | Sales Agent (own), Sales Manager (team) |
-| Follow-up drafting | `calls:EDIT` | as above |
-| Workspace assistant | `leads:VIEW` + SALES | every sales template |
-| Provider configuration, usage and budgets | `integrations:*`, `settings:*` | Company Administrator only |
+| Feature                                                                                                       | Gate                           | Who holds it                            |
+| ------------------------------------------------------------------------------------------------------------- | ------------------------------ | --------------------------------------- |
+| Live call workspace                                                                                           | `dialer:VIEW` + SALES          | Sales Agent, Sales Manager              |
+| Live coaching, Ask Next, Handle Objection, Recommend Property, Payment Plan, Closing Line, Summarize Customer | `calls:EDIT`                   | Sales Agent (own), Sales Manager (team) |
+| Recording, consent, transcripts                                                                               | `calls:VIEW` / `calls:EDIT`    | as above                                |
+| Post-call analysis, AI summaries                                                                              | `calls:EDIT`                   | as above                                |
+| Call audit scoring                                                                                            | `calls:EDIT` + record scope    | Sales Agent (own), Sales Manager (team) |
+| Follow-up drafting                                                                                            | `calls:EDIT`                   | as above                                |
+| Workspace assistant                                                                                           | `leads:VIEW` + SALES           | every sales template                    |
+| Provider configuration, usage and budgets                                                                     | `integrations:*`, `settings:*` | Company Administrator only              |
 
 Consent, microphone handling, WebSocket streaming, the queues, the workers,
 simulation and failure handling are all untouched.
 
-**The new entry point.** The dashboard offers *Start AI-assisted call* to a
+**The new entry point.** The dashboard offers _Start AI-assisted call_ to a
 viewer holding `calls:CREATE` and `dialer:VIEW`. It links to
 `/sales/calls/new`, whose "Create & open live workspace" button creates a real
 call and then opens `/calls/{id}/live`. It does **not** link to a
@@ -132,19 +132,80 @@ What changed:
 Navigation hiding remains presentation only: every route keeps its server-side
 assertion.
 
+## 5b. Test results
+
+Run on Postgres with 126 migrations, Redis, MinIO and Mailpit, against this
+branch and — for comparison — against `origin/main` with none of this work
+present. Both numbers are from a full `npx vitest run`, not a selected subset.
+
+|       | `origin/main`                        | This branch                          |
+| ----- | ------------------------------------ | ------------------------------------ |
+| Tests | 5,003 passed · 77 failed · 2 skipped | 5,052 passed · 78 failed · 2 skipped |
+| Files | 309 passed · 28 failed               | 313 passed · 29 failed               |
+
+**Exactly one file failed on this branch that does not fail on `origin/main`:**
+`tests/unit/css-tokens.spec.ts`, because the role brief used `--lf-ink-1`, a
+token declared nowhere (the primary is `--lf-ink`). Fixed in `d79809a2`; the
+spec passes. No baseline failure disappeared either, so nothing was masked.
+
+The other 77 failures are present identically without this work — chiefly
+`reports-new`, `lead-timeline`, `lead-send`, the Lead Eagle dashboards and the
+media specs. They are this environment's, not this branch's, and they are not
+mine to fix here. Two of them were checked individually as well:
+`reports-new` + `lead-timeline` fail 15 tests on both sides, the same 15.
+
+Worth recording honestly: the first full run showed **89** failures, all of
+them media, document and e-mail specs, because MinIO and Mailpit were not
+running in this scratch rig. Starting them removed 11 of the failures. A rig
+fault reported as a product fault would have been a lie in this report.
+
+### The specs written for this work
+
+| Spec                                                | Cases | What it holds down                                                                                                   |
+| --------------------------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------- |
+| `tests/unit/role-templates.spec.ts`                 | 28    | Every grant is a real catalogue pair; the withholdings in §1; `templatesFor` by module                               |
+| `tests/tenant/role-template-provisioning.spec.ts`   | 9     | Idempotent; renamed roles kept; trimmed roles not re-widened; name collisions skipped; never creates `company_admin` |
+| `tests/unit/mobile-tab-bar.spec.ts`                 | 8     | Tabs follow permissions; the fallback bar; never more than four                                                      |
+| `tests/tenant/payroll-separation-of-duties.spec.ts` | 3     | Role control, independent approver, and self-approval refused with both permissions                                  |
+| `tests/tenant/teardown-stray-roles.spec.ts`         | 2     | The teardown predicate catches the three test roles and no real one                                                  |
+
+Existing specs re-run and green on this branch: `provision-lead-work` (29),
+`self-serve-signup` (8), `css-tokens` (4). Together with the new ones:
+**91 passing across the eight affected files.**
+
+Two of the new specs were mutation-checked — a test that cannot fail is
+decoration. Granting `payroll:APPROVE` to the HR Administrator template fails
+`role-templates`; removing the permission filter fails 5 of the 8 tab-bar
+cases.
+
+### Not verified
+
+- **The full live-call flow.** The dashboard action renders and points at
+  `/sales/calls/new` — the correct route, which creates a real call before
+  opening the live workspace. But in this rig that page's form body never
+  finishes rendering, sitting on the `sales/loading.tsx` skeleton. So does
+  `/sales/leads/new`, which this work never touched, with no console or server
+  error. Pre-existing and environmental; it means the link target is verified
+  and the create-call-then-live journey is not.
+- **The browser suite.** Playwright was not run; the e2e expectations this work
+  changed (`lead-eagle-workspace`, which now asserts nine roles rather than
+  six) are therefore unproven in a browser.
+- **A six-role end-to-end journey** — creating one user per template through
+  the product and signing in as each — is not written.
+
 ## 6. Security findings
 
-| Control | State | Evidence |
-| --- | --- | --- |
-| Payroll maker-checker | **Holds, and is on the record** | `payroll-separation-of-duties.spec.ts` — an account holding both `payroll:EDIT` and `payroll:APPROVE` is still refused its own run; a second holder approves it |
-| Independent approver exists under the six roles | **Yes** | Same spec: HR Administrator prepares, Company Administrator approves |
-| Collection verification | Holds | `tests/sales/collections.spec.ts` — "the recorder cannot verify their own entry — not even with the approve permission" |
-| Payout approval | Holds | `tests/sales/payouts.spec.ts` |
-| Agency fee | Separate CREATE and APPROVE | `feeAmendments.ts:335`; no template holds either |
-| Recruitment offers | `recruitment:APPROVE` withheld from HR Administrator | `role-templates.spec.ts` |
-| Salary masking | `hr_documents:VIEW_SENSITIVE_FIELDS` granted by no template | `role-templates.spec.ts` |
-| Tenant isolation, RLS | Untouched | The tenant guard refused a cross-tenant `Role.deleteMany` during this work — the control working on me |
-| Privilege escalation | Unchanged | The Add-user list is still cut by `rank > actor.roleRank`, and the server re-checks |
+| Control                                         | State                                                       | Evidence                                                                                                                                                        |
+| ----------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Payroll maker-checker                           | **Holds, and is on the record**                             | `payroll-separation-of-duties.spec.ts` — an account holding both `payroll:EDIT` and `payroll:APPROVE` is still refused its own run; a second holder approves it |
+| Independent approver exists under the six roles | **Yes**                                                     | Same spec: HR Administrator prepares, Company Administrator approves                                                                                            |
+| Collection verification                         | Holds                                                       | `tests/sales/collections.spec.ts` — "the recorder cannot verify their own entry — not even with the approve permission"                                         |
+| Payout approval                                 | Holds                                                       | `tests/sales/payouts.spec.ts`                                                                                                                                   |
+| Agency fee                                      | Separate CREATE and APPROVE                                 | `feeAmendments.ts:335`; no template holds either                                                                                                                |
+| Recruitment offers                              | `recruitment:APPROVE` withheld from HR Administrator        | `role-templates.spec.ts`                                                                                                                                        |
+| Salary masking                                  | `hr_documents:VIEW_SENSITIVE_FIELDS` granted by no template | `role-templates.spec.ts`                                                                                                                                        |
+| Tenant isolation, RLS                           | Untouched                                                   | The tenant guard refused a cross-tenant `Role.deleteMany` during this work — the control working on me                                                          |
+| Privilege escalation                            | Unchanged                                                   | The Add-user list is still cut by `rank > actor.roleRank`, and the server re-checks                                                                             |
 
 **One limitation, stated plainly as required.** `calls:EDIT` is **not** a
 dedicated independent-audit permission. Live coaching, post-call analysis,
