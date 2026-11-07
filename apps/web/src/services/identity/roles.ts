@@ -71,14 +71,20 @@ export async function listRoles(ctx: Ctx) {
     }),
     prisma.rolePermission.findMany({
       where: { tenantId: ctx.tenantId, granted: true },
-      select: { roleId: true, scope: true },
-      distinct: ['roleId', 'scope'],
+      select: { roleId: true, scope: true, permission: { select: { module: true } } },
     }),
   ]);
   // `defaultScope` only seeds new grants; access follows each grant's own scope.
   const widest = new Map<string, Scope>();
-  for (const { roleId, scope } of grants) {
+  // The modules a role actually reaches, for the "what can it do" summary. Read
+  // from the grants rather than from a template, so a role an administrator
+  // built or trimmed by hand describes itself just as accurately.
+  const reaches = new Map<string, Set<string>>();
+  for (const { roleId, scope, permission } of grants) {
     if (SCOPE_RANK[scope] > SCOPE_RANK[widest.get(roleId) ?? 'NONE']) widest.set(roleId, scope);
+    const seen = reaches.get(roleId) ?? new Set<string>();
+    seen.add(permission.module);
+    reaches.set(roleId, seen);
   }
   return roles.map((role) => ({
     id: role.id,
@@ -89,6 +95,8 @@ export async function listRoles(ctx: Ctx) {
     defaultScope: role.defaultScope,
     /** The widest scope any of its grants reaches, or null when it grants nothing. */
     widestScope: widest.get(role.id) ?? null,
+    /** The permission modules it grants something in, alphabetically. */
+    modules: [...(reaches.get(role.id) ?? [])].sort(),
     isSystem: role.isSystem,
     isActive: role.isActive,
     users: role._count.users,

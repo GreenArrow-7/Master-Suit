@@ -2657,10 +2657,87 @@ a:hover {
   font-size: 9px;
   color: var(--lf-ink-3);
 }
+/*
+ * The role's purpose, under its name. Two lines at most: a description long
+ * enough to need a third is a description that should be shorter, and a list
+ * whose rows grow to five lines stops being scannable, which is the problem
+ * this grouping exists to solve.
+ */
+.lf-roles__purpose {
+  font-size: var(--lf-text-sm);
+  line-height: 1.45;
+  color: var(--lf-ink-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.lf-roles__group + .lf-roles__group {
+  border-top: 1px solid var(--lf-line);
+}
+.lf-roles__group-label {
+  padding: 11px 18px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--lf-ink-3);
+  background: var(--lf-surface-2);
+  border-bottom: 1px solid var(--lf-line-2);
+}
 .lf-roles__slug {
   font: 400 11px/1.4 var(--lf-font-mono);
   color: var(--lf-ink-3);
 }
+/*
+ * What the chosen role means, under the Role picker on Add user.
+ *
+ * Deliberately below the select rather than in the option labels: an option's
+ * text is the only thing a native mobile picker shows, and a sentence per row
+ * makes that wheel unreadable. The name picks; this explains.
+ */
+.lf-role-brief {
+  margin-top: 8px;
+  padding: 11px 13px;
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius-sm, 8px);
+  background: var(--lf-surface-2);
+  display: grid;
+  gap: 6px;
+}
+.lf-role-brief__what {
+  margin: 0;
+  font-size: var(--lf-text-sm);
+  line-height: 1.45;
+  color: var(--lf-ink-1);
+}
+.lf-role-brief__meta {
+  margin: 0;
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink-2);
+}
+.lf-role-brief__preview > summary {
+  cursor: pointer;
+  font-size: var(--lf-text-sm);
+  color: var(--lf-wine-700);
+}
+.lf-role-brief__preview-body {
+  margin-top: 7px;
+  max-height: 220px;
+  overflow: auto;
+  display: grid;
+  gap: 4px;
+}
+.lf-role-brief__preview-body p {
+  margin: 0;
+  font-size: var(--lf-text-sm);
+  line-height: 1.45;
+  color: var(--lf-ink-2);
+}
+.lf-role-brief__preview-body strong {
+  color: var(--lf-ink-1);
+}
+
 .lf-roles__list-actions {
   display: flex;
   gap: 8px;
