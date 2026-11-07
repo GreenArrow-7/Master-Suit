@@ -2709,7 +2709,7 @@ a:hover {
   margin: 0;
   font-size: var(--lf-text-sm);
   line-height: 1.45;
-  color: var(--lf-ink-1);
+  color: var(--lf-ink);
 }
 .lf-role-brief__meta {
   margin: 0;
@@ -2735,7 +2735,7 @@ a:hover {
   color: var(--lf-ink-2);
 }
 .lf-role-brief__preview-body strong {
-  color: var(--lf-ink-1);
+  color: var(--lf-ink);
 }
 
 .lf-roles__list-actions {
