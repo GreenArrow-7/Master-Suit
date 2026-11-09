@@ -437,6 +437,23 @@ async function ensureEmployee(tenantId: string, employeeId: string) {
   if (!employee) throw NotFound('Employee');
 }
 
+/**
+ * Who may be somebody's reporting manager. The form's own list is filtered, but
+ * a request that names a membership directly reached the database unchecked, so
+ * a suspended, removed or never-accepted account — a deleted login, a role left
+ * behind by a test run — could be written in as a manager. An employee cannot
+ * report to themselves either.
+ */
+async function assertManagerEligible(tenantId: string, employeeId: string, membershipId: string) {
+  const [employee, manager] = await Promise.all([
+    prisma.employeeProfile.findFirst({ where: { tenantId, id: employeeId }, select: { membershipId: true } }),
+    prisma.workspaceMembership.findFirst({ where: { tenantId, id: membershipId }, select: { status: true } }),
+  ]);
+  if (!manager) throw NotFound('Reporting manager');
+  if (manager.status !== 'ACTIVE') throw Conflict('That account is not active, so it cannot be a reporting manager.');
+  if (employee?.membershipId === membershipId) throw Conflict('Somebody cannot be their own reporting manager.');
+}
+
 function title(value: string) {
   return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -606,6 +623,7 @@ export const PATCH = route(
           })
           .parse(body);
         await ensureEmployee(ctx.tenantId, id);
+        if (input.managerMembershipId) await assertManagerEligible(ctx.tenantId, id, input.managerMembershipId);
         return prisma.employeeProfile.update({
           where: { tenantId: ctx.tenantId, id },
           data: {

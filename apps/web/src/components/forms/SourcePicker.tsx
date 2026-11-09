@@ -53,21 +53,29 @@ export default function SourcePicker({
         </select>
       </Field>
       <Field label="Sub-source" htmlFor={`${idPrefix}subSourceId`}>
-        <select
-          id={`${idPrefix}subSourceId`}
-          name="subSourceId"
-          className="lf-input"
-          value={subSourceId}
-          disabled={children.length === 0}
-          onChange={(e) => onChange(sourceId, e.target.value)}
-        >
-          <option value="">—</option>
-          {children.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
+        {/* A disabled select showing "—" read as a broken control: testers
+            reported the field as having no options rather than as not applying.
+            It now says which of the two it is. */}
+        {children.length === 0 ? (
+          <span className="lf-empty-note" id={`${idPrefix}subSourceId`}>
+            {sourceId ? 'No sub-sources configured for this source.' : 'Choose a source first.'}
+          </span>
+        ) : (
+          <select
+            id={`${idPrefix}subSourceId`}
+            name="subSourceId"
+            className="lf-input"
+            value={subSourceId}
+            onChange={(e) => onChange(sourceId, e.target.value)}
+          >
+            <option value="">—</option>
+            {children.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        )}
       </Field>
     </div>
   );
