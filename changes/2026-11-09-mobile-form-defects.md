@@ -66,6 +66,8 @@ of those and calling it fixed would have been worse than saying so.
 - `apps/web/tests/e2e/{business-journey,record-scope,daily-target-workflow}.spec.ts`
   and `tests/e2e/globalTeardown.ts` — the run marker and the cleanup.
 - `apps/web/tests/hr/manager-eligibility.spec.ts` — new.
+- `apps/web/tests/e2e/hr-modules.spec.ts` — the heading it waits for on
+  `/departments`, which this change renamed.
 
 ## Behaviour
 
