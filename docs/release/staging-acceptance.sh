@@ -198,11 +198,52 @@ trap 'rm -f "$JAR" "$OWNER_JAR" "$DENIED_JAR"' EXIT
 
 api() { curl -s -o /tmp/acc.out -w '%{http_code}' "$@"; }
 
+# A wizard-issued credential is administrator-known, so the product forces a
+# change at first sign-in (passwordChangedAt null -> /profile/security) and
+# nothing else opens until it happens. Both accounts are settled through the
+# real endpoints, exactly as tests/e2e/helpers.ts does it.
+settle() {
+  local slug=$1 who=$2 pw=$3 jar=$4
+  local tmp="$pw-tmp0"
+  local j; j=$(mktemp)
+  code=$(api -c "$j" -X POST "$STAGING_URL/api/v1/auth/login" \
+    -H 'content-type: application/json' \
+    --data "$(jq -nc --arg e "$who" --arg p "$tmp" '{email:$e,password:$p}')")
+  [ "$code" = "200" ] || die "settling sign-in for $who returned $code"
+  code=$(api -b "$j" -X POST "$STAGING_URL/api/v1/workspaces/$slug/identity/self/password-change" \
+    -H 'content-type: application/json' \
+    --data "$(jq -nc --arg c "$tmp" --arg n "$pw" '{currentPassword:$c,newPassword:$n}')")
+  [ "$code" = "200" ] || [ "$code" = "204" ] || die "password settle for $who returned $code: $(cat /tmp/acc.out)"
+  rm -f "$j"
+  # And now the real password, which is also proof the change took.
+  code=$(api -c "$jar" -X POST "$STAGING_URL/api/v1/auth/login" \
+    -H 'content-type: application/json' \
+    --data "$(jq -nc --arg e "$who" --arg p "$pw" '{email:$e,password:$p}')")
+  [ "$code" = "200" ] || die "sign-in for $who after the password change returned $code"
+}
+
+
 # 5a. the platform owner creates a workspace with its own administrator
+#
+# The owner is a privileged platform role, and `src/lib/auth/login.ts` requires
+# a second factor for those unconditionally — enrolled or not. The endpoint
+# takes email, password and mfaCode in one request, so the code comes from the
+# operator's authenticator at run time and is never stored anywhere.
+[ -n "${PLATFORM_OWNER_TOTP:-}" ] || die "PLATFORM_OWNER_TOTP is required.
+  The platform owner is a privileged role and always needs a second factor.
+  Re-run with the six digits showing on the authenticator right now:
+
+    PLATFORM_OWNER_TOTP=123456 $0 $CANDIDATE"
+
 code=$(api -c "$OWNER_JAR" -X POST "$STAGING_URL/api/v1/auth/login" \
   -H 'content-type: application/json' \
-  --data "$(jq -nc --arg e "$OWNER_EMAIL" --arg p "$OWNER_PW" '{email:$e,password:$p}')")
-[ "$code" = "200" ] || die "platform owner sign-in returned $code"
+  --data "$(jq -nc --arg e "$OWNER_EMAIL" --arg p "$OWNER_PW" --arg m "$PLATFORM_OWNER_TOTP" \
+      '{email:$e,password:$p,mfaCode:$m}')")
+case "$code" in
+  200) : ;;
+  401 | 422) die "platform owner sign-in returned $code — a wrong password, or a code that had already rotated. Take a fresh one and run again." ;;
+  *) die "platform owner sign-in returned $code" ;;
+esac
 
 code=$(api -b "$OWNER_JAR" -X POST "$STAGING_URL/api/v1/platform/workspaces" \
   -H 'content-type: application/json' \
@@ -210,18 +251,15 @@ code=$(api -b "$OWNER_JAR" -X POST "$STAGING_URL/api/v1/platform/workspaces" \
       workspaceName:("Acceptance " + $s), slug:$s,
       legalName:("Acceptance " + $s + " LLC"), displayName:("Acceptance " + $s),
       planCode:"standard", country:"AE", timezone:"Asia/Dubai", currency:"AED",
-      primaryAdminName:"Acceptance Administrator", primaryAdminEmail:$e, primaryAdminPassword:$p,
-      enabledModules:["SALES"], maxEmployees:10, maxUsers:10, maxStorageMb:1024, status:"ACTIVE"
+      primaryAdminName:"Acceptance Administrator", primaryAdminEmail:$e, primaryAdminPassword:($p + "-tmp0"),
+      enabledModules:["SALES","HRMS"], maxEmployees:10, maxUsers:10, maxStorageMb:1024, status:"ACTIVE"
     }')")
 [ "$code" = "200" ] || [ "$code" = "201" ] || die "workspace creation returned $code: $(cat /tmp/acc.out)"
 
-# 5b. login → cookie issued
-code=$(api -c "$JAR" -X POST "$STAGING_URL/api/v1/auth/login" \
-  -H 'content-type: application/json' \
-  --data "$(jq -nc --arg e "$ALLOWED_EMAIL" --arg p "$ALLOWED_PW" '{email:$e,password:$p}')")
-[ "$code" = "200" ] || die "permitted account sign-in returned $code"
+# 5b. the password is settled, then the account signs in -> cookie issued
+settle "$SLUG" "$ALLOWED_EMAIL" "$ALLOWED_PW" "$JAR"
 grep -q . "$JAR" || die "sign-in issued no cookie"
-echo "5b login OK"
+echo "5b login OK (password settled)"
 
 # 5c. the permitted account writes a synthetic record
 # No workspace in the body: the route takes the tenant from the session,
@@ -248,15 +286,12 @@ code=$(api -b "$OWNER_JAR" -X POST "$STAGING_URL/api/v1/platform/workspaces" \
       workspaceName:("Acceptance " + $s), slug:$s,
       legalName:("Acceptance " + $s + " LLC"), displayName:("Acceptance " + $s),
       planCode:"standard", country:"AE", timezone:"Asia/Dubai", currency:"AED",
-      primaryAdminName:"Acceptance Denied", primaryAdminEmail:$e, primaryAdminPassword:$p,
+      primaryAdminName:"Acceptance Denied", primaryAdminEmail:$e, primaryAdminPassword:($p + "-tmp0"),
       enabledModules:["SALES"], maxEmployees:10, maxUsers:10, maxStorageMb:1024, status:"ACTIVE"
     }')")
 [ "$code" = "200" ] || [ "$code" = "201" ] || die "could not create the second workspace: $code $(cat /tmp/acc.out)"
 
-code=$(api -c "$DENIED_JAR" -X POST "$STAGING_URL/api/v1/auth/login" \
-  -H 'content-type: application/json' \
-  --data "$(jq -nc --arg e "$DENIED_EMAIL" --arg p "$DENIED_PW" '{email:$e,password:$p}')")
-[ "$code" = "200" ] || die "the denied account could not sign in ($code); the refusal below would prove nothing"
+settle "$DENIED_SLUG" "$DENIED_EMAIL" "$DENIED_PW" "$DENIED_JAR"
 
 # Reading it, then trying to change it. Both must be refused.
 code=$(api -b "$DENIED_JAR" "$STAGING_URL/api/v1/leads/$LEAD_ID")
@@ -279,23 +314,39 @@ sweeps=$(docker logs --since 20m "$PROJECT-worker-1" 2>&1 | grep -c 'sweep compl
 echo "5e worker OK ($sweeps sweeps)"
 
 # 5f. a clean document round-trips, bytes identical
+#
+# The upload needs an employee and a kind, not just a file, and an employee
+# needs HRMS — which is why this workspace is created with both modules. An
+# unknown roleKey is the documented path: the endpoint creates a starter role
+# at the lowest rank and issues an invitation rather than an account.
+code=$(api -b "$JAR" -X POST "$STAGING_URL/api/v1/workspaces/$SLUG/hr/employees" \
+  -H 'content-type: application/json' \
+  --data "$(jq -nc --arg r "acceptance-staff-$RUN" --arg e "acceptance.staff.$RUN@staging.invalid" \
+      '{fullName:"Acceptance Staff", employeeNumber:("E-" + ($r|split("-")|last)), email:$e, roleKey:$r}')")
+[ "$code" = "200" ] || [ "$code" = "201" ] || die "could not create the employee for the document check: $code $(cat /tmp/acc.out)"
+EMPLOYEE_ID=$(jq -r '.id // .employee.id // .data.id // empty' /tmp/acc.out)
+[ -n "$EMPLOYEE_ID" ] || die "employee created but no id came back: $(cat /tmp/acc.out)"
+
 TMPDOC=$(mktemp); printf 'acceptance %s\n' "$RUN" > "$TMPDOC"
 code=$(api -b "$JAR" -X POST "$STAGING_URL/api/v1/workspaces/$SLUG/hr/documents/upload" \
-  -F "file=@$TMPDOC;filename=acceptance-$RUN.txt")
-if [ "$code" = "200" ] || [ "$code" = "201" ]; then
-  DOC_ID=$(jq -r '.id // .data.id // empty' /tmp/acc.out)
-  OUT=$(mktemp)
+  -F "employeeId=$EMPLOYEE_ID" -F "kind=CONTRACT" -F "file=@$TMPDOC;filename=acceptance-$RUN.txt")
+[ "$code" = "200" ] || [ "$code" = "201" ] || die "document upload returned $code: $(cat /tmp/acc.out)"
+DOC_ID=$(jq -r '.id // .document.id // .data.id // empty' /tmp/acc.out)
+[ -n "$DOC_ID" ] || die "document uploaded but no id came back: $(cat /tmp/acc.out)"
+
+# The scanner marks a fresh upload PENDING and only then CLEAN; download is
+# refused until it is CLEAN, so this waits rather than calling it a failure.
+OUT=$(mktemp); dl=000
+for _ in $(seq 1 30); do
   dl=$(curl -s -b "$JAR" -o "$OUT" -w '%{http_code}' \
     "$STAGING_URL/api/v1/workspaces/$SLUG/hr/documents/$DOC_ID/download")
-  [ "$dl" = "200" ] || die "document download returned $dl"
-  cmp -s "$TMPDOC" "$OUT" || die "downloaded bytes differ from what was uploaded"
-  echo "5f upload/download OK (bytes identical)"
-  rm -f "$OUT"
-else
-  # HRMS is not enabled on this workspace; say so rather than passing silently.
-  echo "5f SKIPPED — upload returned $code (HRMS not enabled for $SLUG). Not counted as a pass."
-fi
-rm -f "$TMPDOC"
+  [ "$dl" = "200" ] && break
+  sleep 2
+done
+[ "$dl" = "200" ] || die "document download returned $dl after 60s (scan never reached CLEAN)"
+cmp -s "$TMPDOC" "$OUT" || die "downloaded bytes differ from what was uploaded"
+echo "5f upload/download OK (bytes identical)"
+rm -f "$TMPDOC" "$OUT"
 
 # ---------------------------------------------------------------------------
 # 6. Rollback rehearsal — the previous image on the candidate's schema.
