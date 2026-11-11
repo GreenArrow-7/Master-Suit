@@ -228,7 +228,7 @@ echo "5b login OK"
 # which is why the permitted account is this workspace's own administrator.
 code=$(api -b "$JAR" -X POST "$STAGING_URL/api/v1/leads" \
   -H 'content-type: application/json' \
-  --data '{"fullName":"Acceptance Synthetic Lead","phone":"+971500000000","email":"acceptance.lead@staging.invalid","source":"WALK_IN"}')
+  --data '{"fullName":"Acceptance Synthetic Lead","phone":"+971500000000","email":"acceptance.lead@staging.invalid","source":"MANUAL"}')
 [ "$code" = "200" ] || [ "$code" = "201" ] || die "permitted account could not create its own lead: $code $(cat /tmp/acc.out)"
 LEAD_ID=$(jq -r '.id // .data.id // empty' /tmp/acc.out)
 [ -n "$LEAD_ID" ] || die "lead created but no id came back"
