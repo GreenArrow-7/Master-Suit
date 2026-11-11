@@ -75,38 +75,81 @@ step "1. isolation"
 # a second value past the checks below.
 env_of() { grep -m1 "^$1=" "$STAGING_ENV" | cut -d= -f2- || true; }
 
+# This host's own identifiers, from docs/PRODUCTION-RELEASE-PROCEDURE.md:18-24,
+# which describes what is actually deployed rather than what a design document
+# intended. Overridable, because a second host will not share them.
+PRODUCTION_DB=${PRODUCTION_DB:-leadflow}
+PRODUCTION_PG=${PRODUCTION_PG:-infra-postgres-1}
+STAGING_DB_EXPECTED=${STAGING_DB_EXPECTED:-youhan_ios_demo}
+
+# Every finding, not the first. A guard that dies on finding one costs a round
+# trip per problem, and the person running it is on a different continent.
+problems=()
+note() { problems+=("$1"); }
+
 STAGING_DB_URL=$(env_of DATABASE_URL)
 STAGING_APP_ENV=$(env_of APP_ENV)
 [ -n "$STAGING_DB_URL" ] || die "DATABASE_URL is not set in $STAGING_ENV"
 
 # The database name only — never the credentials.
 STAGING_DB_NAME=$(printf '%s' "$STAGING_DB_URL" | sed -E 's#^.*/([^/?]+)(\?.*)?$#\1#')
-case "$STAGING_DB_NAME" in
-  *_staging | *_test | *_e2e) : ;;
-  *) die "staging DATABASE_URL points at '$STAGING_DB_NAME', which is not a staging database name. Refusing." ;;
-esac
-[ "$STAGING_DB_NAME" != "leadflow" ] || die "staging is pointed at the production database 'leadflow'. Refusing."
-[ "$STAGING_APP_ENV" = "staging" ] || die "APP_ENV in $STAGING_ENV is '$STAGING_APP_ENV', expected 'staging'. Refusing."
 
-# The containers this script will drive must be staging's, and production's must
-# be untouched by it. `infra-*` is the production project.
+# The decisive refusal: it must not be production's database.
+if [ "$STAGING_DB_NAME" = "$PRODUCTION_DB" ]; then
+  note "DATABASE_URL points at the production database '$PRODUCTION_DB'."
+fi
+# And it must be a database this host recognises as staging's. A naming
+# convention is not required — this host does not use one — but an unknown
+# name is still refused, because "not production" is not the same as "staging".
+case "$STAGING_DB_NAME" in
+  "$STAGING_DB_EXPECTED" | *_staging | *_test | *_e2e) : ;;
+  *)
+    note "DATABASE_URL points at '$STAGING_DB_NAME', which this host does not know as a staging database (expected '$STAGING_DB_EXPECTED'). Set STAGING_DB_EXPECTED if that is wrong."
+    ;;
+esac
+
+# Not "must equal staging": this host's staging env may legitimately say
+# something else. What must never be true is that it says production.
+case "${STAGING_APP_ENV:-}" in
+  production) note "APP_ENV in $STAGING_ENV is 'production'." ;;
+esac
+
+# The containers this script will drive must be staging's, and production's
+# must be untouched by it. `infra-*` is the production project.
+containers_ok=yes
 for c in web worker postgres; do
   name="$PROJECT-$c-1"
-  docker inspect "$name" >/dev/null 2>&1 || die "$name is not running; bring staging up first"
-  case "$name" in infra-*) die "refusing to act on a production container ($name)" ;; esac
+  case "$name" in infra-*) note "refusing to act on a production container ($name)." ;; esac
+  docker inspect "$name" >/dev/null 2>&1 || {
+    note "$name is not running; bring staging up first."
+    containers_ok=no
+  }
 done
 
-# The decisive one: ask the database it is actually connected to for its own
-# name, rather than trusting the string in the file.
-LIVE_DB=$(docker exec "$PROJECT-postgres-1" psql -U leadflow -d "$STAGING_DB_NAME" -tAc 'SELECT current_database()')
-[ "$LIVE_DB" = "$STAGING_DB_NAME" ] || die "staging postgres answered '$LIVE_DB', expected '$STAGING_DB_NAME'"
-[ "$LIVE_DB" != "leadflow" ] || die "staging postgres IS the production database. Refusing."
+LIVE_DB=''
+if [ "$containers_ok" = yes ]; then
+  # Ask the database it is actually connected to for its own name, rather than
+  # trusting the string in the file. The role comes from the container, not
+  # from production's name.
+  PGUSER_IN_CONTAINER=$(docker inspect "$PROJECT-postgres-1" --format '{{range .Config.Env}}{{println .}}{{end}}' |
+    sed -n 's/^POSTGRES_USER=//p' | head -1)
+  PGUSER_IN_CONTAINER=${PGUSER_IN_CONTAINER:-postgres}
+  LIVE_DB=$(docker exec "$PROJECT-postgres-1" psql -U "$PGUSER_IN_CONTAINER" -d "$STAGING_DB_NAME" \
+    -tAc 'SELECT current_database()' 2>/dev/null | tr -d '[:space:]')
+  if [ -z "$LIVE_DB" ]; then
+    note "could not ask $PROJECT-postgres-1 for its own database name as '$PGUSER_IN_CONTAINER'."
+  elif [ "$LIVE_DB" != "$STAGING_DB_NAME" ]; then
+    note "staging postgres answered '$LIVE_DB', expected '$STAGING_DB_NAME'."
+  elif [ "$LIVE_DB" = "$PRODUCTION_DB" ]; then
+    note "staging postgres IS the production database."
+  fi
 
-# Production's postgres, if it is on this host, must be a different container id.
-if docker inspect infra-postgres-1 >/dev/null 2>&1; then
-  s=$(docker inspect "$PROJECT-postgres-1" --format '{{.Id}}')
-  p=$(docker inspect infra-postgres-1 --format '{{.Id}}')
-  [ "$s" != "$p" ] || die "staging and production resolve to the same postgres container. Refusing."
+  # Production's postgres, if it is on this host, must be a different container.
+  if docker inspect "$PRODUCTION_PG" >/dev/null 2>&1; then
+    s=$(docker inspect "$PROJECT-postgres-1" --format '{{.Id}}')
+    p=$(docker inspect "$PRODUCTION_PG" --format '{{.Id}}')
+    [ "$s" != "$p" ] || note "staging and production resolve to the same postgres container."
+  fi
 fi
 
 # Mail must not leave the host. Staging sends to Mailpit; a real relay here
@@ -114,10 +157,17 @@ fi
 MAIL_HOST=$(env_of SMTP_HOST)
 case "${MAIL_HOST:-}" in
   *mailpit* | *localhost* | 127.0.0.1 | mailhog | '') : ;;
-  *) die "staging SMTP_HOST is '$MAIL_HOST' — a real relay. Refusing to create accounts that would email out." ;;
+  *) note "SMTP_HOST is '$MAIL_HOST' — a real relay, so these synthetic accounts would email out." ;;
 esac
 
-echo "isolation OK · db=$LIVE_DB · APP_ENV=$STAGING_APP_ENV · mail=${MAIL_HOST:-mailpit} · project=$PROJECT"
+if [ ${#problems[@]} -gt 0 ]; then
+  printf '\nSTAGING ACCEPTANCE FAILED: staging is not provably isolated from production.\n\n' >&2
+  for p in "${problems[@]}"; do printf '  - %s\n' "$p" >&2; done
+  printf '\nNothing was created or changed.\n' >&2
+  exit 1
+fi
+
+echo "isolation OK · db=$LIVE_DB · APP_ENV=${STAGING_APP_ENV:-unset} · mail=${MAIL_HOST:-mailpit} · project=$PROJECT"
 
 # ---------------------------------------------------------------------------
 # 2. The candidate, by image id.
