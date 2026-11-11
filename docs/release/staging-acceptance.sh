@@ -46,6 +46,14 @@ STATE=${STATE:-/var/lib/master-suite}
 APP=${APP:-/opt/master-saas}
 PROJECT=youhan-ios-staging
 
+# Checked here rather than discovered at minute nine of a run.
+for tool in docker jq curl openssl rsync cmp psql_in_container; do
+  case "$tool" in
+    psql_in_container) : ;;
+    *) command -v "$tool" >/dev/null 2>&1 || die "$tool is not installed; this script needs docker, jq, curl, openssl, rsync and cmp" ;;
+  esac
+done
+
 [ -d "$STAGING_DIR" ] || die "$STAGING_DIR is not there; this is not the staging host"
 [ -r "$STAGING_ENV" ] || die "$STAGING_ENV is not readable by $(id -un)"
 
