@@ -132,6 +132,10 @@ export default function LeadForm({
     phone: (
       <>
         {text('phone', 'Phone', phone, setPhone)}
+        {/* The rule is OR, so neither control can carry `required` — the browser
+            would block a lead that has the other one. Said here instead, and
+            enforced on the server, which is where anything that posts reaches. */}
+        <span className="lf-field__hint">Give a phone number or an email address.</span>
         <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
           <input
             type="checkbox"

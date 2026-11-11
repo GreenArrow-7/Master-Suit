@@ -162,12 +162,22 @@ describe("a new lead starts at its source's points (M4-11)", () => {
       data: { tenantId, parentId: websiteId, key: `website_spring_${Date.now()}`, name: 'Spring' },
     });
 
-    const walkIn = await post(createLead, '/api/v1/leads', { fullName: 'Walked In', sourceId: walkInId }, admin);
+    const walkIn = await post(
+      createLead,
+      '/api/v1/leads',
+      { fullName: 'Walked In', sourceId: walkInId, phone: '0510000001' },
+      admin,
+    );
     expect(walkIn.status, JSON.stringify(walkIn.body)).toBe(200);
     expect((await lead(walkIn.body.id)).score).toBe(20);
-    const spring = await post(createLead, '/api/v1/leads', { fullName: 'Spring Form', sourceId: sub.id }, admin);
+    const spring = await post(
+      createLead,
+      '/api/v1/leads',
+      { fullName: 'Spring Form', sourceId: sub.id, phone: '0510000002' },
+      admin,
+    );
     expect((await lead(spring.body.id)).score).toBe(15);
-    const none = await post(createLead, '/api/v1/leads', { fullName: 'No Source' }, admin);
+    const none = await post(createLead, '/api/v1/leads', { fullName: 'No Source', phone: '0510000003' }, admin);
     expect((await lead(none.body.id)).score).toBe(0);
   });
 

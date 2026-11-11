@@ -1101,6 +1101,15 @@ const enquiryOf = async (ownerId: string) =>
   ).id;
 const coldRecordOf = (ownerId: string) =>
   prisma.dataRecord.create({ data: { tenantId: h.tenantId, fullName: 'Cold', batch: `list-${fresh()}`, ownerId } });
+/**
+ * A distinct number per handed lead. The contact rule means every created lead
+ * now carries one, and the duplicate check means it must not be the same one
+ * twice — otherwise the second role's case fails on a 409 that has nothing to
+ * do with scope.
+ */
+let phoneSeq = 0;
+const nextPhone = () => `05${String(++phoneSeq).padStart(8, '0')}`;
+
 const HANDING: { name: string; refusal?: number; hand: (as: Member, to: string) => Promise<Handing> }[] = [
   {
     name: 'POST tasks',
@@ -1135,7 +1144,7 @@ const HANDING: { name: string; refusal?: number; hand: (as: Member, to: string) 
     name: 'POST leads',
     hand: async (as, to) => {
       const fullName = `Handed ${fresh()}`;
-      const res = await post(createLead, '/api/v1/leads', { fullName, ownerId: to }, as.cookie);
+      const res = await post(createLead, '/api/v1/leads', { fullName, ownerId: to, phone: nextPhone() }, as.cookie);
       return {
         res,
         landed: () => ownedBy(prisma.lead.count({ where: { tenantId: h.tenantId, fullName, ownerId: to } })),
