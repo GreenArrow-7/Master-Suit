@@ -15,6 +15,8 @@ vi.mock('next/headers', () => ({
 }));
 
 import { prisma } from '@/lib/db';
+import { workspaceTimezone } from '@/services/hr/attendance';
+import { todayKey } from '@/services/targets/dailyBoard';
 import { PATCH as patchActivity } from '@/app/api/v1/activities/[id]/route';
 import { POST as audience } from '@/app/api/v1/campaigns/[id]/audience/route';
 import { GET as listCalls } from '@/app/api/v1/calls/route';
@@ -1003,7 +1005,11 @@ describe('the lists and screens of events and calls', () => {
     const [ours, theirs] = [await anEvent(h.repA2.id), await anEvent(h.repB1.id)];
     const [ourCall, theirCall] = [await aCall(h.repA2.id), await aCall(h.repB1.id)];
     cookieJar.value = h.teamManagerA.cookie;
-    const month = (at: Date) => `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}`;
+    // The workspace's clock, which is the one the calendar windows a month by.
+    // The server's zone made this fail at a month's end, where the two disagree
+    // about which month a time a day ahead falls in.
+    const timeZone = await workspaceTimezone({ tenantId: h.tenantId });
+    const month = (at: Date) => todayKey(timeZone, at).slice(0, 7);
     const drawn = async (at: Date) => {
       const tree = await CalendarPage({ searchParams: Promise.resolve({ month: month(at) }) });
       const items = elements(tree).find((el) => Array.isArray(el.props.items))?.props.items as { id: string }[];
@@ -1095,6 +1101,15 @@ const enquiryOf = async (ownerId: string) =>
   ).id;
 const coldRecordOf = (ownerId: string) =>
   prisma.dataRecord.create({ data: { tenantId: h.tenantId, fullName: 'Cold', batch: `list-${fresh()}`, ownerId } });
+/**
+ * A distinct number per handed lead. The contact rule means every created lead
+ * now carries one, and the duplicate check means it must not be the same one
+ * twice — otherwise the second role's case fails on a 409 that has nothing to
+ * do with scope.
+ */
+let phoneSeq = 0;
+const nextPhone = () => `05${String(++phoneSeq).padStart(8, '0')}`;
+
 const HANDING: { name: string; refusal?: number; hand: (as: Member, to: string) => Promise<Handing> }[] = [
   {
     name: 'POST tasks',
@@ -1129,7 +1144,7 @@ const HANDING: { name: string; refusal?: number; hand: (as: Member, to: string) 
     name: 'POST leads',
     hand: async (as, to) => {
       const fullName = `Handed ${fresh()}`;
-      const res = await post(createLead, '/api/v1/leads', { fullName, ownerId: to }, as.cookie);
+      const res = await post(createLead, '/api/v1/leads', { fullName, ownerId: to, phone: nextPhone() }, as.cookie);
       return {
         res,
         landed: () => ownedBy(prisma.lead.count({ where: { tenantId: h.tenantId, fullName, ownerId: to } })),
