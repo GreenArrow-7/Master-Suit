@@ -1,0 +1,24 @@
+flowchart TB
+  subgraph inputs["Counted from the work itself — never typed in"]
+    calls["Call rows (completed / missed / attempted)"]
+    cold["Activity on a DataRecord (cold calling)"]
+    fu["FollowUpTask completions"]
+    att["HrAttendancePunch (check-in time)"]
+    tgt["EmployeeTarget — the day's LEADS_CALLED target"]
+  end
+
+  board["services/targets/dailyBoard.ts<br/>one definition per number"]
+  defs["called · connected · not answered<br/>cold · warm · interested · pending"]
+  api["GET /api/v1/targets/daily<br/>GET /api/v1/targets/daily/&#123;userId&#125;<br/>GET /api/v1/targets/my"]
+  screen["Daily Activity → Today<br/>/&#123;slug&#125;/leadership?view=daily<br/>(reports permission, SALES-family module)"]
+  checkin["Check-in screen<br/>dailyTargetProgress + work-gated check-out"]
+
+  calls --> board
+  cold --> board
+  fu --> board
+  att --> board
+  tgt --> board
+  board --> defs --> api --> screen
+  board --> checkin
+  board -. "check-in times only within attendanceScope" .- att
+  board -. "rows only within the viewer's leads scope" .- defs
