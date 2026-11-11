@@ -171,7 +171,10 @@ try {
     await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
   });
 
-  const body = await page.locator('body').innerText();
+  // textContent, not innerText: the tag chips are laid out in a way that
+  // innerText skipped, which reported a persisted tag as missing while the
+  // row in the database had it.
+  const body = await page.locator('body').textContent();
   console.log('\n──────── result ────────');
   console.log(`tags persisted:        ${body.includes(`wk${stamp}`)}`);
   console.log(`page usable on return: ${!back.blank} (${back.chars} chars)`);

@@ -13,6 +13,35 @@ message, page error, failed request, 4xx response body and API write recorded.
 
 The probe is `apps/web/webkit-probe.mjs`.
 
+## Result against the production bundle — all four acceptance criteria met
+
+Run 11 November against the **production build** (`next build`, standalone
+server), in WebKit, at iPhone dimensions, on an isolated database:
+
+| Acceptance criterion             | Result                                                  |
+| -------------------------------- | ------------------------------------------------------- |
+| Saved data persists exactly once | **Yes.** One `POST /api/v1/leads`, one `PATCH`, one row |
+| The screen remains visible       | **Yes.** Every step reported `blank: false`             |
+| Navigation keeps working         | **Yes.** Away to Leads, back to the lead, both rendered |
+| No restart required              | **Yes.** No force-close, no reload needed               |
+
+Tag persistence confirmed in the database rather than from the page, after the
+probe's own text check gave a false negative:
+
+```
+       fullName        |   phone    |           tags
+-----------------------+------------+---------------------------
+ WebKit Probe mwbqxd9p | 0579003107 | {vip,investor,wkmwbqxd9p}
+ WebKit Probe mwbqwhi4 | 0578962002 | {vip,investor,wkmwbqwhi4}
+ WebKit Probe mwbq1gte | 0577522297 | {vip,investor,wkmwbq1gte}
+     … six runs, every one carrying its tags
+```
+
+**The reported defect did not reproduce on the production bundle in Safari's
+engine.** That is a result, not a conclusion: it does not mean the defect is
+absent on the device, where the network, the WKWebView process model and a real
+thumb's timing all differ.
+
 ## The finding
 
 Both journeys **complete**. Neither blanks.
@@ -73,14 +102,15 @@ viewport was right and the engine was wrong.**
 
 ## What is NOT the cause — each eliminated by experiment
 
-| Candidate                             | Verdict                 | How                                                                                                                                          |
-| ------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| A failed write                        | **No**                  | The lead and the tags are in the database; one POST, one PATCH, both 200                                                                     |
-| The service worker                    | **No**                  | `public/sw.js` answers only `navigate`-mode requests; an RSC payload is not one                                                              |
-| A missing page error boundary         | **No**                  | `app/error.tsx` exists and renders a panel                                                                                                   |
-| **No `global-error.tsx`**             | **No**                  | A client error thrown above `app/error.tsx` is caught by Next 16's own default — "This page couldn't load", with Reload and Back. Not blank. |
-| **The Content-Security-Policy**       | **No**                  | Stripping `content-security-policy` at the proxy left all 12 fetch failures in place                                                         |
-| `push()` racing `refresh()` on create | **Was real, now fixed** | Two overlapping fetches of one URL, measured at 1848ms and 535ms; one fetch now                                                              |
+| Candidate                                             | Verdict                 | How                                                                                                                                                                                      |
+| ----------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A failed write                                        | **No**                  | The lead and the tags are in the database; one POST, one PATCH, both 200                                                                                                                 |
+| The service worker                                    | **No**                  | `public/sw.js` answers only `navigate`-mode requests; an RSC payload is not one                                                                                                          |
+| A missing page error boundary                         | **No**                  | `app/error.tsx` exists and renders a panel                                                                                                                                               |
+| **No `global-error.tsx`**                             | **No**                  | A client error thrown above `app/error.tsx` is caught by Next 16's own default — "This page couldn't load", with Reload and Back. Not blank.                                             |
+| **The Content-Security-Policy**                       | **No, twice**           | Stripping the header entirely left the failures in place — 26 of them with CSP removed against 15 with it present. Tested over TLS and over plain HTTP, through a proxy and direct.      |
+| **The RSC "access control checks" errors themselves** | **The harness**         | They track the proxy and origin configuration, not the application. The journey met every acceptance criterion **despite** them, because Next's fallback navigation recovered each time. |
+| `push()` racing `refresh()` on create                 | **Was real, now fixed** | Two overlapping fetches of one URL, measured at 1848ms and 535ms; one fetch now                                                                                                          |
 
 ## Two things in the log that are the harness, not the product
 
