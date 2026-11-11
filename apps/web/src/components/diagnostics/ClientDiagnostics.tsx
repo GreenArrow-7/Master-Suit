@@ -1,13 +1,14 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   appendEntry,
   forgetOtherOwners,
   keyFor,
   makeEntry,
   readEntries,
+  redactPath,
   writeEntries,
 } from '@/lib/diagnostics/clientLog';
 
@@ -36,16 +37,31 @@ import {
  * the reported fault. Upgrade to a MutationObserver if a report ever describes
  * a screen that was filled and then went blank without navigating.
  */
-const BLANK_CHECK_DELAY_MS = 4_000;
+/**
+ * How often the page region is looked at, and for how long after arriving.
+ *
+ * One look a few seconds in only catches a screen that *arrives* blank. The
+ * reported journey is a save followed by a screen that is not there, and the
+ * screen can empty, or fail to fill, at any point in that sequence — so the
+ * region is sampled for a while instead, and the first fault that holds for two
+ * consecutive samples is recorded.
+ */
+const SAMPLE_MS = 2_000;
+const WATCH_MS = 30_000;
 
 /**
- * And again, before reporting.
- *
- * A phone on a slow connection can still be fetching at the first check. Two
- * observations a second apart separate "not arrived yet" from "arrived empty",
- * and only the second is a fault.
+ * Nothing is reported before this, because a page mid-render is legitimately
+ * empty and a false blank screen sends the next person chasing a phantom.
  */
-const BLANK_CONFIRM_MS = 1_500;
+const EMPTY_AFTER_MS = 4_000;
+
+/**
+ * A skeleton is the right thing to show while a page loads. It is a fault only
+ * when it is still there long after the page should have arrived, which is its
+ * own finding: the boundary never resolved and nothing threw. Held well clear
+ * of the empty threshold so a slow phone is not called a stuck one.
+ */
+const BUSY_AFTER_MS = 12_000;
 
 /**
  * `owner` is `tenantId:userId` — the same value the offline outbox already uses
@@ -64,17 +80,25 @@ export default function ClientDiagnostics({ owner }: { owner: string }) {
     forgetOtherOwners(typeof window === 'undefined' ? undefined : window.localStorage, storageKey);
   }, [storageKey]);
 
-  useEffect(() => {
-    const record = (kind: Parameters<typeof makeEntry>[0], detail: unknown) => {
+  /**
+   * One line per fault, wherever it came from.
+   *
+   * Shared by the error listeners and the request instrument, because both can
+   * fire repeatedly for one underlying problem and a report is only readable if
+   * it says each thing once.
+   */
+  const record = useCallback(
+    (kind: Parameters<typeof makeEntry>[0], detail: unknown) => {
       const entry = makeEntry(kind, window.location.pathname, detail);
-      // The same handler can fire repeatedly for one fault; one line per fault
-      // is what makes the report readable.
       const fingerprint = `${entry.kind}|${entry.path}|${entry.detail}`;
       if (recent.current.includes(fingerprint)) return;
       recent.current = [...recent.current, fingerprint].slice(-8);
       writeEntries(window.localStorage, storageKey, appendEntry(readEntries(window.localStorage, storageKey), entry));
-    };
+    },
+    [storageKey],
+  );
 
+  useEffect(() => {
     const onError = (event: ErrorEvent) => record('error', event.error ?? event.message);
     const onRejection = (event: PromiseRejectionEvent) => record('rejection', event.reason);
 
@@ -84,52 +108,119 @@ export default function ClientDiagnostics({ owner }: { owner: string }) {
       window.removeEventListener('error', onError);
       window.removeEventListener('unhandledrejection', onRejection);
     };
-  }, [storageKey]);
+  }, [record]);
 
   useEffect(() => {
     /**
      * The page region only — never `main`, which also holds the area tabs.
-     * Their labels alone run to ~82 characters, so a threshold over `main`
+     * Their labels alone run to ~62 characters, so a threshold over `main`
      * can never see an empty page. Measured on the marker the layout puts
      * around `{children}`; without it there is nothing to measure honestly,
      * so nothing is reported.
      */
-    const measure = () => {
+    const look = (): { state: 'empty' | 'busy' | 'ok'; nodes: number } | null => {
       const root = document.querySelector<HTMLElement>('[data-content-root]');
       if (!root) return null;
-      return { text: (root.innerText ?? '').trim().length, nodes: root.querySelectorAll('*').length };
+      const nodes = root.querySelectorAll('*').length;
+      // A skeleton says so itself. Checked first: it has both text and
+      // elements, so the empty test below would never see it.
+      if (root.querySelector('[aria-busy="true"]')) return { state: 'busy', nodes };
+      const text = (root.innerText ?? '').trim().length;
+      if (text > 0) return { state: 'ok', nodes };
+      // No text, but a page can legitimately be a chart or an image.
+      if (root.querySelector('img, svg, canvas, video')) return { state: 'ok', nodes };
+      // No text and nothing to look at. Wrapper elements do not count as
+      // content: an empty region nested in three divs is still empty, which a
+      // "no elements at all" rule missed.
+      return { state: 'empty', nodes };
     };
 
-    let confirm: number | undefined;
-    const first = window.setTimeout(() => {
-      const before = measure();
-      // Empty means empty: no text and no elements. A page that legitimately
-      // says "No leads yet" has both, and a short empty state is not a fault.
-      if (!before || before.text > 0 || before.nodes > 0) return;
-      confirm = window.setTimeout(() => {
-        const after = measure();
-        if (!after || after.text > 0 || after.nodes > 0) return;
-        if (document.visibilityState !== 'visible') return;
+    const started = Date.now();
+    let previous: 'empty' | 'busy' | 'ok' | null = null;
+    let done = false;
+
+    const sample = () => {
+      if (done) return;
+      const elapsed = Date.now() - started;
+      if (elapsed > WATCH_MS) {
+        done = true;
+        return;
+      }
+      // A backgrounded tab renders nothing and proves nothing.
+      if (document.visibilityState !== 'visible') {
+        previous = null;
+        return;
+      }
+      const seen = look();
+      if (!seen) return;
+
+      const ripe =
+        (seen.state === 'empty' && elapsed >= EMPTY_AFTER_MS) || (seen.state === 'busy' && elapsed >= BUSY_AFTER_MS);
+      // Two consecutive samples, so "not arrived yet" is not read as
+      // "arrived empty".
+      if (ripe && previous === seen.state) {
+        done = true;
+        const detail =
+          seen.state === 'busy'
+            ? `page region still loading ${Math.round(elapsed / 1000)}s after arriving, confirmed twice`
+            : `page region rendered no content ${Math.round(elapsed / 1000)}s after arriving, confirmed twice (${seen.nodes} wrapper elements)`;
         writeEntries(
           window.localStorage,
           storageKey,
           appendEntry(
             readEntries(window.localStorage, storageKey),
-            makeEntry(
-              'blank-screen',
-              window.location.pathname,
-              `page region rendered nothing ${BLANK_CHECK_DELAY_MS + BLANK_CONFIRM_MS}ms after arriving, confirmed twice`,
-            ),
+            makeEntry(seen.state === 'busy' ? 'stuck-skeleton' : 'blank-screen', window.location.pathname, detail),
           ),
         );
-      }, BLANK_CONFIRM_MS);
-    }, BLANK_CHECK_DELAY_MS);
-
-    return () => {
-      window.clearTimeout(first);
-      if (confirm) window.clearTimeout(confirm);
+        return;
+      }
+      previous = seen.state;
     };
+
+    const timer = window.setInterval(sample, SAMPLE_MS);
+    return () => window.clearInterval(timer);
   }, [pathname, storageKey]);
+
+  useEffect(() => {
+    /**
+     * The reported journey is a save. When the screen that follows is not
+     * there, the first question is whether the save itself failed — so a
+     * request that did not succeed is recorded, and nothing else.
+     *
+     * Status and redacted path only. No request body, no response body, no
+     * query string: those carry the customer's details, which is exactly what
+     * must never reach a log somebody copies out.
+     *
+     * Re-asserted on a timer rather than installed once, because the framework
+     * installs its own `fetch` wrapper and whichever of us assigns last wins.
+     * Installing once looked right in a browser and recorded nothing under the
+     * test harness, which is the only reason this is known. Wrapping twice is
+     * harmless: `record` reports a given fault once.
+     */
+    const ensure = () => {
+      const current = window.fetch as typeof window.fetch & { __lfDiagnostics?: true };
+      if (current.__lfDiagnostics) return;
+      const wrapped = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const response = await current(input, init);
+        try {
+          if (!response.ok) {
+            const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+            const method = (init?.method ?? 'GET').toUpperCase();
+            record('request-failed', `${method} ${redactPath(url)} returned ${response.status}`);
+          }
+        } catch {
+          // A diagnostic must never be the reason a request fails.
+        }
+        return response;
+      };
+      (wrapped as typeof wrapped & { __lfDiagnostics?: true }).__lfDiagnostics = true;
+      window.fetch = wrapped as typeof window.fetch;
+    };
+
+    ensure();
+    const timer = window.setInterval(ensure, 1_000);
+    return () => window.clearInterval(timer);
+  }, [record]);
 
   return null;
 }

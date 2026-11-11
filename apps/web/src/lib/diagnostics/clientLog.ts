@@ -76,7 +76,8 @@ export const MAX_ENTRIES = 40;
 
 const MAX_MESSAGE = 200;
 
-export type DiagnosticKind = 'error' | 'rejection' | 'blank-screen' | 'navigation' | 'request-failed';
+export type DiagnosticKind =
+  'error' | 'rejection' | 'blank-screen' | 'stuck-skeleton' | 'navigation' | 'request-failed';
 
 export interface DiagnosticEntry {
   /** ISO, to the second: enough to correlate with a server log, no more. */

@@ -157,6 +157,51 @@ rather than two. Signing in calls `forgetOtherOwners`, which removes every other
 owner's log under the prefix and touches nothing else. A shared branch tablet
 does not show the second person the first one's screens.
 
+## Three more shapes, after the owner pushed back
+
+The one-shot check and the "no elements at all" rule left three real screens
+unseen. Each is now covered, and each was driven in a browser before being
+believed:
+
+| Screen                                                | old rule | now                |
+| ----------------------------------------------------- | -------- | ------------------ |
+| region holding wrapper elements and no content        | healthy  | **blank-screen**   |
+| skeleton that never resolves (text and elements both) | healthy  | **stuck-skeleton** |
+| content that disappears after the early checks        | unseen   | **blank-screen**   |
+| a page that is merely sparse                          | silent   | silent             |
+
+The region is now sampled every 2s for 30s after arriving instead of looked at
+once, so a screen that empties at 16s is reported at 20s. "Empty" no longer
+means zero elements — wrappers are not content — but a region holding an image,
+chart or canvas is left alone. A skeleton is given 12s before it counts as
+stuck, well clear of the 4s empty threshold, so a slow phone is not called a
+broken one.
+
+The stuck skeleton was not hypothetical: the local dev server entered exactly
+that state — every route parked on `loading.tsx`, all chunks 200, React running,
+HMR connected — and the previous rule scored it **7 characters, 12 elements,
+healthy**. Whether that shares a cause with the iPhone report is not known and
+is not claimed.
+
+`tests/e2e/diagnostics-detector.spec.ts` — **6 cases**, browser evidence, not
+device evidence. It creates its own workspace and administrator inside the
+product rather than depending on a demo account, so it cannot silently skip.
+It holds each broken state in place, because the application re-renders over a
+single injected change and a screen that is actually broken stays broken.
+
+## What the save itself did
+
+A failed request is now recorded: method, redacted path, status. Nothing else —
+no request body, no response body, no query string. Asserted on a real 404
+carrying a cuid, `?q=John+Smith&token=secret123`, and a name and phone in the
+body; what was stored was `POST /api/v1/leads/:id/no-such-route returned 404`
+and the spec asserts each of those values is absent.
+
+The instrument re-asserts itself on a timer. Installed once it looked right in a
+browser and recorded nothing under the harness, because the framework installs
+its own `fetch` wrapper and whichever assigns last wins. Wrapping twice is
+harmless: a given fault is recorded once.
+
 ## Left open
 
 **This does not fix the blank screen.** It is the instrument for finding it. It
