@@ -14,10 +14,11 @@
  * leads, assigns it to themselves, and has just promoted themselves.
  */
 import { prisma, withTx } from '@/lib/db';
-import { Conflict, Forbidden, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
 import { revokeAllSessions } from '@/lib/auth/session';
 import { audit } from '@/lib/security/audit';
 import { SCOPE_RANK, scopeFor, type Ctx, type Scope, type Action } from '@/lib/security/rbac';
+import { ASSIGNMENT_SCOPES, SCOPE_TARGET, scopeCapFor, scopeNeedsId } from '@/lib/security/assignmentScope';
 
 /** System roles are the ones the workspace bootstrap depends on; they may be regraded but not deleted. */
 const isSystemRole = (role: { isSystem: boolean }) => role.isSystem;
@@ -409,6 +410,45 @@ export async function assignRole(
   });
   if (!membership) throw NotFound('Membership');
 
+  /**
+   * The scope decides where this role applies, so it is checked here and not
+   * only at the route: `assignRole` is the shared path, and a caller that is
+   * not the route would otherwise write a value the resolver cannot read.
+   */
+  const scopeType = input.scopeType ?? 'ORGANIZATION';
+  if (!scopeCapFor(scopeType)) {
+    throw Invalid([
+      {
+        field: 'scopeType',
+        code: 'unknown_scope',
+        message: `"${scopeType}" is not a scope. Use one of: ${ASSIGNMENT_SCOPES.join(', ')}.`,
+      },
+    ]);
+  }
+  const scopeId = input.scopeId ?? null;
+  if (scopeNeedsId(scopeType)) {
+    // A BRANCH assignment with no branch is not a narrower grant — the resolver
+    // pools branch ids from assignments that carry one, so this would cap at
+    // BRANCH while naming no branch, which is not what anybody picked it for.
+    if (!scopeId) {
+      throw Invalid([
+        { field: 'scopeId', code: 'required', message: `A ${scopeType.toLowerCase()} must be named for that scope.` },
+      ]);
+    }
+    // And it must be one of *this* workspace's: an id from another tenant would
+    // otherwise be stored and silently match nothing.
+    const target = SCOPE_TARGET[scopeType];
+    const found = await (prisma[target] as { findFirst: (a: unknown) => Promise<{ id: string } | null> }).findFirst({
+      where: { tenantId: ctx.tenantId, id: scopeId },
+      select: { id: true },
+    });
+    if (!found) throw NotFound(scopeType.charAt(0) + scopeType.slice(1).toLowerCase());
+  } else if (scopeId) {
+    throw Invalid([
+      { field: 'scopeId', code: 'not_applicable', message: `A ${scopeType} assignment does not name a record.` },
+    ]);
+  }
+
   const existing = await prisma.membershipRole.findFirst({
     where: { tenantId: ctx.tenantId, membershipId: input.membershipId, roleId: input.roleId },
   });
@@ -419,6 +459,10 @@ export async function assignRole(
         where: { tenantId: ctx.tenantId, id: existing.id },
         data: {
           status: 'ACTIVE',
+          // Re-assigning used to leave the old scope in place, so a role revoked
+          // at BRANCH and re-granted at TEAM silently stayed at BRANCH.
+          scopeType,
+          scopeId,
           effectiveFrom: input.effectiveFrom ?? null,
           effectiveTo: input.effectiveTo ?? null,
           assignedById: ctx.actor.id,
@@ -432,8 +476,8 @@ export async function assignRole(
           tenantId: ctx.tenantId,
           membershipId: input.membershipId,
           roleId: input.roleId,
-          scopeType: input.scopeType ?? 'ORGANIZATION',
-          scopeId: input.scopeId ?? null,
+          scopeType,
+          scopeId,
           effectiveFrom: input.effectiveFrom ?? null,
           effectiveTo: input.effectiveTo ?? null,
           status: 'ACTIVE',

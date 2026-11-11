@@ -6,6 +6,7 @@ import { env } from '../env';
 import { getNumericSetting } from '../platform-settings';
 import { Forbidden, Unauthorized } from '../errors';
 import { SCOPE_RANK, type Actor, type Ctx, type Scope } from '../security/rbac';
+import { scopeCapFor } from '../security/assignmentScope';
 import { buildSupportActor, isSupportRole } from './support-actor';
 import { mayEnterWorkspace } from './platform-access';
 import { isPrivilegedPlatformRole, isPlatformServiceRole } from './platform-policy';
@@ -719,26 +720,6 @@ export async function ctxForUser(userId: string, tenantId: string, requestId: st
 }
 
 /**
- * What an additional role assignment's scope caps its permissions at.
- *
- * The assignment scope answers "where does this role apply", the role's own
- * permission rows answer "what may it do there" — a Branch Manager role
- * assigned for one branch must not confer its ORGANIZATION-scoped reads
- * everywhere. Unknown values cap at ORGANIZATION because that is the column
- * default the assign flow writes.
- */
-const ASSIGNMENT_SCOPE_CAP: Record<string, Scope> = {
-  ORGANIZATION: 'ORGANIZATION',
-  REGION: 'REGION',
-  BRANCH: 'BRANCH',
-  TEAM: 'TEAM',
-  DEPARTMENT: 'TEAM',
-  DIRECT_REPORTS: 'TEAM',
-  OWN: 'OWN',
-  OWN_RECORD: 'OWN',
-};
-
-/**
  * The permission set for one user in one workspace.
  *
  * Cached in Redis — see lib/auth/actorCache.ts for the versioning, and why
@@ -813,7 +794,23 @@ async function loadActor(userId: string, tenantId: string): Promise<Actor> {
   // per permission if a customer ever needs that separation.
   for (const assignment of assignments) {
     if (!assignment.role.isActive) continue;
-    const cap = ASSIGNMENT_SCOPE_CAP[assignment.scopeType] ?? 'ORGANIZATION';
+    /**
+     * An unrecognised scope grants nothing.
+     *
+     * This used to read `?? 'ORGANIZATION'`, on the reasoning that ORGANIZATION
+     * is the column's default — which turned a typo into workspace-wide access.
+     * `BRACNH` is not a narrower `BRANCH`; it is a value nobody wrote on
+     * purpose, and the safe reading of "I do not know where this applies" is
+     * "nowhere". The row stays in the database for the inventory to find.
+     */
+    const cap = scopeCapFor(assignment.scopeType);
+    if (!cap) {
+      logger.warn(
+        { tenantId, userId, assignmentId: assignment.id, scopeType: assignment.scopeType },
+        'role assignment has an unrecognised scope and grants nothing',
+      );
+      continue;
+    }
     for (const rp of assignment.role.permissions) {
       if (!rp.granted) continue;
       const scope = SCOPE_RANK[rp.scope as Scope] < SCOPE_RANK[cap] ? (rp.scope as Scope) : cap;

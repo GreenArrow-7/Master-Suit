@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ASSIGNMENT_SCOPES } from '@/lib/security/assignmentScope';
 import { MethodNotAllowed } from '@/lib/errors';
 import { route } from '@/lib/api/handler';
 import { requireWorkspace } from '@/lib/workspace';
@@ -145,7 +146,9 @@ export const POST = route(
             roleId: id,
             effectiveFrom: z.coerce.date().optional(),
             effectiveTo: z.coerce.date().optional(),
-            scopeType: z.string().max(40).optional(),
+            // An enum, not free text: `BRACNH` used to be accepted and then
+            // read as ORGANIZATION by the resolver.
+            scopeType: z.enum(ASSIGNMENT_SCOPES).optional(),
             scopeId: id.optional(),
           })
           .parse(body);
