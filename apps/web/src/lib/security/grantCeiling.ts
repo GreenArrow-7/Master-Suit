@@ -127,6 +127,25 @@ export async function ceilingBreaches(
     const wouldGrant = narrower(row.scope as Scope, cap);
     const assignerHolds = scopeFor(ctx, module, action as Action);
 
+    /**
+     * An OWN grant is the floor of the model, not a delegation.
+     *
+     * It confers access to the grantee's own records and to nothing else — no
+     * reach over anything the assigner holds, or could reach, or could be
+     * persuaded to reach. Every employee baseline is built from it: the
+     * auto-created starter role carries `leads:VIEW` at OWN, and an HR
+     * administrator who may create people does not hold `leads:VIEW` at all.
+     * Refusing that would mean HR has to be given lead permissions before it
+     * can onboard a salesperson, which inflates HR's own authority — the
+     * opposite of what this ceiling exists to do. `tests/security/
+     * hr-employee-escalation.spec.ts` is the case that holds this honest.
+     *
+     * Only the "does not hold it at all" arm is relaxed, and only at OWN.
+     * Anything wider is refused exactly as before, which is where delegation
+     * of authority over other people's records actually happens.
+     */
+    if (wouldGrant === 'OWN' && assignerHolds === 'NONE') continue;
+
     if (assignerHolds === 'NONE' || SCOPE_RANK[wouldGrant] > SCOPE_RANK[assignerHolds]) {
       breaches.push({ module, action, wouldGrant, assignerHolds, reason: 'wider_scope' });
       continue;

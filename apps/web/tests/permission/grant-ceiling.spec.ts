@@ -24,6 +24,7 @@ import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { assignRole } from '@/services/identity/roles';
+import { ceilingBreaches } from '@/lib/security/grantCeiling';
 import { changeUserRole } from '@/services/identity/accounts';
 import { inviteUser } from '@/services/identity/invitations';
 import { buildActor, buildCtx } from '../helpers/ctx';
@@ -245,5 +246,38 @@ describe('reach is enforced where no scope is named', () => {
 
   it('still lets a workspace-wide administrator do both', async () => {
     await expect(changeUserRole(orgWideCtx, subjectUserId, orgWideRoleId)).resolves.toBeTruthy();
+  });
+});
+
+/**
+ * The one relaxation, and its edges.
+ *
+ * An OWN grant reaches the grantee's own records and nothing else, so it is
+ * not a delegation of the assigner's authority — and every employee baseline
+ * is built from it. Without this, an HR administrator could not onboard a
+ * salesperson without first being given lead permissions of their own.
+ *
+ * It is deliberately the narrowest exemption that keeps onboarding working:
+ * only the "holds it at all" arm, and only at OWN.
+ */
+describe('an OWN grant is the floor, not a delegation', () => {
+  it('allows a permission the assigner does not hold, at OWN', async () => {
+    const starter = await prisma.role.create({
+      data: { tenantId, key: `starter-${suffix}`, name: 'Starter', rank: 100, defaultScope: 'OWN' },
+    });
+    await grantPermissions(tenantId, starter.id, [['payroll', 'APPROVE']] as const, 'OWN');
+
+    await expect(ceilingBreaches(branchScopedCtx, starter.id, 'OWN', null)).resolves.toEqual([]);
+  });
+
+  it('still refuses that same permission one step wider', async () => {
+    const wider = await prisma.role.create({
+      data: { tenantId, key: `wider-${suffix}`, name: 'Wider', rank: 100, defaultScope: 'TEAM' },
+    });
+    await grantPermissions(tenantId, wider.id, [['payroll', 'APPROVE']] as const, 'TEAM');
+
+    const breaches = await ceilingBreaches(branchScopedCtx, wider.id, 'TEAM', null);
+    expect(breaches).toHaveLength(1);
+    expect(breaches[0]).toMatchObject({ module: 'payroll', action: 'APPROVE', assignerHolds: 'NONE' });
   });
 });

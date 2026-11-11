@@ -60,6 +60,37 @@ assertion was always about. Two parallel runs green.
 CI runs `npx vitest run` with default parallelism, so this would have been an
 intermittent red there.
 
+## An OWN grant is the floor, not a delegation
+
+CI caught what the local run did not: `tests/security/hr-employee-escalation.spec.ts`
+went from 200 to 403 on its _legitimate_ path — an HR administrator inviting a
+new starter into a role that does not exist yet, which the endpoint creates at
+the lowest rank with the employee baseline.
+
+That baseline carries `leads:VIEW` and `leads:VIEW_SENSITIVE_FIELDS` **at OWN**,
+and an HR administrator holds `employee:CREATE/EDIT` and `users:MANAGE_USERS`
+and no lead permissions at all. The ceiling's "you do not hold it" arm refused
+the whole invitation.
+
+Taken literally — an assigner must not grant an action they lack — the refusal
+is correct. Taken as what the rule is _for_, it is not: an OWN grant reaches the
+grantee's own records and nothing else, so nobody gains sight of anybody else's
+data, and requiring HR to hold lead permissions before it can onboard a
+salesperson inflates HR's own authority. That is the opposite of least
+privilege.
+
+So the relaxation is the narrowest one that keeps onboarding working: the
+"holds it at all" arm is skipped **only when the conferred scope is OWN**.
+Every wider scope is refused exactly as before, which is where authority over
+other people's records is actually delegated. Two cases pin both edges: OWN
+allowed, the same permission at TEAM still refused.
+
+This is no worse than before this change — `inviteUser` had no ceiling at all —
+and strictly better at every scope above OWN. **It is a judgement about where
+the owner's rule bites, and the owner may want it the other way**; reversing it
+means deleting one `continue` and the first of those two cases, and accepting
+that HR must hold every permission in the employee baseline.
+
 ## Left open
 
 Two of the four paths the owner listed:
@@ -67,6 +98,6 @@ Two of the four paths the owner listed:
 - **account creation** — no `POST /api/v1/platform/users` exists; the account
   path needs locating before a ceiling can be put on it.
 - **permission-matrix edits** (`updatePermissionMatrix`, `roles.ts:314`) — a
-  different question from the other three. It changes what a *role* carries
+  different question from the other three. It changes what a _role_ carries
   rather than who holds it, so the ceiling has to be evaluated per changed
   permission against the editor's own, not against a role-plus-scope pair.
