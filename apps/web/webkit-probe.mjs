@@ -12,9 +12,15 @@
  *
  * Usage:  node webkit-blank-screen.mjs <baseURL> <email> <password> <workspaceSlug>
  */
-import { webkit, devices } from '@playwright/test';
+import { chromium, webkit, devices } from '@playwright/test';
 
-const [, , BASE, EMAIL, PASSWORD, SLUG] = process.argv;
+const [, , BASE, EMAIL, PASSWORD, SLUG, MODE = 'settled', ENGINE = 'webkit'] = process.argv;
+/**
+ * `settled`   — wait for the save's PATCH to come back, then navigate.
+ * `immediate` — navigate the moment the button is clicked, while the save's
+ *               own refresh is still in flight. This is the reported journey:
+ *               a thumb does not wait for a response it cannot see.
+ */
 if (!BASE || !EMAIL || !PASSWORD || !SLUG) {
   console.error('usage: node webkit-blank-screen.mjs <baseURL> <email> <password> <workspaceSlug>');
   process.exit(2);
@@ -27,7 +33,7 @@ const note = (kind, detail) => {
   console.log(`  [${kind}] ${detail}`);
 };
 
-const browser = await webkit.launch();
+const browser = await (ENGINE === 'chromium' ? chromium : webkit).launch();
 const context = await browser.newContext({
   ...devices['iPhone 13'],
   // The app's WebView announces itself; the server has a 3.1.1 gate keyed on it,
@@ -154,6 +160,13 @@ try {
       timeout: 60_000,
     });
     await page.getByRole('button', { name: 'Save', exact: true }).click();
+    if (MODE === 'immediate') {
+      // The reported journey: a thumb does not wait for a response it cannot
+      // see. The next step navigates while this save's refresh is in flight.
+      note('save', 'not waiting — navigating while the save is still in flight');
+      saved.catch(() => {});
+      return;
+    }
     // Wait for the write to come back before moving on, so a cancellation in
     // the next step is the application's doing and not the probe's.
     const res = await saved;

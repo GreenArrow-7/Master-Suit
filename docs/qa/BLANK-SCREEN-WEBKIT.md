@@ -42,6 +42,62 @@ engine.** That is a result, not a conclusion: it does not mean the defect is
 absent on the device, where the network, the WKWebView process model and a real
 thumb's timing all differ.
 
+## The correctly configured HTTPS run, and both timings
+
+Run against the **unmodified** production bundle — `NODE_ENV=production`, secure
+cookies intact, HSTS and CSP intact, `APP_URL` equal to the browser origin
+(`https://localhost:3443`), no header stripping and no patched build output.
+
+|                           | **settled** (save completes, then navigate) | **immediate** (navigate while the save is in flight) |
+| ------------------------- | ------------------------------------------- | ---------------------------------------------------- |
+| Screen blank at any step  | **No**                                      | **No**                                               |
+| Navigation away           | Leads rendered                              | Leads rendered                                       |
+| Navigation back           | lead rendered                               | lead rendered                                        |
+| Tags persisted            | yes                                         | **yes**                                              |
+| Writes to `/api/v1/leads` | `POST`, `PATCH` — **one each**              | `POST`, `PATCH`, **`PATCH`**                         |
+
+**The immediate variant sends the tag save twice.** One tap, two `PATCH`
+requests to the same lead. The end state is correct and the screen never
+blanks, but "each save must persist exactly once" is not satisfied by a journey
+that issues two writes.
+
+This is the clearest behavioural difference the two timings produce, it is on
+the exact reported journey, and it appears only when the user navigates before
+the save returns — which is what a thumb does.
+
+**Not yet attributed.** `patchLead` sends through `sendLater`, the offline
+outbox, so the second write may be that queue retrying a request the navigation
+cancelled — by design and converging on the same value — or it may be a genuine
+double submit. Those are different defects with different fixes and the
+difference has not been established. It is written down here rather than
+guessed at.
+
+## What the harness could not settle
+
+The `Fetch API cannot load … due to access control checks` errors are **not**
+the application. Eliminated across six configurations:
+
+| Variable removed                               | Errors still present?                    |
+| ---------------------------------------------- | ---------------------------------------- |
+| CSP stripped entirely                          | **Yes** — 26, against 15 with it present |
+| TLS removed (plain HTTP)                       | **Yes**                                  |
+| Proxy removed (direct to the server)           | **Yes**                                  |
+| Dev bundle instead of production               | **Yes**                                  |
+| `APP_URL` made equal to the browser origin     | **Yes**                                  |
+| **WebKit replaced by Chromium, same endpoint** | **No — zero**                            |
+
+Same server, same certificate, same CSP, same origin, same bundle: 15+ in
+WebKit, **0** in Chromium. The variable is the engine, and since every
+application-side variable has been removed, this is Playwright's WebKit build
+rather than the product.
+
+One argument says it cannot be the product: if iOS WebKit genuinely refused
+every RSC fetch, **every** navigation in the app would be a full page load for
+every iPhone user, always — not an intermittent fault. The reporter's app works
+most of the time, so the real iOS WebKit is completing these fetches.
+
+That reasoning is not proof. Real Safari is the only thing that settles it.
+
 ## The finding
 
 Both journeys **complete**. Neither blanks.
