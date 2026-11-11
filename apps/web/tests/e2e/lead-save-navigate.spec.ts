@@ -223,7 +223,9 @@ test.describe('save, then navigate before it returns', () => {
       const patches = writes.filter((w) => w.method === 'PATCH');
       // Printed, not merely asserted: "two requests, one key" is the evidence
       // that attributes the duplicate, and it belongs in the run log.
-      console.log(
+      // `warn` because the lint rule allows it and `log` it does not; this is
+      // a finding, not chatter.
+      console.warn(
         `round ${round}: ${patches.length} PATCH request(s), ` +
           `${new Set(patches.map((w) => w.key)).size} distinct key(s), ` +
           `${patches.filter((w) => w.replay).length} replayed, statuses ${patches.map((w) => w.status).join('/')}`,

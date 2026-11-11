@@ -73,6 +73,22 @@ iPhone is still the only thing that settles it.
   refusing a tap — the sidebar is off-canvas. The journey taps the record's own
   `← Leads` back link, which is what a person taps anyway.
 
+## WebKit is opt-in, and why
+
+CI installs chromium only, deliberately — the comment above that step says
+`--with-deps` shells out to apt-get, which this runner avoids. A project CI
+cannot launch would fail every run for a reason unrelated to the code, so the
+`webkit-journey` project only exists when `RUN_WEBKIT_JOURNEY=yes`:
+
+```
+npx playwright install webkit
+RUN_WEBKIT_JOURNEY=yes npx playwright test --project=webkit-journey
+```
+
+The journey itself still runs on **every** CI run under chromium, which has no
+`testMatch` and picks it up. Verified both ways: `--list` shows chromium alone
+without the flag and both projects with it.
+
 ## Left open
 
 The fixture signs in through the API rather than the form, because `fill` does
