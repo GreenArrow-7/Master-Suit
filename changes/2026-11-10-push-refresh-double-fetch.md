@@ -69,3 +69,10 @@ In the browser at 375x812 against a seeded database, creating a lead:
 
 The blank screen itself. This removes one measured race from the reported
 journey; it does not close the defect, which still needs the affected device.
+
+One hypothesis was **eliminated by experiment** while investigating, and is
+worth recording because the 9 November report listed it as live: the absence of
+`global-error.tsx` does **not** leave a blank page. A client error thrown from
+inside the root layout, above `app/error.tsx`, was caught by Next 16.4.2's own
+default — "This page couldn't load", with working Reload and Back buttons. The
+diagnostic probe was removed afterwards.
