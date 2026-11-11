@@ -1,0 +1,17 @@
+flowchart TB
+  req["Request with a session"]
+  ctx["Ctx &#123;tenantId, actor, scopes&#125;"]
+  guard["src/lib/db.ts tenant guard<br/>a query without its tenant is refused"]
+  tx["withTx(tenantId)<br/>SELECT set_config('app.tenant_id', …, true)"]
+  rls["Postgres row-level security<br/>policies on tenant-owned tables"]
+  rows[("Rows of this tenant only")]
+  scope["Scope filter — OWN &lt; TEAM &lt; BRANCH &lt; REGION &lt; ORGANIZATION<br/>resolveOwnerIds, leadScope, callScope, attendanceScope"]
+  visible[("Rows this person may see")]
+  field["applyFieldSecurity / asLeadPhone / maskCallNumbers<br/>dialable() refuses a mask"]
+  out["Response"]
+
+  plat["withPlatformTx<br/>set_config('app.platform_admin','on')"]
+  platrows[("Cross-tenant reads<br/>platform console only")]
+
+  req --> ctx --> guard --> tx --> rls --> rows --> scope --> visible --> field --> out
+  ctx -. "platform console" .-> plat --> platrows

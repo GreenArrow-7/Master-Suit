@@ -41,9 +41,34 @@ fi
 
 node_in_migrate() { "${DC[@]}" --profile tools run --rm --no-deps --entrypoint node migrate -e "$1"; }
 
+# The stamp preflight writes last and deploy refuses to run without.
+#
+# ── Why this exists ─────────────────────────────────────────────────────────
+#
+# `deploy` used to gate on one thing: that the checkout's HEAD equalled the SHA
+# it was given. But `preflight` checks out FIRST and verifies images second, so
+# a preflight that died at the image step still left HEAD at the candidate —
+# and that is precisely the state `deploy` read as "preflight ran".
+#
+# It happened on 11 November 2026. `preflight 83d9a85e` printed "checkout OK"
+# and then failed to pull the registry images, which were never built for that
+# commit. `deploy 83d9a85e` then ran happily: it built the images locally on the
+# production host instead of promoting the accepted ones, and the image
+# acceptance check, the staging-first gate, the backup and the restore drill
+# were all skipped. Production started on an artifact no gate had seen.
+#
+# A successful preflight is now a positive fact on disk, not an inference from a
+# side effect. The stamp is removed at the START of every preflight, so a
+# preflight that fails anywhere invalidates the previous success rather than
+# leaving it to be mistaken for this one.
+stamp_for() { echo "$STATE/preflight_ok.$1"; }
+
 phase_checkout() {
   local sha=$1
   cd "$APP"
+  # Before anything: a preflight that is about to run makes any earlier verdict
+  # stale, whether this one succeeds or not.
+  rm -f "$(stamp_for "$(git -C "$APP" rev-parse --short=12 HEAD 2>/dev/null || echo none)")" "$(stamp_for "${sha:0:12}")"
   git fetch --all --tags --prune -q
   git checkout -q --detach "$sha"
   [ "$(git rev-parse HEAD)" = "$sha" ] || die "HEAD is not $sha"
@@ -150,8 +175,28 @@ phase_verify() {
 }
 
 case "${1:-}" in
-  preflight) [ -n "${2:-}" ] || die "candidate sha required"; phase_checkout "$2"; phase_images "$2"; phase_gate; phase_backup; echo "PREFLIGHT OK — deploy may run" ;;
-  deploy)    [ -n "${2:-}" ] || die "candidate sha required"; [ "$(git -C "$APP" rev-parse HEAD)" = "$2" ] || die "run preflight first"; phase_deploy "$2"; phase_verify ;;
+  preflight)
+    [ -n "${2:-}" ] || die "candidate sha required"
+    phase_checkout "$2"; phase_images "$2"; phase_gate; phase_backup
+    # Last, and only here: every phase above ran and none of them died.
+    printf 'sha=%s
+at=%s
+' "$2" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$(stamp_for "${2:0:12}")"
+    echo "PREFLIGHT OK — deploy may run" ;;
+  deploy)
+    [ -n "${2:-}" ] || die "candidate sha required"
+    [ "$(git -C "$APP" rev-parse HEAD)" = "$2" ] || die "run preflight first"
+    # HEAD matching is not evidence that preflight succeeded — preflight checks
+    # out before it verifies anything, so a failed one leaves HEAD here too.
+    stamp=$(stamp_for "${2:0:12}")
+    [ -r "$stamp" ] || die "no successful preflight for $2 ($stamp is absent). Run preflight and let it finish."
+    [ "$(sed -n 's/^sha=//p' "$stamp")" = "$2" ] || die "$stamp is for a different candidate"
+    # Checked before production is touched rather than after: phase_verify reads
+    # the same file, and discovering it is missing on the far side of a deploy
+    # is how the 11 November release ended with no way to confirm itself.
+    [ -r "$STATE/tested.$(git -C "$APP" rev-parse --short=12 HEAD)" ] ||
+      die "no accepted image identities for this candidate; it has not been through staging acceptance"
+    phase_deploy "$2"; phase_verify ;;
   rollback)  "$WEB/scripts/release.sh" rollback production; "$WEB/scripts/release.sh" status ;;
   *) die "usage: $0 preflight|deploy <sha> | rollback" ;;
 esac

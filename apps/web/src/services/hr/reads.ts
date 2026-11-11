@@ -121,6 +121,14 @@ export async function readHrResource({
         orderBy: { name: 'asc' },
       });
 
+    // Workspace reference data, like departments: a branch is an office, and
+    // the BRANCH record scope is defined in terms of them.
+    case 'branches':
+      return prisma.branch.findMany({
+        where: { tenantId: ctx.tenantId, deletedAt: null },
+        orderBy: { name: 'asc' },
+      });
+
     // Scoped. A directory of everyone is not something `hrms:VIEW` should have
     // conferred: without ORGANIZATION scope you see yourself, and nothing else.
     case 'employees':

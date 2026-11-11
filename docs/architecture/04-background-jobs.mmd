@@ -1,0 +1,54 @@
+flowchart LR
+  subgraph producers["Producers"]
+    routes["API routes &amp; services"]
+    hooks["Vendor webhooks<br/>/api/v1/webhooks/*"]
+    sched["Schedulers armed at worker start<br/>armMaintenanceScheduler, armCampaignScheduler"]
+  end
+
+  subgraph queues["Redis queues — src/lib/queue.ts (11)"]
+    q1["automation"]
+    q2["distribution"]
+    q3["sla"]
+    q4["campaign"]
+    q5["webhook"]
+    q6["maintenance"]
+    q7["reminders"]
+    q8["media"]
+    q9["ai"]
+    q10["notifications"]
+    q11["calendar"]
+  end
+
+  subgraph handlers["Handlers — src/workers/jobs.ts (JOBS table)"]
+    h1["enrollMatchingAutomations / runEnrollmentNode"]
+    h2["assignLead"]
+    h3["checkLeadFirstContact / escalateSocialSla"]
+    h4["sweepDueCampaigns / runQueuedLeadMessage"]
+    h5["applyWebhookEvent / applyLeadSourceEvent"]
+    h6["MAINTENANCE_JOBS (13 sweeps)"]
+    h7["reminder sweep (5-minutely)"]
+    h8["ingestRecording"]
+    h9["transcribe / analyse / audit / practice-score"]
+    h10["pushRecord / emailHrEvent"]
+    h11["syncCalendarEntry"]
+  end
+
+  routes --> queues
+  hooks --> q5
+  sched --> q6
+  sched --> q7
+  sched --> q4
+
+  q1 --> h1
+  q2 --> h2
+  q3 --> h3
+  q4 --> h4
+  q5 --> h5
+  q6 --> h6
+  q7 --> h7
+  q8 --> h8
+  q9 --> h9
+  q10 --> h10
+  q11 --> h11
+
+  h9 -->|"fair share across tenants"| ai["AI_CONCURRENCY &gt; 1<br/>every other queue: concurrency 1"]
