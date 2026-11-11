@@ -1,12 +1,14 @@
-# Three handover documents at the root, so a new machine starts informed
+# Three handover documents travel with the repository, so a new machine starts informed
 
-**What.** `PROJECT_HANDOVER.md`, `CURRENT_STATUS.md` and `AI_INSTRUCTIONS.md` at
-the repository root. The owner is moving the project folder to another computer
+**What.** `PROJECT_HANDOVER.md`, `CURRENT_STATUS.md` and `AI_INSTRUCTIONS.md`.
+They were added at the repository root and now live in `docs/`, where the
+[handover entry of the same day](2026-10-30-handover-docs.md) put them and where
+`CLAUDE.md` points. The owner is moving the project folder to another computer
 and continuing with an AI assistant there; these let it start from the
 documented state instead of re-scanning 231 models, 256 routes and 395 specs.
 
 **Why.** The owner asked for a handover package (30 Oct). `changes/PROJECT.md`
-already holds the architecture and `docs/product/HANDOVER-GUIDE.md` the *user*
+already holds the architecture and `docs/product/HANDOVER-GUIDE.md` the _user_
 handover, but nothing recorded where development stopped, what is unfinished but
 written, what lives outside the repository, or how an assistant should behave
 here. The three files add only that, and point at `changes/` for the rest rather

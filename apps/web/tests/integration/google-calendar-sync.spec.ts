@@ -267,6 +267,16 @@ it('a meeting task goes on at its due time for its type’s length, and is marke
 });
 
 it('a site visit goes on with its place and length, and cancelling it takes it off', async () => {
+  // Tomorrow, not a fixed date: POST /site-visits refuses a visit more than a
+  // day in the past ("the register is forward"), so the date this test used to
+  // carry turned the suite red the morning it went by, three weeks after it was
+  // written. Every other date in this file goes through a route with no such
+  // rule, which is why only this one moved.
+  const start = new Date(Date.now() + 86_400_000);
+  start.setUTCHours(8, 0, 0, 0);
+  const startAt = start.toISOString();
+  const endAt = new Date(start.getTime() + 90 * 60_000).toISOString();
+
   const booked = await post(
     bookVisit,
     '/api/v1/site-visits',
@@ -274,7 +284,7 @@ it('a site visit goes on with its place and length, and cancelling it takes it o
       kind: 'CLIENT_MEETING',
       leadId,
       address: 'Dubai Mall, Fashion Avenue',
-      scheduledAt: '2026-11-07T08:00:00.000Z',
+      scheduledAt: startAt,
       durationMin: 90,
     },
     cookie,
@@ -285,8 +295,8 @@ it('a site visit goes on with its place and length, and cancelling it takes it o
   expect(eventOf('visit', id)).toMatchObject({
     summary: 'Client meeting — manath Lead 0',
     location: 'Dubai Mall, Fashion Avenue',
-    start: { dateTime: '2026-11-07T08:00:00.000Z' },
-    end: { dateTime: '2026-11-07T09:30:00.000Z' },
+    start: { dateTime: startAt },
+    end: { dateTime: endAt },
   });
 
   expect((await del(cancelVisit, `/api/v1/site-visits/${id}`, cookie, { id })).status).toBe(200);

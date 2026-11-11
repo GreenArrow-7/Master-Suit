@@ -292,6 +292,15 @@ it('appointment tasks and site visits go on too, and a cancelled visit comes off
     cookie,
   );
   expect(task.status).toBe(200);
+  // Relative, where every other date in this file is a literal: POST
+  // /api/v1/site-visits refuses a visit more than a day in the past ("Log a
+  // past visit as an activity; the register is forward."), so a fixed date here
+  // is a fuse. It burned on 11 Nov and failed verify on every branch, exactly
+  // as the same literal did in google-calendar-sync.spec.ts three days earlier.
+  const visitStart = new Date(Date.now() + 86_400_000);
+  visitStart.setUTCHours(8, 0, 0, 0);
+  const visitEnd = new Date(visitStart.getTime() + 90 * 60_000);
+  const iso = (d: Date) => d.toISOString().replace('Z', '');
   const visit = await post(
     bookVisit,
     '/api/v1/site-visits',
@@ -299,7 +308,7 @@ it('appointment tasks and site visits go on too, and a cancelled visit comes off
       kind: 'CLIENT_MEETING',
       leadId,
       address: 'Dubai Mall, Fashion Avenue',
-      scheduledAt: '2026-11-09T08:00:00.000Z',
+      scheduledAt: visitStart.toISOString(),
       durationMin: 90,
     },
     cookie,
@@ -314,7 +323,7 @@ it('appointment tasks and site visits go on too, and a cancelled visit comes off
   expect(await eventOf('visit', visitId)).toMatchObject({
     subject: 'Client meeting — manath Lead 0',
     location: { displayName: 'Dubai Mall, Fashion Avenue' },
-    end: { dateTime: '2026-11-09T09:30:00.000' },
+    end: { dateTime: iso(visitEnd) },
   });
 
   const externalId = (await linkOf('visit', visitId))!.externalId!;

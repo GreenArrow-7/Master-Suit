@@ -77,6 +77,7 @@ let floorCookie = '';
  * describe the same set, so a resource added to one and not the other fails.
  */
 const RESOURCES: Record<string, [string, PermissionAction] | null> = {
+  branches: null,
   departments: null,
   designations: null,
   employees: null,

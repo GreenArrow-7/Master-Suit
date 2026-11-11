@@ -47,14 +47,32 @@ export async function authenticateApiKey(raw: string, req: Request, requestId: s
     where: { prefix },
   });
   if (!key || key.revokedAt || (key.expiresAt && key.expiresAt < new Date())) throw Unauthorized('Invalid API key.');
+
+  /**
+   * Before the hash, not after.
+   *
+   * `verifyPassword` is Argon2 — ARGON2_MEMORY_KIB of memory per call, 19 MB by
+   * default, deliberately. A wrong secret throws on the line below, so with the
+   * limiter after it nothing bounded how often that cost could be paid: anyone
+   * holding a key's *prefix*, which the keys screen shows and every past holder
+   * of that key knows, could spend the host's memory in parallel with requests
+   * that never authenticate. Nothing else stands in front of this — route()
+   * rate-limits only once a credential has been accepted.
+   *
+   * Charged to the key rather than to the caller because the key is the only
+   * thing identified at this point: a wrong secret now spends that key's own
+   * minute budget, which is the narrow, per-customer failure this limit exists
+   * to impose, instead of a host-wide one. An unknown prefix never reaches here
+   * and costs one indexed lookup.
+   */
+  await consume(limits.apiKey(key.id, key.rateLimitPerMin));
+
   if (!(await verifyPassword(key.keyHash, secret!))) throw Unauthorized('Invalid API key.');
 
   const ip = clientIp(req);
   if (key.ipAllowlist.length && (!ip || !key.ipAllowlist.includes(ip))) {
     throw Forbidden('This API key is not permitted from your address.');
   }
-
-  await consume(limits.apiKey(key.id, key.rateLimitPerMin));
 
   if (!key.roleId) throw Forbidden('This API key has no role assigned.');
   const role = await prisma.role.findFirst({
