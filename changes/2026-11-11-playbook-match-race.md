@@ -47,9 +47,34 @@ the re-run safe whoever else has run it — the function's own comment says so.
 
 No change to the application.
 
+## The repair was masking, so it is no longer alone
+
+Re-running `matchPlaybook` in the test proves the matcher works and says nothing
+about whether the pipeline calls it. If `analyseCall` stopped doing so, the
+repaired test would still pass — which is the hole a repair call always opens.
+
+`matches the playbook through the ordinary chain, when the entry exists before
+the call` closes it. The playbook entry already exists when that call is
+created, so upload → transcribe → analyse has to produce the match on its own.
+It touches `matchPlaybook` nowhere.
+
+**Demonstrated rather than argued.** With `analyseCall`'s own
+`matchPlaybook(...)` call temporarily replaced by a no-op:
+
+```
+× matches the playbook through the ordinary chain, when the entry exists before the call
+  AssertionError: the pipeline itself must match the playbook: expected [] to have a length of 1
+  Tests  1 failed | 9 passed (10)
+```
+
+The new case fails. **The repaired case passes** — exactly the masking it was
+added to prevent. The production line was restored immediately and the file is
+unchanged on this branch.
+
 ## Verified
 
-Three consecutive runs, **9 passed** each. The failure it fixes was in CI at
+Three consecutive runs of the original nine, **9 passed** each; **10 passed**
+with the new case. The failure it fixes was in CI at
 `4a4e03e2`; the file is untouched by every other change on this branch and
 creates no leads, so the contact rule is not implicated.
 
