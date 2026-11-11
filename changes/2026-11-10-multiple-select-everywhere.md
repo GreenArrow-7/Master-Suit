@@ -71,11 +71,28 @@ a multiple select's.
   assertion broke yesterday; it now runs end to end, department creation and
   every downstream step included.
 - `npx tsc --noEmit` and `npx prettier --check` clean.
+- **In a browser at 375×812, by mouse, against a seeded database:** on
+  **Administration → Teams**, two members ticked in the New team form and the
+  team created — it comes back as `Members: Amina Al Rashid, Anton Novak`, two
+  rows, which is the journey the old control could not complete on a phone. Each
+  `.lf-choice` measures exactly 44px tall, the list scrolls inside its 220px box,
+  and the page does not scroll sideways. On **Sales → Automatic assignment**,
+  both groups render with their legends, `select[multiple]` count is 0, and the
+  empty sources list shows "No sources configured yet." rather than a dead
+  control. The two test teams were deleted afterwards.
 
 ## Left open
 
 - **The blank screen (D-01) is still not reproduced and still not fixed.** It
-  needs the affected phone; the four-step operator test is in the report.
+  needs the affected phone; the four-step operator test is in the report. One
+  new data point, recorded because it is the first direct observation of the
+  leading hypothesis and not because it settles anything: creating the team
+  above produced `POST /api/v1/teams → 200` followed by
+  `GET …/admin/teams?_rsc=… → net::ERR_ABORTED`. The write landed and the
+  `router.refresh()` payload fetch was aborted. Here it cost only a stale list,
+  on a local connection, on a screen with no `router.push()` racing it — so it
+  is not the blank screen, and must not be reported as its cause. It does show
+  the abort is real rather than theoretical.
 - **These fixes are not deployed.** PR #239 is green at `872d75d5` and unmerged;
   production runs `1f98183b` from 5 November. Because the iOS app is a WebView
   over `one.youhan.in`, that — not the phone — is why the reporter still sees
