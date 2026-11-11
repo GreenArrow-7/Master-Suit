@@ -43,7 +43,9 @@ STAGING_DIR=${STAGING_DIR:-/home/deploy/ios-staging}
 STAGING_ENV=${STAGING_ENV:-$STAGING_DIR/.env.ios-staging}
 STAGING_URL=${STAGING_URL:-http://127.0.0.1:8080}
 STATE=${STATE:-/var/lib/master-suite}
-APP=${APP:-/opt/master-saas}
+# The checkout on the host. production-release.sh:16 is the authority for this
+# path, and it says /opt/mastersuite; /opt/master-saas does not exist there.
+APP=${APP:-/opt/mastersuite}
 PROJECT=youhan-ios-staging
 
 # Checked here rather than discovered at minute nine of a run.
