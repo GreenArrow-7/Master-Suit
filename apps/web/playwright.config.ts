@@ -126,7 +126,23 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
 
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    /**
+     * One spec, in Safari's engine, at iPhone dimensions.
+     *
+     * The reported blank screen is an iPhone fault and has never reproduced in
+     * Chromium. Running the whole suite twice to chase it would cost half an
+     * hour a run for no extra coverage of anything else, so only the journey
+     * itself runs here — the engine difference is the point, and this is the
+     * closest a desk gets to the device.
+     */
+    {
+      name: 'webkit-journey',
+      testMatch: /lead-save-navigate\.spec\.ts/,
+      use: { ...devices['iPhone 13'] },
+    },
+  ],
 
   webServer: {
     command: 'npm run dev',
