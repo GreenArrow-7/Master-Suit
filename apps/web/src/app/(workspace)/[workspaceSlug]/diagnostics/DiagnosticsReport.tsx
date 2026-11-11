@@ -1,25 +1,47 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
 import { formatReport, keyFor, readEntries, type DiagnosticEntry } from '@/lib/diagnostics/clientLog';
 
 /**
  * What this browser recorded, for somebody to read on the device it happened
  * on and send to whoever is fixing it.
  *
- * Read from `localStorage` in an effect rather than on the server, because that
- * is where it lives — nothing was ever uploaded.
+ * The log lives in `localStorage`, which the server cannot see, so this reads it
+ * through `useSyncExternalStore`: the server snapshot is empty, the client's is
+ * the stored string, and React reconciles the two without a hydration mismatch
+ * and without setting state inside an effect.
+ *
+ * The snapshot is the **raw string** rather than a parsed array on purpose —
+ * `getSnapshot` must return a stable value, and parsing afresh each call would
+ * hand React a new array every render and spin forever.
  */
+const listeners = new Set<() => void>();
+const subscribe = (onChange: () => void) => {
+  listeners.add(onChange);
+  return () => void listeners.delete(onChange);
+};
+const announce = () => listeners.forEach((listener) => listener());
+
 export default function DiagnosticsReport({ build, owner }: { build: string; owner: string }) {
   const storageKey = keyFor(owner);
-  const [entries, setEntries] = useState<DiagnosticEntry[] | null>(null);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    setEntries(readEntries(window.localStorage, storageKey));
-  }, [storageKey]);
-
-  if (entries === null) return <p style={{ color: 'var(--lf-ink-3)' }}>Reading…</p>;
+  const raw = useSyncExternalStore(
+    subscribe,
+    useCallback(() => {
+      try {
+        return window.localStorage.getItem(storageKey) ?? '';
+      } catch {
+        return '';
+      }
+    }, [storageKey]),
+    () => '',
+  );
+  const entries = useMemo<DiagnosticEntry[]>(
+    () => (raw === '' ? [] : readEntries({ getItem: () => raw }, storageKey)),
+    [raw, storageKey],
+  );
 
   const report = formatReport(entries, build);
 
@@ -41,7 +63,7 @@ export default function DiagnosticsReport({ build, owner }: { build: string; own
     } catch {
       // Nothing to do; the list below will simply not change.
     }
-    setEntries([]);
+    announce();
   };
 
   return (

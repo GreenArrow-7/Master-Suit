@@ -126,11 +126,11 @@ export function redactPath(input: string): string {
  */
 const SECRET_PATTERNS: readonly (readonly [RegExp, string])[] = [
   // Authorization headers and anything named like a credential.
-  [/\b(bearer|basic)\s+[\w\-._~+/=]{8,}/gi, '$1 [redacted]'],
+  [/\b(bearer|basic)\s+[\w._~+/=-]{8,}/gi, '$1 [redacted]'],
   [/\b(authorization|cookie|set-cookie)\b\s*[:=]\s*\S+/gi, '$1=[redacted]'],
   [/\b(api[_-]?key|secret|password|passwd|token|session|otp|pin)\b\s*[:=]\s*\S+/gi, '$1=[redacted]'],
   // A JWT is three base64url runs separated by dots.
-  [/\beyJ[\w\-]+\.[\w\-]+\.[\w\-]+/g, '[redacted-jwt]'],
+  [/\beyJ[\w-]+\.[\w-]+\.[\w-]+/g, '[redacted-jwt]'],
   // Contact details, which are lead data as much as account data.
   [/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[redacted-email]'],
   [/\+?\d[\d\s().-]{7,}\d/g, '[redacted-number]'],
