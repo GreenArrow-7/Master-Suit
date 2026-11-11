@@ -1,103 +1,93 @@
-# The grant ceiling, where no scope is named
+# The grant ceiling cannot be applied to role binding as written
 
 ## What
 
-`changeUserRole` and `inviteUser` now apply the per-permission grant ceiling.
-Branch `auth/grant-ceilings`, cut from `59c20bbe`.
+An attempt to put the per-permission grant ceiling on `changeUserRole` and
+`inviteUser`, **withdrawn**. What ships on `auth/grant-ceilings` is the test
+race fix below. `assignRole` keeps the ceiling it has had since `59c20bbe`;
+nothing about its behaviour changed.
 
-## Why
+## Why it was withdrawn
 
-`assignRole` has had the ceiling since `59c20bbe`. The other two paths that bind
-a person to a role checked **rank** only — the same gap, one function along. The
-owner's rule is that explicit and omitted scopes obey the same ceiling; without
-this, the way around the ceiling was simply to use a path that names no scope.
+The rule as stated is that an assigner must not grant an action they lack. On
+`assignRole` that holds: the caller names a scope, and the question "may you
+confer this reach" has an answer.
 
-## Where
+On the role-binding paths it does not hold, and CI proved it twice.
 
-- `src/services/identity/accounts.ts` — `changeUserRole`, after the rank cap.
-- `src/services/identity/invitations.ts` — `inviteUser`, after
-  `assertMayAdministerRole`. An invitation is a role grant with a delay: it
-  confers on acceptance, when the inviter is no longer looking.
-- `tests/permission/grant-ceiling.spec.ts` — three cases.
-- `tests/globalSetup.ts`, `tests/permission/engagement-modules.spec.ts` — a
-  parallel-execution race, below.
+**`tests/security/hr-employee-escalation.spec.ts`** — an HR administrator
+inviting a new starter into a role that does not exist yet, which the endpoint
+creates at the lowest rank with the employee baseline. That baseline carries
+`leads:VIEW` at OWN; HR holds no lead permissions. Refused.
 
-Both call the existing resolver at the role's own `defaultScope`. No second
-permission engine.
+**`tests/e2e/acceptance-five-user-journey.spec.ts`** — a workspace
+administrator creating a Sales Manager role, granting it
+`targets:VIEW`/`VIEW_REPORTS`/`reports:VIEW` at ORGANIZATION, and inviting
+someone into it. Refused:
 
-## Behaviour
+```
+You cannot grant more than you hold: you do not hold targets:VIEW.
+(3 permissions in this role exceed your authority.)
+```
 
-A branch-scoped administrator can no longer change somebody into, or invite
-somebody into, a role carrying permissions wider than their own — the refusal
-names the permission that exceeded them. A workspace-wide administrator is
-unaffected.
+That is not an edge case. **In this product an administrator composes roles
+they do not personally hold** — that is what administering roles means here. A
+ceiling that compares a role's permissions against the administrator's own
+makes role administration impossible unless every administrator is a superset
+of every role they can hand out.
 
-## Verified
+A first attempt exempted OWN-scoped grants, which cleared the HR case and left
+the five-user journey failing, because that role is ORGANIZATION-scoped. There
+is no narrowing of "an action they lack" that keeps both the rule and the
+product. The two are in genuine conflict and the conflict is a design question,
+not a bug to patch around.
 
-- `tests/permission/grant-ceiling.spec.ts` — 11 cases. The two new refusals
-  **fail on the old code** (checked by removing the two calls: 2 failed, 9
-  passed) and pass with it.
-- `tests/permission tests/identity tests/unit` — 118 files, 2318 passed.
-- `eslint`, `tsc`, `prettier` clean.
+## The decision this needs
 
-### A race this change exposed, and did not cause
+One of:
 
-With the three extra cases the suite went red in
-`tests/permission/engagement-modules.spec.ts`. It was not a logic break: the
-same code passed with `--no-file-parallelism`, and the base passed in parallel.
+1. **Rank and scope only on these paths.** Binding a person to an _existing_
+   role is not inventing authority; what an assigner must not do is confer more
+   _reach_ on a permission than they hold. Refuses a branch manager making
+   somebody organization-wide; permits an administrator handing out a role
+   whose contents they do not personally hold. Leaves a real gap: a role
+   already carrying `payroll:APPROVE` can be handed to anyone by whoever may
+   administer that rank.
+2. **Gate the ceiling on who may define roles**, not on who may bind them —
+   the escalation lives in `updatePermissionMatrix`, which is where a role's
+   contents are chosen.
+3. **Keep the rule literally** and accept that administrators must hold every
+   permission they can delegate, which means redesigning the default roles.
 
-`tenantIds()` there reads **every** tenant in the database. The suite runs files
-in parallel against one database, and a spec building fixtures grants
+This belongs with the six-role work, which the owner asked to keep separate
+from the blank-screen fix, so it is written down and left.
+
+## What does ship: a parallel-execution race
+
+`tests/permission/engagement-modules.spec.ts` asserts an invariant over seeded
+roles, but `tenantIds()` read **every** tenant in the database. The suite runs
+files in parallel against one database, and a spec building fixtures grants
 permissions in several statements — so for a moment its role holds an
 engagement permission and not yet the matching leads one. The catalogue spec
 read that half-built role and failed an invariant the role was never subject
-to. The timing shift from three extra tests was enough to surface it.
+to.
 
 It now reads only tenants created before the run began
-(`TEST_RUN_STARTED_AT`, set in `tests/globalSetup.ts`), which is what the
-assertion was always about. Two parallel runs green.
+(`TEST_RUN_STARTED_AT`, set in `tests/globalSetup.ts`). CI runs
+`npx vitest run` with default parallelism, so this was an intermittent red
+waiting to happen; it surfaced here because three extra tests shifted the
+timing.
 
-CI runs `npx vitest run` with default parallelism, so this would have been an
-intermittent red there.
+`tests/security/assistant-guardrails.spec.ts` has the same race — "no seeded
+role holds `leads:VIEW` without `events:VIEW`" scanned every role in the
+database and could read one between its two grants. Same fix. It passed alone
+and under `--no-file-parallelism` and failed only in parallel, which is how it
+was told apart from a real breach of the invariant.
 
-## An OWN grant is the floor, not a delegation
+Three parallel runs of `tests/permission tests/security tests/identity
+tests/unit` green afterwards: 171 files, 2987 tests.
 
-CI caught what the local run did not: `tests/security/hr-employee-escalation.spec.ts`
-went from 200 to 403 on its _legitimate_ path — an HR administrator inviting a
-new starter into a role that does not exist yet, which the endpoint creates at
-the lowest rank with the employee baseline.
+## Verified
 
-That baseline carries `leads:VIEW` and `leads:VIEW_SENSITIVE_FIELDS` **at OWN**,
-and an HR administrator holds `employee:CREATE/EDIT` and `users:MANAGE_USERS`
-and no lead permissions at all. The ceiling's "you do not hold it" arm refused
-the whole invitation.
-
-Taken literally — an assigner must not grant an action they lack — the refusal
-is correct. Taken as what the rule is _for_, it is not: an OWN grant reaches the
-grantee's own records and nothing else, so nobody gains sight of anybody else's
-data, and requiring HR to hold lead permissions before it can onboard a
-salesperson inflates HR's own authority. That is the opposite of least
-privilege.
-
-So the relaxation is the narrowest one that keeps onboarding working: the
-"holds it at all" arm is skipped **only when the conferred scope is OWN**.
-Every wider scope is refused exactly as before, which is where authority over
-other people's records is actually delegated. Two cases pin both edges: OWN
-allowed, the same permission at TEAM still refused.
-
-This is no worse than before this change — `inviteUser` had no ceiling at all —
-and strictly better at every scope above OWN. **It is a judgement about where
-the owner's rule bites, and the owner may want it the other way**; reversing it
-means deleting one `continue` and the first of those two cases, and accepting
-that HR must hold every permission in the employee baseline.
-
-## Left open
-
-Two of the four paths the owner listed:
-
-- **account creation** — no `POST /api/v1/platform/users` exists; the account
-  path needs locating before a ceiling can be put on it.
-- **permission-matrix edits** (`updatePermissionMatrix`, `roles.ts:314`) — a
-  different question from the other three. It changes what a _role_ carries
-  rather than who holds it, so the ceiling has to be evaluated per changed
-  permission against the editor's own, not against a role-plus-scope pair.
+- `tests/permission tests/security tests/identity tests/unit` green.
+- `eslint` 0 errors (exit 0), `tsc` clean, `prettier` clean.

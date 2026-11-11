@@ -235,14 +235,29 @@ describe('the roles this actually changes', () => {
    * buying access for somebody; it was not.
    */
   it('no seeded role holds leads:VIEW without events:VIEW', async () => {
-    const rows = await prisma.$queryRawUnsafe<{ role: string }[]>(`
+    /**
+     * Roles that were already there, not roles this run is building.
+     *
+     * The suite runs files in parallel against one database and a spec grants
+     * permissions in several statements, so a role can be read after its
+     * `leads` grant and before its `events` one — failing an invariant it was
+     * never subject to. `tests/permission/engagement-modules.spec.ts` had the
+     * same race and the same fix; `TEST_RUN_STARTED_AT` is set in
+     * `tests/globalSetup.ts`.
+     */
+    const startedAt = process.env.TEST_RUN_STARTED_AT;
+    const rows = await prisma.$queryRawUnsafe<{ role: string }[]>(
+      `
       SELECT r.key AS role
       FROM "Role" r
       LEFT JOIN "RolePermission" rp ON rp."roleId" = r.id AND rp.granted
       LEFT JOIN "Permission" pm ON pm.id = rp."permissionId" AND pm.action = 'VIEW'
+      ${startedAt ? 'WHERE r."createdAt" < $1' : ''}
       GROUP BY r.key
       HAVING bool_or(pm.module = 'leads') AND NOT bool_or(pm.module = 'events')
-    `);
+    `,
+      ...(startedAt ? [new Date(startedAt)] : []),
+    );
     expect(rows.map((r) => r.role)).toEqual([]);
   });
 });

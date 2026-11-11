@@ -21,7 +21,6 @@ import { sendMail } from '@/lib/mailer';
 import { activateIdentity, assertIdentityReusable, passwordPolicy } from './accounts';
 import { buildChecklist, isAgent } from '@/services/hr/lifecycle';
 import { resolvePolicy } from '@/services/hr/settings';
-import { assertWithinGrantCeiling } from '@/lib/security/grantCeiling';
 
 export const INVITE_TTL_HOURS = 72;
 
@@ -77,15 +76,6 @@ export async function inviteUser(ctx: Ctx, input: InviteInput) {
   // Same guard as every other path that binds someone to a role: you cannot
   // invite a person into a role you could not administer yourself.
   assertMayAdministerRole(ctx, role.rank, role.id);
-  /**
-   * And no more reach than the inviter holds.
-   *
-   * An invitation is a role grant with a delay: whatever it confers is
-   * conferred on acceptance, when the inviter may no longer be looking. The
-   * ceiling therefore applies here, at the same role and the same default
-   * scope the acceptance will use.
-   */
-  await assertWithinGrantCeiling(ctx, role.id, role.defaultScope, null);
 
   const alreadyHere = await prisma.workspaceMembership.findFirst({
     where: { tenantId: ctx.tenantId, platformUser: { normalizedEmail: email }, status: { in: ['ACTIVE', 'INVITED'] } },
