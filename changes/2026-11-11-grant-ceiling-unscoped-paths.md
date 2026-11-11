@@ -42,6 +42,37 @@ is no narrowing of "an action they lack" that keeps both the rule and the
 product. The two are in genuine conflict and the conflict is a design question,
 not a bug to patch around.
 
+## This is an OPEN security gap, not a closed one
+
+Recorded in `docs/security/OPEN-AUTHORIZATION-GAPS.md` as **G1**, with G2
+(permission-matrix editing) beside it. CI going green after enforcement was
+removed means the product works, not that the requirement is met. The
+requirement is unmet.
+
+## The policy that resolves it
+
+`docs/security/DELEGATION-POLICY.md`, specified and not implemented. It stops
+asking "do you personally hold every permission in this role" — wrong for a
+company administrator, right for a branch administrator — and asks two
+questions instead:
+
+1. **May you delegate this role at all?** An explicit delegable set per role,
+   seeded from the six-role model, failing closed when empty. A company
+   administrator is seeded with every non-administrator role; a branch
+   administrator with the operational ones at BRANCH.
+2. **How far may it reach?** The existing `grantCeiling` resolver, unchanged,
+   plus a `maxScope` on the delegation.
+
+Enforced at **both** points and every path into them: `assignRole`,
+`changeUserRole`, `inviteUser`, account creation, and
+`updatePermissionMatrix`. Matrix editing keeps the strict rule — you may not
+add a permission you do not hold — because that is where authority is
+manufactured. Composing authority requires holding it; delegating
+already-approved authority does not.
+
+Enforcing only at matrix editing would leave every already-powerful role
+assignable through the binding paths, which is why it is specified at both.
+
 ## The decision this needs
 
 One of:
