@@ -189,6 +189,26 @@ product rather than depending on a demo account, so it cannot silently skip.
 It holds each broken state in place, because the application re-renders over a
 single injected change and a screen that is actually broken stays broken.
 
+## The fixture that broke its own test
+
+The "merely sparse" case went red on CI and green on a desk. What it recorded
+was not a detector verdict:
+
+```
+error  NotFoundError: Failed to execute 'removeChild' on 'Node':
+       The node to be removed is not a child of this node.
+```
+
+`holdRegion` keeps a broken state in place by rewriting the page region, and
+React is still reconciling that subtree — so React throws, and the error
+listener records it. The diagnostic was working. The assertion was wrong: it
+demanded an empty log, so the suite could fail for the one reason it must not,
+its own fixture, and only where the timing made React lose the race.
+
+The quiet assertions now ask what the _detector_ decided — `blank-screen` and
+`stuck-skeleton` — and ignore everything else. The cases that assert a
+recording are unchanged and still assert on the full log.
+
 ## What the save itself did
 
 A failed request is now recorded: method, redacted path, status. Nothing else —

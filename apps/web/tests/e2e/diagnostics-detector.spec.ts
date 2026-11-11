@@ -64,6 +64,21 @@ const entries = (page: Page) =>
       : [];
   });
 
+/**
+ * What the *detector* decided, with everything else filtered out.
+ *
+ * `holdRegion` below rewrites a subtree React is still reconciling, so React
+ * legitimately throws `removeChild` and the error listener legitimately
+ * records it — reliably on CI, where the timing differs from a desk. That is
+ * the diagnostic working, not a misfire, and asserting an empty log made this
+ * suite fail for the one reason it must not: its own fixture.
+ *
+ * These cases are about whether the blank-screen rule fires, so they ask only
+ * about the kinds that rule produces.
+ */
+const verdicts = async (page: Page) =>
+  (await entries(page)).filter((e) => e.kind === 'blank-screen' || e.kind === 'stuck-skeleton');
+
 const forget = (page: Page) =>
   page.evaluate(() => {
     for (const k of Object.keys(window.localStorage)) {
@@ -178,7 +193,7 @@ test.describe('blank-screen detector', () => {
     await holdRegion(page, '<p>A healthy page, which is what the early samples see.</p>');
     // Well past the point a single early look would have stopped watching.
     await page.waitForTimeout(EMPTY_AFTER_MS + 8_000);
-    expect(await entries(page)).toEqual([]);
+    expect(await verdicts(page)).toEqual([]);
 
     await releaseRegion(page);
     await holdRegion(page, '');
@@ -199,7 +214,7 @@ test.describe('blank-screen detector', () => {
     await holdRegion(page, '<p>No leads yet.</p>');
     await page.waitForTimeout(BUSY_AFTER_MS + 4_000);
 
-    expect(await entries(page)).toEqual([]);
+    expect(await verdicts(page)).toEqual([]);
   });
 
   test('records a failed request without its query string or body', async ({ page }) => {
