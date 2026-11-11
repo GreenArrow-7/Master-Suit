@@ -56,21 +56,35 @@ cookies intact, HSTS and CSP intact, `APP_URL` equal to the browser origin
 | Tags persisted            | yes                                         | **yes**                                              |
 | Writes to `/api/v1/leads` | `POST`, `PATCH` — **one each**              | `POST`, `PATCH`, **`PATCH`**                         |
 
-**The immediate variant sends the tag save twice.** One tap, two `PATCH`
-requests to the same lead. The end state is correct and the screen never
-blanks, but "each save must persist exactly once" is not satisfied by a journey
-that issues two writes.
+**The immediate variant issues the tag save twice — and writes it once.** That
+distinction is the whole answer, and counting requests instead of writes is how
+it was nearly reported as a defect.
 
-This is the clearest behavioural difference the two timings produce, it is on
-the exact reported journey, and it appears only when the user navigates before
-the save returns — which is what a thumb does.
+Capturing the responses rather than the requests:
 
-**Not yet attributed.** `patchLead` sends through `sendLater`, the offline
-outbox, so the second write may be that queue retrying a request the navigation
-cancelled — by design and converging on the same value — or it may be a genuine
-double submit. Those are different defects with different fixes and the
-difference has not been established. It is written down here rather than
-guessed at.
+```
+── edit details, change tags, save
+── navigate away
+  [write] PATCH -> 200  replay=no  key=ab03c37d
+  writes to /api/v1/leads: 3 — [POST, PATCH <id>, PATCH <id>]
+```
+
+Two PATCH **requests**, one PATCH **response**. In order:
+
+1. PATCH #1 goes out. The navigation cancels it **in the browser** — it fires
+   `requestfailed`, never `response`.
+2. `sendOrQueue`'s `catch` keeps the item (`src/lib/offline.ts:110`), because a
+   rejected `fetch` cannot tell "the server never heard this" from "the server
+   heard it and the answer was lost".
+3. The outbox drains and sends PATCH #2 **under the same idempotency key** —
+   `send()` sets `idempotency-key: item.id`, and `keep()` stores that same item.
+4. The server answers `200` with `replay=no`, meaning it had **never seen that
+   key before**. So request #1 never applied.
+
+**One write. The acceptance criterion is met**, and the design — a stable
+idempotency key across the original attempt and the queued retry — is what
+makes the extra request harmless. Had request #1 reached the server, #2 would
+have come back `409` or `replay=yes` instead, and still written once.
 
 ## What the harness could not settle
 

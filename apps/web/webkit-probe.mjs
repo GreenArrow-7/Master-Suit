@@ -55,6 +55,13 @@ page.on('requestfailed', (req) =>
   note('requestfailed', `${req.method()} ${req.url().slice(0, 120)} — ${req.failure()?.errorText}`),
 );
 page.on('response', async (res) => {
+  // Every write to a lead, whatever its status: two requests under one
+  // idempotency key must produce one write, and the replay header says so.
+  if (['POST', 'PATCH'].includes(res.request().method()) && res.url().includes('/api/v1/leads')) {
+    const replay = res.headers()['idempotent-replay'] ?? 'no';
+    const key = (await res.request().allHeaders())['idempotency-key'] ?? 'none';
+    note('write', `${res.request().method()} -> ${res.status()}  replay=${replay}  key=${key.slice(0, 8)}`);
+  }
   if (res.status() < 400) return;
   // The body too, for an API answer: a status alone cannot say which field.
   let body = '';
