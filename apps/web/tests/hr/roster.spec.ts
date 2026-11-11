@@ -493,7 +493,7 @@ describe('shift change and swap', () => {
     const entry = await assignShift(ctx, {
       employeeId: employees.planner!,
       shiftId: shifts.early!,
-      workDate: day('2026-12-21'),
+      workDate: inDays(28),
     });
     const request = await requestShiftChange(ctxFor('planner', PLANNER), {
       entryId: entry.id,

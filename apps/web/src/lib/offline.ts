@@ -56,13 +56,23 @@ function save(items: Pending[]) {
   window.dispatchEvent(new Event('outbox'));
 }
 
-/** On signing out: nothing made in this session is sent in the next one. */
+/**
+ * On signing out: nothing made in this session is sent in the next one.
+ *
+ * This session's, and nobody else's. Removing the whole key also threw away
+ * changes belonging to another workspace of the same person — which the
+ * `flush()` before it cannot send, because `pending()` only ever returns the
+ * current owner's. Work offline in one workspace, switch to a second, sign out,
+ * and the first one's completed follow-up was gone: no banner, no refusal, and
+ * the lead still waiting. That is the opposite of what the top of this file
+ * promises, that another session's wait until its owner is back.
+ */
 export function forget() {
-  try {
-    localStorage.removeItem(KEY);
-  } catch {
-    // Blocked storage held nothing.
-  }
+  const me = owner();
+  // No frame to read an owner from: keep what is held rather than guess whose
+  // it is. Nothing can be sent under the wrong owner anyway.
+  if (!me) return;
+  save(all().filter((item) => item.owner !== me));
 }
 
 const send = (item: Pick<Pending, 'id' | 'url' | 'method' | 'body'>) =>
