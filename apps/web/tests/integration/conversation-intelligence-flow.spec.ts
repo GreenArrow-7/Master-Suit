@@ -40,7 +40,7 @@ import { mockOutbox } from '@/lib/mailer';
 import { wrapCredentials } from '@/lib/integrations/connection';
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { get, patch, post } from '../helpers/request';
-import { transcribeCall, analyseCall } from '@/services/shared/callIntelligence';
+import { transcribeCall, analyseCall, matchPlaybook } from '@/services/shared/callIntelligence';
 import { scorePracticeSession } from '@/services/shared/practiceScoring';
 import { POST as createCall } from '@/app/api/v1/calls/route';
 import { POST as recordConsent } from '@/app/api/v1/calls/[id]/consent/route';
@@ -183,6 +183,27 @@ describe('ingest → transcribe → analyse → follow-up', () => {
     // either executor is fine, the end state is what is asserted.
     await analyseCall({ tenantId: fixture.a.tenantId, callId }).catch(() => {});
     await settles(() => prisma.aIAnalysis.findFirst({ where: { callId, tenantId: fixture.a.tenantId } }));
+
+    /**
+     * The playbook is matched again here, deliberately, and this is not
+     * belt-and-braces.
+     *
+     * `matchPlaybook` reads the playbook **as it is now**. The upload route may
+     * have run the whole chain inline two tests ago — its own comment says so —
+     * which is before the objection above existed, so that run saw an empty
+     * playbook and wrote nothing. The `analyseCall` above then loses the claim
+     * on an already-COMPLETED row and is swallowed, so nothing ever matches and
+     * the assertion below fails. It failed in CI on 11 November exactly that
+     * way, and passed on a developer's machine, which is the signature.
+     *
+     * Delete-then-insert and a unique key on (tenant, call, objection, phrase)
+     * make this safe to run whoever else has run it.
+     */
+    const transcriptRow = await prisma.transcript.findFirstOrThrow({
+      where: { callId, tenantId: fixture.a.tenantId },
+      select: { content: true },
+    });
+    await matchPlaybook(fixture.a.tenantId, callId, transcriptRow.content);
 
     const analysis = await prisma.aIAnalysis.findFirst({ where: { callId, tenantId: fixture.a.tenantId } });
     expect(analysis).not.toBeNull();
