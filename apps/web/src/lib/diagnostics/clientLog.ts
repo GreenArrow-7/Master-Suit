@@ -48,6 +48,35 @@ export const keyFor = (owner: string) => `${KEY_PREFIX}:${owner}`;
 export const DIAGNOSTIC_KEY = KEY_PREFIX;
 
 /**
+ * The key the recorder mounted in the shell is using, so code that is not a
+ * component — the post-save navigation helper — can add a line to the same log
+ * the Diagnostics screen reads.
+ *
+ * Named `setLogKey`, not `useLogKey`: a `use` prefix makes the lint rules treat
+ * a plain setter as a hook, and it is called inside an effect.
+ *
+ * Until it is set nothing is written, which is correct: outside a workspace
+ * there is no owner, and a log nobody can attribute is worse than none.
+ */
+let activeKey: string | null = null;
+
+export function setLogKey(key: string): void {
+  activeKey = key;
+}
+
+/** One line into this browser's own log, from anywhere. Never throws. */
+export function noteDiagnostic(kind: DiagnosticKind, detail: string): void {
+  if (activeKey === null || typeof window === 'undefined') return;
+  try {
+    const entry = makeEntry(kind, window.location.pathname, detail);
+    writeEntries(window.localStorage, activeKey, appendEntry(readEntries(window.localStorage, activeKey), entry));
+  } catch {
+    // Storage denied or full. A diagnostic is a convenience; losing it must
+    // never affect the save or the navigation.
+  }
+}
+
+/**
  * Everything under this prefix that is not this owner's.
  *
  * The bare prefix counts. It is not a key this code writes — every log is

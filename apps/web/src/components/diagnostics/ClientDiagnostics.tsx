@@ -9,6 +9,7 @@ import {
   makeEntry,
   readEntries,
   redactPath,
+  setLogKey,
   writeEntries,
 } from '@/lib/diagnostics/clientLog';
 
@@ -75,6 +76,9 @@ export default function ClientDiagnostics({ owner }: { owner: string }) {
   const storageKey = keyFor(owner);
 
   useEffect(() => {
+    // Published before anything can write: a save can finish before the
+    // listeners below are attached.
+    setLogKey(storageKey);
     // Somebody else's log must not be readable by whoever signs in next on a
     // shared phone or a branch tablet.
     forgetOtherOwners(typeof window === 'undefined' ? undefined : window.localStorage, storageKey);

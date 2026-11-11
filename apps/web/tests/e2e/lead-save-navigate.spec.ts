@@ -124,13 +124,22 @@ function recordWrites(page: Page, leadId: string): Write[] {
 }
 
 /** The page region, measured the way the shipped detector measures it. */
-const regionText = (page: Page) =>
-  page.evaluate(() => {
-    const root = document.querySelector<HTMLElement>('[data-content-root]');
-    if (!root) return null;
-    if (root.querySelector('[aria-busy="true"]')) return 'LOADING';
-    return (root.innerText ?? '').trim();
-  });
+const regionText = async (page: Page): Promise<string | null> => {
+  try {
+    return await page.evaluate(() => {
+      const root = document.querySelector<HTMLElement>('[data-content-root]');
+      if (!root) return null;
+      if (root.querySelector('[aria-busy="true"]')) return 'LOADING';
+      return (root.innerText ?? '').trim();
+    });
+  } catch {
+    // "Execution context was destroyed" — the document is being replaced. A
+    // confirmed save now navigates with a full-page GET (lib/navigation/
+    // afterSave.ts), so this is the expected state mid-transition, not a
+    // failure. The poll that calls this waits for the new document to settle.
+    return 'LOADING';
+  }
+};
 
 test.describe.configure({ mode: 'serial' });
 
