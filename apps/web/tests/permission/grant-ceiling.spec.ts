@@ -1,31 +1,24 @@
 /**
- * What an administrator may grant, and what caps it.
+ * Nobody may hand out authority they do not hold.
  *
  * Every path that gives somebody a role checks **rank**: you may not grant a
  * role at or above your own level. `assignRole` → `assertMayGrantRole`
  * (`roles.ts:40`), `changeUserRole` (`accounts.ts:698`), invitations
  * (`invitations.ts:78`).
  *
- * **Nothing checks scope**, and rank and scope are orthogonal: a low-ranked
- * role can carry ORGANIZATION-scoped permission rows. So an administrator whose
- * own authority is narrow can hand out a role that reaches the whole workspace.
+ * **Rank and reach are different things**, and only rank used to be checked. A
+ * rank-60 "Sales Agent" role can carry ORGANIZATION-scoped permission rows, so
+ * a branch manager could assign it and confer a workspace-wide read they did
+ * not themselves have.
  *
- * These are characterisation tests. They record what the system does today so
- * that it cannot change by accident while the question below is open — they are
- * not an endorsement of it.
+ * These cases recorded that as characterisation before the ceiling existed. The
+ * evidence is kept: the two assertions marked "was the escalation" passed on
+ * the old code and fail on it now, which is the point of them.
  *
- * ── The open question ───────────────────────────────────────────────────────
- *
- * Should an assigner's own scope cap what they may grant?
- *
- * It is not obviously a bug. Roles are defined by whoever administers the
- * workspace; a branch manager assigning an existing "Sales Agent" role is using
- * a role somebody senior designed. Capping it would stop a branch manager
- * onboarding an agent who legitimately needs a workspace-wide read.
- *
- * It is also not obviously safe: it is the one way an administrator can confer
- * reach they do not themselves have. Answering it is a business decision, so
- * this file states the behaviour precisely and leaves it unchanged.
+ * The ceiling is per permission (`lib/security/grantCeiling.ts`): the conferred
+ * scope may not be wider than the assigner's own for that same `module:ACTION`,
+ * **and** a named branch, team or region must sit inside the assigner's own by
+ * id — because ordering is not containment. Marina does not contain Downtown.
  */
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -43,6 +36,10 @@ let branchScopedCtx: Ctx;
 let membershipId = '';
 let orgWideRoleId = '';
 let seniorRoleId = '';
+let payrollRoleId = '';
+let ownBranchId = '';
+let otherBranchId = '';
+let orgWideCtx: Ctx;
 
 beforeAll(async () => {
   const tenant = await prisma.tenant.create({
@@ -89,6 +86,8 @@ beforeAll(async () => {
       permissions: new Map([
         ['roles:MANAGE_CONFIGURATION', 'BRANCH'],
         ['users:MANAGE_USERS', 'BRANCH'],
+        // Held, but only for their branch — which is the comparison under test.
+        ['leads:VIEW', 'BRANCH'],
       ]) as Actor['permissions'],
     }),
   );
@@ -100,6 +99,37 @@ beforeAll(async () => {
     fullName: 'Subject',
   });
   membershipId = subject.membershipId;
+
+  const marina = await prisma.branch.create({ data: { tenantId, name: 'Marina', code: `MAR${suffix}` } });
+  ownBranchId = marina.id;
+  const downtown = await prisma.branch.create({ data: { tenantId, name: 'Downtown', code: `DTN${suffix}` } });
+  otherBranchId = downtown.id;
+  // The assigner manages Marina and nothing else.
+  await prisma.user.updateMany({ where: { tenantId, id: manager.id }, data: { branchId: marina.id } });
+  (branchScopedCtx.actor as { branchId: string | null }).branchId = marina.id;
+
+  // A role carrying an approval the branch manager does not hold at all.
+  const payroll = await prisma.role.create({
+    data: { tenantId, key: `payroll-${suffix}`, name: 'Payroll', rank: 55, defaultScope: 'BRANCH' },
+  });
+  payrollRoleId = payroll.id;
+  await grantPermissions(tenantId, payroll.id, [['payroll', 'APPROVE']] as const);
+
+  // And an administrator whose authority is the whole workspace, to prove the
+  // ceiling does not block legitimate delegation.
+  orgWideCtx = buildCtx(
+    buildActor({
+      id: manager.id,
+      tenantId,
+      roleId: managerRole.id,
+      roleRank: 10,
+      permissions: new Map([
+        ['roles:MANAGE_CONFIGURATION', 'ORGANIZATION'],
+        ['users:MANAGE_USERS', 'ORGANIZATION'],
+        ['leads:VIEW', 'ORGANIZATION'],
+      ]) as Actor['permissions'],
+    }),
+  );
 });
 
 afterAll(async () => {
@@ -117,40 +147,69 @@ describe('rank is enforced', () => {
   });
 });
 
-describe('scope is NOT enforced — recorded, not endorsed', () => {
-  it('a branch-scoped administrator may assign at ORGANIZATION by omitting the scope', async () => {
+describe('reach is enforced per permission', () => {
+  it('refuses an ORGANIZATION grant from a branch-scoped administrator — omitted (was the escalation)', async () => {
     await clear();
-    const assignment = await assignRole(branchScopedCtx, { membershipId, roleId: orgWideRoleId });
-
-    // The assigner administers roles at BRANCH. The assignment they just made
-    // applies workspace-wide, because omitting the scope takes the column
-    // default and nothing compares it against the assigner's own reach.
-    expect(assignment.scopeType).toBe('ORGANIZATION');
+    await expect(assignRole(branchScopedCtx, { membershipId, roleId: orgWideRoleId })).rejects.toThrow(
+      /cannot grant more than you hold/i,
+    );
+    expect(await prisma.membershipRole.count({ where: { tenantId, membershipId } })).toBe(0);
   });
 
-  it('and may do so explicitly, too', async () => {
+  it('refuses it when named explicitly, too (was the escalation)', async () => {
+    // Both doors, one rule. Closing only the omitted one would have changed
+    // nothing, which is why the fix is a ceiling and not a default.
+    await clear();
+    await expect(
+      assignRole(branchScopedCtx, { membershipId, roleId: orgWideRoleId, scopeType: 'ORGANIZATION' }),
+    ).rejects.toThrow(/cannot grant more than you hold/i);
+  });
+
+  it('names the permission that exceeded the assigner', async () => {
+    await clear();
+    await expect(assignRole(branchScopedCtx, { membershipId, roleId: orgWideRoleId })).rejects.toThrow(
+      /leads:VIEW at ORGANIZATION and you hold BRANCH/,
+    );
+  });
+
+  it('allows the same role within the branch the assigner actually manages', async () => {
+    // The ceiling must not make delegation impossible: narrowing to their own
+    // branch is exactly what a branch manager should be able to do.
     await clear();
     const assignment = await assignRole(branchScopedCtx, {
       membershipId,
       roleId: orgWideRoleId,
-      scopeType: 'ORGANIZATION',
+      scopeType: 'BRANCH',
+      scopeId: ownBranchId,
     });
-    expect(assignment.scopeType).toBe('ORGANIZATION');
+    expect(assignment.scopeType).toBe('BRANCH');
+    expect(assignment.scopeId).toBe(ownBranchId);
   });
 
-  it('so omitting the scope is not itself the escalation — the missing ceiling is', async () => {
-    // Worth stating plainly: closing the omitted-scope path alone would change
-    // nothing, because the explicit path is open as well. A fix has to be a
-    // ceiling, not a default.
+  it('refuses another branch, which outranks nothing but is somewhere else', async () => {
+    // BRANCH is not wider than BRANCH, so a rank comparison passes this and a
+    // containment check must not: Marina does not contain Downtown.
     await clear();
-    const implicit = await assignRole(branchScopedCtx, { membershipId, roleId: orgWideRoleId });
-    const implicitScope = implicit.scopeType;
+    await expect(
+      assignRole(branchScopedCtx, {
+        membershipId,
+        roleId: orgWideRoleId,
+        scopeType: 'BRANCH',
+        scopeId: otherBranchId,
+      }),
+    ).rejects.toThrow(/outside your own branch/i);
+  });
+
+  it('refuses a permission the assigner does not hold at all', async () => {
     await clear();
-    const explicit = await assignRole(branchScopedCtx, {
-      membershipId,
-      roleId: orgWideRoleId,
-      scopeType: 'ORGANIZATION',
-    });
-    expect(implicitScope).toBe(explicit.scopeType);
+    await expect(
+      assignRole(branchScopedCtx, { membershipId, roleId: payrollRoleId, scopeType: 'BRANCH', scopeId: ownBranchId }),
+    ).rejects.toThrow(/do not hold payroll:APPROVE/);
+  });
+
+  it('lets an ORGANIZATION administrator grant as before', async () => {
+    await clear();
+    const assignment = await assignRole(orgWideCtx, { membershipId, roleId: orgWideRoleId });
+    expect(assignment.scopeType).toBe('ORGANIZATION');
   });
 });

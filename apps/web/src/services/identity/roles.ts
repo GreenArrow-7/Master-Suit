@@ -19,6 +19,7 @@ import { revokeAllSessions } from '@/lib/auth/session';
 import { audit } from '@/lib/security/audit';
 import { SCOPE_RANK, scopeFor, type Ctx, type Scope, type Action } from '@/lib/security/rbac';
 import { ASSIGNMENT_SCOPES, SCOPE_TARGET, scopeCapFor, scopeNeedsId } from '@/lib/security/assignmentScope';
+import { assertWithinGrantCeiling } from '@/lib/security/grantCeiling';
 
 /** System roles are the ones the workspace bootstrap depends on; they may be regraded but not deleted. */
 const isSystemRole = (role: { isSystem: boolean }) => role.isSystem;
@@ -448,6 +449,18 @@ export async function assignRole(
       { field: 'scopeId', code: 'not_applicable', message: `A ${scopeType} assignment does not name a record.` },
     ]);
   }
+
+  /**
+   * And no more than the assigner holds, per permission.
+   *
+   * `assertMayGrantRole` above caps the role's **rank**; this caps its
+   * **reach**. Both are needed, and this one runs after the scope is known
+   * because the ceiling depends on where the assignment applies — an
+   * ORGANIZATION assignment of the same role is a different question from a
+   * BRANCH one. Explicit and omitted ORGANIZATION reach it alike: by here the
+   * omitted case has already become the string 'ORGANIZATION'.
+   */
+  await assertWithinGrantCeiling(ctx, input.roleId, scopeType, scopeId);
 
   const existing = await prisma.membershipRole.findFirst({
     where: { tenantId: ctx.tenantId, membershipId: input.membershipId, roleId: input.roleId },
