@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
+import { isHrAdmin } from '@/services/hr/access';
 import { Forbidden } from '@/lib/errors';
 import NewUserForm from './NewUserForm';
 
@@ -52,7 +53,16 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       select: { id: true, name: true, code: true },
     }),
     prisma.employeeProfile.findMany({
-      where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: { notIn: ['EXITED'] } },
+      // An employee record whose login is suspended, removed or never accepted
+      // is not a reporting manager: the list offered deleted and test accounts
+      // because only the employee side was filtered. History keeps its
+      // references — this governs who may be chosen from now on.
+      where: {
+        tenantId: ctx.tenantId,
+        deletedAt: null,
+        employmentStatus: { notIn: ['EXITED'] },
+        membership: { status: 'ACTIVE' },
+      },
       orderBy: { employeeNumber: 'asc' },
       select: {
         id: true,
@@ -90,6 +100,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           id: location.id,
           name: location.code ? `${location.name} · ${location.code}` : location.name,
         }))}
+        canSetup={isHrAdmin(ctx)}
         managers={managers.map((manager) => ({
           id: manager.id,
           name: `${manager.membership.platformUser.fullName} · ${manager.employeeNumber}`,

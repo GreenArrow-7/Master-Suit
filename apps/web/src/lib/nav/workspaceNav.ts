@@ -1016,7 +1016,22 @@ function definitions(slug: string): SectionDef[] {
               audience: 'oversight',
               keywords: 'joiners leavers',
             },
-            { label: 'Departments', href: p('/departments'), permission: 'employee', module: H, audience: 'oversight' },
+            {
+              label: 'Departments & designations',
+              href: p('/departments'),
+              permission: 'employee',
+              module: H,
+              audience: 'oversight',
+              keywords: 'designations job titles',
+            },
+            {
+              label: 'Branches',
+              href: p('/branches'),
+              permission: 'employee',
+              module: H,
+              audience: 'oversight',
+              keywords: 'offices branch locations',
+            },
             {
               label: 'Compliance',
               href: p('/compliance'),

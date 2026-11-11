@@ -1,0 +1,38 @@
+# Line endings, enforced in the repository rather than per machine.
+#
+# A shell script with CRLF does not run: the kernel reads `#!/usr/bin/env bash\r`
+# and looks for an interpreter called `bash\r`, which does not exist. It happened
+# on 11 November 2026 — an edit made on Windows rewrote
+# docs/release/production-release.sh with CRLF, and the production release
+# stopped at `bash\r: No such file or directory` with nothing else wrong.
+#
+# `core.autocrlf` is a per-clone setting, so it cannot prevent this for everyone.
+# These rules travel with the repository and apply to every checkout.
+
+# Default: normalise text on commit, leave the working tree to the platform.
+* text=auto
+
+# Anything executed by a shell or a kernel shebang must be LF in the working
+# tree too, whatever the platform — these are run on Linux hosts and in
+# containers regardless of where they were edited.
+*.sh text eol=lf
+*.bash text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+Dockerfile text eol=lf
+*.dockerfile text eol=lf
+.husky/* text eol=lf
+
+# Binary: never touched.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.xlsx binary
+*.docx binary
+*.zip binary
+*.enc binary
