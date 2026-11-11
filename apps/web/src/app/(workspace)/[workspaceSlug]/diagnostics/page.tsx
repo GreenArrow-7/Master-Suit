@@ -24,7 +24,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
   // person's own session. That sentinel also refuses a monitoring session
   // outright, which is right — a read-only observer has no business reading
   // somebody else's device log.
-  await resolveWorkspacePage(workspaceSlug, { permission: SELF_SERVICE });
+  const { ctx } = await resolveWorkspacePage(workspaceSlug, { permission: SELF_SERVICE });
 
   return (
     <div style={{ display: 'grid', gap: 18 }}>
@@ -37,7 +37,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           details.
         </p>
       </div>
-      <DiagnosticsReport build={buildId()} />
+      <DiagnosticsReport build={buildId()} owner={`${ctx.tenantId}:${ctx.actor.id}`} />
     </div>
   );
 }

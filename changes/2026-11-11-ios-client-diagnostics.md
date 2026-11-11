@@ -67,7 +67,7 @@ diagnosing is worse than no diagnostic**.
 
 ## Verified
 
-- `tests/unit/client-diagnostics.spec.ts` — **17 cases**, mostly the privacy
+- `tests/unit/client-diagnostics.spec.ts` — **29 cases**, mostly the privacy
   rules: cuid/uuid/numeric redaction, query strings dropped, identifiers inside
   messages removed, truncation, circular and `undefined` thrown values, the
   bounded buffer, and storage that throws on every call.
@@ -80,6 +80,45 @@ diagnosing is worse than no diagnostic**.
 - `npx tsc --noEmit` and `npm run format:check` clean.
 - A navigation completeness guard caught the new screen having no nav entry,
   which is how it got one.
+
+## Three corrections, found by testing the detector against reality
+
+**The first version could never have detected the fault.** It measured `main`
+and reported under 40 characters — but `main` also holds the area tabs, whose
+labels alone run to 82 characters. A completely blank page would have measured
+~82 and never tripped it. It now measures a `[data-content-root]` marker the
+layout puts around `{children}` and nothing else, and reports nothing at all if
+that marker is missing, because there is then nothing to measure honestly.
+
+**A text threshold alone false-positives.** Measured on a real leads page: the
+content root held **7 characters of text and 12 elements**. Any text-only
+threshold would have called that a blank screen. The rule is now zero text
+**and** zero elements — and the three cases separate properly:
+
+|                        | text / elements | reported |
+| ---------------------- | --------------- | -------- |
+| sparse real page       | 7 / 12          | no       |
+| legitimate empty state | 38 / 3          | no       |
+| truly blank            | 0 / 0           | **yes**  |
+
+**Slow loading needed a second look.** One observation cannot tell "not arrived
+yet" from "arrived empty", so it waits 4s, checks, waits another 1.5s and checks
+again. Only two empty observations are a fault.
+
+## One log per person, and no secrets in it
+
+Redacting record ids out of paths does not make an arbitrary thrown message safe
+to copy out. A message is whatever the code interpolated. Removed by shape,
+**before** truncation — or the first 200 characters of a token would survive:
+bearer and basic credentials, `authorization`/`cookie` headers, anything named
+`api_key`/`secret`/`password`/`token`/`session`/`otp`/`pin`, JWTs, email
+addresses and phone numbers.
+
+Storage is keyed per owner — `tenantId:userId`, the same value the offline
+outbox already uses, so there is one idea of "whose data is this on this phone"
+rather than two. Signing in calls `forgetOtherOwners`, which removes every other
+owner's log under the prefix and touches nothing else. A shared branch tablet
+does not show the second person the first one's screens.
 
 ## Left open
 
