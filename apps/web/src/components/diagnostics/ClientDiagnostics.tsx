@@ -2,7 +2,14 @@
 
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef } from 'react';
-import { appendEntry, makeEntry, readEntries, writeEntries } from '@/lib/diagnostics/clientLog';
+import {
+  appendEntry,
+  forgetOtherOwners,
+  keyFor,
+  makeEntry,
+  readEntries,
+  writeEntries,
+} from '@/lib/diagnostics/clientLog';
 
 /**
  * Records what the browser saw, so a fault that only happens on somebody's
@@ -24,15 +31,33 @@ import { appendEntry, makeEntry, readEntries, writeEntries } from '@/lib/diagnos
  * empty, and a false "blank screen" in the log would send the next person
  * chasing a phantom.
  */
-const BLANK_CHECK_DELAY_MS = 2_500;
+const BLANK_CHECK_DELAY_MS = 4_000;
 
-/** Below this, there is nothing a person could read or act on. */
-const BLANK_TEXT_THRESHOLD = 40;
+/**
+ * And again, before reporting.
+ *
+ * A phone on a slow connection can still be fetching at the first check. Two
+ * observations a second apart separate "not arrived yet" from "arrived empty",
+ * and only the second is a fault.
+ */
+const BLANK_CONFIRM_MS = 1_500;
 
-export default function ClientDiagnostics() {
+/**
+ * `owner` is `tenantId:userId` — the same value the offline outbox already uses
+ * to keep one person's queued writes off another's device. Reusing it means
+ * there is one idea of "whose data is this on this phone", not two.
+ */
+export default function ClientDiagnostics({ owner }: { owner: string }) {
   const pathname = usePathname();
   // Not state: writing it must never re-render the shell being measured.
   const recent = useRef<string[]>([]);
+  const storageKey = keyFor(owner);
+
+  useEffect(() => {
+    // Somebody else's log must not be readable by whoever signs in next on a
+    // shared phone or a branch tablet.
+    forgetOtherOwners(typeof window === 'undefined' ? undefined : window.localStorage, storageKey);
+  }, [storageKey]);
 
   useEffect(() => {
     const record = (kind: Parameters<typeof makeEntry>[0], detail: unknown) => {
@@ -42,7 +67,7 @@ export default function ClientDiagnostics() {
       const fingerprint = `${entry.kind}|${entry.path}|${entry.detail}`;
       if (recent.current.includes(fingerprint)) return;
       recent.current = [...recent.current, fingerprint].slice(-8);
-      writeEntries(window.localStorage, appendEntry(readEntries(window.localStorage), entry));
+      writeEntries(window.localStorage, storageKey, appendEntry(readEntries(window.localStorage, storageKey), entry));
     };
 
     const onError = (event: ErrorEvent) => record('error', event.error ?? event.message);
@@ -54,24 +79,52 @@ export default function ClientDiagnostics() {
       window.removeEventListener('error', onError);
       window.removeEventListener('unhandledrejection', onRejection);
     };
-  }, []);
+  }, [storageKey]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const main = document.querySelector('main');
-      const text = (main?.innerText ?? document.body.innerText ?? '').trim();
-      if (text.length >= BLANK_TEXT_THRESHOLD) return;
-      // Hidden tabs legitimately render nothing on some engines.
-      if (document.visibilityState !== 'visible') return;
-      const entry = makeEntry(
-        'blank-screen',
-        window.location.pathname,
-        `main rendered ${text.length} characters ${BLANK_CHECK_DELAY_MS}ms after arriving`,
-      );
-      writeEntries(window.localStorage, appendEntry(readEntries(window.localStorage), entry));
+    /**
+     * The page region only — never `main`, which also holds the area tabs.
+     * Their labels alone run to ~82 characters, so a threshold over `main`
+     * can never see an empty page. Measured on the marker the layout puts
+     * around `{children}`; without it there is nothing to measure honestly,
+     * so nothing is reported.
+     */
+    const measure = () => {
+      const root = document.querySelector<HTMLElement>('[data-content-root]');
+      if (!root) return null;
+      return { text: (root.innerText ?? '').trim().length, nodes: root.querySelectorAll('*').length };
+    };
+
+    let confirm: number | undefined;
+    const first = window.setTimeout(() => {
+      const before = measure();
+      // Empty means empty: no text and no elements. A page that legitimately
+      // says "No leads yet" has both, and a short empty state is not a fault.
+      if (!before || before.text > 0 || before.nodes > 0) return;
+      confirm = window.setTimeout(() => {
+        const after = measure();
+        if (!after || after.text > 0 || after.nodes > 0) return;
+        if (document.visibilityState !== 'visible') return;
+        writeEntries(
+          window.localStorage,
+          storageKey,
+          appendEntry(
+            readEntries(window.localStorage, storageKey),
+            makeEntry(
+              'blank-screen',
+              window.location.pathname,
+              `page region rendered nothing ${BLANK_CHECK_DELAY_MS + BLANK_CONFIRM_MS}ms after arriving, confirmed twice`,
+            ),
+          ),
+        );
+      }, BLANK_CONFIRM_MS);
     }, BLANK_CHECK_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [pathname]);
+
+    return () => {
+      window.clearTimeout(first);
+      if (confirm) window.clearTimeout(confirm);
+    };
+  }, [pathname, storageKey]);
 
   return null;
 }

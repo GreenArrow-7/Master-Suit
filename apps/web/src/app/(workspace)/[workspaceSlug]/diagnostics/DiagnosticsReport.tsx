@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { DIAGNOSTIC_KEY, formatReport, readEntries, type DiagnosticEntry } from '@/lib/diagnostics/clientLog';
+import { formatReport, keyFor, readEntries, type DiagnosticEntry } from '@/lib/diagnostics/clientLog';
 
 /**
  * What this browser recorded, for somebody to read on the device it happened
@@ -10,13 +10,14 @@ import { DIAGNOSTIC_KEY, formatReport, readEntries, type DiagnosticEntry } from 
  * Read from `localStorage` in an effect rather than on the server, because that
  * is where it lives — nothing was ever uploaded.
  */
-export default function DiagnosticsReport({ build }: { build: string }) {
+export default function DiagnosticsReport({ build, owner }: { build: string; owner: string }) {
+  const storageKey = keyFor(owner);
   const [entries, setEntries] = useState<DiagnosticEntry[] | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    setEntries(readEntries(window.localStorage));
-  }, []);
+    setEntries(readEntries(window.localStorage, storageKey));
+  }, [storageKey]);
 
   if (entries === null) return <p style={{ color: 'var(--lf-ink-3)' }}>Reading…</p>;
 
@@ -36,7 +37,7 @@ export default function DiagnosticsReport({ build }: { build: string }) {
 
   const clear = () => {
     try {
-      window.localStorage.removeItem(DIAGNOSTIC_KEY);
+      window.localStorage.removeItem(storageKey);
     } catch {
       // Nothing to do; the list below will simply not change.
     }

@@ -130,8 +130,12 @@ export default async function WorkspaceLayout({
           {/* Records errors and empty renders to this browser's own storage,
               so a fault that only happens on somebody's phone can be read
               back from People -> Diagnostics. Sends nothing anywhere. */}
-          <ClientDiagnostics />
-          {children}
+          <ClientDiagnostics owner={shell.outboxOwner} />
+          {/* The marker the blank-screen detector measures. It must wrap the
+              page and nothing else: `main` also holds the area tabs, whose
+              labels alone are ~82 characters, so measuring `main` can never
+              see an empty page. */}
+          <div data-content-root="">{children}</div>
         </main>
         {/* Phone-tier primary navigation; hidden by CSS above it. */}
         <MobileTabBar slug={shell.slug} modules={shell.modules} />

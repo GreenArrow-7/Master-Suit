@@ -30,7 +30,37 @@
  * decides what to share, by copying it.
  */
 
-export const DIAGNOSTIC_KEY = 'lf.diagnostics.v1';
+const KEY_PREFIX = 'lf.diagnostics.v1';
+
+/**
+ * One log per person per workspace.
+ *
+ * A single global key would pool two people's faults on a shared phone — a
+ * branch tablet, a demo device — and show the second person the first one's
+ * screens. The owner is `tenantId:userId`, the same value the offline outbox
+ * uses for exactly this, and `forgetOtherOwners` removes anybody else's when
+ * somebody signs in, so switching user leaves nothing of the previous one's
+ * readable.
+ */
+export const keyFor = (owner: string) => `${KEY_PREFIX}:${owner}`;
+
+/** Kept for the one test that asserts the prefix; not a storage key itself. */
+export const DIAGNOSTIC_KEY = KEY_PREFIX;
+
+/** Everything under this prefix that is not this owner's. */
+export function forgetOtherOwners(storage: Storage | undefined, keep: string): void {
+  try {
+    if (!storage) return;
+    const doomed: string[] = [];
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (key && key.startsWith(`${KEY_PREFIX}:`) && key !== keep) doomed.push(key);
+    }
+    for (const key of doomed) storage.removeItem(key);
+  } catch {
+    // Absent or blocked storage: nothing to forget and nothing worth breaking.
+  }
+}
 
 /** Enough to cover a journey, small enough never to matter. */
 export const MAX_ENTRIES = 40;
@@ -82,7 +112,31 @@ export function redactPath(input: string): string {
     .join('/');
 }
 
-/** A thrown value can be anything at all, so it is coerced and clipped. */
+/**
+ * Patterns that must never reach the log, whatever threw them.
+ *
+ * Redacting identifiers out of paths is not enough: an arbitrary error message
+ * can carry anything the code happened to interpolate — a bearer token from a
+ * failed request, the email of the account, a phone number from a lead that
+ * failed validation. Each is removed by shape, before truncation, because
+ * truncation would otherwise keep the first 200 characters of a secret.
+ *
+ * Deliberately aggressive. A redacted message that says slightly less is a
+ * cost; a token in a log a person is invited to copy and paste is not.
+ */
+const SECRET_PATTERNS: readonly (readonly [RegExp, string])[] = [
+  // Authorization headers and anything named like a credential.
+  [/\b(bearer|basic)\s+[\w\-._~+/=]{8,}/gi, '$1 [redacted]'],
+  [/\b(authorization|cookie|set-cookie)\b\s*[:=]\s*\S+/gi, '$1=[redacted]'],
+  [/\b(api[_-]?key|secret|password|passwd|token|session|otp|pin)\b\s*[:=]\s*\S+/gi, '$1=[redacted]'],
+  // A JWT is three base64url runs separated by dots.
+  [/\beyJ[\w\-]+\.[\w\-]+\.[\w\-]+/g, '[redacted-jwt]'],
+  // Contact details, which are lead data as much as account data.
+  [/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[redacted-email]'],
+  [/\+?\d[\d\s().-]{7,}\d/g, '[redacted-number]'],
+];
+
+/** A thrown value can be anything at all, so it is coerced, scrubbed and clipped. */
 export function redactMessage(value: unknown): string {
   const raw =
     value instanceof Error
@@ -97,8 +151,11 @@ export function redactMessage(value: unknown): string {
             }
           })();
   // A URL inside a message carries the same identifiers a path does.
-  const withoutUrls = raw.replace(/https?:\/\/[^\s"')]+/g, (url) => redactPath(url));
-  return withoutUrls.length > MAX_MESSAGE ? `${withoutUrls.slice(0, MAX_MESSAGE)}…` : withoutUrls;
+  let clean = raw.replace(/https?:\/\/[^\s"')]+/g, (url) => redactPath(url));
+  // Then the things a path redactor cannot see. Order matters: scrub before
+  // truncating, or the first 200 characters of a token survive.
+  for (const [pattern, replacement] of SECRET_PATTERNS) clean = clean.replace(pattern, replacement);
+  return clean.length > MAX_MESSAGE ? `${clean.slice(0, MAX_MESSAGE)}…` : clean;
 }
 
 /** Oldest dropped first, so a long session cannot grow without bound. */
@@ -112,9 +169,9 @@ export function appendEntry(existing: readonly DiagnosticEntry[], entry: Diagnos
  * nothing. A diagnostic that breaks the page it is diagnosing is worse than no
  * diagnostic.
  */
-export function readEntries(storage: Pick<Storage, 'getItem'> | undefined): DiagnosticEntry[] {
+export function readEntries(storage: Pick<Storage, 'getItem'> | undefined, key: string): DiagnosticEntry[] {
   try {
-    const raw = storage?.getItem(DIAGNOSTIC_KEY);
+    const raw = storage?.getItem(key);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as DiagnosticEntry[]) : [];
@@ -123,9 +180,13 @@ export function readEntries(storage: Pick<Storage, 'getItem'> | undefined): Diag
   }
 }
 
-export function writeEntries(storage: Pick<Storage, 'setItem'> | undefined, entries: readonly DiagnosticEntry[]): void {
+export function writeEntries(
+  storage: Pick<Storage, 'setItem'> | undefined,
+  key: string,
+  entries: readonly DiagnosticEntry[],
+): void {
   try {
-    storage?.setItem(DIAGNOSTIC_KEY, JSON.stringify(entries));
+    storage?.setItem(key, JSON.stringify(entries));
   } catch {
     // Full, blocked or absent. Nothing to do and nothing worth breaking.
   }
