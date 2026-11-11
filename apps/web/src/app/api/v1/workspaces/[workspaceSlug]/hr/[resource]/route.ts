@@ -62,6 +62,7 @@ const FLOOR = Symbol('employee:VIEW is the whole gate');
 type ExtraPermission = readonly [string, 'VIEW' | 'EDIT' | 'APPROVE' | 'MANAGE_CONFIGURATION'];
 
 const RESOURCE_PERMISSION: Record<HrResource, ExtraPermission | typeof FLOOR> = {
+  branches: FLOOR,
   departments: FLOOR,
   designations: FLOOR,
   employees: FLOOR,
@@ -163,6 +164,33 @@ export const POST = route(
         const input = z.object({ name: z.string().min(2).max(120), code: z.string().min(2).max(30) }).parse(body);
         return prisma.designation.create({
           data: { tenantId: ctx.tenantId, name: input.name, code: input.code.trim().toUpperCase() },
+        });
+      }
+      // Branches could previously be created only by the seed, so a workspace
+      // that was not seeded with one could never fill the field on Add user and
+      // could never use the BRANCH record scope the role editor offers.
+      // `timezone` and `workingHours` keep their schema defaults; this form sets
+      // what an office is identified by.
+      case 'branches': {
+        if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can change branches.');
+        const input = z
+          .object({
+            name: z.string().min(2).max(120),
+            code: z.string().min(2).max(30),
+            city: z.string().max(120).optional().or(z.literal('')),
+            country: z.string().max(120).optional().or(z.literal('')),
+          })
+          .parse(body);
+        return prisma.branch.create({
+          data: {
+            tenantId: ctx.tenantId,
+            name: input.name,
+            code: input.code.trim().toUpperCase(),
+            city: input.city || null,
+            country: input.country || null,
+            createdById: ctx.actor.id,
+            updatedById: ctx.actor.id,
+          },
         });
       }
       case 'employees': {
@@ -511,6 +539,27 @@ export const PATCH = route(
         });
       }
 
+      case 'branches': {
+        const input = z
+          .object({
+            name: z.string().min(2).max(120).optional(),
+            code: z.string().min(2).max(30).optional(),
+            city: z.string().max(120).optional().or(z.literal('')),
+            country: z.string().max(120).optional().or(z.literal('')),
+          })
+          .parse(body);
+        return prisma.branch.update({
+          where: { tenantId: ctx.tenantId, id },
+          data: {
+            ...input,
+            code: input.code?.trim().toUpperCase(),
+            city: input.city === '' ? null : input.city,
+            country: input.country === '' ? null : input.country,
+            updatedById: ctx.actor.id,
+          },
+        });
+      }
+
       case 'shifts': {
         const input = z
           .object({
@@ -683,6 +732,16 @@ export const DELETE = route(
       }
       case 'designations': {
         return prisma.designation.update({ where: { tenantId: ctx.tenantId, id }, data: { deletedAt: new Date() } });
+      }
+      // Refused while anyone is still posted there, as for departments: a user
+      // whose branch is archived would hold a BRANCH scope over nothing.
+      case 'branches': {
+        const inUse = await prisma.user.count({ where: { tenantId: ctx.tenantId, branchId: id, deletedAt: null } });
+        if (inUse > 0)
+          throw Conflict(
+            `${inUse} ${inUse === 1 ? 'person is' : 'people are'} still posted to that branch. Move them first.`,
+          );
+        return prisma.branch.update({ where: { tenantId: ctx.tenantId, id }, data: { deletedAt: new Date() } });
       }
       case 'employees': {
         await ensureEmployee(ctx.tenantId, id);

@@ -56,11 +56,12 @@ export default function NewUserForm({
   branches: Option[];
   locations: Option[];
   managers: Option[];
-  /** Whether this operator may add the missing departments and designations. */
+  /** Whether this operator may add the missing departments, designations or branches. */
   canSetup: boolean;
 }) {
   const router = useRouter();
   const setupHref = `/${workspaceSlug}/people/departments`;
+  const branchHref = `/${workspaceSlug}/people/branches`;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<Created | null>(null);
@@ -291,7 +292,9 @@ export default function NewUserForm({
             </select>
           ) : (
             <span className="lf-empty-note">
-              None configured yet. Branches are set up by the vendor; the field can be left unset.
+              None configured yet.{' '}
+              {canSetup ? <a href={branchHref}>Add a branch</a> : 'Ask an administrator to add one'}, or leave the field
+              unset.
             </span>
           )}
         </Field>

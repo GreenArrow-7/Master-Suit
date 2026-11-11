@@ -1025,6 +1025,14 @@ function definitions(slug: string): SectionDef[] {
               keywords: 'designations job titles',
             },
             {
+              label: 'Branches',
+              href: p('/branches'),
+              permission: 'employee',
+              module: H,
+              audience: 'oversight',
+              keywords: 'offices branch locations',
+            },
+            {
               label: 'Compliance',
               href: p('/compliance'),
               permission: 'employee',
