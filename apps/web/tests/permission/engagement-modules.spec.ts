@@ -46,9 +46,23 @@ const RECORD_ACTIONS = [
   'VIEW_SENSITIVE_FIELDS',
 ] as const;
 
-/** Raw, because the tenant guard refuses an unscoped read and this needs every tenant. */
+/**
+ * Raw, because the tenant guard refuses an unscoped read and this needs every
+ * tenant — but only the ones that were already there.
+ *
+ * The suite runs files in parallel against one database. A spec building its
+ * own fixtures grants permissions in several statements, so for a moment its
+ * role holds an engagement permission and not yet the matching leads one, and
+ * a reader that scans every tenant sees a role that breaks an invariant it was
+ * never subject to. That is a race in this reading, not a defect in the
+ * catalogue. Tenants created since this run began belong to the run.
+ */
 async function tenantIds(): Promise<string[]> {
-  const rows = await prisma.$queryRaw<{ id: string }[]>`SELECT id FROM "Tenant" WHERE "deletedAt" IS NULL`;
+  const startedAt = process.env.TEST_RUN_STARTED_AT;
+  const rows = startedAt
+    ? await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "Tenant" WHERE "deletedAt" IS NULL AND "createdAt" < ${new Date(startedAt)}`
+    : await prisma.$queryRaw<{ id: string }[]>`SELECT id FROM "Tenant" WHERE "deletedAt" IS NULL`;
   return rows.map((row) => row.id);
 }
 

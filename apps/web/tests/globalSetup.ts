@@ -23,6 +23,19 @@
 import Redis from 'ioredis';
 
 export default async function setup() {
+  /**
+   * When this run began.
+   *
+   * The engagement catalogue spec asserts an invariant over *seeded* roles, but
+   * it has to read every tenant to find them, and the suite runs files in
+   * parallel against one database — so it can also see a role another spec is
+   * halfway through building, with its engagement permissions granted and its
+   * leads permissions not yet. That is a race in the reading, not a breach of
+   * the invariant. Anything created after this instant belongs to this run and
+   * is not what that assertion is about.
+   */
+  process.env.TEST_RUN_STARTED_AT ??= new Date().toISOString();
+
   const url = process.env.REDIS_URL;
   if (!url) return;
 

@@ -24,6 +24,8 @@ import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { assignRole } from '@/services/identity/roles';
+import { changeUserRole } from '@/services/identity/accounts';
+import { inviteUser } from '@/services/identity/invitations';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import type { Actor, Ctx } from '@/lib/security/rbac';
@@ -34,6 +36,7 @@ const slug = `ceiling-${suffix}`;
 let tenantId = '';
 let branchScopedCtx: Ctx;
 let membershipId = '';
+let subjectUserId = '';
 let orgWideRoleId = '';
 let seniorRoleId = '';
 let payrollRoleId = '';
@@ -99,6 +102,7 @@ beforeAll(async () => {
     fullName: 'Subject',
   });
   membershipId = subject.membershipId;
+  subjectUserId = subject.id;
 
   const marina = await prisma.branch.create({ data: { tenantId, name: 'Marina', code: `MAR${suffix}` } });
   ownBranchId = marina.id;
@@ -211,5 +215,35 @@ describe('reach is enforced per permission', () => {
     await clear();
     const assignment = await assignRole(orgWideCtx, { membershipId, roleId: orgWideRoleId });
     expect(assignment.scopeType).toBe('ORGANIZATION');
+  });
+});
+
+/**
+ * The same ceiling, on the other two paths that bind a person to a role.
+ *
+ * `assignRole` takes an explicit scope. These two do not: the role applies at
+ * its own `defaultScope`. If an omitted scope were exempt, the way around the
+ * ceiling would be to use one of these instead — which is why the rule the
+ * owner set is that explicit and omitted reach are treated alike.
+ */
+describe('reach is enforced where no scope is named', () => {
+  it('refuses a role change that would confer more than the assigner holds', async () => {
+    await expect(changeUserRole(branchScopedCtx, subjectUserId, orgWideRoleId)).rejects.toThrow(
+      /cannot grant more than you hold/i,
+    );
+  });
+
+  it('refuses an invitation into that same role', async () => {
+    await expect(
+      inviteUser(branchScopedCtx, {
+        email: `invitee-${suffix}@ceiling.test`,
+        fullName: 'Invitee',
+        roleId: orgWideRoleId,
+      }),
+    ).rejects.toThrow(/cannot grant more than you hold/i);
+  });
+
+  it('still lets a workspace-wide administrator do both', async () => {
+    await expect(changeUserRole(orgWideCtx, subjectUserId, orgWideRoleId)).resolves.toBeTruthy();
   });
 });

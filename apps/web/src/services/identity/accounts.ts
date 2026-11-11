@@ -35,6 +35,7 @@ import { assertNotReused, recordPreviousPassword } from './passwordHistory';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { assignableUsers } from '@/lib/security/record-scope';
+import { assertWithinGrantCeiling } from '@/lib/security/grantCeiling';
 import {
   countOpenWork,
   handOverOpenWork,
@@ -696,6 +697,16 @@ export async function changeUserRole(ctx: Ctx, userId: string, roleId: string) {
   const role = await prisma.role.findFirst({ where: { tenantId: ctx.tenantId, id: roleId } });
   if (!role) throw NotFound('Role');
   if (role.rank <= ctx.actor.roleRank) throw Forbidden('You cannot grant a role at or above your own level.');
+
+  /**
+   * Rank says *which* role; this says how far it reaches.
+   *
+   * A role change names no scope, so the role applies at its own
+   * `defaultScope` — and an omitted scope must obey the same ceiling as an
+   * explicit one, or the way to grant more than you hold is simply to leave
+   * the scope out. Same resolver as `assignRole`, deliberately: one engine.
+   */
+  await assertWithinGrantCeiling(ctx, role.id, role.defaultScope, null);
 
   if (
     target.role.rank <= ADMIN_ROLE_RANK &&
