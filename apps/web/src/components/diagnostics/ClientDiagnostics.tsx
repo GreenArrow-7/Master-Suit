@@ -30,6 +30,11 @@ import {
  * The delay is deliberate and generous. A page mid-render is legitimately
  * empty, and a false "blank screen" in the log would send the next person
  * chasing a phantom.
+ *
+ * shortcut: this looks once per navigation, a few seconds after arriving, so it
+ * reports a screen that arrives blank and not one that empties later. That is
+ * the reported fault. Upgrade to a MutationObserver if a report ever describes
+ * a screen that was filled and then went blank without navigating.
  */
 const BLANK_CHECK_DELAY_MS = 4_000;
 

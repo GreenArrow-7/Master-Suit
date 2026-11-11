@@ -47,14 +47,23 @@ export const keyFor = (owner: string) => `${KEY_PREFIX}:${owner}`;
 /** Kept for the one test that asserts the prefix; not a storage key itself. */
 export const DIAGNOSTIC_KEY = KEY_PREFIX;
 
-/** Everything under this prefix that is not this owner's. */
+/**
+ * Everything under this prefix that is not this owner's.
+ *
+ * The bare prefix counts. It is not a key this code writes — every log is
+ * owner-suffixed — but matching only `prefix:` would leave an unsuffixed value
+ * sitting there unreadable and uncollectable, which is the one thing a log
+ * nobody can see must not do. Found on a test device carrying one from an
+ * earlier build of this file.
+ */
 export function forgetOtherOwners(storage: Storage | undefined, keep: string): void {
   try {
     if (!storage) return;
     const doomed: string[] = [];
     for (let i = 0; i < storage.length; i++) {
       const key = storage.key(i);
-      if (key && key.startsWith(`${KEY_PREFIX}:`) && key !== keep) doomed.push(key);
+      const ours = key === KEY_PREFIX || key?.startsWith(`${KEY_PREFIX}:`);
+      if (key && ours && key !== keep) doomed.push(key);
     }
     for (const key of doomed) storage.removeItem(key);
   } catch {

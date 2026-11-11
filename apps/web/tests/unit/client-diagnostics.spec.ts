@@ -187,6 +187,8 @@ describe('one log per person on a shared device', () => {
     const store = new Map<string, string>([
       [keyFor('t:previous'), '[]'],
       [keyFor('t:current'), '[{"at":"x"}]'],
+      // No owner at all: unreadable through the UI, so it must not survive.
+      [DIAGNOSTIC_KEY, '[{"at":"from an earlier build"}]'],
       ['unrelated.app.key', 'keep me'],
     ]);
     const storage = {
@@ -200,6 +202,7 @@ describe('one log per person on a shared device', () => {
     forgetOtherOwners(storage, keyFor('t:current'));
 
     expect(store.has(keyFor('t:previous'))).toBe(false);
+    expect(store.has(DIAGNOSTIC_KEY)).toBe(false);
     expect(store.has(keyFor('t:current'))).toBe(true);
     // Never touches anything that is not ours.
     expect(store.has('unrelated.app.key')).toBe(true);

@@ -77,7 +77,36 @@ diagnosing is worse than no diagnostic**.
   `TypeError: Load failed for /manath-homes/sales/leads/:id` — **the cuid is
   absent from storage**, asserted directly. The screen then rendered the report
   with Copy and Clear.
-- `npx tsc --noEmit` and `npm run format:check` clean.
+- `npx tsc --noEmit`, `npx eslint .` and `npm run format:check` clean. ESLint
+  was the gate not being run locally, which is how two lint errors reached CI;
+  it is now part of the local run.
+
+### The detector, driven against a running application
+
+Not reasoned about — exercised, in a browser, against the dev server on this
+branch, with the journey repeated on two separate clean servers:
+
+| Case                                                        | content root | reported |
+| ----------------------------------------------------------- | ------------ | -------- |
+| **the reported fault** — page region emptied, chrome intact | 0 / 0        | **yes**  |
+| a real leads page                                           | 7 / 12       | no       |
+| slow load — content arrives at 4.6s, between the two checks | 0 → 7 / 12   | no       |
+
+The fault case stored exactly:
+
+```
+2026-11-11T10:50:12Z  blank-screen  /manath-homes/sales/leads
+page region rendered nothing 5500ms after arriving, confirmed twice
+```
+
+`main` measured **62 characters** in that same moment with the page region
+empty, which is the direct measurement that the original `main`-based threshold
+could never have fired on this fault.
+
+The report screen was then opened on the same device and photographed: it names
+the build (`d3ec1a4c`), the one event and the screen path, with Copy and Clear
+enabled. No name, number or field value appears anywhere in the stored entry.
+
 - A navigation completeness guard caught the new screen having no nav entry,
   which is how it got one.
 
@@ -114,6 +143,14 @@ bearer and basic credentials, `authorization`/`cookie` headers, anything named
 `api_key`/`secret`/`password`/`token`/`session`/`otp`/`pin`, JWTs, email
 addresses and phone numbers.
 
+A log with no owner at all is now collected too. `forgetOtherOwners` matched
+only `prefix:`, so an unsuffixed value — one was found on the test device,
+written by an earlier build of this file — sat there unreadable through the UI
+and unreachable by the cleanup. It never shipped, so no real device carries one;
+the gap is closed because a log nobody can see is the one thing this must not
+leave behind. `tests/unit/client-diagnostics.spec.ts` asserts it, and that
+assertion fails on the previous condition.
+
 Storage is keyed per owner — `tenantId:userId`, the same value the offline
 outbox already uses, so there is one idea of "whose data is this on this phone"
 rather than two. Signing in calls `forgetOtherOwners`, which removes every other
@@ -126,6 +163,11 @@ does not show the second person the first one's screens.
 is worth nothing until it is deployed and the fault happens again on the
 reporter's phone — at which point My Workspace → Diagnostics should name the
 screen, the first error, and whether the main region rendered at all.
+
+It looks **once per navigation**, a few seconds after arriving, so it reports a
+screen that arrives blank and not one that is filled and then empties without
+navigating. That matches the reported fault; the code carries the note and what
+would justify upgrading it to a `MutationObserver`.
 
 The detector reports a symptom, not a cause. If it fires with no error beside
 it, that is itself the finding: the tree resolved empty without anything
