@@ -165,6 +165,15 @@ function definitions(slug: string): SectionDef[] {
               aliases: [p('/check-in')],
               keywords: 'punch clock face attendance',
             },
+            // What this device recorded when something went wrong, for somebody
+            // to read on the phone it happened on. Self-service and no module:
+            // a fault does not wait for the right licence, and the person who
+            // hit it is the one who has the evidence.
+            {
+              label: 'Diagnostics',
+              href: `/${slug}/diagnostics`,
+              keywords: 'error blank screen support problem log troubleshoot',
+            },
             // Its record and its requests, for the same reason: your own days, or a
             // manager's reporting line; early check-outs are asked and decided there.
             {

@@ -1,4 +1,5 @@
 import { headers } from 'next/headers';
+import ClientDiagnostics from '@/components/diagnostics/ClientDiagnostics';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { requestCtx, requestWorkspace } from '@/lib/workspace-page';
@@ -126,6 +127,10 @@ export default async function WorkspaceLayout({
             platformStaff={shell.platformStaff}
           />
           <OfflineBanner />
+          {/* Records errors and empty renders to this browser's own storage,
+              so a fault that only happens on somebody's phone can be read
+              back from People -> Diagnostics. Sends nothing anywhere. */}
+          <ClientDiagnostics />
           {children}
         </main>
         {/* Phone-tier primary navigation; hidden by CSS above it. */}
