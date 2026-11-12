@@ -197,8 +197,16 @@ echo "worker=$WORKER_ID"
 
 # What staging is on right now, so the rollback rehearsal has something to go
 # back to. Captured before anything is changed.
-PREV=$(docker inspect "$PROJECT-web-1" --format '{{.Config.Image}}' | sed 's/.*://')
+PREV=${PREVIOUS_IMAGE:-$(docker inspect "$PROJECT-web-1" --format '{{.Config.Image}}' | sed 's/.*://')}
 [ -n "$PREV" ] || die "could not read the image staging is currently running"
+# A failed earlier run can leave the candidate itself running, and then the
+# rollback rehearsal in phase 6 rolls back to the candidate: it passes having
+# rehearsed nothing, and phase 7 writes a marker that was never earned.
+[ "$PREV" != "$CANDIDATE" ] || die "staging is already running the candidate, so there is no previous image to
+rehearse the rollback against. A run that got as far as phase 4 and then failed
+leaves it this way. Name the image to roll back to:
+
+    PREVIOUS_IMAGE=<the 40-char sha staging ran before> $0 $CANDIDATE"
 echo "previous image on staging: $PREV"
 
 # ---------------------------------------------------------------------------
@@ -272,10 +280,16 @@ DENIED_EMAIL="acceptance.denied.$RUN@staging.invalid"
 ALLOWED_PW="Stg!$(openssl rand -hex 12)"
 DENIED_PW="Stg!$(openssl rand -hex 12)"
 
-OWNER_EMAIL=$(env_of PLATFORM_OWNER_EMAIL)
-OWNER_PW=$(env_of PLATFORM_OWNER_PASSWORD)
+OWNER_EMAIL=${PLATFORM_OWNER_EMAIL:-$(env_of PLATFORM_OWNER_EMAIL)}
+OWNER_PW=${PLATFORM_OWNER_PASSWORD:-$(env_of PLATFORM_OWNER_PASSWORD)}
 [ -n "$OWNER_EMAIL" ] && [ -n "$OWNER_PW" ] ||
-  die "PLATFORM_OWNER_EMAIL / PLATFORM_OWNER_PASSWORD are not in $STAGING_ENV; the workspace cannot be created without them"
+  die "PLATFORM_OWNER_EMAIL / PLATFORM_OWNER_PASSWORD are neither in the
+environment nor in $STAGING_ENV. Pass them for this run only, without writing
+them to disk:
+
+    read -rsp 'owner password: ' P && echo
+    PLATFORM_OWNER_EMAIL=<owner email> PLATFORM_OWNER_PASSWORD=\"\$P\" \
+      PLATFORM_OWNER_TOTP=<code> $0 $CANDIDATE"
 
 JAR=$(mktemp); OWNER_JAR=$(mktemp); DENIED_JAR=$(mktemp)
 trap 'rm -f "$JAR" "$OWNER_JAR" "$DENIED_JAR"' EXIT
