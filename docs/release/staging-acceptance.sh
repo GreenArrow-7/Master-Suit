@@ -204,16 +204,32 @@ git -C "$APP" fetch --quiet origin
 git -C "$APP" checkout --quiet "$CANDIDATE"
 rsync -a --delete "$APP/apps/web/prisma/" "$STAGING_DIR/prisma/"
 
-BEFORE=$(docker exec "$PROJECT-postgres-1" psql -U leadflow -d "$STAGING_DB_NAME" -tAc \
-  'SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL')
-MIGRATION_DATABASE_URL=$(env_of MIGRATION_DATABASE_URL) \
-  npx --prefix "$STAGING_DIR" prisma migrate deploy --schema "$STAGING_DIR/prisma/schema.prisma"
-AFTER=$(docker exec "$PROJECT-postgres-1" psql -U leadflow -d "$STAGING_DB_NAME" -tAc \
-  'SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL')
-echo "migrations finished: $BEFORE -> $AFTER (applied $((AFTER - BEFORE)))"
+# Everything that talks to staging's database goes through the container: it
+# publishes no port, so the host cannot reach it, and the role is the one the
+# container was built with rather than production's.
+sql() { docker exec "$PROJECT-postgres-1" psql -U "$PGUSER_IN_CONTAINER" -d "$STAGING_DB_NAME" -tAc "$1"; }
 
-FAILED=$(docker exec "$PROJECT-postgres-1" psql -U leadflow -d "$STAGING_DB_NAME" -tAc \
-  'SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL')
+# What this candidate carries that staging has not finished, by name.
+PENDING=$(comm -23 \
+  <(ls -1 "$STAGING_DIR/prisma/migrations" 2>/dev/null | grep -E '^[0-9]+_' | sort) \
+  <(sql 'SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL' | tr -d '\r' | sort))
+
+if [ -z "$PENDING" ]; then
+  echo "migrations: nothing pending — staging already has every migration this candidate carries"
+else
+  # shortcut: a candidate with pending migrations cannot be applied from here,
+  # because MIGRATION_DATABASE_URL names the compose hostname `postgres` and
+  # staging publishes no port to the host. Upgrade this to a one-off container
+  # on the staging network when a release actually carries a migration.
+  printf '\nSTAGING ACCEPTANCE FAILED: this candidate carries migrations staging has not applied:\n\n' >&2
+  printf '  %s\n' $PENDING >&2
+  printf '\nApply them the way docs/DEPLOY-STAGING.md describes, then run this again.\n' >&2
+  printf 'They cannot be applied from here: MIGRATION_DATABASE_URL points at the\n' >&2
+  printf 'compose hostname postgres:5432, which only resolves inside the stack.\n' >&2
+  exit 1
+fi
+
+FAILED=$(sql 'SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL' | tr -d '[:space:]')
 [ "$FAILED" = "0" ] || die "$FAILED migration(s) unfinished or rolled back in staging"
 
 # ---------------------------------------------------------------------------
