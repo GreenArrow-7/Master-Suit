@@ -41,12 +41,20 @@ CANDIDATE=${1:-}
 
 STAGING_DIR=${STAGING_DIR:-/home/deploy/ios-staging}
 STAGING_ENV=${STAGING_ENV:-$STAGING_DIR/.env.ios-staging}
-STAGING_URL=${STAGING_URL:-http://127.0.0.1:8080}
 STATE=${STATE:-/var/lib/master-suite}
 # The checkout on the host. production-release.sh:16 is the authority for this
 # path, and it says /opt/mastersuite; /opt/master-saas does not exist there.
 APP=${APP:-/opt/mastersuite}
 PROJECT=youhan-ios-staging
+
+# Asked of docker, not assumed: this stack publishes web on the bridge address
+# (172.18.0.1:8090), not on loopback, and PRODUCTION-RELEASE-PROCEDURE.md's
+# table records every other port but not this one.
+STAGING_URL=${STAGING_URL:-http://$(docker port "$PROJECT-web-1" 3000/tcp 2>/dev/null | head -1)}
+case "$STAGING_URL" in
+  http://*:*) ;;
+  *) die "could not read the published web port from $PROJECT-web-1; set STAGING_URL yourself" ;;
+esac
 
 # Checked here rather than discovered at minute nine of a run.
 for tool in docker jq curl openssl rsync cmp psql_in_container; do
