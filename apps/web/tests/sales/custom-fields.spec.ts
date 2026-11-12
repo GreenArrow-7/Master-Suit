@@ -300,7 +300,7 @@ describe('the fields on a lead (M4-13)', () => {
     const bad = await post(
       createLead,
       '/api/v1/leads',
-      { fullName: 'Api Wrong Type', custom: { family_size: '1.5M' } },
+      { fullName: 'Api Wrong Type', phone: '0510000041', custom: { family_size: '1.5M' } },
       admin,
     );
     expect(bad.status, JSON.stringify(bad.body)).toBe(422);
@@ -308,7 +308,7 @@ describe('the fields on a lead (M4-13)', () => {
     const huge = await post(
       createLead,
       '/api/v1/leads',
-      { fullName: 'Api Too Big', custom: { family_size: 1e15 } },
+      { fullName: 'Api Too Big', phone: '0510000042', custom: { family_size: 1e15 } },
       admin,
     );
     expect(huge.status).toBe(422);
@@ -321,6 +321,7 @@ describe('the fields on a lead (M4-13)', () => {
       '/api/v1/leads',
       {
         fullName: 'Api Typed Lead',
+        phone: '0510000043',
         custom: { family_size: '4', visa_expiry: '2027-06-30', visa_status: '', crm_ref: 'X-1' },
       },
       admin,
@@ -399,12 +400,18 @@ describe('required on create, the Add lead form and the CSV export (M18-03)', ()
     const added = await post(addField, API, { label: 'Passport ref', type: 'TEXT', isRequired: true }, admin);
     expect(added.status, JSON.stringify(added.body)).toBe(200);
     try {
-      const missing = await post(createLead, '/api/v1/leads', { fullName: 'No Passport' }, admin);
+      const missing = await post(createLead, '/api/v1/leads', { fullName: 'No Passport', phone: '0510000021' }, admin);
       expect(missing.status, JSON.stringify(missing.body)).toBe(422);
       expect(missing.body.errors).toEqual([expect.objectContaining({ field: 'custom.passport_ref' })]);
       expect(
-        (await post(createLead, '/api/v1/leads', { fullName: 'Blank Passport', custom: { passport_ref: ' ' } }, admin))
-          .status,
+        (
+          await post(
+            createLead,
+            '/api/v1/leads',
+            { fullName: 'Blank Passport', custom: { passport_ref: ' ' }, phone: '0510000022' },
+            admin,
+          )
+        ).status,
       ).toBe(422);
 
       // An integration that leaves the field out still lands its lead, as intake does.
@@ -419,7 +426,7 @@ describe('required on create, the Add lead form and the CSV export (M18-03)', ()
       const ok = await post(
         createLead,
         '/api/v1/leads',
-        { fullName: 'Has Passport', custom: { passport_ref: 'P-778' } },
+        { fullName: 'Has Passport', phone: '0510000044', custom: { passport_ref: 'P-778' } },
         admin,
       );
       expect(ok.status, JSON.stringify(ok.body)).toBe(200);

@@ -1,0 +1,21 @@
+sequenceDiagram
+  autonumber
+  participant P as Portal / Google Ads / custom sender
+  participant H as POST /api/v1/webhooks/leads/&#123;key&#125;
+  participant WQ as webhook queue
+  participant I as services/leads/intake
+  participant DQ as distribution queue
+  participant AS as assignLead (eligibility rules)
+  participant N as notifications queue
+  participant SLA as sla queue
+
+  P->>H: JSON + X-Signature (HMAC-SHA256 of raw body)
+  H->>H: verify signature, record a Delivery (outcome, Replay)
+  H->>WQ: lead-source.enquiry
+  WQ->>I: applyLeadSourceEvent → map fields, de-duplicate
+  I->>I: create Lead, starting score from its source weight
+  I->>DQ: assign-lead
+  DQ->>AS: rule conditions (source, city, project, language),<br/>weights/turns, daily quota, availability,<br/>roster/shift, check-in cut-off, holidays
+  AS->>N: record-push → the new owner is told
+  AS->>SLA: lead-first-contact (delayed) +<br/>five-minutely first-contact sweep
+  Note over SLA: uncontacted past the stage's minutes →<br/>manager told, re-assigned once per hand-over<br/>(Lead.slaEscalatedAt)

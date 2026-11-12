@@ -22,6 +22,7 @@ import ShareCard, { type LeadShareRow } from './ShareCard';
 import CallLogDialog, { useAfterDial, type CallLogLead } from '../CallLogDialog';
 import StageReason, { asksBeforeMove, type StageMove } from '@/components/workspace/StageReason';
 import { sendOrQueue } from '@/lib/offline';
+import { afterSave, currentPath, saveStartedAt } from '@/lib/navigation/afterSave';
 
 type Tab = 'Overview' | 'Timeline' | 'Tasks' | 'Notes' | 'Documents';
 const TABS: Tab[] = ['Overview', 'Timeline', 'Tasks', 'Notes', 'Documents'];
@@ -258,6 +259,10 @@ export default function LeadDetail({
   const [tab, setTab] = useState<Tab>('Overview');
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set only when a confirmed save's reload has not arrived. It must be visible
+  // wherever the page is scrolled, so it is not the error banner at the top of
+  // a long detail screen.
+  const [stuck, setStuck] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   // -- Assign dropdowns: the owner, and the second person who works the lead --
@@ -296,10 +301,23 @@ export default function LeadDetail({
     };
   }
 
-  // Setting values, so safe to send late: kept on the device when offline.
+  /**
+   * Setting values, so safe to send late: kept on the device when offline.
+   *
+   * Every caller navigates. The Edit-details Save, assign, secondary owner,
+   * stage move and notes are all "a change" in the report, and all five reached
+   * the white screen through the one `router.refresh()` that used to be here.
+   * See `lib/navigation/afterSave.ts` for why a full-page GET replaces it.
+   */
   async function patchLead(data: Record<string, unknown>) {
+    const startedAt = saveStartedAt();
     const done = await sendLater(`/api/v1/leads/${lead.id}`, 'PATCH', data, `${lead.fullName}: update`);
-    if (done !== 'queued') router.refresh();
+    // Kept on the device: nothing is saved yet, so stay on this screen with the
+    // typed values and let the offline banner send it.
+    if (done === 'queued') return;
+    // Committed. If the reload does not arrive, say so where it can be seen and
+    // offer a reload — never a repeat of the write.
+    afterSave(currentPath(), (path) => setStuck(path), startedAt);
   }
 
   const handleDelete = withBusy(async () => {
@@ -365,6 +383,20 @@ export default function LeadDetail({
       {error && (
         <div className="lf-alert" style={{ marginBottom: 'var(--lf-space-3)' }}>
           {error}
+        </div>
+      )}
+
+      {/* A confirmed save whose reload never arrived. Fixed, above the tab bar,
+          so it is visible wherever a long record is scrolled, and it offers a
+          reload — never a repeat of the write, because a stage move carries
+          side effects and must not be re-applied. */}
+      {stuck && (
+        <div
+          role="status"
+          className="lf-toast"
+          style={{ position: 'fixed', left: 12, right: 12, bottom: 76, zIndex: 50 }}
+        >
+          Your change is saved. This screen did not reload. <a href={stuck}>Reload this screen</a>
         </div>
       )}
 
@@ -870,7 +902,12 @@ function OverviewTab({
       const customValues = customPatch(customFields, custom, customStart);
       if (customValues) patch.custom = customValues;
       if (Object.keys(patch).length > 0) await patchLead(patch);
-      setEditing(false);
+      // Deliberately NOT closed on the success path: the navigation is already
+      // in flight and this document keeps painting until it commits, so closing
+      // the editor here would show pre-save values with no editor and no
+      // explanation if the reload never lands. The new document arrives with
+      // the editor closed anyway.
+      if (Object.keys(patch).length === 0) setEditing(false);
     } catch (e: any) {
       setErr(e.message);
     }

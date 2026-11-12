@@ -140,23 +140,34 @@ export default function RulesPanel({
           </span>
           <input id="rule-name" className="lf-input" name="name" required minLength={2} maxLength={120} />
         </label>
-        <label className="lf-field">
-          <span className="lf-label">People (none selected = everyone)</span>
-          <select
-            id="rule-people"
-            className="lf-input"
-            name="userIds"
-            multiple
-            size={6}
-            onChange={(event) => setPicked(Array.from(event.target.selectedOptions, (option) => option.value))}
-          >
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.fullName}
-              </option>
-            ))}
-          </select>
-        </label>
+        {/* Checkboxes, not <select multiple>: iOS opens the one-column picker
+            wheel for one, which cannot express more than one choice, so every
+            tap replaced the last. Same defect as the work-location assignment. */}
+        <fieldset className="lf-field" style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend className="lf-label">People (none selected = everyone)</legend>
+          <div className="lf-choice-list" id="rule-people">
+            {agents.length ? (
+              agents.map((agent) => (
+                <label className="lf-choice" key={agent.id}>
+                  <input
+                    type="checkbox"
+                    name="userIds"
+                    value={agent.id}
+                    checked={picked.includes(agent.id)}
+                    onChange={(event) =>
+                      setPicked((was) =>
+                        event.target.checked ? [...was, agent.id] : was.filter((id) => id !== agent.id),
+                      )
+                    }
+                  />
+                  <span>{agent.fullName}</span>
+                </label>
+              ))
+            ) : (
+              <span className="lf-empty-note">Nobody to assign to yet.</span>
+            )}
+          </div>
+        </fieldset>
         {picked.length > 0 && (
           <fieldset className="lf-field" style={{ border: 0, padding: 0, margin: 0 }}>
             <legend className="lf-label">Turns per round (2 = twice as many leads as a 1)</legend>
@@ -170,16 +181,21 @@ export default function RulesPanel({
             </div>
           </fieldset>
         )}
-        <label className="lf-field">
-          <span className="lf-label">Only leads from these sources (none selected = any source)</span>
-          <select id="rule-sources" className="lf-input" name="sourceIds" multiple size={5}>
-            {sources.map((source) => (
-              <option key={source.id} value={source.id}>
-                {source.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <fieldset className="lf-field" style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend className="lf-label">Only leads from these sources (none selected = any source)</legend>
+          <div className="lf-choice-list" id="rule-sources">
+            {sources.length ? (
+              sources.map((source) => (
+                <label className="lf-choice" key={source.id}>
+                  <input type="checkbox" name="sourceIds" value={source.id} />
+                  <span>{source.name}</span>
+                </label>
+              ))
+            ) : (
+              <span className="lf-empty-note">No sources configured yet.</span>
+            )}
+          </div>
+        </fieldset>
         <label className="lf-field">
           <span className="lf-label">Only leads in these cities (comma-separated, blank = any city)</span>
           <input id="rule-cities" className="lf-input" name="cities" maxLength={500} />

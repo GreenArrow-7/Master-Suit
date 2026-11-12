@@ -1,0 +1,24 @@
+# Grafana's one data source, provisioned rather than clicked.
+#
+# A data source added through the UI lives in Grafana's own database, which
+# means a restored or rebuilt container comes up pointing at nothing and the
+# dashboards read empty rather than broken. This file is mounted read-only, so
+# the wiring is the same on every start and `editable: false` stops the UI
+# offering a change that the next restart would discard.
+#
+# `http://prometheus:9090` is the compose network name, not loopback: Grafana
+# reaches Prometheus as a sibling container. Neither is published beyond the
+# host's loopback (docker-compose.azure.yml), so this path never leaves the VM.
+#
+# No credential: Prometheus has no authentication of its own, which is exactly
+# why it is not published. The bearer token in this stack guards the
+# application's /api/metrics, and Prometheus holds it — see prometheus-entrypoint.sh.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

@@ -1,0 +1,54 @@
+flowchart TB
+  subgraph people["People"]
+    seller["Seller / agent"]
+    manager["Manager / team lead"]
+    hr["HR &amp; payroll"]
+    admin["Workspace admin"]
+    owner["Platform owner"]
+    public["Public visitor<br/>(web form, shared listing)"]
+  end
+
+  subgraph clients["Clients"]
+    browser["Browser<br/>Next.js App Router"]
+    shell["Phone app<br/>apps/mobile (Capacitor WebView)"]
+    expo["Standalone Lead Eagle app<br/>(not in this repo)"]
+  end
+
+  subgraph platform["YOUHAN ONE (apps/web, one codebase, two process roles)"]
+    web["PROCESS_ROLE=web<br/>pages + /api/v1 + /api/mobile"]
+    worker["PROCESS_ROLE=worker<br/>BullMQ workers + schedulers + live-call WS"]
+  end
+
+  subgraph stores["State"]
+    pg[("PostgreSQL 'leadflow'<br/>Prisma, row-level security")]
+    redis[("Redis<br/>queues, rate limits, live pub/sub")]
+    s3[("S3-compatible object store<br/>recordings, media, exports")]
+  end
+
+  face["apps/face<br/>Python face engine (internal only)"]
+  vendors["External vendors<br/>telephony, WhatsApp, Gemini, calendars, portals, email, push"]
+
+  seller --> browser
+  manager --> browser
+  hr --> browser
+  admin --> browser
+  owner --> browser
+  public --> browser
+  seller --> shell
+  seller --> expo
+
+  browser -->|"session cookie"| web
+  shell -->|"session cookie (same origin)"| web
+  expo -->|"bearer token /api/mobile"| web
+
+  web --> pg
+  web --> redis
+  web --> s3
+  web -->|"bearer token, private network"| face
+  web -->|"enqueue"| redis
+  redis -->|"consume"| worker
+  worker --> pg
+  worker --> s3
+  worker <-->|"HTTPS / webhooks"| vendors
+  web <-->|"HTTPS / webhooks"| vendors
+  vendors -.->|"forked call audio (wss)"| worker

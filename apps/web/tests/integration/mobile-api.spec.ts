@@ -503,7 +503,7 @@ describe('logging a call from a phone', () => {
     expect((await logCall(agentToken, leadId, { outcome: 'CONNECTED' }, key)).status).toBe(404);
   });
 
-  it('logs a retry sent while the first is still running once: the later one is refused, not written', async () => {
+  it('logs a retry sent at the same moment as the first once, whichever way the two land', async () => {
     const key = `offline-queue-${suffix}-race`;
     const body = { outcome: 'CONNECTED', note: 'Sent twice at once' };
     const before = await calls(agentLeadId);
@@ -511,9 +511,21 @@ describe('logging a call from a phone', () => {
       logCall(agentToken, agentLeadId, body, key),
       logCall(agentToken, agentLeadId, body, key),
     ]);
-    expect(both.map((res) => res.status).sort()).toEqual([200, 409]);
+
+    // One call written, never two: that is the promise, and it holds however the
+    // two requests interleave. Which refusal the loser gets does not: it is 409
+    // while the first is still running, and a replayed 200 once the first has
+    // finished. Asserting 409 assumed the second request always starts before
+    // the first ends, which `Promise.all` does not guarantee — on a loaded CI
+    // runner it does not, and the suite failed there while passing everywhere
+    // else.
     expect(await calls(agentLeadId)).toBe(before + 1);
-    const won = both.find((res) => res.status === 200)!;
+    const won = both.find((res) => res.status === 200 && res.headers.get('idempotent-replay') !== 'true')!;
+    expect(won, 'exactly one request did the write').toBeTruthy();
+    const lost = both.find((res) => res !== won)!;
+    if (lost.status === 200) expect(lost.headers.get('idempotent-replay')).toBe('true');
+    else expect(lost.status).toBe(409);
+    if (lost.status === 200) expect(lost.body).toEqual(won.body);
     const retry = await logCall(agentToken, agentLeadId, body, key);
     expect(retry.status).toBe(200);
     expect(retry.body).toEqual(won.body);

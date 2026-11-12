@@ -346,4 +346,32 @@ services:
       retries: 3
       start_period: 20s
 
-volumes: { pgdata: {}, redisdata: {}, miniodata: {}, facemodels: {}, clamavdb: {}, promdata: {}, amdata: {} }
+  # Graphs over the metrics Prometheus already holds. It reads; it is not a
+  # second source of truth, and it raises nothing — Alertmanager stays the thing
+  # that tells you. Logs are deliberately not here: shipping them is still the
+  # open decision docs/OBSERVABILITY.md records, and a log store on this VM
+  # would write to the same disk Postgres does.
+  grafana:
+    logging: *logging
+    image: grafana/grafana:11.6.1
+    profiles: ['observability']
+    environment:
+      # `:-` here and `:?` in the overlay, for the reason prometheus gives
+      # above: Compose interpolates the whole file before it chooses profiles,
+      # so a `:?` would abort `docker compose up` in development over a service
+      # development does not start.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      # Nobody signs themselves up to a dashboard reached through an SSH tunnel.
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_SERVER_ROOT_URL: http://127.0.0.1:3001/
+      # It is watching a customer deployment; it does not phone home about it.
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+    volumes:
+      - ./grafana-datasource.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
+      - grafanadata:/var/lib/grafana
+    restart: unless-stopped
+    depends_on: [prometheus]
+
+volumes:
+  { pgdata: {}, redisdata: {}, miniodata: {}, facemodels: {}, clamavdb: {}, promdata: {}, amdata: {}, grafanadata: {} }

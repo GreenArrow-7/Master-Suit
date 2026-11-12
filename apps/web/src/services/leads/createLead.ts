@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { withTx, prisma, type TxClient } from '@/lib/db';
-import { Conflict, NotFound } from '@/lib/errors';
+import { Conflict, Invalid, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
 import { can } from '@/lib/security/rbac';
@@ -144,13 +144,60 @@ export interface CreateLeadInput {
  * row would stay locked against every other new lead until the rollback, and
  * nothing runs after commit, since nothing commits.
  */
+/**
+ * The tag an incoming lead carries when it arrives without a usable way to
+ * reach anybody. Visible, filterable and reversible — an enquiry is never
+ * dropped for being incomplete, because the enquiry is the asset.
+ */
+export const NEEDS_CONTACT_TAG = 'needs-contact-details';
+
+/**
+ * Somebody typed this in, so the workspace's contact rule applies.
+ *
+ * A lead a person creates by hand must carry at least one way to reach the
+ * lead, and any number or address they typed must be usable. A lead that
+ * arrives from an import, a webhook, a form or an API key must not: the
+ * contract those have is older than this rule, and refusing an enquiry because
+ * a field is missing loses the enquiry. Those are tagged NEEDS_CONTACT_TAG
+ * instead, which is a worklist rather than a bin.
+ *
+ * `fullName` is required by the route's schema and is not re-checked here.
+ */
+function assertManualContactRule(input: CreateLeadInput, phoneNormalized: string | null) {
+  const errors: { field: string; code: string; message: string }[] = [];
+
+  // A number that does not normalise is not a number anybody can ring, and
+  // `phoneNormalized` is what the dialler, duplicate matching and number search
+  // all read. Storing it anyway produces a lead that looks reachable and is not.
+  if (input.phone?.trim() && !phoneNormalized) {
+    errors.push({
+      field: 'phone',
+      code: 'invalid',
+      message: 'That does not look like a phone number. Include the country code, or leave it blank.',
+    });
+  }
+
+  if (!phoneNormalized && !input.email?.trim()) {
+    const message = 'Give a phone number or an email address, so somebody can follow this lead up.';
+    errors.push({ field: 'phone', code: 'contact_required', message });
+    errors.push({ field: 'email', code: 'contact_required', message });
+  }
+
+  if (errors.length) throw Invalid(errors);
+}
+
 export async function createLead(
   ctx: Ctx,
   input: CreateLeadInput,
-  opts: { dryRun?: TxClient; requireCustom?: boolean } = {},
+  opts: { dryRun?: TxClient; requireCustom?: boolean; requireContact?: boolean } = {},
 ) {
   const db = opts.dryRun ?? prisma;
   const phoneNormalized = input.phone ? normalizePhone(input.phone) : null;
+
+  if (opts.requireContact) assertManualContactRule(input, phoneNormalized);
+  // Not a person: the lead is kept exactly as it arrived and flagged for
+  // somebody to chase, rather than refused.
+  const needsContact = !opts.requireContact && !phoneNormalized && !input.email?.trim();
 
   // 1. Duplicate check ───────────────────────────────────────────────────────
   const duplicates = await findDuplicates(
@@ -209,7 +256,12 @@ export async function createLead(
         ownerId,
         assignedAt: ownerId ? new Date() : null,
         priority: (input.priority as any) ?? 'MEDIUM',
-        tags: (input.tags as string[]) ?? [],
+        // The follow-up flag rides with the tags the lead already carries, so it
+        // filters, shows on the card and comes off by editing — no new column,
+        // no second place to look.
+        tags: needsContact
+          ? [...new Set([...((input.tags as string[]) ?? []), NEEDS_CONTACT_TAG])]
+          : ((input.tags as string[]) ?? []),
         customData: custom.data as any,
         slaDueAt: stage.slaMinutes ? new Date(Date.now() + stage.slaMinutes * 60_000) : null,
         createdById: ctx.actor.id,
