@@ -536,7 +536,7 @@ cat <<EOF
 
 STAGING ACCEPTANCE PASSED for $CANDIDATE (tag $TAG)
 
-  smoke           ${SKIP_SMOKE:+SKIPPED - $SKIP_SMOKE}${SKIP_SMOKE:-ran: one permitted, one refused}
+  smoke           ${SKIP_SMOKE:+SKIPPED - }${SKIP_SMOKE:-ran: one permitted, one refused}
   accepted web    $WEB_ID
   accepted worker $WORKER_ID
   marker          $STATE/tested.$TAG
