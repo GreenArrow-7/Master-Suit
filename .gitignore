@@ -16,6 +16,12 @@ dist/
 *.tsbuildinfo
 cloudflared.exe
 
+# Graphify's knowledge-graph output. `graph.json` is ~14 MB and the cache holds
+# one entry per source file, so none of it belongs in the index. The readable
+# report is committed at docs/architecture/GRAPH_REPORT.md instead, and
+# docs/architecture/SYSTEM-MAP.md says how to regenerate the rest.
+graphify-out/
+
 # ── Biometric and identity test data — never committed ──────────────────────
 # Face fixtures and UAT evidence are photographs of identifiable people. Git
 # keeps deleted files in history forever, so the only safe place for them is
