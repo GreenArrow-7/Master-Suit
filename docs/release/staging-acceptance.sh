@@ -64,6 +64,10 @@ for tool in docker jq curl openssl rsync cmp psql_in_container; do
   esac
 done
 
+# Discovered here rather than at minute nine: without a terminal there is
+# nowhere to ask for the second factor when phase 5 needs it.
+[ -n "${PLATFORM_OWNER_TOTP:-}" ] || [ -r /dev/tty ] || die "no terminal to read the authenticator code from; pass PLATFORM_OWNER_TOTP"
+
 [ -d "$STAGING_DIR" ] || die "$STAGING_DIR is not there; this is not the staging host"
 [ -r "$STAGING_ENV" ] || die "$STAGING_ENV is not readable by $(id -un)"
 
@@ -327,11 +331,21 @@ settle() {
 # a second factor for those unconditionally — enrolled or not. The endpoint
 # takes email, password and mfaCode in one request, so the code comes from the
 # operator's authenticator at run time and is never stored anywhere.
-[ -n "${PLATFORM_OWNER_TOTP:-}" ] || die "PLATFORM_OWNER_TOTP is required.
-  The platform owner is a privileged role and always needs a second factor.
-  Re-run with the six digits showing on the authenticator right now:
-
-    PLATFORM_OWNER_TOTP=123456 $0 $CANDIDATE"
+# Asked for here rather than before phase 1: a TOTP code lives 30 seconds and
+# phases 1-4 take minutes, so a code given at the start has always rotated by
+# the time this sign-in happens. The earlier version of this script collected it
+# up front and could only ever return 401.
+if [ -z "${PLATFORM_OWNER_TOTP:-}" ]; then
+  printf '
+The platform owner always needs a second factor. Six digits showing now: ' >/dev/tty
+  read -r PLATFORM_OWNER_TOTP </dev/tty
+  printf '
+' >/dev/tty
+fi
+case "${PLATFORM_OWNER_TOTP:-}" in
+  [0-9][0-9][0-9][0-9][0-9][0-9]) ;;
+  *) die "the authenticator code must be six digits" ;;
+esac
 
 code=$(api -c "$OWNER_JAR" -X POST "$STAGING_URL/api/v1/auth/login" \
   -H 'content-type: application/json' \
