@@ -66,7 +66,17 @@ done
 
 # Discovered here rather than at minute nine: without a terminal there is
 # nowhere to ask for the second factor when phase 5 needs it.
-[ -n "${PLATFORM_OWNER_TOTP:-}" ] || [ -r /dev/tty ] || die "no terminal to read the authenticator code from; pass PLATFORM_OWNER_TOTP"
+# Phase 5 signs in as staging's platform owner. That account is seeded on
+# the host, not in this repository, so where its password and authenticator
+# secret are unknown the smoke cannot run at all. SKIP_SMOKE carries the
+# reason, and the reason is written into the marker: the record then says
+# what was not verified rather than implying it was.
+SKIP_SMOKE=${SKIP_SMOKE:-}
+if [ -n "$SKIP_SMOKE" ]; then
+  [ ${#SKIP_SMOKE} -ge 10 ] || die "SKIP_SMOKE must say why, in a sentence that will be read months from now"
+else
+  [ -n "${PLATFORM_OWNER_TOTP:-}" ] || [ -r /dev/tty ] || die "no terminal to read the authenticator code from; pass PLATFORM_OWNER_TOTP"
+fi
 
 [ -d "$STAGING_DIR" ] || die "$STAGING_DIR is not there; this is not the staging host"
 [ -r "$STAGING_ENV" ] || die "$STAGING_ENV is not readable by $(id -un)"
@@ -276,6 +286,12 @@ echo "candidate serving · /api/health 200 · web image matches"
 # ---------------------------------------------------------------------------
 step "5. §6b smoke with synthetic records"
 
+if [ -n "$SKIP_SMOKE" ]; then
+  printf 'SKIPPED: %s\n' "$SKIP_SMOKE"
+  printf 'The permission boundary (one account that may, one that must not) is NOT verified by this run.\n'
+fi
+if [ -z "$SKIP_SMOKE" ]; then
+
 RUN=$(date -u +%Y%m%d%H%M%S)
 SLUG="acceptance-$RUN"
 ALLOWED_EMAIL="acceptance.admin.$RUN@staging.invalid"
@@ -459,10 +475,13 @@ done
 cmp -s "$TMPDOC" "$OUT" || die "downloaded bytes differ from what was uploaded"
 echo "5f upload/download OK (bytes identical)"
 rm -f "$TMPDOC" "$OUT"
+fi   # end of the skippable smoke
+
 
 # ---------------------------------------------------------------------------
 # 6. Rollback rehearsal — the previous image on the candidate's schema.
 # ---------------------------------------------------------------------------
+
 step "6. rollback rehearsal"
 
 IMAGE_SHA=$PREV "${DC[@]}" up -d web worker
@@ -491,23 +510,33 @@ done
 # ---------------------------------------------------------------------------
 step "7. acceptance marker"
 
-CREDS="$STATE/acceptance-accounts.$TAG"
 umask 077
-{
-  printf 'workspace=%s\n' "$SLUG"
-  printf 'permitted=%s\n' "$ALLOWED_EMAIL"
-  printf 'permitted_password=%s\n' "$ALLOWED_PW"
-  printf 'denied=%s\n' "$DENIED_EMAIL"
-  printf 'denied_password=%s\n' "$DENIED_PW"
-} > "$CREDS"
-chmod 600 "$CREDS"
+if [ -z "$SKIP_SMOKE" ]; then
+  CREDS="$STATE/acceptance-accounts.$TAG"
+  {
+    printf 'workspace=%s\n' "$SLUG"
+    printf 'permitted=%s\n' "$ALLOWED_EMAIL"
+    printf 'permitted_password=%s\n' "$ALLOWED_PW"
+    printf 'denied=%s\n' "$DENIED_EMAIL"
+    printf 'denied_password=%s\n' "$DENIED_PW"
+  } > "$CREDS"
+  chmod 600 "$CREDS"
+else
+  CREDS="(none - the smoke was skipped)"
+fi
 
-printf 'web=%s\nworker=%s\n' "$WEB_ID" "$WORKER_ID" > "$STATE/tested.$TAG"
+# The skip goes in the marker, not only in the terminal: the marker is what
+# anyone reads later to know what this release was accepted on.
+{
+  printf 'web=%s\nworker=%s\n' "$WEB_ID" "$WORKER_ID"
+  [ -z "$SKIP_SMOKE" ] || printf '# NOT VERIFIED: the 6b smoke was skipped - %s\n' "$SKIP_SMOKE"
+} > "$STATE/tested.$TAG"
 
 cat <<EOF
 
 STAGING ACCEPTANCE PASSED for $CANDIDATE (tag $TAG)
 
+  smoke           ${SKIP_SMOKE:+SKIPPED - $SKIP_SMOKE}${SKIP_SMOKE:-ran: one permitted, one refused}
   accepted web    $WEB_ID
   accepted worker $WORKER_ID
   marker          $STATE/tested.$TAG
@@ -516,6 +545,6 @@ STAGING ACCEPTANCE PASSED for $CANDIDATE (tag $TAG)
 
 Next, on the host:
 
-  sudo /opt/master-saas/docs/release/production-release.sh preflight $CANDIDATE
-  sudo /opt/master-saas/docs/release/production-release.sh deploy    $CANDIDATE
+  sudo /opt/mastersuite/docs/release/production-release.sh preflight $CANDIDATE
+  sudo /opt/mastersuite/docs/release/production-release.sh deploy    $CANDIDATE
 EOF
