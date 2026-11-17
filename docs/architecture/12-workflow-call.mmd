@@ -1,0 +1,31 @@
+sequenceDiagram
+  autonumber
+  participant A as Agent (lead page)
+  participant D as POST /api/v1/calls/&#123;id&#125;/dial
+  participant V as Telephony vendor
+  participant W as worker: liveStream.ts (wss)
+  participant STT as Streaming speech-to-text
+  participant AI as Gemini (coach)
+  participant H as POST /api/v1/webhooks/telephony/&#123;key&#125;
+  participant Q as Queues: media → ai
+  participant C as PATCH /api/v1/calls/&#123;id&#125;
+
+  A->>D: &#123;record?, agentNumber?&#125;
+  D->>D: assertCallInScope, recipientNumber present,<br/>externalCallId empty (409 if already placed)
+  D->>D: resolveTelephony(tenant) — vendor is a workspace setting
+  D->>D: record requested? RecordingConsent must be given and not withdrawn (422)
+  D->>V: place the outbound leg (+ per-call stream token)
+  V-->>A: rings the agent's handset, then the client
+  V-->>W: forked audio over wss (token verified per call)
+  W->>STT: per-track stream
+  STT-->>W: segments
+  W->>W: append Transcript, detect stage, heuristic hints
+  W->>AI: coachTick every Nth customer turn
+  W-->>A: Redis pub/sub → SSE on /api/v1/calls/&#123;id&#125;/live
+  V-->>H: status, duration, recording URL
+  H->>Q: media: recording.ingest → our own bucket
+  Q->>Q: ai: transcribe → analyse → audit
+  A->>C: &#123;status: COMPLETED, outcome, notes&#125;
+  C->>C: recordTargetProgress(LEADS_CALLED first time, CALLS_CONNECTED)
+  C->>C: notifyAboutCall(call.completed / call.missed)
+  Note over W: failure posture — STT missing or erroring publishes a notice<br/>and swallows the audio, and the call is never harmed by its coaching.<br/>Finalisation is claim-guarded, so racing the webhook is safe.

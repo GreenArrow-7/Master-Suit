@@ -223,7 +223,7 @@ test.describe('Each HR module opens and does its job', () => {
     });
 
     await test.step('a department is created and appears', async () => {
-      await opens(page, '/departments', 'Departments');
+      await opens(page, '/departments', 'Departments & designations');
       await post(page.request, 'departments', { name: `Operations ${run}`, code: `OPS${run}`.slice(0, 12) });
       await page.reload();
       await expect(page.getByText(`Operations ${run}`)).toBeVisible();

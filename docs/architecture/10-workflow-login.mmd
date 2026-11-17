@@ -1,0 +1,27 @@
+sequenceDiagram
+  autonumber
+  participant U as Person
+  participant B as Browser (/login)
+  participant L as POST /api/v1/auth/login
+  participant RL as Rate limit (Redis)
+  participant P as PlatformUser credential
+  participant M as MFA challenge
+  participant S as PlatformSession
+
+  U->>B: email + password
+  B->>L: &#123;email, password&#125;
+  L->>RL: consume(limits) — throttle + lockout
+  L->>P: matchCredential (argon2) — which password matched decides<br/>admin vs monitoring session
+  alt account suspended / deactivated / deleted / tenant not ACTIVE
+    L-->>B: 401/403, one neutral message
+  else second factor required
+    L->>M: createMfaChallenge
+    L-->>B: &#123;challenge&#125;
+    U->>B: 6-digit code (or single-use recovery code)
+    B->>L: &#123;challenge, mfaCode&#125;
+    L->>M: consumeMfaChallenge (failures recorded)
+  end
+  L->>S: createPlatformSession + createDeviceSession
+  L-->>B: httpOnly SameSite=Lax cookie +<br/>workspaceLanding(next)
+  B->>B: Lead-Eagle-only workspace → /&#123;slug&#125;/lead-eagle/dashboard<br/>otherwise /&#123;slug&#125;/dashboard
+  Note over L: password expired or factor unenrolled →<br/>sent to the web to fix it, never a usable session

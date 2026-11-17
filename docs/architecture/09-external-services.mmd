@@ -1,0 +1,33 @@
+flowchart LR
+  subgraph app["apps/web"]
+    reg["src/lib/integrations/registry.ts<br/>PROVIDERS — one list for the admin form,<br/>validation, health board, capabilities"]
+    conn[("IntegrationConnection<br/>credentials encrypted at rest")]
+    hooks["/api/v1/webhooks/telephony|meta|leads"]
+  end
+
+  tw["Twilio / Exotel / Knowlarity / Plivo<br/>TELEPHONY — calls, SMS, recordings"]
+  meta["Meta WhatsApp Cloud API v26.0<br/>MESSAGING — templates, delivery status"]
+  goog["Google Workspace<br/>MEETINGS — Calendar, Meet links"]
+  ms["Microsoft 365 / Graph<br/>MEETINGS — Outlook calendar"]
+  stt["Speech to text<br/>google / deepgram / whisper"]
+  gem["Gemini (Google AI) or OpenRouter<br/>AI — analysis, audit, coach, ONE AI"]
+  leads["Lead sources<br/>Property Finder, Bayut, Dubizzle,<br/>Google Ads, Custom webhook, Portal emails"]
+  mail["SMTP (nodemailer)"]
+  pushv["FCM / APNs"]
+  face["apps/face (internal)"]
+
+  reg --> conn
+  conn --> tw
+  conn --> meta
+  conn --> goog
+  conn --> ms
+  conn --> stt
+  conn --> gem
+  conn --> leads
+  tw -->|"status, duration, recording URL"| hooks
+  meta -->|"X-Hub-Signature-256"| hooks
+  leads -->|"HMAC-SHA256 of raw body in X-Signature"| hooks
+  tw -.->|"forked audio (wss, per-call token)"| live["worker: liveStream.ts"]
+  app --> mail
+  app --> pushv
+  app --> face
