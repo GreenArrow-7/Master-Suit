@@ -7,6 +7,9 @@ import { callScope, leadScope } from '@/lib/security/record-scope';
 import { mergeWhere } from '@/lib/api/where';
 import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
 import { myEmployee } from '@/services/hr/leave';
+import { workspaceTimezone } from '@/services/hr/attendance';
+import { dayBounds, todayKey } from '@/services/targets/dailyBoard';
+import { overdueFollowUpsWhere } from '@/lib/leads/followUpDue';
 import AiInsight from '@/components/ui/AiInsight';
 import { names } from '@/services/leadership/rollups';
 import { isEntitlementUsable } from '@/lib/security/entitlements';
@@ -29,10 +32,19 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
   const modules = new Set(
     workspace.moduleEntitlements.filter((item) => isEntitlementUsable(item)).map((item) => item.module),
   );
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  /**
+   * "Today" is the workspace's day, not this server's.
+   *
+   * These were `new Date()` with `setHours(0,0,0,0)`, which is midnight in the
+   * *server's* zone. A UTC container serving an Asia/Dubai workspace therefore
+   * started the day four hours late: an 02:00 check-in counted as yesterday,
+   * and the attendance figures beside it disagreed with the attendance screen,
+   * which has always read `dayBounds`. The house rule is in changes/PROJECT.md
+   * under **Workspace clock**.
+   */
+  const timeZone = await workspaceTimezone(ctx);
+  const { from: today, to: endOfToday } = dayBounds(todayKey(timeZone), timeZone);
+  const tomorrow = new Date(endOfToday.getTime() + 1);
 
   // Entitlement decides whether the module exists here; permission decides
   // whether *this* person sees it. Both must hold, and the queries below only
@@ -137,9 +149,10 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
               ? Promise.resolve(0)
               : db.lead.count({ where: mergeWhere(listedWhere, { ownerId: null }, OPEN_LEADS_WHERE) }),
             oppWhere ? db.opportunity.count({ where: { ...oppWhere, deletedAt: null, status: 'OPEN' } }) : 0,
-            db.followUpTask.count({
-              where: { ...followUpWhere, status: { in: ['OPEN', 'IN_PROGRESS'] }, dueAt: { lt: new Date() } },
-            }),
+            // The same predicate the Follow-ups list uses, because this chip
+            // links to that list: open (RESCHEDULED included) and due before
+            // today began, on the workspace's clock.
+            db.followUpTask.count({ where: mergeWhere(followUpWhere, overdueFollowUpsWhere(timeZone)) }),
             oppWhere
               ? db.opportunity.aggregate({
                   where: { ...oppWhere, deletedAt: null, status: 'OPEN' },
