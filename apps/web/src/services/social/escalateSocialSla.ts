@@ -89,12 +89,19 @@ export async function escalateSocialSla(tenantId: string, socialCommentId: strin
    * workspace with no reporting lines configured still wants its own rule — a
    * webhook to a supervisor channel, a task — to be able to react.
    */
-  await enqueue('automation', 'trigger', {
-    tenantId,
-    event: 'sla.warning',
-    object: 'SOCIAL_COMMENT',
-    recordId: enquiry.id,
-  });
+  // `fresh` for the reason updateLead gives: one enquiry breaching twice sends
+  // the same payload twice, and the retained first job would swallow the second.
+  await enqueue(
+    'automation',
+    'trigger',
+    {
+      tenantId,
+      event: 'sla.warning',
+      object: 'SOCIAL_COMMENT',
+      recordId: enquiry.id,
+    },
+    { fresh: true },
+  );
 
   logger.warn(
     { tenantId, socialCommentId: enquiry.id, lateBy, managerId, ownerId: enquiry.ownerId },

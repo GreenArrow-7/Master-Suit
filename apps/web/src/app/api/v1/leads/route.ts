@@ -175,9 +175,10 @@ export const POST = route(
     // service, so a crafted payload cannot smuggle them past field permissions.
     const safe = stripUneditableFields(rules, body);
 
-    // A person must fill the workspace's required fields (M18-03); an API key,
-    // like the intake, still lands a lead that leaves one out.
-    const lead = await createLead(ctx, safe, { requireCustom: !ctx.apiKeyId });
+    // A person must fill the workspace's required fields (M18-03) and must give
+    // a way to reach the lead; an API key, like the intake and the import, still
+    // lands a lead that leaves either out — tagged for follow-up, never refused.
+    const lead = await createLead(ctx, safe, { requireCustom: !ctx.apiKeyId, requireContact: !ctx.apiKeyId });
     return applyFieldSecurity(ctx, 'LEAD', rules, lead, LEAD_SENSITIVE_FIELDS);
   },
 );

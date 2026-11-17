@@ -1,0 +1,25 @@
+sequenceDiagram
+  autonumber
+  participant C as Client
+  participant R as route() — src/lib/api/handler.ts
+  participant S as Session + RBAC
+  participant SV as Service layer (src/services/**)
+  participant DB as Postgres (withTx, RLS)
+  participant Q as Redis / BullMQ
+  participant A as AuditLog
+
+  C->>R: POST /api/v1/leads (JSON, Idempotency-Key?)
+  R->>R: origin check, rate limit, zod parse (422 on failure)
+  R->>R: Idempotency-Key seen in last 24h? → replay with Idempotent-Replay: true
+  R->>S: loadSession(cookie | mobile bearer | API key)
+  S-->>R: Ctx &#123;tenantId, actor, scopes, modules&#125;
+  R->>R: assert productModule entitlement (403 "… is not enabled for this company.")
+  R->>R: atLeast(ctx, module, action, scope) (403)
+  R->>SV: handler(&#123;ctx, params, query, body&#125;)
+  SV->>DB: withTx(tenantId, tx => …) — set_config('app.tenant_id')
+  DB-->>SV: rows this tenant and scope may see
+  SV->>Q: enqueue follow-on work (distribution, automation, sla, calendar)
+  SV-->>R: result
+  R->>A: auditEvent row (actor, object, before/after)
+  R-->>C: JSON + x-request-id
+  Note over R,C: P2002 → 409, P2025 → 404, zod → 422,<br/>record out of scope → 404 (same as missing)

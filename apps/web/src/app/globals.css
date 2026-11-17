@@ -6488,7 +6488,7 @@ a.lf-kpi:hover {
   display: grid;
   place-items: center;
   border: 1px solid var(--lf-line);
-  border-radius: var(--lf-radius-sm, 6px);
+  border-radius: var(--lf-radius-sm);
   background: var(--lf-surface);
 }
 .lf-date__button {
@@ -6784,4 +6784,45 @@ a.lf-bars__row:focus-visible .lf-bars__label {
   text-align: start;
   white-space: normal;
   font-weight: 500;
+}
+
+/* Multi-choice fields on WorkspaceRecordForm. A checkbox group replaced
+   <select multiple>, which iOS renders as a one-choice picker wheel. The list
+   scrolls rather than growing without limit: a workspace can hold hundreds of
+   employees, and the control sits inside a form on a phone. */
+.lf-choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--lf-line-2);
+  border-radius: var(--lf-radius);
+  background: var(--lf-surface);
+}
+.lf-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* 44px of height: the touch target Apple and Android both ask for. */
+  min-height: 44px;
+  padding: 0 6px;
+  border-radius: var(--lf-radius-sm, 6px);
+  font: 400 var(--lf-text-sm)/1.4 var(--lf-font-ui);
+  cursor: pointer;
+}
+.lf-choice:hover {
+  background: var(--lf-surface-2);
+}
+.lf-choice input {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  accent-color: var(--lf-wine-700);
+}
+.lf-empty-note {
+  padding: 8px 6px;
+  color: var(--lf-ink-3);
+  font: 400 var(--lf-text-sm)/1.4 var(--lf-font-ui);
 }

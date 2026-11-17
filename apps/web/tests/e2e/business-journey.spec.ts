@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { login, resetLoginThrottle, ok } from './helpers';
+import { RUN_TAG } from './run-tag';
 
 /**
  * The YOUHAN ONE business journey, end to end, on the demo workspace with the
@@ -19,7 +20,10 @@ const slug = process.env.E2E_DEMO_SLUG!;
 const email = process.env.E2E_DEMO_EMAIL!;
 const password = process.env.E2E_DEMO_PASSWORD!;
 const base = () => process.env.APP_URL ?? 'http://localhost:3000';
-const run = Date.now().toString(36);
+// The run marker, not a fresh timestamp: these specs write into the shared
+// demo workspace, which globalTeardown does not delete, so the rows they
+// leave there can only be found again by RUN_TAG.
+const run = RUN_TAG;
 
 async function poll<T>(fn: () => Promise<T | null>, label: string, timeoutMs = 90_000): Promise<T> {
   const until = Date.now() + timeoutMs;
