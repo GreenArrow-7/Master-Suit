@@ -798,27 +798,27 @@ export default function LiveCallWorkspace({
               hints.map((hint, i) => {
                 const stale = hintIsStale(hint.receivedAt, Date.now());
                 return (
-                <div key={i} style={{ display: 'grid', gap: 4 }}>
-                  <span style={{ display: 'flex', gap: 'var(--lf-space-2)', alignItems: 'center' }}>
-                    <Badge tone={HINT_TONE[hint.kind] ?? 'slate'}>
-                      {HINT_LABEL[hint.kind] ?? hint.kind.toLowerCase()}
-                    </Badge>
-                    {stale && <Badge tone="slate">out of date</Badge>}
-                    <span style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-4)' }}>
-                      {HINT_SOURCE[hint.source] ?? hint.source}{' '}
-                      · {Math.floor(hint.at / 60)}:{String(hint.at % 60).padStart(2, '0')}
+                  <div key={i} style={{ display: 'grid', gap: 4 }}>
+                    <span style={{ display: 'flex', gap: 'var(--lf-space-2)', alignItems: 'center' }}>
+                      <Badge tone={HINT_TONE[hint.kind] ?? 'slate'}>
+                        {HINT_LABEL[hint.kind] ?? hint.kind.toLowerCase()}
+                      </Badge>
+                      {stale && <Badge tone="slate">out of date</Badge>}
+                      <span style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-4)' }}>
+                        {HINT_SOURCE[hint.source] ?? hint.source} · {Math.floor(hint.at / 60)}:
+                        {String(hint.at % 60).padStart(2, '0')}
+                      </span>
                     </span>
-                  </span>
-                  <span style={{ fontSize: 'var(--lf-text-sm)', opacity: stale ? 0.75 : 1 }}>{hint.text}</span>
-                  {hint.say && (
-                    <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-wine-700, #7f1d4e)' }}>
-                      Say: {hint.say}
-                    </span>
-                  )}
-                  {hint.why && (
-                    <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>Why: {hint.why}</span>
-                  )}
-                </div>
+                    <span style={{ fontSize: 'var(--lf-text-sm)', opacity: stale ? 0.75 : 1 }}>{hint.text}</span>
+                    {hint.say && (
+                      <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-wine-700, #7f1d4e)' }}>
+                        Say: {hint.say}
+                      </span>
+                    )}
+                    {hint.why && (
+                      <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>Why: {hint.why}</span>
+                    )}
+                  </div>
                 );
               })
             )}

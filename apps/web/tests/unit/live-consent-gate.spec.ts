@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  DEMO_CONSENT_BY,
-  isDemoConsent,
-  consentAuthorisesLiveAudio,
-} from '@/lib/integrations/telephony/consent';
+import { DEMO_CONSENT_BY, isDemoConsent, consentAuthorisesLiveAudio } from '@/lib/integrations/telephony/consent';
 import { coachableUtterance } from '@/lib/ai/liveCoach';
 import { hintIsStale, HINT_FRESH_MS } from '@/lib/integrations/telephony/liveAudio';
 

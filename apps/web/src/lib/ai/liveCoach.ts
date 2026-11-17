@@ -141,7 +141,10 @@ export function playbookHint(
  * ringback and "hello?" are not.
  */
 export function coachableUtterance(text: string): boolean {
-  const words = text.trim().split(/\s+/).filter((w) => /[a-z]/i.test(w));
+  const words = text
+    .trim()
+    .split(/\s+/)
+    .filter((w) => /[a-z]/i.test(w));
   return words.length >= 3;
 }
 
