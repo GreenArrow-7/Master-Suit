@@ -8,5 +8,14 @@ import { fileURLToPath } from 'node:url';
 const file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../ios/App/CapApp-SPM/Package.swift');
 const before = readFileSync(file, 'utf8');
 const after = before.replace(/path: "([^"]*)"/g, (_m, p) => `path: "${p.replaceAll('\\', '/')}"`);
-if (after !== before) writeFileSync(file, after);
-console.log(after !== before ? 'Package.swift: backslash paths normalised' : 'Package.swift: paths already portable');
+// --check writes nothing and exits 1 instead, so CI fails on a manifest
+// committed from a Windows `cap sync` that skipped this script.
+if (after === before) {
+  console.log('Package.swift: paths already portable');
+} else if (process.argv.includes('--check')) {
+  console.error('Package.swift: a `path:` holds backslashes — run `npm run sync` and commit the result');
+  process.exit(1);
+} else {
+  writeFileSync(file, after);
+  console.log('Package.swift: backslash paths normalised');
+}

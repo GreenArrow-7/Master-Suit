@@ -287,7 +287,7 @@ services:
   # /api/metrics off the public interface in the first place, and Prometheus has
   # no authentication of its own:
   #
-  #   ssh -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 azureuser@<vm>
+  #   ssh -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 -L 3001:127.0.0.1:3001 azureuser@<vm>
   #
   prometheus:
     profiles: !reset []
@@ -312,6 +312,19 @@ services:
       ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:?set ALERT_EMAIL_TO in apps/web/.env.production — the address that receives alerts}
       SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in apps/web/.env.production}
       APP_ENV: ${APP_ENV:?set APP_ENV=production in apps/web/.env.production}
+
+  grafana:
+    profiles: !reset []
+    # 3001, because `web` already publishes 3000 on this loopback. Loopback for
+    # the reason the two above are: Grafana holds no customer data, but its
+    # graphs draw the same route surface and error rates /api/metrics is kept
+    # off the public interface to avoid handing out.
+    ports: ['127.0.0.1:3001:3000']
+    environment:
+      # `:?`, as above. A dashboard whose admin password was left empty is
+      # reachable by anyone who reaches the port, and the tunnel is only as
+      # private as the key that opens it.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in apps/web/.env.production}
 
 volumes:
   caddydata: {}

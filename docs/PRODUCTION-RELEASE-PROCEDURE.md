@@ -150,9 +150,15 @@ set -euo pipefail
 cd /opt/mastersuite
 [ "$(git rev-parse HEAD)" = "<CANDIDATE_SHA>" ] || { echo "not at the candidate"; exit 1; }
 "${DC[@]}" --profile tools run --rm --no-deps --entrypoint node migrate -e '
-const need = ["STAGING_DATABASE_URL", "MIGRATION_DATABASE_URL", "PRISMA_MIGRATIONS_DIR"];
+// PRISMA_MIGRATIONS_DIR is NOT required: check-staging-first.mjs defaults it to
+// <cwd>/prisma/migrations, which in this container is /app/prisma/migrations — the
+// directory the candidate was built with. Demanding it here failed preflight on a
+// variable the gate it guards treats as optional. Its effective value is printed
+// instead, and the gate itself still verifies every migration.
+const need = ["STAGING_DATABASE_URL", "MIGRATION_DATABASE_URL"];
 let bad = 0;
 for (const k of need) { const ok = !!process.env[k]; console.log(k, ok ? "set" : "MISSING"); if (!ok) bad++; }
+console.log("PRISMA_MIGRATIONS_DIR", process.env.PRISMA_MIGRATIONS_DIR || "(default) " + require("path").join(process.cwd(), "prisma", "migrations"));
 if (process.env.ALLOW_UNSTAGED_MIGRATION) { console.log("ALLOW_UNSTAGED_MIGRATION is SET — gate would be bypassed"); bad++; }
 const s = new URL(process.env.STAGING_DATABASE_URL), p = new URL(process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL);
 console.log("staging   ", s.hostname, s.pathname); console.log("production", p.hostname, p.pathname);

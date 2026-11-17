@@ -43,7 +43,7 @@ Control Center, monitoring grants).
 
 Also in the repo: `apps/mobile` (iOS and Android WebView shells — a web change
 never needs a new store build; a native one, such as the CallWatch plugin, does), `apps/face` (the face-recognition service,
-Python), `apps/web/infra` (compose files, Dockerfile, Prometheus), `docs/`.
+Python), `apps/web/infra` (compose files, Dockerfile, Prometheus, and Grafana over it in production), `docs/`.
 
 Stack: Next.js 16 (App Router, Turbopack), React 19, TypeScript, Prisma 7 on
 Postgres with row-level security, Redis and BullMQ, zod, vitest, Playwright.
@@ -295,7 +295,9 @@ Node 22 or newer (CI uses 24).
   run one at a time (in the page, and across tabs by a Web Lock). Each change
   carries its owner (`tenantId:userId`, the frame's `data-outbox-owner`) and is
   only sent from a screen of that workspace and person; signing out
-  (`lib/auth/signOut.ts`) sends what it can and forgets the rest. The
+  (`lib/auth/signOut.ts`) sends what it can and forgets the rest of its own
+  owner's, leaving another workspace's to wait for it
+  (`changes/2026-10-30-automation-outbox-apikey.md`). The
   lead page, the call log (list and lead page), the Follow-ups list (complete,
   reschedule, cancel, reopen, a new follow-up) and Cold Data's call outcome go
   through it; a write whose answer the screen needs (opening what it created)
@@ -339,7 +341,12 @@ Node 22 or newer (CI uses 24).
   lead's row. The post-call AI temperature still sets the score outright.
 - **Background jobs.** One `JOBS` table in `src/workers/jobs.ts`, keyed by queue;
   `src/workers/index.ts` starts a worker per queue. CI's observability gate reads
-  that table, so keep it a literal.
+  that table, so keep it a literal. A job's id is a hash of its payload, and
+  BullMQ ignores an `add` whose id it already holds — the completed jobs it
+  retains included — so work that must run again on the same record (every
+  `record.updated` automation trigger, a repeat SLA warning, a re-sync) passes
+  `{ fresh: true }`; without it only the first of them ever ran
+  (`tests/unit/automation-trigger-fresh.spec.ts`).
 - **Notifications.** Every notice is a bell row; its phone and email copies
   follow the recipient's `User.notificationPrefs` (`readPrefs`,
   `src/workers/notifications.ts`): a push unless turned off, an email per

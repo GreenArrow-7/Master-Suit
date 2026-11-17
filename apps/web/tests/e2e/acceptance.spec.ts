@@ -145,7 +145,12 @@ test.describe('Acceptance: one workspace, two modules, isolated from the next', 
         page.waitForResponse((res) => res.url().includes('/api/v1/leads') && res.request().method() === 'POST'),
         page.getByRole('button', { name: 'Create lead' }).click(),
       ]);
-      expect(created.status(), await created.text()).toBeLessThan(300);
+      // The body is read defensively: a confirmed creation now replaces the
+      // document (lib/navigation/afterSave.ts), and the browser discards the
+      // old document's response bodies with it. The status is the assertion;
+      // the body is only the message when it fails.
+      const detail = await created.text().catch(() => '(body unavailable: the page navigated after the save)');
+      expect(created.status(), detail).toBeLessThan(300);
 
       await page.goto(`/${manath.slug}/sales/leads`);
       await expect(page.getByText(leadName)).toBeVisible();

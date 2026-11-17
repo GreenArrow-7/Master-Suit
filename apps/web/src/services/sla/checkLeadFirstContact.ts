@@ -46,7 +46,16 @@ export async function checkLeadFirstContact(tenantId: string, leadId: string) {
   logger.warn({ tenantId, leadId }, 'lead SLA breached');
   if (breachedNow) await escalate(tenantId, lead);
 
-  await enqueue('automation', 'trigger', { tenantId, event: 'sla.warning', object: 'LEAD', recordId: leadId });
+  // `fresh` for the reason updateLead gives. `slaEscalatedAt` already claims one
+  // warning per hand-over, so the repeats this allows are the ones that should
+  // happen: a lead breaching again under its next owner enqueues the same
+  // payload, which the retained first job would otherwise swallow.
+  await enqueue(
+    'automation',
+    'trigger',
+    { tenantId, event: 'sla.warning', object: 'LEAD', recordId: leadId },
+    { fresh: true },
+  );
 }
 
 /**

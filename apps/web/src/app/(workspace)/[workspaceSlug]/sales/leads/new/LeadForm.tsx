@@ -1,7 +1,6 @@
 'use client';
 
 import { Fragment, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import SalesLink from '@/components/workspace/SalesLink';
 import { useModuleBase } from '@/components/workspace/SalesLink';
 import Field from '@/components/forms/Field';
@@ -9,6 +8,7 @@ import CustomFieldInput from '@/components/forms/CustomFieldInput';
 import SourcePicker, { type SourceOption } from '@/components/forms/SourcePicker';
 import { useFormErrors } from '@/components/forms/useFormErrors';
 import { parseTags } from '@/lib/leads/tags';
+import { afterSave, recordPath } from '@/lib/navigation/afterSave';
 import type { LayoutField, LeadFormKey } from '@/lib/leads/formLayout';
 import type { LeadField } from '@/services/leads/customFields';
 
@@ -32,7 +32,6 @@ export default function LeadForm({
   /** The workspace's active custom fields. */
   customFields: LeadField[];
 }) {
-  const router = useRouter();
   const base = useModuleBase();
   const formRef = useRef<HTMLFormElement>(null);
   const [fullName, setFullName] = useState('');
@@ -53,6 +52,7 @@ export default function LeadForm({
   // Custom field values as typed, by key; '' is none.
   const [custom, setCustom] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
   const { fieldErrors, formError, setFormError, reset, clear, validateRequired, applyProblem } = useFormErrors();
   // The catalogue's Referral entry (or a sub-source under it) is a REFERRAL lead,
   // which names who referred it (M6-15).
@@ -89,13 +89,34 @@ export default function LeadForm({
       const data = await res.json();
       if (!res.ok) {
         applyProblem(data, formRef.current);
+        setBusy(false);
         return;
       }
-      router.push(`${base}/leads/${data.id}`);
-      router.refresh();
+      // One full-page GET of the new record, with the id the save returned.
+      // Not router.push(): see lib/navigation/afterSave.ts for the render-phase
+      // location.assign + unresolvedThenable that leaves the view blank when an
+      // RSC transition cannot produce a payload.
+      const to = recordPath(`${base}/leads`, data?.id);
+      if (to === null) {
+        // A 200 without a usable id. The lead exists, so say so, release the
+        // form — `disabled={busy}` would otherwise freeze it until the page was
+        // reloaded by hand — and offer the list, the only destination that can
+        // be named without an id.
+        setFormError('Saved, but the new record could not be opened. Open it from the list below.');
+        setSaved(`${base}/leads`);
+        setBusy(false);
+        return;
+      }
+      // `busy` is deliberately left set: the navigation does not commit until
+      // the new page has loaded, and re-enabling the submit in that window
+      // would let a second tap POST a second lead. The escape below is a link,
+      // not a repeated POST and not a restart.
+      setSaved(to);
+      afterSave(to, () =>
+        setFormError('The lead was created. Its page did not open — open it below, do not create it again.'),
+      );
     } catch {
       setFormError('Could not reach the server.');
-    } finally {
       setBusy(false);
     }
   }
@@ -128,6 +149,10 @@ export default function LeadForm({
     phone: (
       <>
         {text('phone', 'Phone', phone, setPhone)}
+        {/* The rule is OR, so neither control can carry `required` — the browser
+            would block a lead that has the other one. Said here instead, and
+            enforced on the server, which is where anything that posts reaches. */}
+        <span className="lf-field__hint">Give a phone number or an email address.</span>
         <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
           <input
             type="checkbox"
@@ -203,6 +228,13 @@ export default function LeadForm({
       {formError && (
         <div className="lf-alert" role="alert">
           {formError}
+          {/* The lead exists. This is the way to it that does not POST again. */}
+          {saved && (
+            <>
+              {' '}
+              <a href={saved}>Open the saved lead</a>
+            </>
+          )}
         </div>
       )}
 

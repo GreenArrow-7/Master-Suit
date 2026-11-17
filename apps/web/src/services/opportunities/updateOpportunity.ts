@@ -117,12 +117,19 @@ export async function updateOpportunity(ctx: Ctx, id: string, input: UpdateOppor
     return after;
   });
 
-  await enqueue('automation', 'trigger', {
-    tenantId: ctx.tenantId,
-    event: 'record.updated',
-    object: 'OPPORTUNITY',
-    recordId: id,
-  });
+  // `fresh` for the reason updateLead gives: one opportunity's payload is
+  // identical on every edit, so without it only the first edit enrolls.
+  await enqueue(
+    'automation',
+    'trigger',
+    {
+      tenantId: ctx.tenantId,
+      event: 'record.updated',
+      object: 'OPPORTUNITY',
+      recordId: id,
+    },
+    { fresh: true },
+  );
   return updated;
 }
 
