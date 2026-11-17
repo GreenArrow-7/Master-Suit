@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { login, resetLoginThrottle, ok } from './helpers';
+import { RUN_TAG } from './run-tag';
 
 /**
  * The daily lead-target workflow end to end, as a manager and a seller live it:
@@ -19,7 +20,10 @@ const slug = process.env.E2E_DEMO_SLUG!;
 const email = process.env.E2E_DEMO_EMAIL!;
 const password = process.env.E2E_DEMO_PASSWORD!;
 const base = () => process.env.APP_URL ?? 'http://localhost:3000';
-const run = Date.now().toString(36);
+// The run marker, not a fresh timestamp: these specs write into the shared
+// demo workspace, which globalTeardown does not delete, so the rows they
+// leave there can only be found again by RUN_TAG.
+const run = RUN_TAG;
 
 test.describe('daily lead target: the whole day', () => {
   test.skip(!slug || !email || !password, 'E2E_DEMO_SLUG / E2E_DEMO_EMAIL / E2E_DEMO_PASSWORD not set');

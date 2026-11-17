@@ -318,6 +318,19 @@ jobs:
       - name: Observability drift
         run: npm run check:observability
 
+      # ── Gate 3c-ii — the iOS package manifest stays resolvable ────────────
+      #
+      # `cap sync` on Windows writes the Swift package path with backslashes,
+      # which SPM on a Mac cannot resolve. `npm run sync` normalises it, but
+      # `cap sync` run directly does not — and a manifest committed that way
+      # breaks every iOS build, ios-testflight.yml included, on a file nobody
+      # reads because it says "DO NOT MODIFY — managed by Capacitor CLI".
+      # That is how it regressed once already (7053cadc fixed it, b3b41717
+      # re-broke it). Node builtins only, so no install is needed here.
+      - name: iOS package paths
+        working-directory: apps/mobile
+        run: npm run check:ios-paths
+
       # ── Gate 3d — Redis has a password, everywhere, and it agrees ──────────
       #
       # Both failures this catches present as jobs that never run rather than as
