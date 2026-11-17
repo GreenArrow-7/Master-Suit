@@ -9,16 +9,24 @@ Ten minutes. For whoever holds the affected iPhone.
 the Docker bridge address, reachable from the host and from nothing else — so
 there is no URL a phone can open today.
 
-Before any of the below:
+**#258 does not need to be merged for this.** `build-images.yml` builds any
+SHA and neither it nor the acceptance script has a branch gate, so the PR head
+can go to staging as it is. The steps are in
+`docs/release/TODAY-PILOT-STAGING-DEPLOY.md`.
 
-1. #258 is reviewed and merged.
-2. CI builds images for the exact merge commit
-   (`gh workflow run build-images.yml -f sha=<full sha>`).
-3. That image is deployed to staging and the staging acceptance script is run
-   (`docs/release/LIVE-COACHING-STAGING-SETUP.md` is a different runbook;
-   staging deployment is `docs/release/staging-acceptance.sh`).
-4. Whoever owns the host confirms the phone can reach staging, and says at
-   which address.
+What is actually missing is an address. Before any of the below:
+
+1. Someone publishes a **public HTTPS route** to staging — a Caddy hostname or
+   a tunnel. Operator work, no app build. (Step 0 of the deploy runbook.)
+2. The image is built for #258's head and the acceptance script run.
+3. That address is written into the blank below.
+
+**And note which app you will be testing in.** The installed iPhone app bakes
+its origin in at build time (`MOBILE_SERVER_URL`, `apps/mobile/capacitor.config.js`)
+and **cannot be repointed** — testing it against staging needs a new iOS build
+installed on the device. **Safari on the same phone needs none**, and exercises
+everything this pilot does. Safari results are **browser testing**: real WebKit,
+real cellular, real touch, but not the app's WebView or user agent.
 
 **Write that address here when it exists:** `________________________`
 
