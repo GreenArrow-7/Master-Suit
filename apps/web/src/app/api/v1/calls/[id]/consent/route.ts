@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound, Conflict } from '@/lib/errors';
+import { consentAuthorisesLiveAudio } from '@/lib/integrations/telephony/consent';
 import { assertCallInScope } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
@@ -34,7 +35,10 @@ export const POST = route(
     const existing = await prisma.recordingConsent.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },
     });
-    if (existing?.consentGiven && !existing.withdrawnAt) {
+    // Only real consent conflicts. A demo simulation's row must be upgradable,
+    // or a call the demo touched could never be coached again: the guard in
+    // consent.ts refuses that row, and this is the only way to replace it.
+    if (consentAuthorisesLiveAudio(existing)) {
       throw Conflict('Consent already recorded for this call.');
     }
 

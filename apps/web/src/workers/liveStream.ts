@@ -26,8 +26,9 @@ import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { parseStreamMessage, verifyStreamToken, liveChannel } from '@/lib/integrations/telephony/stream';
+import { consentAuthorisesLiveAudio } from '@/lib/integrations/telephony/consent';
 import { openLiveStt, type LiveSttConnection } from '@/lib/integrations/transcriptionStream';
-import { coachTick, heuristicHints, nextBestQuestion, detectStage } from '@/lib/ai/liveCoach';
+import { coachTick, heuristicHints, nextBestQuestion, detectStage, coachableUtterance } from '@/lib/ai/liveCoach';
 import { leadCallContext, contextPromptBlock, budgetMatchHint } from '@/services/leads/callContext';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
 
@@ -72,6 +73,9 @@ async function onSegment(session: Session, speaker: 'Agent' | 'Customer', text: 
   await publish(session.callId, { type: 'segment', speaker, text, at });
 
   if (speaker !== 'Customer') return;
+  // Ringback, and a voicemail greeting, reach this track before the customer
+  // does — transcribed and displayed, but never coached on. See liveCoach.ts.
+  if (!coachableUtterance(text)) return;
   session.customerTurns += 1;
 
   const window = session.lines.slice(-8).join('\n');
@@ -140,7 +144,7 @@ async function openSession(msg: {
   const consent = await prisma.recordingConsent.findFirst({
     where: { callId: call.id, tenantId: msg.tenantId },
   });
-  if (!consent?.consentGiven || consent.withdrawnAt) return { refused: 'no consent' };
+  if (!consentAuthorisesLiveAudio(consent)) return { refused: 'no consent' };
 
   const credentials = await connectionCredentials(msg.tenantId, 'transcription').catch(() => null);
   // Admin-typed provider names ("Deepgram", "deepgram") match case-insensitively,

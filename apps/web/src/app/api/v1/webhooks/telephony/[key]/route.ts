@@ -8,6 +8,7 @@ import { consume, limits } from '@/lib/security/ratelimit';
 import { decryptCredentials } from '@/lib/integrations/connection';
 import { telephonyProvider } from '@/lib/integrations/telephony';
 import { TERMINAL_EVENTS, type CallEvent, type CallEventKind } from '@/lib/integrations/telephony/types';
+import { consentAuthorisesLiveAudio } from '@/lib/integrations/telephony/consent';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { touchLead } from '@/services/leads/touch';
 import { capturesUnknown, heldInWorkspace, takeEnquiry } from '@/services/leads/intake';
@@ -354,7 +355,7 @@ async function storeRecording(
   const consent = await prisma.recordingConsent.findFirst({
     where: { callId: call.id, tenantId: call.tenantId },
   });
-  if (!consent?.consentGiven || consent.withdrawnAt) {
+  if (!consentAuthorisesLiveAudio(consent)) {
     logger.info({ callId: call.id }, 'recording available but consent is absent or withdrawn — discarded');
     return;
   }

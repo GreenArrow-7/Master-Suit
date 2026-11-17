@@ -33,3 +33,29 @@ export const LIVE_AUDIO_NOTICE: Record<LiveAudio, (vendor: string) => string> = 
   'no-vendor': () =>
     'No calling provider is connected. Connect one under Administration → Integrations to place AI-assisted calls; from this device you can only phone the customer without assistance.',
 };
+
+/**
+ * How long a coaching hint stays current, in milliseconds.
+ *
+ * `coachTick` fires on every 4th customer turn, so a model hint can be three
+ * turns late by design. Ninety seconds is longer than that gap and shorter than
+ * the point where a suggestion about an earlier part of the conversation would
+ * mislead the agent.
+ */
+export const HINT_FRESH_MS = 90_000;
+
+/**
+ * Whether a hint on screen is out of date.
+ *
+ * Measured on the viewer's own wall clock from the moment the hint arrived, not
+ * from the call's second counter: that counter stops advancing while a phone has
+ * the app in the background, which is exactly when hints go stale unnoticed.
+ *
+ * A hint with no arrival stamp is treated as stale — it came from a path that
+ * does not record one, and claiming freshness we cannot measure is the failure
+ * worth avoiding here.
+ */
+export function hintIsStale(receivedAtMs: number | undefined, nowMs: number): boolean {
+  if (typeof receivedAtMs !== 'number' || !Number.isFinite(receivedAtMs)) return true;
+  return nowMs - receivedAtMs > HINT_FRESH_MS;
+}

@@ -18,6 +18,7 @@ import { enqueue } from '@/lib/queue';
 import { putObject } from '@/lib/storage';
 import { decryptCredentials } from '@/lib/integrations/connection';
 import { telephonyProvider } from '@/lib/integrations/telephony';
+import { consentAuthorisesLiveAudio } from '@/lib/integrations/telephony/consent';
 
 export interface IngestRecordingJob {
   tenantId: string;
@@ -41,7 +42,7 @@ export async function ingestRecording(job: IngestRecordingJob): Promise<{ ingest
   const consent = await prisma.recordingConsent.findFirst({
     where: { callId: job.callId, tenantId: job.tenantId },
   });
-  if (!consent?.consentGiven || consent.withdrawnAt) {
+  if (!consentAuthorisesLiveAudio(consent)) {
     await prisma.recording.delete({ where: { callId: job.callId, tenantId: job.tenantId } });
     logger.info({ callId: job.callId }, 'consent withdrawn before ingest — recording reference dropped');
     return { ingested: false, reason: 'consent withdrawn' };
