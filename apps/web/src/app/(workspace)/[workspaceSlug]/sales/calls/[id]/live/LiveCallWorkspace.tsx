@@ -157,7 +157,12 @@ export default function LiveCallWorkspace({
     [],
   );
 
-  function start() {
+  /**
+   * `vendor` is passed rather than read from `vendorMode`, because placeCall
+   * calls this in the same tick as its own setState and would read the stale
+   * value — the exact case that matters.
+   */
+  function start(vendor = false) {
     setPhase('live');
     const source = new EventSource(`/api/v1/calls/${call.id}/live`);
     sourceRef.current = source;
@@ -180,7 +185,21 @@ export default function LiveCallWorkspace({
       }
     };
     source.onerror = () => {
-      // The stream closed (call ended server-side or connection lost).
+      /**
+       * A vendor call lives at the provider, not in this tab. On a phone the
+       * agent takes the call on the handset and then switches to this screen,
+       * and iOS suspends the WebView in between — which arrives here as an
+       * error. Closing the stream then ended the hints for the rest of the
+       * call, silently, which reads exactly like "live coaching produced
+       * nothing". So leave the socket alone and let EventSource reconnect; the
+       * call is over only when the engine publishes `done`, which the handler
+       * above acts on. Events missed during the gap are lost (redis pub/sub
+       * has no replay) and that is the right trade for a live hint.
+       *
+       * The simulated and mic transports are driven by this tab, so for them a
+       * dead stream really is the end.
+       */
+      if (vendor) return;
       source.close();
       setPhase((p) => (p === 'live' ? 'done' : p));
     };
@@ -221,7 +240,7 @@ export default function LiveCallWorkspace({
         throw new Error(data.errors?.[0]?.message ?? data.detail ?? 'The provider could not place the call.');
       }
       setPlacedNow(true);
-      start();
+      start(true);
     } catch (err) {
       setPlaceError((err as Error).message);
     } finally {
@@ -478,7 +497,7 @@ export default function LiveCallWorkspace({
       <div style={{ display: 'flex', gap: 'var(--lf-space-2)', flexWrap: 'wrap' }}>
         {phase === 'idle' &&
           (vendorMode ? (
-            <button className="lf-btn" onClick={start}>
+            <button className="lf-btn" onClick={() => start()}>
               Connect to live call
             </button>
           ) : (
@@ -493,7 +512,7 @@ export default function LiveCallWorkspace({
                   {placing ? 'Placing…' : 'Place call with AI assistance'}
                 </button>
               )}
-              <button className={canPlace ? 'lf-btn lf-btn--secondary' : 'lf-btn'} onClick={start}>
+              <button className={canPlace ? 'lf-btn lf-btn--secondary' : 'lf-btn'} onClick={() => start()}>
                 Start simulated call
               </button>
               <button
