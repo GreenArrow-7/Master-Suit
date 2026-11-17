@@ -79,23 +79,28 @@ export default function TeamsPanel({
             ))}
           </select>
         </label>
-        <label className="lf-field">
-          <span className="lf-label">Members</span>
-          <select
-            id={`${prefix}-members`}
-            className="lf-input"
-            name="memberIds"
-            multiple
-            size={6}
-            defaultValue={team?.memberIds}
-          >
-            {people.map((person) => (
-              <option key={person.id} value={person.id}>
-                {person.fullName}
-              </option>
-            ))}
-          </select>
-        </label>
+        {/* A checkbox group, because the iOS picker wheel a multiple select opens
+            cannot hold more than one choice — see tests/unit/no-multiple-select. */}
+        <fieldset className="lf-field" style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend className="lf-label">Members</legend>
+          <div className="lf-choice-list" id={`${prefix}-members`}>
+            {people.length ? (
+              people.map((person) => (
+                <label className="lf-choice" key={person.id}>
+                  <input
+                    type="checkbox"
+                    name="memberIds"
+                    value={person.id}
+                    defaultChecked={team?.memberIds.includes(person.id)}
+                  />
+                  <span>{person.fullName}</span>
+                </label>
+              ))
+            ) : (
+              <span className="lf-empty-note">Nobody to add yet.</span>
+            )}
+          </div>
+        </fieldset>
       </>
     );
   }

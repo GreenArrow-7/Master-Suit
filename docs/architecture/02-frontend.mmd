@@ -1,0 +1,26 @@
+flowchart TB
+  subgraph groups["src/app — route groups"]
+    auth["(auth)<br/>/login, /reset-password,<br/>/service-login"]
+    ws["(workspace)/[workspaceSlug]<br/>sales, realty, lead-eagle,<br/>people, admin, profile,<br/>check-in, attendance, tasks"]
+    plat["(platform)/platform<br/>workspaces, plans, subscriptions,<br/>AI Control Center"]
+    mon["(monitoring)<br/>read-only CRM monitoring"]
+    pub["Public: /f /l /s /p /c /li<br/>/rsvp /testimonial /privacy"]
+    api["api/<br/>v1/**, mobile/**, health, metrics"]
+  end
+
+  gate["resolveWorkspacePage(slug, &#123;module, permission&#125;)<br/>src/lib/workspace-page.ts"]
+  nav["workspaceNav.ts<br/>sections → areas → tabs,<br/>each with permission + module"]
+  notinplan["NotInPlan<br/>offers the same screen under<br/>a product the plan has"]
+  grid["ConfigurableGrid<br/>columns, saved views, keyset paging,<br/>workspace clock"]
+  outbox["src/lib/offline.ts<br/>per-owner outbox, Web Lock,<br/>one Idempotency-Key per change"]
+  csp["src/proxy.ts<br/>per-request CSP"]
+
+  ws --> gate
+  gate -->|"module missing"| notinplan
+  ws --> nav
+  ws --> grid
+  ws --> outbox
+  outbox -->|"replayed POST/PATCH"| api
+  auth --> api
+  pub --> api
+  csp --> groups

@@ -14,6 +14,7 @@ import { z } from 'zod';
 const paramsSchema = z.object({
   workspaceSlug: z.string().min(2).max(64),
   resource: z.enum([
+    'branches',
     'departments',
     'designations',
     'employees',

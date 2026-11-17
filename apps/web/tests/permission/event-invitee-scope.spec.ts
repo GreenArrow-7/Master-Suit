@@ -13,6 +13,8 @@ vi.mock('next/headers', () => ({
 }));
 
 import { prisma } from '@/lib/db';
+import { workspaceTimezone } from '@/services/hr/attendance';
+import { todayKey } from '@/services/targets/dailyBoard';
 import { executeTool } from '@/lib/ai/assistant/tools';
 import { DELETE as deleteEvent, GET as readEvent, PATCH as patchEvent } from '@/app/api/v1/events/[id]/route';
 import { POST as circulate } from '@/app/api/v1/events/[id]/invite/route';
@@ -92,7 +94,16 @@ beforeAll(async () => {
     ],
     'OWN',
   );
-  eventMonth = `${startAt.getFullYear()}-${String(startAt.getMonth() + 1).padStart(2, '0')}`;
+  /**
+   * The month on the workspace's clock, which is the clock the calendar windows
+   * it by (`dayBounds(…, timeZone)` in CalendarPage).
+   *
+   * Read from the server's zone instead, this failed for the hours at the end
+   * of a month where the two disagree: an event a day ahead at 21:27 UTC on
+   * 31 October is 1 November in Asia/Dubai, so the October calendar correctly
+   * had nothing on it and the test asked for October.
+   */
+  eventMonth = todayKey(await workspaceTimezone({ tenantId }), startAt).slice(0, 7);
   const meeting = async (callerId: string) =>
     (await prisma.call.create({ data: { tenantId, callerId, eventId: repA2Event } })).id;
   repA1Meeting = await meeting(h.repA1.id);

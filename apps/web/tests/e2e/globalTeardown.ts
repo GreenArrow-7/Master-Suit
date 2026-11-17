@@ -88,7 +88,21 @@ export default async function teardown() {
       where: { email: { contains: RUN_TAG } },
     });
 
-    console.log(`[teardown] removed ${count} workspace(s) and ${identities} account(s) tagged ${RUN_TAG}.`);
+    // Three specs write into the shared demo workspace rather than a workspace
+    // of their own, so the cascade above never reaches what they made there.
+    // Those rows accumulated one per run and turned up in the customer's own
+    // Role and Reporting-manager pickers. Matched on the run marker, never on
+    // "looks like a test".
+    const tagged = { contains: RUN_TAG };
+    const [roles, locations] = await Promise.all([
+      prisma.role.deleteMany({ where: { key: tagged } }),
+      prisma.hrWorkLocation.deleteMany({ where: { name: tagged } }),
+    ]);
+
+    console.log(
+      `[teardown] removed ${count} workspace(s), ${identities} account(s), ` +
+        `${roles.count} role(s) and ${locations.count} work location(s) tagged ${RUN_TAG}.`,
+    );
   } catch (error) {
     // A teardown failure must not turn a green run red — it is reported and the
     // leftovers are named so they can be removed by hand.

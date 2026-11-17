@@ -126,7 +126,34 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
 
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    /**
+     * One spec, in Safari's engine, at iPhone dimensions — on request.
+     *
+     * The reported blank screen is an iPhone fault and has never reproduced in
+     * Chromium, so the journey is worth running in the engine Safari uses. It
+     * is opt-in because CI installs chromium only, deliberately: the comment
+     * above the install step says `--with-deps` shells out to apt-get, which
+     * this runner avoids. A project CI cannot launch would fail every run for
+     * a reason that has nothing to do with the code.
+     *
+     * The journey itself still runs on every CI run, under chromium, which has
+     * no `testMatch` and so picks it up. To run it in WebKit:
+     *
+     *   npx playwright install webkit
+     *   RUN_WEBKIT_JOURNEY=yes npx playwright test --project=webkit-journey
+     */
+    ...(process.env.RUN_WEBKIT_JOURNEY === 'yes'
+      ? [
+          {
+            name: 'webkit-journey',
+            testMatch: /lead-save-navigate\.spec\.ts/,
+            use: { ...devices['iPhone 13'] },
+          },
+        ]
+      : []),
+  ],
 
   webServer: {
     command: 'npm run dev',
