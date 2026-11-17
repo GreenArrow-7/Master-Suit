@@ -66,13 +66,24 @@ What proves it, and what does not:
 So the honest sentence to say to a customer today is: *the coaching engine
 works and you can watch it work; it has never been fed a real phone call.*
 
-**The one risk that would change the plan,** and it is unverified: on the
-`live-mic` path the agent is on a handset call while the browser records the
-microphone. iOS does not reliably give a web view the microphone while a
-cellular call is active. If that holds, `live-mic` is a desk-only feature and
-the vendor path is the only route to coaching on a phone. Nobody has tested
-this. It is a 20-minute test and it should be the first thing done
-(§2.4).
+**Corrected after this audit was written.** An earlier version of this section
+proposed a 20-minute test: can the browser hold the microphone while a cellular
+call is active on iOS? **That question was already answered in this repository
+and the answer is no.** `apps/web/docs/MOBILE-AI-CALLS.md` sets out the platform
+rules — iOS exposes call *state* through CallKit and no audio; Android has
+barred the Accessibility route to remote call audio since 2022, and being the
+default dialler gives routing, not capture — and concludes:
+
+> No production-safe way exists for YOUHAN ONE to take audio from a normal phone
+> call on the handset, on either platform. … The only reliable path to live
+> customer-call audio is a call leg the platform itself places or bridges
+> through a telephony provider, with the audio taken **server-side**.
+
+So `live-mic` is **not** a route to coaching a handset call at all: it records
+the room through the browser, which is a desk-with-speakerphone arrangement, not
+the reported journey. The vendor fork is the only path to live coaching on a
+phone, and the Twilio blocker in §2.3 is therefore the whole of it. No device
+test will change that.
 
 ### The five biggest problems in an employee's day
 
@@ -372,13 +383,9 @@ order they fail:
 
 Two steps, in this order, and the first blocks nothing else.
 
-**Step 1 — the 20-minute test that decides the architecture.** On the affected
-iPhone, in the app: open a lead, start a real handset call to a second phone,
-and while it is connected open the live workspace and press the microphone
-control. Either transcript lines appear or the microphone is refused. That one
-observation decides whether `live-mic` is a shippable phone feature or a
-desk-only one, and it needs no account, no credential and no deploy. **It has
-never been done** (**unverified**).
+**Step 1 — nothing.** The architecture question is already decided, in
+`apps/web/docs/MOBILE-AI-CALLS.md`: audio must come from the provider,
+server-side. There is no device test worth running first.
 
 **Step 2 — one real round trip on staging for path C.** Expose the worker's
 8090 over TLS, set `LIVE_STREAM_WS_URL`, connect Twilio with Media Streams and
@@ -731,12 +738,12 @@ the input to the mobile pass.
 
 ### Phase 0 — Decide the call architecture (half a day, blocks nothing)
 
-- **Do:** the iPhone microphone test (§2.4 step 1). Read
-  `docs/MOBILE_UI_AUDIT.md`. Run the app locally and do a screen pass with an
-  agent and a manager role at phone and desktop width (§1.7).
+- **Do:** read `docs/MOBILE_UI_AUDIT.md`. Run the app locally and do a screen
+  pass with an agent and a manager role at phone and desktop width (§1.7).
+  (The iPhone microphone test this step used to carry has been withdrawn —
+  `apps/web/docs/MOBILE-AI-CALLS.md` already answers it.)
 - **Dependencies:** a phone, a second phone, a local database.
-- **Acceptance:** a written answer to "does the browser get the microphone
-  during a cellular call on iOS?" and a list of screen-level findings.
+- **Acceptance:** a list of screen-level findings at both widths.
 - **Evidence:** a note in `docs/qa/`, plus the client diagnostics report from
   the phone.
 

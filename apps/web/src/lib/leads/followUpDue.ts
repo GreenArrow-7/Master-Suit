@@ -36,6 +36,26 @@ export const onDay = (
  * before today began, not before this minute: something due at 09:00 is due
  * today all day. Unknown values are ignored.
  */
+/**
+ * Every follow-up somebody is late on, as one predicate.
+ *
+ * Open **and** overdue, which are two separate conditions that every caller was
+ * re-stating and the landing page was getting wrong in both directions at once:
+ * it counted `dueAt < new Date()` (so a follow-up due at 09:00 counted as
+ * overdue from 09:01, while the list its chip opened would not call it overdue
+ * until tomorrow) and it left `RESCHEDULED` out of "open" — the one status
+ * `OPEN_STATUSES` exists to warn about, since moving a date stamps it, so the
+ * obligations most likely to be late were the ones missing from the count.
+ *
+ * There is a second, legitimate meaning of overdue in this codebase: `stateOf`
+ * (services/leads/nextFollowUp.ts) asks "is this late *right now*" for one
+ * lead's own row, and tasks ask the same of `Task.dueAt`. Those are a different
+ * question from "what is on my overdue queue today" and are deliberately left
+ * alone. Anything that counts follow-ups, or lists them, uses this.
+ */
+export const overdueFollowUpsWhere = (timeZone: string, now = new Date()): Record<string, unknown> =>
+  mergeWhere(OPEN_FOLLOW_UP, followUpDueWhere({ due: 'overdue' }, timeZone, now));
+
 export function followUpDueWhere(
   query: { due?: string; date?: string; kind?: string },
   timeZone: string,

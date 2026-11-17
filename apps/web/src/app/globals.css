@@ -5937,6 +5937,93 @@ a.lf-kpi:hover {
   }
 }
 
+/* ── Today's priorities: a ranked row whose reason is the point ──────────
+   Not lf-attn with different words. An attention row carries a count and a
+   label and drops its hint below 760px, which is right for "12 overdue" and
+   wrong here: the reason IS the content, so on a phone it wraps onto its own
+   line rather than disappearing. Logical properties throughout, because a
+   workspace set to Arabic lays this out right to left. */
+.lf-today__row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1.1fr) minmax(0, 1.6fr) auto;
+  align-items: center;
+  gap: var(--lf-space-3);
+  min-height: 46px;
+  padding: 8px 0;
+  border-top: 1px solid color-mix(in srgb, var(--lf-line) 65%, transparent);
+}
+.lf-today__row:first-child {
+  border-top: 0;
+}
+.lf-today__n {
+  display: inline-grid;
+  place-items: center;
+  height: 22px;
+  min-width: 22px;
+  border-radius: var(--lf-radius-sm);
+  font: 650 var(--lf-text-xs)/1 var(--lf-font-ui);
+  font-variant-numeric: tabular-nums;
+  background: var(--lf-slate-sub);
+  color: var(--lf-slate);
+}
+.lf-today__row[data-tone='vermillion'] .lf-today__n {
+  background: var(--lf-vermillion-sub);
+  color: var(--lf-vermillion);
+}
+.lf-today__row[data-tone='brass'] .lf-today__n {
+  background: var(--lf-brass-sub);
+  color: var(--lf-brass);
+}
+.lf-today__who {
+  font-size: var(--lf-text-sm);
+  font-weight: 600;
+  line-height: 1.25;
+  min-width: 0;
+}
+.lf-today__why {
+  font-size: var(--lf-text-xs);
+  color: var(--lf-ink-3);
+  line-height: 1.35;
+  min-width: 0;
+}
+.lf-today__do {
+  justify-self: end;
+}
+.lf-today__brief {
+  margin-top: var(--lf-space-3);
+  padding: 10px 12px;
+  border-radius: var(--lf-radius);
+  background: var(--lf-surface-2);
+  border: 1px solid color-mix(in srgb, var(--lf-line) 65%, transparent);
+  font-size: var(--lf-text-xs);
+  line-height: 1.45;
+}
+@media (max-width: 760px) {
+  /* Two lines per row: the number, the name and the action on the first, the
+     reason on the second. Nothing is hidden — a row without its reason is a
+     backlog count again, which is the thing this screen exists to replace.
+     Every cell is placed explicitly: spanning the reason across row two alone
+     left the action to auto-place into the 28px first column of a third row,
+     where `justify-self: end` pushed it off the side of the screen. Found on a
+     375px viewport, not in review. */
+  .lf-today__row {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    row-gap: 2px;
+  }
+  .lf-today__n {
+    grid-area: 1 / 1;
+  }
+  .lf-today__who {
+    grid-area: 1 / 2;
+  }
+  .lf-today__do {
+    grid-area: 1 / 3;
+  }
+  .lf-today__why {
+    grid-area: 2 / 2 / 3 / -1;
+  }
+}
+
 /* ── Panel + key/value list: compact context, not a grid of tiles ───────── */
 .lf-panel {
   background: var(--lf-surface);

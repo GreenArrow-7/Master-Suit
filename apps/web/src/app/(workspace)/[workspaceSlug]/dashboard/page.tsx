@@ -7,6 +7,12 @@ import { callScope, leadScope } from '@/lib/security/record-scope';
 import { mergeWhere } from '@/lib/api/where';
 import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
 import { myEmployee } from '@/services/hr/leave';
+import { workspaceTimezone } from '@/services/hr/attendance';
+import { dayBounds, todayKey } from '@/services/targets/dailyBoard';
+import { overdueFollowUpsWhere } from '@/lib/leads/followUpDue';
+import { agentToday, type TodayItem } from '@/services/today/priorities';
+import { precallBrief, type Brief } from '@/services/today/brief';
+import MyPriorities from '@/components/today/MyPriorities';
 import AiInsight from '@/components/ui/AiInsight';
 import { names } from '@/services/leadership/rollups';
 import { isEntitlementUsable } from '@/lib/security/entitlements';
@@ -29,10 +35,19 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
   const modules = new Set(
     workspace.moduleEntitlements.filter((item) => isEntitlementUsable(item)).map((item) => item.module),
   );
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  /**
+   * "Today" is the workspace's day, not this server's.
+   *
+   * These were `new Date()` with `setHours(0,0,0,0)`, which is midnight in the
+   * *server's* zone. A UTC container serving an Asia/Dubai workspace therefore
+   * started the day four hours late: an 02:00 check-in counted as yesterday,
+   * and the attendance figures beside it disagreed with the attendance screen,
+   * which has always read `dayBounds`. The house rule is in changes/PROJECT.md
+   * under **Workspace clock**.
+   */
+  const timeZone = await workspaceTimezone(ctx);
+  const { from: today, to: endOfToday } = dayBounds(todayKey(timeZone), timeZone);
+  const tomorrow = new Date(endOfToday.getTime() + 1);
 
   // Entitlement decides whether the module exists here; permission decides
   // whether *this* person sees it. Both must hold, and the queries below only
@@ -117,6 +132,20 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
    */
   const showOpportunities = showSales && can(ctx, 'opportunities', 'VIEW');
   const showTasks = showSales && can(ctx, 'tasks', 'VIEW');
+  /**
+   * The viewer's own ranked work, read inside the same transaction as every
+   * other panel.
+   *
+   * Only for a real person: a platform support identity owns no leads, so the
+   * query would be a round trip for a guaranteed empty list, and "Nothing needs
+   * you right now" is a false statement to show a support session.
+   */
+  const isPerson = !ctx.actor.id.startsWith('platform:');
+  const todayQuery = async (db: TxClient) =>
+    showSales && isPerson
+      ? agentToday(db, ctx.tenantId, ctx.actor.id, timeZone, await leadScope(ctx, 'VIEW', { db }))
+      : null;
+
   const salesQuery = (db: TxClient) =>
     showSales
       ? Promise.all([
@@ -137,9 +166,10 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
               ? Promise.resolve(0)
               : db.lead.count({ where: mergeWhere(listedWhere, { ownerId: null }, OPEN_LEADS_WHERE) }),
             oppWhere ? db.opportunity.count({ where: { ...oppWhere, deletedAt: null, status: 'OPEN' } }) : 0,
-            db.followUpTask.count({
-              where: { ...followUpWhere, status: { in: ['OPEN', 'IN_PROGRESS'] }, dueAt: { lt: new Date() } },
-            }),
+            // The same predicate the Follow-ups list uses, because this chip
+            // links to that list: open (RESCHEDULED included) and due before
+            // today began, on the workspace's clock.
+            db.followUpTask.count({ where: mergeWhere(followUpWhere, overdueFollowUpsWhere(timeZone)) }),
             oppWhere
               ? db.opportunity.aggregate({
                   where: { ...oppWhere, deletedAt: null, status: 'OPEN' },
@@ -320,7 +350,7 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
         })
       : null;
 
-  const [people, sales, mine, approvals, security, calls, followUps] = await withTx(ctx.tenantId, (tx) =>
+  const [people, sales, mine, approvals, security, calls, followUps, myToday] = await withTx(ctx.tenantId, (tx) =>
     Promise.all([
       peopleQuery(tx),
       salesQuery(tx),
@@ -329,8 +359,20 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
       securityQuery(tx),
       callsQuery(tx),
       teamFollowUpQuery(tx),
+      todayQuery(tx),
     ]),
   );
+
+  /**
+   * The brief for the first priority, read after the transaction.
+   *
+   * `leadCallContext` queries on the global client, so it cannot run inside
+   * `withTx` — the comment above explains why that matters for the pool. One
+   * lead, one brief: the point is to start the first call, and seven briefs is
+   * a reading task.
+   */
+  const topPriority: TodayItem | null = myToday?.items[0] ?? null;
+  const brief: Brief | null = topPriority ? await precallBrief(ctx.tenantId, topPriority.leadId) : null;
   const ownerName = followUps
     ? await names(
         ctx.tenantId,
@@ -553,6 +595,15 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
             </Link>
           ))}
         </div>
+      )}
+
+      {myToday && (
+        <MyPriorities
+          items={myToday.items}
+          brief={brief}
+          slug={workspace.slug}
+          listHref={`/${workspace.slug}/sales/leads?filter=mine`}
+        />
       )}
 
       {attention.length > 0 && (
