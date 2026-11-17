@@ -102,6 +102,28 @@
         "ALLOWED_ORIGINS": "http://localhost:3011,http://127.0.0.1:3011",
         "APP_ENV": "development"
       }
+    },
+    {
+      "name": "web-today-prod",
+      "cwd": "apps/web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "start:local",
+        "--",
+        "--build",
+        "-p",
+        "3015"
+      ],
+      "port": 3015,
+      "env": {
+        "DATABASE_URL": "postgresql://today:today@127.0.0.1:5434/today",
+        "MIGRATION_DATABASE_URL": "postgresql://today:today@127.0.0.1:5434/today",
+        "REDIS_URL": "redis://:today@127.0.0.1:6380",
+        "APP_URL": "http://localhost:3015",
+        "ALLOWED_ORIGINS": "http://localhost:3015,http://127.0.0.1:3015",
+        "APP_ENV": "development"
+      }
     }
   ]
 }

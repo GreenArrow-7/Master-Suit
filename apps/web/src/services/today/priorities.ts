@@ -144,8 +144,6 @@ const atTime = (date: Date, timeZone: string) =>
 
 interface Loaded {
   items: TodayItem[];
-  /** Counts for the bands above, so the page does not re-query them. */
-  counts: { overdue: number; dueToday: number; untouched: number };
 }
 
 /**
@@ -168,74 +166,80 @@ export async function agentToday(
   // a lead exactly as ownership does (`leadScope`).
   const mine = { OR: [{ ownerId: userId }, { secondaryOwnerId: userId }] };
   /**
-   * Closed-out leads are not work: `OPEN_LEADS_WHERE` is the predicate the lead
-   * list already uses (`status` INVALID, DUPLICATE or ARCHIVED, or null for
-   * everything created before close-out existed).
+   * Open work, as this workspace itself defines it.
    *
-   * Note what this does **not** cover, because the pilot's first run made it
-   * look as though it did: a workspace's own pipeline may contain a *stage*
-   * named "Invalid", and a lead sitting in it still has `status = null` — it is
-   * open, and it is correctly still somebody's work. Stage names are the
-   * workspace's to choose and carry no meaning here.
+   * Two independent things close a lead and both must be honoured:
    *
-   * Both conditions are `OR`s, so they go in an `AND` rather than being spread
-   * into one object, where the second would replace the first.
+   *   * `Lead.status` — INVALID, DUPLICATE or ARCHIVED, the close-out the lead
+   *     list already filters with `OPEN_LEADS_WHERE`.
+   *   * `LeadStage.category` — the workspace's **configured** pipeline
+   *     behaviour. OPEN is work; CONVERSION is won; TERMINAL_NEGATIVE and
+   *     TERMINAL_JUNK are finished. `namedFilters.untouched`, bulk allocation,
+   *     recycling and scoring all gate on `category: 'OPEN'`, and this is the
+   *     same gate.
+   *
+   * The pilot's first run put a lead in the **Invalid** stage at number one,
+   * above a real overdue call. Its `status` was null, so close-out did not
+   * catch it; its stage category was `TERMINAL_JUNK`, which is exactly the
+   * signal that it is not work. Stage *names* mean nothing here — a workspace
+   * may call a stage whatever it likes — but the category it assigns is the
+   * answer, and it was already recorded.
+   *
+   * `mine` and `OPEN_LEADS_WHERE` are both `OR`s, so they go in an `AND`
+   * rather than being spread into one object, where the second would replace
+   * the first.
    */
-  const openLead = { tenantId, deletedAt: null, AND: [mine, OPEN_LEADS_WHERE] };
+  const OPEN_STAGE = { stage: { is: { category: 'OPEN' as const } } };
+  const openLead = { tenantId, deletedAt: null, ...OPEN_STAGE, AND: [mine, OPEN_LEADS_WHERE] };
+  /** A follow-up on a finished lead is not today's work either. */
+  const onOpenLead = { lead: { is: { ...OPEN_STAGE, AND: [OPEN_LEADS_WHERE] } } };
 
-  const [overdueFollowUps, dueTodayFollowUps, escalated, untouched, quiet, overdue, dueToday, untouchedCount] =
-    await Promise.all([
-      db.followUpTask.findMany({
-        where: mergeWhere({ tenantId, ownerId: userId, deletedAt: null }, overdueFollowUpsWhere(timeZone, now)),
-        orderBy: { dueAt: 'asc' },
-        take: MAX_ITEMS,
-        select: { id: true, leadId: true, title: true, dueAt: true, kind: true, lead: { select: { fullName: true } } },
-      }),
-      db.followUpTask.findMany({
-        where: mergeWhere(
-          { tenantId, ownerId: userId, deletedAt: null },
-          OPEN_FOLLOW_UP,
-          followUpDueWhere({ due: 'today' }, timeZone, now),
-        ),
-        orderBy: { dueAt: 'asc' },
-        take: MAX_ITEMS,
-        select: { id: true, leadId: true, title: true, dueAt: true, kind: true, lead: { select: { fullName: true } } },
-      }),
-      db.lead.findMany({
-        where: { ...openLead, slaEscalatedAt: { not: null } },
-        orderBy: { slaEscalatedAt: 'desc' },
-        take: MAX_ITEMS,
-        select: { id: true, fullName: true, slaEscalatedAt: true },
-      }),
-      db.lead.findMany({
-        where: { ...openLead, firstContactedAt: null },
-        orderBy: { createdAt: 'asc' },
-        take: MAX_ITEMS,
-        select: { id: true, fullName: true, createdAt: true },
-      }),
-      db.lead.findMany({
-        where: {
-          ...openLead,
-          firstContactedAt: { not: null },
-          score: { gte: WARM_SCORE },
-          lastActivityAt: { lt: new Date(now.getTime() - IDLE_DAYS * DAY_MS) },
-        },
-        orderBy: { score: 'desc' },
-        take: MAX_ITEMS,
-        select: { id: true, fullName: true, score: true, lastActivityAt: true },
-      }),
-      db.followUpTask.count({
-        where: mergeWhere({ tenantId, ownerId: userId, deletedAt: null }, overdueFollowUpsWhere(timeZone, now)),
-      }),
-      db.followUpTask.count({
-        where: mergeWhere(
-          { tenantId, ownerId: userId, deletedAt: null },
-          OPEN_FOLLOW_UP,
-          followUpDueWhere({ due: 'today' }, timeZone, now),
-        ),
-      }),
-      db.lead.count({ where: { ...openLead, firstContactedAt: null } }),
-    ]);
+  const [overdueFollowUps, dueTodayFollowUps, escalated, untouched, quiet] = await Promise.all([
+    db.followUpTask.findMany({
+      where: mergeWhere(
+        { tenantId, ownerId: userId, deletedAt: null },
+        onOpenLead,
+        overdueFollowUpsWhere(timeZone, now),
+      ),
+      orderBy: { dueAt: 'asc' },
+      take: MAX_ITEMS,
+      select: { id: true, leadId: true, title: true, dueAt: true, kind: true, lead: { select: { fullName: true } } },
+    }),
+    db.followUpTask.findMany({
+      where: mergeWhere(
+        { tenantId, ownerId: userId, deletedAt: null },
+        onOpenLead,
+        OPEN_FOLLOW_UP,
+        followUpDueWhere({ due: 'today' }, timeZone, now),
+      ),
+      orderBy: { dueAt: 'asc' },
+      take: MAX_ITEMS,
+      select: { id: true, leadId: true, title: true, dueAt: true, kind: true, lead: { select: { fullName: true } } },
+    }),
+    db.lead.findMany({
+      where: { ...openLead, slaEscalatedAt: { not: null } },
+      orderBy: { slaEscalatedAt: 'desc' },
+      take: MAX_ITEMS,
+      select: { id: true, fullName: true, slaEscalatedAt: true },
+    }),
+    db.lead.findMany({
+      where: { ...openLead, firstContactedAt: null },
+      orderBy: { createdAt: 'asc' },
+      take: MAX_ITEMS,
+      select: { id: true, fullName: true, createdAt: true },
+    }),
+    db.lead.findMany({
+      where: {
+        ...openLead,
+        firstContactedAt: { not: null },
+        score: { gte: WARM_SCORE },
+        lastActivityAt: { lt: new Date(now.getTime() - IDLE_DAYS * DAY_MS) },
+      },
+      orderBy: { score: 'desc' },
+      take: MAX_ITEMS,
+      select: { id: true, fullName: true, score: true, lastActivityAt: true },
+    }),
+  ]);
 
   const items: TodayItem[] = [];
 
@@ -257,7 +261,9 @@ export async function agentToday(
       kind: 'overdue',
       leadId: followUp.leadId,
       title: followUp.lead?.fullName ?? followUp.title,
-      reason: `${followUp.kind === 'CALL' ? 'Call' : 'Follow-up'} was due ${ago(followUp.dueAt, now)}`,
+      // "Overdue" is the Follow-ups list's own word for this filter, and this
+      // row is in it for exactly the same reason: due before today began.
+      reason: `Overdue — ${followUp.kind === 'CALL' ? 'call' : 'follow-up'} was due ${ago(followUp.dueAt, now)}`,
       action: 'Open',
       at: followUp.dueAt,
       weight: weigh('overdue', followUp.dueAt, now),
@@ -270,10 +276,19 @@ export async function agentToday(
       kind: 'callback',
       leadId: followUp.leadId,
       title: followUp.lead?.fullName ?? followUp.title,
+      /**
+       * Due today, and the two cases are not the same thing to a person.
+       *
+       * The workspace-day definition keeps a follow-up "due today" all day, so
+       * one promised for 09:00 is still on this list at 16:00 — correct for
+       * the queue, and misleading as a row if it reads like a plan. Time
+       * passed says so without calling it overdue, which has a precise meaning
+       * here and is not this.
+       */
       reason:
         followUp.dueAt < now
-          ? `${followUp.kind === 'CALL' ? 'Callback' : 'Follow-up'} was due at ${atTime(followUp.dueAt, timeZone)} today`
-          : `You promised a ${followUp.kind === 'CALL' ? 'callback' : 'follow-up'} at ${atTime(followUp.dueAt, timeZone)}`,
+          ? `Due today — ${followUp.kind === 'CALL' ? 'callback' : 'follow-up'} time ${atTime(followUp.dueAt, timeZone)} has passed`
+          : `Due today — ${followUp.kind === 'CALL' ? 'callback' : 'follow-up'} at ${atTime(followUp.dueAt, timeZone)}`,
       action: 'Open',
       at: followUp.dueAt,
       weight: weigh('callback', followUp.dueAt, now),
@@ -308,5 +323,5 @@ export async function agentToday(
     });
   }
 
-  return { items: rank(items), counts: { overdue, dueToday, untouched: untouchedCount } };
+  return { items: rank(items) };
 }
