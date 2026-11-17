@@ -158,6 +158,11 @@ test.describe('Admin > Users: Deactivate asks where the open work goes', () => {
       });
       expect(lead.ownerId).toBeNull();
       const entry = { tenantId, leadId, status: 'WAITING' as const };
+      // The entry is written while the deactivation settles, so wait for it
+      // before backdating: an updateMany that runs first matches nothing, the
+      // entry keeps a current openedAt, and the assertion below then fails for
+      // the wrong reason — pushed off the page rather than never queued.
+      await expect.poll(() => prisma.leadTriageEntry.count({ where: entry }), { timeout: 60_000 }).toBe(1);
       // The Waiting view lists the 100 oldest. Made the oldest, so entries other
       // specs left in the shared workspace cannot push it off the page.
       await prisma.leadTriageEntry.updateMany({ where: entry, data: { openedAt: new Date('2000-01-01T00:00:00Z') } });
