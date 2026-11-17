@@ -43,6 +43,7 @@ export default function NewUserForm({
   branches,
   locations,
   managers,
+  canSetup,
 }: {
   endpoint: string;
   usersHref: string;
@@ -55,8 +56,12 @@ export default function NewUserForm({
   branches: Option[];
   locations: Option[];
   managers: Option[];
+  /** Whether this operator may add the missing departments, designations or branches. */
+  canSetup: boolean;
 }) {
   const router = useRouter();
+  const setupHref = `/${workspaceSlug}/people/departments`;
+  const branchHref = `/${workspaceSlug}/people/branches`;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<Created | null>(null);
@@ -227,49 +232,71 @@ export default function NewUserForm({
           </select>
         </div>
         <Field label="Department" htmlFor="nu-dept">
-          <select
-            id="nu-dept"
-            className="lf-input"
-            value={form.departmentId}
-            onChange={(e) => set('departmentId', e.target.value)}
-          >
-            <option value="">Not set</option>
-            {departments.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.name}
-              </option>
-            ))}
-          </select>
+          {departments.length ? (
+            <select
+              id="nu-dept"
+              className="lf-input"
+              value={form.departmentId}
+              onChange={(e) => set('departmentId', e.target.value)}
+            >
+              <option value="">Not set</option>
+              {departments.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="lf-empty-note">
+              None configured yet.{' '}
+              {canSetup ? <a href={setupHref}>Add a department</a> : 'Ask an administrator to add one'}.
+            </span>
+          )}
         </Field>
         <Field label="Designation" htmlFor="nu-desig">
-          <select
-            id="nu-desig"
-            className="lf-input"
-            value={form.designationId}
-            onChange={(e) => set('designationId', e.target.value)}
-          >
-            <option value="">Not set</option>
-            {designations.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.name}
-              </option>
-            ))}
-          </select>
+          {designations.length ? (
+            <select
+              id="nu-desig"
+              className="lf-input"
+              value={form.designationId}
+              onChange={(e) => set('designationId', e.target.value)}
+            >
+              <option value="">Not set</option>
+              {designations.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="lf-empty-note">
+              None configured yet.{' '}
+              {canSetup ? <a href={setupHref}>Add a designation</a> : 'Ask an administrator to add one'}.
+            </span>
+          )}
         </Field>
         <Field label="Branch / office" htmlFor="nu-branch">
-          <select
-            id="nu-branch"
-            className="lf-input"
-            value={form.branchId}
-            onChange={(e) => set('branchId', e.target.value)}
-          >
-            <option value="">Not set</option>
-            {branches.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.name}
-              </option>
-            ))}
-          </select>
+          {branches.length ? (
+            <select
+              id="nu-branch"
+              className="lf-input"
+              value={form.branchId}
+              onChange={(e) => set('branchId', e.target.value)}
+            >
+              <option value="">Not set</option>
+              {branches.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="lf-empty-note">
+              None configured yet.{' '}
+              {canSetup ? <a href={branchHref}>Add a branch</a> : 'Ask an administrator to add one'}, or leave the field
+              unset.
+            </span>
+          )}
         </Field>
         <Field label="Reporting manager" htmlFor="nu-manager">
           <select

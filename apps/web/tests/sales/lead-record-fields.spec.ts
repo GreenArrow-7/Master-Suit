@@ -281,9 +281,10 @@ describe('sources and sub-sources (M4-03)', () => {
     // Another workspace's entry is not found, like a missing id.
     const theirs = (await get(listSources, '/api/v1/lead-sources', fixture.b.cookie)).body[0] as Source;
     expect((await patch(patchLead, url, { sourceId: theirs.id }, admin)).status).toBe(404);
-    expect((await post(createLead, '/api/v1/leads', { fullName: 'Theirs', sourceId: theirs.id }, admin)).status).toBe(
-      404,
-    );
+    expect(
+      (await post(createLead, '/api/v1/leads', { fullName: 'Theirs', sourceId: theirs.id, phone: '0510000011' }, admin))
+        .status,
+    ).toBe(404);
   });
 
   it('the source reports name the catalogue entry where a lead has one, and take an entry no longer offered', async () => {
@@ -296,11 +297,16 @@ describe('sources and sub-sources (M4-03)', () => {
     const sub = await post(
       createLead,
       '/api/v1/leads',
-      { fullName: 'Sub-source lead', sourceId: added.body.id },
+      { fullName: 'Sub-source lead', sourceId: added.body.id, phone: '0510000013' },
       admin,
     );
     expect(sub.status, JSON.stringify(sub.body)).toBe(200);
-    const top = await post(createLead, '/api/v1/leads', { fullName: 'Website lead', sourceId: website.id }, admin);
+    const top = await post(
+      createLead,
+      '/api/v1/leads',
+      { fullName: 'Website lead', sourceId: website.id, phone: '0510000012' },
+      admin,
+    );
     expect(top.status, JSON.stringify(top.body)).toBe(200);
     const ctx = buildCtx(buildActor({ id: fixture.a.userId, tenantId, grants: [['reports', 'VIEW']] }));
     const now = new Date();

@@ -48,6 +48,12 @@ export default function WorkspaceRecordForm({
     for (const name of multi) {
       const values = data.getAll(name).filter((value) => value !== '');
       if (values.length) body[name] = values;
+      // A checkbox group carries no native `required`, so the rule is kept here.
+      else if (fields.find((field) => field.name === name)?.required) {
+        setError(`Choose at least one ${fields.find((field) => field.name === name)!.label.toLowerCase()}.`);
+        setBusy(false);
+        return;
+      }
     }
     try {
       const response = await authFetch(endpoint, {
@@ -81,13 +87,24 @@ export default function WorkspaceRecordForm({
               {field.label}
             </span>
             {field.type === 'multiselect' ? (
-              <select className="lf-input" name={field.name} required={field.required} multiple size={6}>
-                {field.options?.map((option) => (
-                  <option value={option.value} key={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              /* Checkboxes, not <select multiple>: iOS renders a multiple select as a
+                 single-line control opening the one-column picker wheel, which cannot
+                 express more than one choice, so every tap replaced the last and the
+                 field stayed at "0 items" however many names were tapped. A checkbox
+                 group selects the same way on every platform, and repeated names still
+                 arrive as a list through FormData.getAll above. */
+              <div className="lf-choice-list" role="group" aria-label={field.label}>
+                {field.options?.length ? (
+                  field.options.map((option) => (
+                    <label className="lf-choice" key={option.value}>
+                      <input type="checkbox" name={field.name} value={option.value} />
+                      <span>{option.label}</span>
+                    </label>
+                  ))
+                ) : (
+                  <span className="lf-empty-note">Nothing to choose from yet.</span>
+                )}
+              </div>
             ) : field.type === 'select' ? (
               // Keyed on its default: React applies a select's defaultValue only when it
               // mounts, so after a save form.reset() put back the value the page opened

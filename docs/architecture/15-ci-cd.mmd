@@ -1,0 +1,23 @@
+flowchart TB
+  dev["Change on a branch"]
+  pr["Pull request"]
+  subgraph verify["CI — .github/workflows/ci.yml · job: verify"]
+    v0["No .env file is tracked"]
+    v1["Apply migrations · Permission catalogue · Schema drift"]
+    v2["Tenant isolation · Raw SQL scope · Redis auth · Face token"]
+    v3["Typecheck · Lint · Format check · Observability drift"]
+    v4["Backup round trip · Face model download"]
+    v5["Unit + integration (vitest) — fails on any skipped test"]
+    v6["Integration (server) · Playwright E2E (PRs to main / pushes to main)"]
+    v7["next build · npm audit"]
+  end
+  face2["CI job: face-e2e<br/>real face sidecar, FACE_E2E=required"]
+  main["main"]
+  imgs["gh workflow run build-images.yml -f sha=&lt;full sha&gt;"]
+  stage["Staging deploy"]
+  gate["Staging-first migration gate<br/>+ backup and restore drill"]
+  prod["Production deploy (owner only, over SSH)"]
+  smoke["Smoke test (18 checks)"]
+
+  dev --> pr --> verify --> face2 --> main --> imgs --> stage --> gate --> prod --> smoke
+  smoke -. "stops at the first failure" .-> prod
