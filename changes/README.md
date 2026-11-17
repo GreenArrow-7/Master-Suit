@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date       | Entry                                                                                                                                                                                                                                                  | PR                                 | Area                                           |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- | ---------------------------------------------- |
+| 2026-11-17 | [The Sales Agent's Today: a ranked day instead of a backlog count](2026-11-17-agent-today-pilot.md) | — | Sales, dashboard, pilot |
 | 2026-11-16 | [The product audit, and a proposal for a "Today" workspace](2026-11-16-today-dashboard-audit.md) | — | Product, audit, documentation |
 | 2026-11-11 | [The white screen after saving: a confirmed save no longer uses the client router](2026-11-11-post-save-navigation.md) | `fix/post-save-navigation` | Sales |
 | 2026-11-11 | [The reported journey, as a test that runs in Safari's engine](2026-11-11-lead-save-navigate-journey.md) | `diagnostics/on-lead-release` | QA |
