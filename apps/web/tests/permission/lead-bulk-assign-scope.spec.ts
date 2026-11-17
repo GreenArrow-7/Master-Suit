@@ -164,7 +164,7 @@ describe('a lead created for a colleague (audit M17-05)', () => {
     const res = await post(
       createLeadRoute,
       '/api/v1/leads',
-      { fullName: 'Made for a colleague', ownerId: h.repA1.id, onDuplicate: 'WARN' },
+      { fullName: 'Made for a colleague', ownerId: h.repA1.id, onDuplicate: 'WARN', phone: '0510000031' },
       h.teamManagerA.cookie,
     );
     expect(res.status, JSON.stringify(res.body)).toBe(200);

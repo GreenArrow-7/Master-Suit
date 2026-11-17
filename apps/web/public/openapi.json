@@ -24044,6 +24044,7 @@
             "schema": {
               "type": "string",
               "enum": [
+                "branches",
                 "departments",
                 "designations",
                 "employees",
@@ -24354,6 +24355,7 @@
             "schema": {
               "type": "string",
               "enum": [
+                "branches",
                 "departments",
                 "designations",
                 "employees",
@@ -24463,6 +24465,7 @@
             "schema": {
               "type": "string",
               "enum": [
+                "branches",
                 "departments",
                 "designations",
                 "employees",
@@ -24582,6 +24585,7 @@
             "schema": {
               "type": "string",
               "enum": [
+                "branches",
                 "departments",
                 "designations",
                 "employees",

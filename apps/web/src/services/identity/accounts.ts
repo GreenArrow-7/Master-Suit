@@ -741,8 +741,14 @@ export async function setManager(ctx: Ctx, employeeId: string, managerEmployeeId
     if (managerEmployeeId === employeeId) throw Conflict('An employee cannot be their own manager.');
     const manager = await prisma.employeeProfile.findFirst({
       where: { tenantId: ctx.tenantId, id: managerEmployeeId, deletedAt: null },
+      include: { membership: { select: { status: true } } },
     });
     if (!manager) throw NotFound('Manager');
+    // A login that is suspended, removed or never accepted cannot approve leave
+    // or a payslip, so it cannot be named as a manager from now on. Chains
+    // already recorded are left alone.
+    if (manager.membership.status !== 'ACTIVE')
+      throw Conflict('That account is not active, so it cannot be a reporting manager.');
 
     // Walk up from the proposed manager. Reaching this employee means the chain
     // would close into a loop, and leave requests would route in a circle with

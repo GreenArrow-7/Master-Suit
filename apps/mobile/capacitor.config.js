@@ -36,10 +36,41 @@
 function serverUrl(raw) {
   if (!raw) return undefined;
   const url = new URL(raw);
-  if (url.protocol !== 'https:') throw new Error(`MOBILE_SERVER_URL must be https: ${url.protocol}`);
-  if (url.username || url.password || url.search || url.hash || (url.pathname && url.pathname !== '/'))
-    throw new Error('MOBILE_SERVER_URL must be a bare https origin, e.g. https://staging.example.com');
+  if (url.protocol !== "https:")
+    throw new Error(`MOBILE_SERVER_URL must be https: ${url.protocol}`);
+  if (
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    (url.pathname && url.pathname !== "/")
+  )
+    throw new Error(
+      "MOBILE_SERVER_URL must be a bare https origin, e.g. https://staging.example.com",
+    );
   return url.origin;
+}
+
+/**
+ * MARKETING_VERSION, read from the Xcode project rather than duplicated here.
+ *
+ * One source of truth: the number in the user agent is the number in the
+ * binary, or the sync is refused. A fallback would mean a build quietly
+ * reporting a version it does not have, which is the fault being fixed.
+ */
+function marketingVersion() {
+  const pbxproj = require("node:path").join(
+    __dirname,
+    "ios",
+    "App",
+    "App.xcodeproj",
+    "project.pbxproj",
+  );
+  const found = require("node:fs")
+    .readFileSync(pbxproj, "utf8")
+    .match(/MARKETING_VERSION = ([^;]+);/);
+  if (!found) throw new Error(`No MARKETING_VERSION in ${pbxproj}`);
+  return found[1].trim();
 }
 
 const url = serverUrl(process.env.MOBILE_SERVER_URL);
@@ -50,13 +81,20 @@ const config = {
    * both refuse to change a published bundle id. Kept for development builds; set
    * the real reverse domain before any release signing.
    */
-  appId: 'com.youhan.one',
+  appId: "com.youhan.one",
   // The home-screen label. Mirrors PRODUCT_NAME in apps/web/src/lib/branding.ts.
-  appName: 'YOUHAN ONE',
-  webDir: 'www',
-  // Lets the server tell the app from a phone browser (version gate, support logs)
-  // without trusting it for anything: a user agent is not authentication.
-  appendUserAgent: 'YouhanOneApp/0.1.0-dev-poc',
+  appName: "YOUHAN ONE",
+  webDir: "www",
+  // Lets the server tell the app from a phone browser (version gate, support
+  // logs) without trusting it for anything: a user agent is not authentication.
+  //
+  // It carries the version and build the binary actually has. It used to be the
+  // literal `0.1.0-dev-poc`, which stopped being true at 1.2.0 and left support
+  // unable to answer "which build is this?" from the server side at all — the
+  // question the 9 November field report turned on. Everything that matches on
+  // it matches the `YouhanOneApp/` prefix (apps/web/src/lib/mobile/iosApp.ts),
+  // so the suffix is free to be useful.
+  appendUserAgent: `YouhanOneApp/${marketingVersion()}+${process.env.GITHUB_RUN_NUMBER || "local"}`,
   ...(url ? { server: { url, cleartext: false } } : {}),
 };
 

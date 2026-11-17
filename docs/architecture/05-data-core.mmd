@@ -1,0 +1,19 @@
+erDiagram
+  Tenant ||--o{ ModuleEntitlement : "entitled to"
+  Tenant ||--o{ TenantSubscription : has
+  Tenant ||--o{ OrganizationSetting : "clock, locale, policy"
+  Tenant ||--o{ User : "workspace members"
+  Tenant ||--o{ Role : "defined per workspace"
+  Role ||--o{ RolePermission : grants
+  Role ||--o{ FieldPermission : "field-level rules"
+  Permission ||--o{ RolePermission : "module + action"
+  PlatformUser ||--o{ WorkspaceMembership : "one identity, many workspaces"
+  WorkspaceMembership }o--|| Tenant : in
+  WorkspaceMembership }o--|| User : "workspace record"
+  PlatformUser ||--o{ PlatformSession : "WEB / MOBILE sessions"
+  User ||--o{ MembershipRole : "holds roles"
+  User ||--o{ UserTeam : "team membership"
+  User }o--o| User : "managerId (reporting line)"
+  Team }o--|| Tenant : in
+  Region ||--o{ Branch : contains
+  Branch ||--o{ Territory : contains

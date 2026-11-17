@@ -103,6 +103,7 @@ describe('the example files and the schema agree in both directions', () => {
       ALERT_EMAIL_FROM: 'infra/alertmanager-entrypoint.sh',
       ALERT_WEBHOOK_URL: 'infra/alertmanager-entrypoint.sh',
       PROMETHEUS_RETENTION: 'infra/prometheus-entrypoint.sh',
+      GRAFANA_ADMIN_PASSWORD: 'infra/docker-compose.azure.yml, for the grafana image’s own admin',
       APP_DOMAIN: 'infra/Caddyfile, via the azure overlay',
       ACME_EMAIL: 'infra/Caddyfile, for the Let’s Encrypt account',
       // The one entry here whose consumer is a person rather than a process:

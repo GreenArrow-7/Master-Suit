@@ -1,0 +1,24 @@
+flowchart TB
+  subgraph shell["apps/mobile — Capacitor 8 shell (in this repo)"]
+    wv["WebView → MOBILE_SERVER_URL (https origin only)"]
+    cw["CallWatchPlugin.java<br/>logs a call placed from the app"]
+    bridge["YouhanBridgeViewController.swift"]
+    push["@capacitor/push-notifications"]
+  end
+
+  subgraph standalone["Standalone Lead Eagle app (Expo) — NOT in this repo"]
+    exp["Native screens"]
+  end
+
+  subgraph server["apps/web"]
+    pages["Server-rendered workspace pages<br/>(session cookie, first-party)"]
+    mapi["/api/mobile/** — route(&#123;mobile: true&#125;)<br/>bearer &#123;tenantId&#125;.&#123;secret&#125;, 90-day MOBILE PlatformSession"]
+    fcm["src/lib/push/send.ts → FCM / APNs"]
+  end
+
+  wv -->|"renders the site"| pages
+  cw -->|"POST leads/&#123;id&#125;/call"| mapi
+  push -->|"token + bundleId"| mapi
+  exp -->|"sign-in, me, leads, follow-ups,<br/>leads/&#123;id&#125;/call, status, attendance, devices/push"| mapi
+  fcm -->|"only while the device session lives"| shell
+  fcm --> standalone
