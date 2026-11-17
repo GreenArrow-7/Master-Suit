@@ -16,10 +16,14 @@ can go to staging as it is. The steps are in
 
 What is actually missing is an address. Before any of the below:
 
-1. Someone publishes a **public HTTPS route** to staging — a Caddy hostname or
-   a tunnel. Operator work, no app build. (Step 0 of the deploy runbook.)
+1. Someone opens a **password-protected tunnel** to staging. Operator work, no
+   app build. The whole command sequence is at the end of
+   `docs/release/TODAY-PILOT-STAGING-DEPLOY.md`.
 2. The image is built for #258's head and the acceptance script run.
 3. That address is written into the blank below.
+4. **A Sales Agent account on staging, not an administrator.** Staging is not
+   demo-seeded, so there is no published test login — the runbook's last
+   section says how to find or reset one.
 
 **And note which app you will be testing in.** The installed iPhone app bakes
 its origin in at build time (`MOBILE_SERVER_URL`, `apps/mobile/capacitor.config.js`)
@@ -42,9 +46,16 @@ Everything below is specifically the part a desk cannot do.
 
 ## 0. Confirm you are on the pilot build
 
-Open the app, then **Menu → My Workspace → Diagnostics**, and read the build at
-the top. It must be the commit #258 merged as. If it is not, stop — nothing
-below means anything on the wrong build.
+Open **Menu → My Workspace → Diagnostics** and read the build at the top. It
+must be `8912682e` — #258's head. #258 is **not merged**; the image is built
+from the PR head. If the build differs, stop — nothing below means anything on
+the wrong build.
+
+**Before airplane mode, do one ordinary run online:** open row 1, tap **Call**,
+come back, tap **Log call**, choose **Connected**, note `ONLINE TEST <initials>`
+and submit. It must say saved, appear once on the timeline, and the priorities
+list must change. If the normal path is broken there is no point testing the
+offline one.
 
 On **My Workspace** you should see **My priorities**: a numbered list, at most
 seven rows, each with a name, a reason, and one button. If that section is

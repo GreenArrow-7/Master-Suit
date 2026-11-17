@@ -151,3 +151,142 @@ Run from `/home/deploy/ios-staging`. Staging only.
 `docs/qa/TODAY-PILOT-IPHONE-TEST.md`, with the origin from step 0 written into
 its blank. Label the result **browser testing in Safari** unless a new installed
 build was made.
+
+---
+
+# The tunnel route, as one command sequence
+
+Chosen 17 Nov 2026: a **temporary tunnel restricted to the test team**, for an
+iPhone Safari test. Run every command on the staging host as a user who can
+reach Docker. **Staging only — nothing below touches production.**
+
+## Prerequisites
+
+1. `verify` green on #258's head `8912682ea6b8b96290d0229de1a78946ecc84d24`.
+   Confirmed: `verify` **pass** (8m30s). `face-e2e` skips — it is gated on
+   `base_ref == main` and #258 targets `fix/post-save-navigation`.
+2. `ngrok` installed and authenticated on the host (`ngrok config check`), or
+   `cloudflared` with a Cloudflare Access policy. **A Cloudflare quick tunnel
+   (`trycloudflare.com`) is open to anyone who has the URL** — it does not meet
+   "restricted to the test team". Use basic auth or Access.
+3. Nobody else is testing on staging: phase 6 of the acceptance script briefly
+   puts the old image back.
+
+## The sequence
+
+```bash
+# 1. Confirm the head CI passed on, and what staging runs right now.
+gh pr view 258 --json headRefOid --jq .headRefOid
+docker inspect youhan-ios-staging-web-1 --format '{{.Config.Image}}'   # WRITE THIS DOWN
+
+# 2. Build the image for that exact SHA. Wait for both jobs green.
+gh workflow run build-images.yml -f sha=8912682ea6b8b96290d0229de1a78946ecc84d24
+gh run watch
+
+# 3. Fetch the acceptance script from OUTSIDE the checkout it rewrites.
+git -C /opt/mastersuite fetch --quiet origin
+git -C /opt/mastersuite show origin/feat/agent-today-pilot:docs/release/staging-acceptance.sh > /root/staging-acceptance.sh
+chmod +x /root/staging-acceptance.sh
+
+# 4. Deploy to staging through the gate.
+SKIP_SMOKE="staging's platform owner password and authenticator secret are not recoverable" \
+  PREVIOUS_IMAGE=<the SHA from step 1> \
+  /root/staging-acceptance.sh 8912682ea6b8b96290d0229de1a78946ecc84d24 2>&1 | tee /root/today-pilot-staging.log
+
+# 5. Confirm the build the phone will load.
+docker exec youhan-ios-staging-web-1 printenv BUILD_COMMIT
+
+# 6. Read the port the tunnel must point at.
+docker port youhan-ios-staging-web-1 3000/tcp
+
+# 7. Open the tunnel, password-protected, to THAT address only.
+#    Do NOT pass --host-header=rewrite: see the stop condition below.
+ngrok http 172.18.0.1:8090 --basic-auth "tester:<a password you choose now>"
+```
+
+**Expected output, step by step**
+
+| Step | Expected |
+| --- | --- |
+| 1 | the SHA above, and an image tag ending in a 40-char SHA |
+| 2 | `web` and `worker` both green |
+| 4 | `STAGING ACCEPTANCE PASSED`, staging left running the pilot |
+| 5 | `8912682ea6b8b96290d0229de1a78946ecc84d24` |
+| 6 | `3000/tcp -> 172.18.0.1:8090` |
+| 7 | `Forwarding https://<name>.ngrok-free.app -> http://172.18.0.1:8090` |
+
+**Stop conditions**
+
+- Step 1 prints a SHA other than the one above → the PR moved; re-read CI first.
+- Step 2 trips "Refuse anything but the exact commit" → do not deploy the tag.
+- Step 4 prints `STAGING ACCEPTANCE FAILED` at any phase → stop, read the log,
+  roll back with the command in the Rollback section above.
+- Step 5 disagrees with step 1 → the container did not restart on the new image.
+- Step 6 prints nothing, or a different address → point the tunnel at what it
+  actually prints, not at the address written here.
+- **Signing in works but saving anything fails with an origin/Server Action
+  error** → the tunnel is rewriting the `Host` header. Next compares `Origin`
+  to `Host` on every Server Action in production, and `allowedDevOrigins` in
+  `next.config.ts` applies to dev only. Restart the tunnel without
+  `--host-header=rewrite`.
+
+**It proves the dashboard and nothing else.** The tunnel carries HTTP to the web
+container. It does not touch the worker's WebSocket, `LIVE_STREAM_WS_URL`
+(still unset), transcription or live coaching — those have their own runbook,
+`LIVE-COACHING-STAGING-SETUP.md`, and are untested.
+
+## Closing the tunnel when testing is done
+
+```bash
+# Ctrl-C the ngrok process, then confirm nothing is still listening:
+pgrep -a ngrok || echo "tunnel closed"
+```
+
+Then rotate the basic-auth password out of your shell history
+(`history -d` the ngrok line), and leave staging running — no rollback needed
+unless the acceptance run failed.
+
+## The test account
+
+**Staging is deliberately not demo-seeded.** `apps/web/prisma/seed/index.ts`
+refuses outright when `APP_ENV` is `staging`, and `docs/qa/04-environment-and-data.md`
+says so in as many words: *do not seed demo data into it*. So there is **no**
+published-password Sales Agent account on staging, and none can be named here.
+The seeded persona `joel.fernandes@example.com` (`sales_rep`, team BB, branch
+DXB, workspace `manath-homes`) exists only in a local or demo database.
+
+Phase 1 of the acceptance script proves the database is **not production** —
+it checks the database name, `APP_ENV`, and that staging's postgres is a
+different container from `infra-postgres-1`. That is isolation. It is not
+evidence that the data inside is test data, and I have not seen staging's rows.
+
+**List the Sales Agent candidates that do exist** (prints emails and role keys,
+never a password hash):
+
+```bash
+docker exec youhan-ios-staging-postgres-1 psql -U postgres -d mastersuite_staging -tAc \
+  "SELECT u.email, r.key FROM \"User\" u JOIN \"Role\" r ON r.id = u.\"roleId\" WHERE r.key LIKE '%sales%' AND u.\"deletedAt\" IS NULL ORDER BY u.email LIMIT 20;"
+```
+
+If the user you want has no known password, reset it through the app's own
+**Forgot password** flow against the tunnel URL (staging mail goes to Mailpit,
+per phase 1's `mail=` line) rather than writing a hash into the database.
+
+**Do not use an administrator account for this test.** The pilot's scope gate is
+the thing under test: an org admin sees everything and would pass a test a
+sales rep could fail.
+
+## If, and only if, Safari leaves a WebView question open
+
+A tunnel hostname is temporary, and baking one into an app binary outlives the
+tunnel. So no TestFlight build is prepared in advance. If Safari turns up
+something that only the app's WebView explains, the build is:
+
+```bash
+MOBILE_SERVER_URL=https://<the tunnel host> npm run -w apps/mobile sync
+# then archive and upload from Xcode
+```
+
+Review time means the tunnel must still be open when the tester installs it —
+which is the reason to prefer a permanent staging hostname if WebView testing
+becomes routine.
