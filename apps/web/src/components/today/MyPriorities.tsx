@@ -70,6 +70,20 @@ export default function MyPriorities({
         </Link>
       </div>
 
+      {/**
+       * Why this list and the queue counts below it can disagree.
+       *
+       * They answer different questions and both answers are right. The chips
+       * count every open follow-up that qualifies, which is what a queue is
+       * for; this list leaves out work nobody should act on — a follow-up
+       * whose lead sits in a stage the workspace marked terminal, say. A
+       * reader who sees "1 overdue" above an empty overdue band deserves the
+       * sentence rather than the puzzle.
+       */}
+      <p style={{ margin: '2px 0 0', fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
+        What to act on now. The queues below count every open follow-up, including those on leads nobody is working.
+      </p>
+
       <ol className="lf-today" style={{ listStyle: 'none', margin: '10px 0 0', padding: 0 }}>
         {items.map((item, index) => (
           <li key={`${item.kind}-${item.leadId}`} className="lf-today__row" data-tone={TONE[item.kind]}>

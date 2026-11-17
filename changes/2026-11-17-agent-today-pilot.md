@@ -91,8 +91,24 @@ the way the Dockerfile does.
   to go through field security and `dialable()`, which the lead page already does.
 - **Manager, HR, Finance and Employee cards are not built.** A manager gets the
   agent-shaped list of their own work.
-- **One decision needed** (see the report): Today now hides a follow-up whose
-  lead is in a terminal stage, while the Overdue chip and the Follow-ups list
-  still count it. They answer different questions, and whether the shared list
-  should change is not this pilot's call.
+- **The follow-up list semantics are unchanged, on purpose.** Today hides a
+  follow-up whose lead sits in a terminal stage; the Overdue chip and the
+  Follow-ups list still count it. They answer different questions and both
+  answers are right, so the card now says which is which: *"What to act on now.
+  The queues below count every open follow-up, including those on leads nobody
+  is working."*
+
+  The example, measured on the seed for `joel.fernandes@example.com`:
+
+  | | |
+  | --- | --- |
+  | Follow-up | "Send payment plan", due 11 Nov |
+  | Lead | Ritika Dcruz |
+  | Stage | Invalid — `TERMINAL_JUNK` |
+  | `Lead.status` | null, so close-out does not catch it |
+  | Overdue chip / Follow-ups list | counts it — **1** |
+  | My priorities | hides it — no overdue row |
+
+  Whether the shared list should also exclude terminal-stage leads is a product
+  decision affecting five surfaces, and it is not this pilot's to take.
 - Lead pages took around nine seconds to settle on this laptop build.
