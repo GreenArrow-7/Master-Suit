@@ -82,6 +82,26 @@
         "ALLOWED_ORIGINS": "http://localhost:3101",
         "NODE_EXTRA_CA_CERTS": "infra/tls-local/ca.pem"
       }
+    },
+    {
+      "name": "web-today-pilot",
+      "cwd": "apps/web",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "next",
+        "dev",
+        "-p",
+        "3011"
+      ],
+      "port": 3011,
+      "env": {
+        "DATABASE_URL": "postgresql://today:today@127.0.0.1:5434/today",
+        "MIGRATION_DATABASE_URL": "postgresql://today:today@127.0.0.1:5434/today",
+        "REDIS_URL": "redis://:today@127.0.0.1:6380",
+        "APP_URL": "http://localhost:3011",
+        "ALLOWED_ORIGINS": "http://localhost:3011,http://127.0.0.1:3011",
+        "APP_ENV": "development"
+      }
     }
   ]
 }
