@@ -160,6 +160,19 @@ export async function agentToday(
   tenantId: string,
   userId: string,
   timeZone: string,
+  /**
+   * The leads this viewer may read, from `leadScope(ctx, 'VIEW')` — the same
+   * predicate every other read of the Lead model uses.
+   *
+   * **Not optional, and the reason is a defect this had.** Follow-ups were
+   * filtered by `ownerId` alone — the *follow-up's* owner — and the row
+   * rendered `lead.fullName` through the relation. A follow-up assigned to one
+   * person on another person's lead therefore put that lead's name on screen
+   * for someone whose `leads:VIEW` is OWN, and the action beside it answered
+   * 404. Found by clicking the first row of the pilot: the lead belonged to a
+   * colleague, and the card had already said who they were.
+   */
+  leadWhere: Record<string, unknown>,
   now = new Date(),
 ): Promise<Loaded> {
   // A lead this person works: theirs, or theirs as second owner, which reaches
@@ -190,9 +203,9 @@ export async function agentToday(
    * the first.
    */
   const OPEN_STAGE = { stage: { is: { category: 'OPEN' as const } } };
-  const openLead = { tenantId, deletedAt: null, ...OPEN_STAGE, AND: [mine, OPEN_LEADS_WHERE] };
+  const openLead = { tenantId, deletedAt: null, ...OPEN_STAGE, AND: [mine, OPEN_LEADS_WHERE, leadWhere] };
   /** A follow-up on a finished lead is not today's work either. */
-  const onOpenLead = { lead: { is: { ...OPEN_STAGE, AND: [OPEN_LEADS_WHERE] } } };
+  const onOpenLead = { lead: { is: { ...OPEN_STAGE, AND: [OPEN_LEADS_WHERE, leadWhere] } } };
 
   const [overdueFollowUps, dueTodayFollowUps, escalated, untouched, quiet] = await Promise.all([
     db.followUpTask.findMany({

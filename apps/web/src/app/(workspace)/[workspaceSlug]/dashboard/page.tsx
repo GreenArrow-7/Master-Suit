@@ -141,8 +141,10 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
    * you right now" is a false statement to show a support session.
    */
   const isPerson = !ctx.actor.id.startsWith('platform:');
-  const todayQuery = (db: TxClient) =>
-    showSales && isPerson ? agentToday(db, ctx.tenantId, ctx.actor.id, timeZone) : null;
+  const todayQuery = async (db: TxClient) =>
+    showSales && isPerson
+      ? agentToday(db, ctx.tenantId, ctx.actor.id, timeZone, await leadScope(ctx, 'VIEW', { db }))
+      : null;
 
   const salesQuery = (db: TxClient) =>
     showSales
