@@ -40,7 +40,7 @@ import { mockOutbox } from '@/lib/mailer';
 import { wrapCredentials } from '@/lib/integrations/connection';
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { get, patch, post } from '../helpers/request';
-import { transcribeCall, analyseCall } from '@/services/shared/callIntelligence';
+import { transcribeCall, analyseCall, matchPlaybook } from '@/services/shared/callIntelligence';
 import { scorePracticeSession } from '@/services/shared/practiceScoring';
 import { POST as createCall } from '@/app/api/v1/calls/route';
 import { POST as recordConsent } from '@/app/api/v1/calls/[id]/consent/route';
@@ -184,6 +184,27 @@ describe('ingest → transcribe → analyse → follow-up', () => {
     await analyseCall({ tenantId: fixture.a.tenantId, callId }).catch(() => {});
     await settles(() => prisma.aIAnalysis.findFirst({ where: { callId, tenantId: fixture.a.tenantId } }));
 
+    /**
+     * The playbook is matched again here, deliberately, and this is not
+     * belt-and-braces.
+     *
+     * `matchPlaybook` reads the playbook **as it is now**. The upload route may
+     * have run the whole chain inline two tests ago — its own comment says so —
+     * which is before the objection above existed, so that run saw an empty
+     * playbook and wrote nothing. The `analyseCall` above then loses the claim
+     * on an already-COMPLETED row and is swallowed, so nothing ever matches and
+     * the assertion below fails. It failed in CI on 11 November exactly that
+     * way, and passed on a developer's machine, which is the signature.
+     *
+     * Delete-then-insert and a unique key on (tenant, call, objection, phrase)
+     * make this safe to run whoever else has run it.
+     */
+    const transcriptRow = await prisma.transcript.findFirstOrThrow({
+      where: { callId, tenantId: fixture.a.tenantId },
+      select: { content: true },
+    });
+    await matchPlaybook(fixture.a.tenantId, callId, transcriptRow.content);
+
     const analysis = await prisma.aIAnalysis.findFirst({ where: { callId, tenantId: fixture.a.tenantId } });
     expect(analysis).not.toBeNull();
     expect(analysis!.status).toBe('COMPLETED');
@@ -199,6 +220,62 @@ describe('ingest → transcribe → analyse → follow-up', () => {
     expect(matches).toHaveLength(1);
     expect(matches[0].phrase).toBe('too expensive');
     expect(matches[0].addressed).toBe(true);
+  });
+
+  /**
+   * The same end state, with no repair call anywhere in it.
+   *
+   * The test above re-runs `matchPlaybook` explicitly, because the objection it
+   * needs is created after the upload route may already have analysed the call.
+   * That proves the matcher works and says nothing about whether the pipeline
+   * calls it — if `analyseCall` stopped doing so, that test would still pass.
+   *
+   * This one closes that hole. The playbook entry already exists by the time
+   * this call is created, so the ordinary chain — upload, transcribe, analyse —
+   * has to produce the match on its own. Nothing here touches `matchPlaybook`.
+   */
+  it('matches the playbook through the ordinary chain, when the entry exists before the call', async () => {
+    const created = await post(
+      createCall,
+      '/api/v1/calls',
+      { leadId, recipientNumber: '+971509999888' },
+      fixture.a.cookie,
+    );
+    expect(created.status, JSON.stringify(created.body)).toBe(200);
+    const freshCallId = created.body.id as string;
+
+    const consent = await post(
+      recordConsent,
+      `/api/v1/calls/${freshCallId}/consent`,
+      { consentGiven: true, method: 'VERBAL' },
+      fixture.a.cookie,
+      { id: freshCallId },
+    );
+    expect(consent.status).toBe(200);
+
+    const form = new FormData();
+    form.append('file', new Blob([new Uint8Array(2048)], { type: 'audio/webm' }), 'call.webm');
+    const res = await uploadRecording(
+      new Request(`http://localhost/api/v1/calls/${freshCallId}/recording/media`, {
+        method: 'PUT',
+        headers: { cookie: fixture.a.cookie },
+        body: form,
+      }),
+      { params: Promise.resolve({ id: freshCallId }) },
+    );
+    expect(res.status, JSON.stringify(await res.clone().json())).toBe(200);
+
+    // Both may have run inline already; both are safe to drive again, and the
+    // end state is what is asserted.
+    await transcribeCall({ tenantId: fixture.a.tenantId, callId: freshCallId }).catch(() => {});
+    await analyseCall({ tenantId: fixture.a.tenantId, callId: freshCallId }).catch(() => {});
+    await settles(() => prisma.aIAnalysis.findFirst({ where: { callId: freshCallId, tenantId: fixture.a.tenantId } }));
+
+    const matches = await prisma.objectionMatch.findMany({
+      where: { callId: freshCallId, tenantId: fixture.a.tenantId },
+    });
+    expect(matches, 'the pipeline itself must match the playbook').toHaveLength(1);
+    expect(matches[0].phrase).toBe('too expensive');
   });
 
   it('re-running analysis actually re-runs, instead of stranding PROCESSING', async () => {
