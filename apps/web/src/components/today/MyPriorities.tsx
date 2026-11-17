@@ -47,7 +47,7 @@ export default function MyPriorities({
     return (
       <section className="lf-card" aria-label="My priorities">
         <h2 style={{ margin: 0, fontSize: 'var(--lf-text-md)' }}>My priorities</h2>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-muted)' }}>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-3)' }}>
           Nothing needs you right now.{' '}
           <Link className="lf-link" href={listHref}>
             Open my leads →
@@ -97,7 +97,10 @@ export default function MyPriorities({
             </span>
             {/* The reason is the product. Never truncated away on a phone. */}
             <span className="lf-today__why">{item.reason}</span>
-            <Link className="lf-btn lf-btn--quiet lf-today__do" href={`/${slug}/sales/leads/${item.leadId}`}>
+            <Link
+              className="lf-btn lf-btn--secondary lf-btn--sm lf-today__do"
+              href={`/${slug}/sales/leads/${item.leadId}`}
+            >
               {item.action}
             </Link>
           </li>
@@ -115,7 +118,7 @@ export default function MyPriorities({
             ))}
           </ul>
           {brief.questions.length > 0 && (
-            <p style={{ margin: '6px 0 0', color: 'var(--lf-muted)' }}>Ask: {brief.questions.join(' · ')}</p>
+            <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-3)' }}>Ask: {brief.questions.join(' · ')}</p>
           )}
         </div>
       )}

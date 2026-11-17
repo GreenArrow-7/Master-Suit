@@ -5992,7 +5992,7 @@ a.lf-kpi:hover {
 .lf-today__brief {
   margin-top: var(--lf-space-3);
   padding: 10px 12px;
-  border-radius: var(--lf-radius-md);
+  border-radius: var(--lf-radius);
   background: var(--lf-surface-2);
   border: 1px solid color-mix(in srgb, var(--lf-line) 65%, transparent);
   font-size: var(--lf-text-xs);
