@@ -36,6 +36,22 @@ Miss any one and the call is placed with no stream, and the live screen falls
 back to the script. That is the whole reason a demo can look like a working
 call.
 
+## Measured on 17 November 2026
+
+Both checks were run on the host and their output is recorded here so nobody
+repeats them to learn the same thing.
+
+| Check | Result | Means |
+| --- | --- | --- |
+| `grep -c '^LIVE_STREAM_WS_URL=.\+' /home/deploy/ios-staging/.env.ios-staging` | **0** | Prerequisite 1 is **missing**. Staging is in `no-engine` mode, and the live screen says "Live guidance is not configured on this deployment." |
+| `docker exec infra-web-1 node -p "require('next/package.json').version"` | **16.4.2** | Unrelated to coaching, recorded because it was run in the same sitting: production's *running* Next.js, read from the container rather than inferred from a lockfile. |
+
+So the gate in `dial/route.ts` cannot open today whatever else is configured,
+and prerequisites 2 and 3 are untested behind it — a provider that cannot fork,
+or a missing speech-to-text connection, would both be invisible until
+prerequisite 1 is fixed. Fix the address first, then re-read the banner, and
+only then place the call.
+
 ## Prerequisite 1 — the engine has a public address
 
 The worker runs a WebSocket server on `LIVE_STREAM_PORT` (default 8090) at path
