@@ -8,6 +8,7 @@ import { demoScript, coachTick, heuristicHints, nextBestQuestion, detectStage, p
 import { leadCallContext, contextPromptBlock, budgetMatchHint } from '@/services/leads/callContext';
 import { activeObjections, analyseAndAudit } from '@/services/shared/callIntelligence';
 import { liveChannel } from '@/lib/integrations/telephony/stream';
+import { DEMO_CONSENT_BY } from '@/lib/integrations/telephony/consent';
 import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 import { assertCallInScope } from '@/lib/security/record-scope';
@@ -18,8 +19,17 @@ import { assertCallInScope } from '@/lib/security/record-scope';
  * call's redis channel. The SSE here only forwards — the browser never touches
  * audio, and closing the tab stops nothing but the display.
  */
-function relayStream(callId: string, initialStatus: string): Response {
+function relayStream(callId: string, initialStatus: string, signal: AbortSignal): Response {
   const encoder = new TextEncoder();
+  // `redis.duplicate()` opens a NEW connection, not a pooled one, and the
+  // heartbeat holds a timer. Both must be released on every way out of here —
+  // `done`, a failed subscribe, the client going away, and stream cancellation.
+  // Before this, only the first two released them, so every EventSource retry
+  // on a phone leaked one connection and one timer for the life of the process.
+  // That is the normal case for this feature, not an edge case: the agent
+  // switches to the phone app, iOS suspends the WebView, EventSource retries.
+  let release: () => Promise<void> = async () => undefined;
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (event: Record<string, unknown>) =>
@@ -27,7 +37,6 @@ function relayStream(callId: string, initialStatus: string): Response {
       send({ type: 'status', status: initialStatus, transport: 'vendor-stream' });
 
       const subscriber = redis.duplicate();
-      // SSE needs periodic bytes or proxies reap the connection.
       const heartbeat = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(': hb\n\n'));
@@ -36,8 +45,12 @@ function relayStream(callId: string, initialStatus: string): Response {
         }
       }, 15_000);
 
+      let released = false;
       const stop = async () => {
+        if (released) return; // idempotent: abort and `done` can both arrive
+        released = true;
         clearInterval(heartbeat);
+        signal.removeEventListener('abort', onAbort);
         await subscriber.quit().catch(() => undefined);
         try {
           controller.close();
@@ -45,16 +58,32 @@ function relayStream(callId: string, initialStatus: string): Response {
           /* already closed */
         }
       };
+      release = stop;
+
+      function onAbort() {
+        void stop();
+      }
+      // The client hanging up the SSE is the common path, so it must release.
+      if (signal.aborted) {
+        await stop();
+        return;
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
 
       subscriber.on('message', (_channel: string, message: string) => {
         try {
-          send(JSON.parse(message));
-          if ((JSON.parse(message) as { type?: string }).type === 'done') void stop();
+          const event = JSON.parse(message) as { type?: string };
+          send(event as Record<string, unknown>);
+          if (event.type === 'done') void stop();
         } catch {
           /* skip malformed event */
         }
       });
       await subscriber.subscribe(liveChannel(callId)).catch(() => void stop());
+    },
+    // Runtimes that cancel the stream rather than abort the request land here.
+    cancel() {
+      return release();
     },
   });
 
@@ -99,7 +128,7 @@ export const GET = route(
     // A call placed through a real telephony vendor is fed by the realtime
     // engine, not by the demo script — this SSE only relays its events.
     if (call.externalCallId && call.providerName && !['demo-simulation', 'live-mic'].includes(call.providerName)) {
-      return relayStream(call.id, call.status);
+      return relayStream(call.id, call.status, req.signal);
     }
 
     // The lead context is loaded once per session and carried on every coach
@@ -125,7 +154,7 @@ export const GET = route(
         callId: call.id,
         consentGiven: true,
         method: 'VERBAL',
-        consentedBy: 'Demo simulation — verbal consent assumed at session start',
+        consentedBy: DEMO_CONSENT_BY,
         givenAt: new Date(),
       },
       update: {},

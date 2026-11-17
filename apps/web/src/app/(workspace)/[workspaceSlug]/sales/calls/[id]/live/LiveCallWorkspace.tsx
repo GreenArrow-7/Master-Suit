@@ -7,7 +7,7 @@ import { dialable } from '@/components/workspace/CallLink';
 import Badge from '@/components/ui/Badge';
 import { DateTimeInput } from '@/components/forms/DateInput';
 import type { LeadCallContext } from '@/services/leads/callContext';
-import { LIVE_AUDIO_NOTICE, vendorLabel, type LiveAudio } from '@/lib/integrations/telephony/liveAudio';
+import { LIVE_AUDIO_NOTICE, vendorLabel, hintIsStale, type LiveAudio } from '@/lib/integrations/telephony/liveAudio';
 import { recorderOptions } from '@/lib/media/recorderMimeType';
 import CallLogDialog from '../../../leads/CallLogDialog';
 
@@ -24,7 +24,22 @@ interface Hint {
   why?: string;
   source: string;
   at: number;
+  /** Wall clock when this hint reached the screen — see hintIsStale. */
+  receivedAt?: number;
 }
+
+/**
+ * What produced a hint, in the agent's words. The three are kept apart on
+ * purpose: a rule firing on a keyword and a model reading the conversation
+ * deserve different trust. The worker publishes only `gemini` hints from
+ * `coachTick` (liveStream.ts filters the rest), so a canned fallback returned
+ * *because* the model failed can never appear here labelled as the model.
+ */
+const HINT_SOURCE: Record<string, string> = {
+  gemini: 'AI model',
+  playbook: 'Your playbook',
+  simulated: 'Rule',
+};
 
 const QUICK_ACTIONS: [action: string, label: string][] = [
   ['ASK_NEXT', 'Ask next'],
@@ -98,6 +113,12 @@ export default function LiveCallWorkspace({
   const [segments, setSegments] = useState<Segment[]>([]);
   const [hints, setHints] = useState<Hint[]>([]);
   const [seconds, setSeconds] = useState(0);
+  /** The hint stream dropped; the phone call is still up. */
+  const [linkDown, setLinkDown] = useState(false);
+  // Ticks while the call is not finished, so wall-clock hint ages re-render.
+  // Read in the hint list below only through this render; the value is a clock,
+  // not data.
+  const [, setStaleTick] = useState(0);
   const [muted, setMuted] = useState(false);
   const [notes, setNotes] = useState(call.notes ?? '');
   const [notesSaved, setNotesSaved] = useState(false);
@@ -127,6 +148,19 @@ export default function LiveCallWorkspace({
     const timer = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(timer);
   }, [phase]);
+
+  // Hint ages are wall-clock, so they must be re-rendered on their own tick:
+  // nothing else changes while the conversation pauses. Ungated from `live` on
+  // purpose — a hint must not stop ageing during wrap-up.
+  useEffect(() => {
+    if (phase === 'idle' || phase === 'done') return;
+    const timer = setInterval(() => setStaleTick((t) => t + 1), 5000);
+    return () => clearInterval(timer);
+  }, [phase]);
+
+  // Closing the tab or navigating away must release the server's redis
+  // subscriber, not wait for the call to end.
+  useEffect(() => () => sourceRef.current?.close(), []);
 
   // A provider call reaches its end at the vendor, not on this screen: ask for
   // its status until it is over, then open the outcome-and-follow-up dialog.
@@ -164,15 +198,20 @@ export default function LiveCallWorkspace({
    */
   function start(vendor = false) {
     setPhase('live');
+    // Replacing a live EventSource without closing it leaves two streams, and
+    // every one of them holds a redis connection on the server.
+    sourceRef.current?.close();
     const source = new EventSource(`/api/v1/calls/${call.id}/live`);
     sourceRef.current = source;
+    source.onopen = () => setLinkDown(false);
     source.onmessage = (event) => {
+      setLinkDown(false);
       const data = JSON.parse(event.data);
       if (data.type === 'segment') {
         setSegments((prev) => [...prev, data]);
         setSeconds(data.at);
       } else if (data.type === 'coach') {
-        setHints((prev) => [...prev, data]);
+        setHints((prev) => [...prev, { ...data, receivedAt: Date.now() }]);
       } else if (data.type === 'stage') {
         setStage(data.stage);
       } else if (data.type === 'error') {
@@ -199,7 +238,13 @@ export default function LiveCallWorkspace({
        * The simulated and mic transports are driven by this tab, so for them a
        * dead stream really is the end.
        */
-      if (vendor) return;
+      if (vendor) {
+        // The call itself is unaffected — it lives at the provider. Say so on
+        // screen rather than going quiet, so a gap in the hints is visibly a
+        // connection gap and not the coach having nothing to say.
+        setLinkDown(true);
+        return;
+      }
       source.close();
       setPhase((p) => (p === 'live' ? 'done' : p));
     };
@@ -740,23 +785,31 @@ export default function LiveCallWorkspace({
             AI coach
           </div>
           <div style={{ maxHeight: 420, overflowY: 'auto', display: 'grid', gap: 'var(--lf-space-3)' }}>
+            {linkDown && phase !== 'done' && (
+              <p role="status" style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)', margin: 0 }}>
+                Coaching is reconnecting — the call is not affected. Hints from the gap are lost.
+              </p>
+            )}
             {hints.length === 0 ? (
               <p style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
                 Hints appear here as the conversation develops.
               </p>
             ) : (
-              hints.map((hint, i) => (
+              hints.map((hint, i) => {
+                const stale = hintIsStale(hint.receivedAt, Date.now());
+                return (
                 <div key={i} style={{ display: 'grid', gap: 4 }}>
                   <span style={{ display: 'flex', gap: 'var(--lf-space-2)', alignItems: 'center' }}>
                     <Badge tone={HINT_TONE[hint.kind] ?? 'slate'}>
                       {HINT_LABEL[hint.kind] ?? hint.kind.toLowerCase()}
                     </Badge>
+                    {stale && <Badge tone="slate">out of date</Badge>}
                     <span style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-4)' }}>
-                      {hint.source === 'gemini' ? 'Gemini' : hint.source === 'playbook' ? 'Your playbook' : 'heuristic'}{' '}
+                      {HINT_SOURCE[hint.source] ?? hint.source}{' '}
                       · {Math.floor(hint.at / 60)}:{String(hint.at % 60).padStart(2, '0')}
                     </span>
                   </span>
-                  <span style={{ fontSize: 'var(--lf-text-sm)' }}>{hint.text}</span>
+                  <span style={{ fontSize: 'var(--lf-text-sm)', opacity: stale ? 0.75 : 1 }}>{hint.text}</span>
                   {hint.say && (
                     <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-wine-700, #7f1d4e)' }}>
                       Say: {hint.say}
@@ -766,7 +819,8 @@ export default function LiveCallWorkspace({
                     <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>Why: {hint.why}</span>
                   )}
                 </div>
-              ))
+                );
+              })
             )}
           </div>
           {phase !== 'idle' && (

@@ -9,6 +9,7 @@ import { geminiCredential } from '@/lib/ai/gemini';
 import { env } from '@/lib/env';
 import { resolveTelephony } from '@/lib/integrations/telephony/resolve';
 import { liveAudioMode } from '@/lib/integrations/telephony/liveAudio';
+import { consentAuthorisesLiveAudio } from '@/lib/integrations/telephony/consent';
 import { loadFieldRules } from '@/lib/security/fieldSecurity';
 import { asLeadPhone } from '@/services/leads/createLead';
 import { workspaceTimezone } from '@/services/hr/attendance';
@@ -57,7 +58,10 @@ export default async function LiveCallPage({
   // not an error, here.
   const telephony = await resolveTelephony(ctx.tenantId).catch(() => null);
   const liveAudio = liveAudioMode(telephony?.provider.capabilities, env.LIVE_STREAM_WS_URL || undefined);
-  const consented = Boolean(call.consent?.consentGiven && !call.consent.withdrawnAt);
+  // The same rule the dial route applies. A page that disagreed with it offered
+  // "Place call with AI assistance" without its confirmation, and the dial then
+  // placed a real two-leg call with no fork, no hints and no error.
+  const consented = consentAuthorisesLiveAudio(call.consent);
 
   // A call placed through a real vendor is displayed, not simulated: the
   // realtime engine produces its events and this page only shows them.

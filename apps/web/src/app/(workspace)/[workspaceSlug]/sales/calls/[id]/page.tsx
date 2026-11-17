@@ -19,6 +19,7 @@ import TemperaturePanel from './TemperaturePanel';
 import { temperatureFromAnalysis } from '@/lib/ai/temperature';
 import { maskCallNumbers } from '@/services/leads/createLead';
 import { assertCallInScope, callScope } from '@/lib/security/record-scope';
+import { consentAuthorisesLiveAudio } from '@/lib/integrations/telephony/consent';
 
 export const metadata = { title: 'Call Detail' };
 
@@ -139,7 +140,7 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
       : null;
   const canSuggestRequirement = openRequirement ? can(ctx, 'requirements', 'EDIT') : can(ctx, 'requirements', 'CREATE');
 
-  const hasConsent = call.consent?.consentGiven && !call.consent.withdrawnAt;
+  const hasConsent = consentAuthorisesLiveAudio(call.consent);
   // A call's writes check it at their own action, so its controls are offered
   // only where that same check passes: reading a colleague's call is not
   // changing it.

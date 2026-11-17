@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { NotFound, Invalid, Conflict } from '@/lib/errors';
 import { callbackSecrets, TelephonyConfigError, UNSIGNED_VENDORS } from '@/lib/integrations/telephony';
+import { consentAuthorisesLiveAudio } from '@/lib/integrations/telephony/consent';
 import { resolveTelephony } from '@/lib/integrations/telephony/resolve';
 import { streamToken } from '@/lib/integrations/telephony/stream';
 import { assertCallInScope } from '@/lib/security/record-scope';
@@ -71,7 +72,8 @@ export const POST = route(
     // the point the file is stored — the vendor must never hold media the client
     // did not agree to.
     const consent = await prisma.recordingConsent.findFirst({ where: { callId: call.id, tenantId: ctx.tenantId } });
-    const consented = Boolean(consent?.consentGiven && !consent.withdrawnAt);
+    // A demo simulation's consent row authorises nothing real — see consent.ts.
+    const consented = consentAuthorisesLiveAudio(consent);
     const wantsRecording = body.record && telephony.recordingEnabled;
     if (wantsRecording && telephony.consentRequired && !consented) {
       throw Invalid([

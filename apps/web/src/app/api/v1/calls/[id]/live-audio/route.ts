@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db';
 import { Forbidden, Invalid } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { connectionCredentials } from '@/lib/integrations/connection';
+import { consentAuthorisesLiveAudio } from '@/lib/integrations/telephony/consent';
 import { getTranscriptionProvider, transcriptionProviderFor } from '@/lib/integrations/transcription';
 import { coachTick, heuristicHints, detectStage, type CoachHint } from '@/lib/ai/liveCoach';
 import { parseAmounts } from '@/lib/ai/simulated';
@@ -69,7 +70,7 @@ export const POST = route(
     const consent = await prisma.recordingConsent.findFirst({
       where: { callId: call.id, tenantId: ctx.tenantId },
     });
-    if (!consent?.consentGiven || consent.withdrawnAt) {
+    if (!consentAuthorisesLiveAudio(consent)) {
       throw Forbidden('Record consent before streaming call audio.');
     }
 

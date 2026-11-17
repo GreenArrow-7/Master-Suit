@@ -125,6 +125,26 @@ export function playbookHint(
   };
 }
 
+/**
+ * Whether a customer utterance is worth coaching on at all.
+ *
+ * `<Start><Stream>` runs before `<Dial>`, so the "Customer" track carries
+ * ringback tone — and later possibly a voicemail greeting — before any human
+ * speaks. Speech-to-text turns that into a word or two of noise, which is
+ * enough for a heuristic regex to fire and for the stage detector to advance.
+ * The agent would then see sales guidance about a conversation that has not
+ * started.
+ *
+ * Short utterances are still transcribed and still shown; they just do not
+ * drive hints, the stage, or the coach-tick turn counter. Three words is the
+ * floor because every real objection in HEURISTICS is longer than that, while
+ * ringback and "hello?" are not.
+ */
+export function coachableUtterance(text: string): boolean {
+  const words = text.trim().split(/\s+/).filter((w) => /[a-z]/i.test(w));
+  return words.length >= 3;
+}
+
 export function heuristicHints(windowText: string): CoachHint[] {
   const hints: CoachHint[] = [];
   for (const [pattern, kind, text] of HEURISTICS) {
