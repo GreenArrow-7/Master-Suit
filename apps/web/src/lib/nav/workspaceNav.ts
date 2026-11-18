@@ -68,6 +68,20 @@ export interface NavTab {
    * A list hides it when the workspace holds any of them.
    */
   unlessModule?: Module | readonly Module[];
+  /**
+   * Shown only when the workspace ALSO holds this module. `module` is any-of;
+   * this is the and.
+   *
+   * It exists for a destination that belongs to one product but is only *filed
+   * here* when another product is present: the three Real Estate screens that
+   * move into Sales CRM for a workspace owning both. Without the and they would
+   * appear twice for that workspace, or — worse — appear in a Sales section for
+   * a Real-Estate-only workspace that has no Sales CRM at all.
+   *
+   * It grants nothing. The tab still carries its own `module` and permission,
+   * and the route still refuses independently.
+   */
+  andModule?: Module;
   audience?: Audience;
   /** Other routes that are this same screen (older duplicates, sub-pages). */
   aliases?: string[];
@@ -121,6 +135,17 @@ interface SectionDef {
   key: string;
   label: string;
   collapsible?: boolean;
+  /**
+   * The whole section is not offered when the workspace holds this module,
+   * because another section already carries every one of its destinations.
+   *
+   * Tab-level `unlessModule` says "this screen is filed elsewhere here". This
+   * says "this entire product section is filed elsewhere here", which is a
+   * different statement and the honest one for Real Estate beside Sales CRM:
+   * suppressing 25 tabs one at a time would read as 25 independent decisions
+   * rather than the single one it is.
+   */
+  unlessModule?: Module | readonly Module[];
   areas: AreaDef[];
 }
 
@@ -191,6 +216,23 @@ function definitions(slug: string): SectionDef[] {
             },
             { label: 'Sales Overview', href: s(''), module: S, keywords: 'sales desk overdue sla' },
             {
+              /**
+               * The brokerage board, for a workspace that owns Real Estate
+               * beside Sales CRM. Its own screen, not a re-export of a Sales
+               * one, so suppressing the Real Estate section would otherwise
+               * have taken it away.
+               *
+               * The route is unchanged, so the bookmark is unchanged.
+               */
+              label: 'Brokerage Overview',
+              href: r('/dashboard'),
+              aliases: [le('/dashboard')],
+              permission: 'leads',
+              module: R,
+              andModule: S,
+              keywords: 'brokerage overview today pipeline real estate',
+            },
+            {
               label: 'Team Work',
               href: s('/leadership?view=chasing'),
               permission: 'reports',
@@ -225,7 +267,14 @@ function definitions(slug: string): SectionDef[] {
           label: 'Leads',
           icon: 'lead',
           tabs: [
-            { label: 'All Leads', href: s('/leads'), permission: 'leads', module: S, keywords: 'prospects' },
+            {
+              label: 'All Leads',
+              href: s('/leads'),
+              aliases: [r('/leads'), le('/leads')],
+              permission: 'leads',
+              module: S,
+              keywords: 'prospects',
+            },
             { label: 'My Leads', href: s('/leads?filter=mine'), permission: 'leads', module: S },
             { label: 'Unassigned', href: s('/leads?filter=unassigned'), permission: 'leads', module: S },
             {
@@ -238,6 +287,7 @@ function definitions(slug: string): SectionDef[] {
             {
               label: 'QR Capture',
               href: s('/capture-links'),
+              aliases: [r('/capture-links'), le('/capture-links')],
               permission: 'leads',
               module: S,
               keywords: 'qr code stand expo flyer sign board capture form',
@@ -245,6 +295,7 @@ function definitions(slug: string): SectionDef[] {
             {
               label: 'Cold Data',
               href: s('/cold-data'),
+              aliases: [r('/cold-data'), le('/cold-data')],
               permission: 'leads',
               module: S,
               keywords: 'cold data lists expo bought list calling convert',
@@ -298,14 +349,36 @@ function definitions(slug: string): SectionDef[] {
             {
               label: 'Tasks & Follow-ups',
               href: s('/follow-ups'),
+              aliases: [r('/follow-ups'), le('/follow-ups')],
               permission: 'leads',
               module: S,
               keywords: 'overdue due today',
             },
             { label: 'My Tasks', href: `/${slug}/tasks`, permission: 'tasks', keywords: 'todo' },
-            { label: 'All Tasks', href: s('/tasks'), permission: 'tasks', module: S, keywords: 'team tasks' },
-            { label: 'Calendar', href: s('/calendar'), permission: 'tasks', module: S, keywords: 'schedule' },
-            { label: 'Viewings', href: s('/site-visits'), permission: 'visits', module: S, keywords: 'site visits' },
+            {
+              label: 'All Tasks',
+              href: s('/tasks'),
+              aliases: [r('/tasks'), le('/tasks')],
+              permission: 'tasks',
+              module: S,
+              keywords: 'team tasks',
+            },
+            {
+              label: 'Calendar',
+              href: s('/calendar'),
+              aliases: [r('/calendar'), le('/calendar')],
+              permission: 'tasks',
+              module: S,
+              keywords: 'schedule',
+            },
+            {
+              label: 'Viewings',
+              href: s('/site-visits'),
+              aliases: [r('/site-visits'), le('/site-visits')],
+              permission: 'visits',
+              module: S,
+              keywords: 'site visits',
+            },
             { label: 'Activity Log', href: s('/activities'), permission: 'activities', module: S },
             { label: 'Field Sales', href: s('/field-sales'), permission: 'fieldsales', module: S },
           ],
@@ -315,7 +388,14 @@ function definitions(slug: string): SectionDef[] {
           label: 'Calls & Coaching',
           icon: 'call',
           tabs: [
-            { label: 'Calls', href: s('/calls'), permission: 'calls', module: S, keywords: 'recordings dialer' },
+            {
+              label: 'Calls',
+              href: s('/calls'),
+              aliases: [r('/calls'), le('/calls')],
+              permission: 'calls',
+              module: S,
+              keywords: 'recordings dialer',
+            },
             {
               label: 'Call Audits',
               href: s('/call-audits'),
@@ -324,7 +404,14 @@ function definitions(slug: string): SectionDef[] {
               keywords: 'quality scoring',
             },
             { label: 'Coaching', href: s('/coaching'), permission: 'calls', module: S },
-            { label: 'Playbook', href: s('/playbook'), permission: 'calls', module: S, keywords: 'objections scripts' },
+            {
+              label: 'Playbook',
+              href: s('/playbook'),
+              aliases: [r('/playbook'), le('/playbook')],
+              permission: 'calls',
+              module: S,
+              keywords: 'objections scripts',
+            },
             { label: 'Practice', href: s('/practice'), permission: 'calls', module: S, keywords: 'roleplay' },
           ],
         },
@@ -364,10 +451,34 @@ function definitions(slug: string): SectionDef[] {
      * authoritative rows Sales reads; a parallel set of permissions over the
      * same objects would be two answers to one question, and the second one
      * would eventually disagree.
+     *
+     * NOT OFFERED BESIDE SALES CRM (`unlessModule: S`).
+     *
+     * A workspace owning both products saw two sections over one set of rows,
+     * and two sidebar entries both reading "Leads" — `/sales/leads` and
+     * `/realty/leads`, the same leads. Sales CRM is the single visible sales
+     * section, so this one stands down there.
+     *
+     * Every destination it carries keeps a home first, which is what makes the
+     * suppression safe rather than a hiding:
+     *   - 22 of them are the same screen as a Sales tab, several literally so —
+     *     `realty/forms`, `realty/requirements`, `realty/proposals` and
+     *     `realty/site-visits` are one-line re-exports of the Sales pages. The
+     *     Sales tab now carries the `realty/` path as an alias, so an old
+     *     bookmark still lights the right row.
+     *   - 3 are this product's own: the brokerage Dashboard, the Properties
+     *     unit register and the Off-Plan catalogue filter. Those move into Home
+     *     and Property Inventory under `module: R, andModule: S`, so they are
+     *     offered exactly where they were paid for and nowhere else.
+     *
+     * A Real-Estate-only workspace is untouched: no Sales module, so this
+     * section renders in full, as it does today. Nothing here changes an
+     * entitlement, a permission or a route.
      */
     {
       key: 'realty',
       label: 'Real Estate',
+      unlessModule: S,
       areas: [
         {
           key: 'realty-overview',
@@ -879,14 +990,28 @@ function definitions(slug: string): SectionDef[] {
           label: 'Property Inventory',
           icon: 'company',
           tabs: [
-            { label: 'Projects', href: s('/projects'), permission: 'projects', module: S, keywords: 'units inventory' },
-            { label: 'Listings', href: s('/listings'), permission: 'listings', module: S },
+            {
+              label: 'Projects',
+              href: s('/projects'),
+              aliases: [r('/projects'), le('/projects')],
+              permission: 'projects',
+              module: S,
+              keywords: 'units inventory',
+            },
+            {
+              label: 'Listings',
+              href: s('/listings'),
+              aliases: [r('/listings'), le('/listings')],
+              permission: 'listings',
+              module: S,
+            },
             {
               // `listings` at EDIT, matching what the page asserts: publishing a
               // listing to a portal is changing how it is advertised, not
               // browsing it.
               label: 'Portals',
               href: s('/portals'),
+              aliases: [r('/portals')],
               permission: 'listings',
               module: S,
               keywords: 'syndication property finder bayut feed publish',
@@ -894,6 +1019,7 @@ function definitions(slug: string): SectionDef[] {
             {
               label: 'Buyer Requirements',
               href: s('/requirements'),
+              aliases: [r('/requirements'), le('/requirements')],
               permission: 'requirements',
               module: S,
               keywords: 'demand matching',
@@ -904,11 +1030,43 @@ function definitions(slug: string): SectionDef[] {
               // whoever may see the requirement may send it.
               label: 'Proposals',
               href: s('/proposals'),
+              aliases: [r('/proposals')],
               permission: 'requirements',
               module: S,
               keywords: 'shortlist send client brochure',
             },
             { label: 'Products', href: s('/products'), permission: 'products', module: S },
+            {
+              /**
+               * The unit register — Real Estate's own screen, not a re-export.
+               * `projects`, not `listings`: a unit belongs to a project, and
+               * `/api/v1/projects/[id]/units` gates on `projects:VIEW`.
+               */
+              label: 'Properties',
+              href: r('/properties'),
+              aliases: [le('/properties')],
+              permission: 'projects',
+              module: R,
+              andModule: S,
+              keywords: 'units stock availability inventory brokerage',
+            },
+            {
+              /**
+               * A filtered catalogue, not a screen of its own: off-plan is what
+               * `possessionStatus` records, and `catalogueFilters` already
+               * validates `?possession=`. Both non-ready states, because
+               * NEW_LAUNCH is off-plan too; only READY_TO_MOVE is not.
+               *
+               * The Sales Projects tab carries no such filter, so this is a
+               * distinct entry point even though it shares a route.
+               */
+              label: 'Off-Plan',
+              href: r('/projects?possession=UNDER_CONSTRUCTION,NEW_LAUNCH'),
+              permission: 'projects',
+              module: R,
+              andModule: S,
+              keywords: 'under construction new launch payment plan handover',
+            },
           ],
         },
       ],
@@ -923,7 +1081,7 @@ function definitions(slug: string): SectionDef[] {
           icon: 'campaign',
           tabs: [
             { label: 'Campaigns', href: s('/campaigns'), permission: 'campaigns', module: S, keywords: 'marketing' },
-            { label: 'Events', href: s('/events'), permission: 'events', module: S },
+            { label: 'Events', href: s('/events'), aliases: [r('/events')], permission: 'events', module: S },
           ],
         },
         {
@@ -937,15 +1095,17 @@ function definitions(slug: string): SectionDef[] {
               permission: 'forms',
               module: S,
               keywords: 'web forms',
-              // A workspace with Sales and Lead Eagle browses Lead Eagle's address here.
-              aliases: [le('/forms')],
+              // A workspace with Sales and Lead Eagle browses Lead Eagle's address
+              // here; one with Real Estate browses `realty/`. Both are this screen —
+              // `realty/forms/page.tsx` is a one-line re-export of this page.
+              aliases: [le('/forms'), r('/forms')],
             },
             {
               label: 'Landing Pages',
               href: s('/landing-pages'),
               permission: 'landingpages',
               module: S,
-              aliases: [le('/landing-pages')],
+              aliases: [le('/landing-pages'), r('/landing-pages')],
             },
             {
               label: 'Social Sources',
@@ -1128,6 +1288,7 @@ function definitions(slug: string): SectionDef[] {
             {
               label: 'Overview',
               href: s('/collections'),
+              aliases: [r('/collections')],
               permission: 'collections',
               module: S,
               keywords: 'receipts agency fee',
@@ -1148,6 +1309,7 @@ function definitions(slug: string): SectionDef[] {
             {
               label: 'Commissions',
               href: s('/commissions'),
+              aliases: [r('/commissions')],
               permission: 'commissions',
               module: S,
               keywords: 'earnings',
@@ -1173,7 +1335,14 @@ function definitions(slug: string): SectionDef[] {
           label: 'Reports',
           icon: 'report',
           tabs: [
-            { label: 'Sales', href: s('/reports'), permission: 'reports', module: S, keywords: 'analytics export' },
+            {
+              label: 'Sales',
+              href: s('/reports'),
+              aliases: [r('/reports'), le('/reports')],
+              permission: 'reports',
+              module: S,
+              keywords: 'analytics export',
+            },
             {
               label: 'Value',
               href: s('/leadership?view=value'),
@@ -1196,7 +1365,13 @@ function definitions(slug: string): SectionDef[] {
               keywords: 'p&l margin',
             },
             { label: 'Dashboards', href: s('/dashboards'), permission: 'leads', module: S, keywords: 'charts' },
-            { label: 'Targets', href: s('/targets'), module: S, keywords: 'quota goals' },
+            {
+              label: 'Targets',
+              href: s('/targets'),
+              aliases: [r('/targets'), le('/targets')],
+              module: S,
+              keywords: 'quota goals',
+            },
           ],
         },
       ],
@@ -1275,6 +1450,7 @@ function definitions(slug: string): SectionDef[] {
             {
               label: 'Allocation',
               href: s('/allocation'),
+              aliases: [r('/allocation'), le('/allocation')],
               permission: 'allocation',
               module: S,
               keywords: 'distribution rules',
@@ -1428,6 +1604,7 @@ export function activeModule(
 export function tabAllowed(tab: NavTab, input: NavInput): boolean {
   if (tab.module && ![tab.module].flat().some((module) => input.modules.includes(module))) return false;
   if (tab.unlessModule && [tab.unlessModule].flat().some((module) => input.modules.includes(module))) return false;
+  if (tab.andModule && !input.modules.includes(tab.andModule)) return false;
   if (tab.audience === 'self' && input.peopleOversight) return false;
   if (tab.audience === 'oversight' && !input.peopleOversight) return false;
   return tokens(tab).every((token) => input.permitted.includes(token));
@@ -1436,6 +1613,10 @@ export function tabAllowed(tab: NavTab, input: NavInput): boolean {
 export function buildNavigation(input: NavInput): NavSection[] {
   return definitions(input.slug)
     .filter((section) => !(input.platformStaff && section.key === 'people'))
+    .filter(
+      (section) =>
+        !(section.unlessModule && [section.unlessModule].flat().some((module) => input.modules.includes(module))),
+    )
     .map((section) => ({
       key: section.key,
       label: section.label,
