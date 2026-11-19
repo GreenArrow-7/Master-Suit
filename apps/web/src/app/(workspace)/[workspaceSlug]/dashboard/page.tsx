@@ -115,6 +115,23 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
    * perfectly ordinary sales role — and it is exactly what a read-only platform
    * service identity scoped to a few modules hits on its first page load.
    */
+  /**
+   * Live AI-assisted calling, as a primary action.
+   *
+   * The feature existed and had no entrance: an agent reached it only through
+   * Calls → New call → "Create & open live workspace", three screens from the
+   * page they land on every morning. The link goes to that same new-call
+   * screen rather than to `/calls/<id>/live` — the live workspace needs a real
+   * call, and a dashboard cannot know which one, so inventing an id would
+   * produce a 404 for the one feature this is meant to surface.
+   *
+   * Both permissions, because both are needed: `calls:CREATE` to make the call
+   * and `dialer:VIEW` for the live workspace itself. The dialer is also
+   * SALES-only (`productModule: 'SALES'` on its routes), so a Lead-Eagle-only
+   * workspace does not see this — a licensing boundary, not an oversight; see
+   * docs/product/SIX-ROLE-SIMPLIFICATION.md §H3.
+   */
+  const showLiveCall = modules.has('SALES') && can(ctx, 'calls', 'CREATE') && can(ctx, 'dialer', 'VIEW');
   const showOpportunities = showSales && can(ctx, 'opportunities', 'VIEW');
   const showTasks = showSales && can(ctx, 'tasks', 'VIEW');
   const salesQuery = (db: TxClient) =>
@@ -536,9 +553,16 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
           </h1>
           <p>Here’s what needs your attention today.</p>
         </div>
-        <div className="lf-dash-meta">
-          {workspace.displayName}
-          {sales && salesScope !== 'ORGANIZATION' ? ` · ${salesScope === 'OWN' ? 'My' : 'Team'} view` : ''}
+        <div className="lf-dash-head__side">
+          {showLiveCall && (
+            <Link className="lf-btn lf-btn--sm" href={`/${workspace.slug}/sales/calls/new`}>
+              Start AI-assisted call
+            </Link>
+          )}
+          <div className="lf-dash-meta">
+            {workspace.displayName}
+            {sales && salesScope !== 'ORGANIZATION' ? ` · ${salesScope === 'OWN' ? 'My' : 'Team'} view` : ''}
+          </div>
         </div>
       </header>
 

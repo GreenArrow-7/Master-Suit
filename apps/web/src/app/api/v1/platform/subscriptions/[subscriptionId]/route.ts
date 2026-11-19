@@ -5,7 +5,7 @@ import { NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
 import { platformAudit } from '@/lib/security/audit';
-import { provisionLeadWork } from '@/services/platform/provisioning';
+import { provisionLeadWork, provisionRoleTemplates } from '@/services/platform/provisioning';
 import { bareRoute } from '@/lib/api/handler';
 
 const updateSchema = z
@@ -90,6 +90,12 @@ export const PATCH = bareRoute(
         // A plan that brings a module that works leads brings what a lead needs,
         // as the workspace editor does; and Lead Eagle its starter roles.
         await provisionLeadWork(
+          tx,
+          current.tenantId,
+          planModules,
+          before.map((row) => row.module),
+        );
+        await provisionRoleTemplates(
           tx,
           current.tenantId,
           planModules,

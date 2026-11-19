@@ -3,7 +3,7 @@ import { withPlatformTx } from '@/lib/db';
 import type { ProductModuleKey } from '@/lib/modules/catalogue';
 import { platformAudit } from '@/lib/security/audit';
 import { activateIdentity, assertIdentityReusable } from '@/services/identity/accounts';
-import { provisionLeadWork } from '@/services/platform/provisioning';
+import { provisionLeadWork, provisionRoleTemplates } from '@/services/platform/provisioning';
 
 /**
  * A new workspace, complete: the tenant with its subscription, entitlements and
@@ -254,6 +254,10 @@ export async function createWorkspace(
     // Lead stages, activity and task types for every module that works leads;
     // Lead Eagle's starter roles.
     await provisionLeadWork(tx, created.id, body.enabledModules);
+    // The six business role templates, for the modules this workspace owns.
+    // Without them a Sales-only or Real-Estate-only workspace starts with the
+    // administrator role alone and every other role has to be hand-built.
+    await provisionRoleTemplates(tx, created.id, body.enabledModules);
     if (body.enabledModules.includes('SALES')) {
       /**
        * The default opportunity pipeline and its stages.

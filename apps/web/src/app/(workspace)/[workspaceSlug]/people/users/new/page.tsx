@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
+import { listRoles } from '@/services/identity/roles';
+import { PRIMARY_TEMPLATE_KEYS } from '@/lib/roles/templates';
 import { Forbidden } from '@/lib/errors';
 import NewUserForm from './NewUserForm';
 
@@ -26,11 +28,11 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
     // preselected. A new hire's default has to be the least authority that
     // exists, never the most, because the failure is silent: nobody reviews a
     // role they did not knowingly choose.
-    prisma.role.findMany({
-      where: { tenantId: ctx.tenantId, rank: { gt: ctx.actor.roleRank } },
-      orderBy: { rank: 'desc' },
-      select: { id: true, name: true, key: true },
-    }),
+    // `listRoles` already carries the description, the default scope and the
+    // modules each role reaches, read from its own grants — which is what the
+    // picker needs to be choosable rather than a list of bare names. Filtered
+    // to what this administrator may grant, as before.
+    listRoles(ctx).then((all) => all.filter((role) => role.rank > ctx.actor.roleRank).sort((a, b) => b.rank - a.rank)),
     prisma.department.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null },
       orderBy: { name: 'asc' },
@@ -82,7 +84,14 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
         defaultRoleId={roles.find((role) => role.key === 'employee')?.id ?? roles[0]?.id ?? ''}
         usersHref={`/${workspaceSlug}/people/users`}
         workspaceSlug={workspaceSlug}
-        roles={roles}
+        roles={roles.map((role) => ({
+          id: role.id,
+          name: role.name,
+          description: role.description,
+          scope: role.defaultScope,
+          modules: role.modules.length,
+          primary: PRIMARY_TEMPLATE_KEYS.includes(role.key),
+        }))}
         departments={departments}
         designations={designations}
         branches={branches}

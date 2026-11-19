@@ -88,7 +88,28 @@ export default async function teardown() {
       where: { email: { contains: RUN_TAG } },
     });
 
-    console.log(`[teardown] removed ${count} workspace(s) and ${identities} account(s) tagged ${RUN_TAG}.`);
+    /**
+     * Roles the specs made inside a workspace they did not create.
+     *
+     * The deletes above are scoped to tenants whose slug carries the tag, which
+     * is every workspace a spec built. But `business-journey` and
+     * `record-scope` run against `E2E_DEMO_SLUG` — a workspace that already
+     * existed and must survive the run — and each creates a role in it:
+     * `Seller <tag>`, `Journey Rep <tag>`, `Scope probe <tag>`. Nothing
+     * removed those, so a demo workspace collected one of each per run until
+     * its Roles screen was mostly test wreckage.
+     *
+     * Matched on the key's tag suffix, the same marker the tenant delete uses:
+     * a real role's key cannot end in this process's random tag. Deleting a
+     * Role cascades to its RolePermission and MembershipRole rows; a role still
+     * attached to a surviving user fails here rather than silently, and lands
+     * in the warning below with its name.
+     */
+    const { count: strayRoles } = await prisma.role.deleteMany({ where: { key: { endsWith: RUN_TAG } } });
+
+    console.log(
+      `[teardown] removed ${count} workspace(s), ${identities} account(s) and ${strayRoles} role(s) tagged ${RUN_TAG}.`,
+    );
   } catch (error) {
     // A teardown failure must not turn a green run red — it is reported and the
     // leftovers are named so they can be removed by hand.

@@ -53,10 +53,20 @@ function Icon({ name }: { name: string }) {
  * layout used to pick the tabs from ownership alone, which is always Sales for
  * a company with both products, so every People screen got the wrong bar.
  */
-export default function MobileTabBar({ slug, modules }: { slug: string; modules: readonly string[] }) {
+export default function MobileTabBar({
+  slug,
+  modules,
+  permitted,
+}: {
+  slug: string;
+  modules: readonly string[];
+  /** Permission tokens the signed-in role holds — the sidebar's own list. */
+  permitted: readonly string[];
+}) {
   const pathname = usePathname();
   // Not named `module`: Next reserves that identifier in client bundles.
   const product = activeModule(pathname, modules);
+  const held = (token: string | undefined) => !token || permitted.includes(token);
 
   /**
    * The daily loop differs by module; the shape does not — four destinations,
@@ -67,27 +77,59 @@ export default function MobileTabBar({ slug, modules }: { slug: string; modules:
    * than Tasks because a viewing is the thing an agent is judged on and the thing
    * most often reached on a phone, standing outside a building.
    */
-  const items =
+  /**
+   * ── Each tab names the permission its page asserts ────────────────────────
+   *
+   * This bar took `modules` and the path and nothing else, so it was drawn from
+   * what the *company* owns rather than what the *person* may open: an employee
+   * in a Sales workspace got Leads and Calls tabs that the server refused, and
+   * the People bar offered the employee directory to someone who cannot read
+   * it. Four tabs is the whole of the navigation on a phone, so two of them
+   * being refusals is most of it.
+   *
+   * The token is the same one the sidebar's model names for that route
+   * (lib/nav/workspaceNav.ts), and hiding here is still only presentation — the
+   * page refuses either way. Tabs with no token are self-service, which every
+   * member reaches.
+   */
+  const candidates =
     product === 'people'
       ? [
           { key: 'overview', label: 'Home', href: `/${slug}/people` },
           { key: 'tasks', label: 'Leave', href: `/${slug}/people/leave` },
           { key: 'calls', label: 'Check in', href: `/${slug}/check-in` },
-          { key: 'leads', label: 'People', href: `/${slug}/people/employees` },
+          { key: 'leads', label: 'People', href: `/${slug}/people/employees`, token: 'employee:VIEW' },
         ]
       : product === 'realty' || product === 'lead-eagle'
         ? [
             { key: 'overview', label: 'Home', href: `/${slug}/${product}/dashboard` },
-            { key: 'leads', label: 'Leads', href: `/${slug}/${product}/leads` },
-            { key: 'calls', label: 'Calls', href: `/${slug}/${product}/calls` },
-            { key: 'visits', label: 'Visits', href: `/${slug}/${product}/site-visits` },
+            { key: 'leads', label: 'Leads', href: `/${slug}/${product}/leads`, token: 'leads:VIEW' },
+            { key: 'calls', label: 'Calls', href: `/${slug}/${product}/calls`, token: 'calls:VIEW' },
+            { key: 'visits', label: 'Visits', href: `/${slug}/${product}/site-visits`, token: 'visits:VIEW' },
           ]
         : [
             { key: 'overview', label: 'Home', href: `/${slug}/dashboard` },
-            { key: 'leads', label: 'Leads', href: `/${slug}/sales/leads` },
-            { key: 'calls', label: 'Calls', href: `/${slug}/sales/calls` },
-            { key: 'tasks', label: 'Tasks', href: `/${slug}/tasks` },
+            { key: 'leads', label: 'Leads', href: `/${slug}/sales/leads`, token: 'leads:VIEW' },
+            { key: 'calls', label: 'Calls', href: `/${slug}/sales/calls`, token: 'calls:VIEW' },
+            { key: 'tasks', label: 'Tasks', href: `/${slug}/tasks`, token: 'tasks:VIEW' },
           ];
+
+  /**
+   * What is left when the refusals are dropped, topped up with the self-service
+   * screens every member holds. An employee in a Sales workspace keeps a usable
+   * bar — Home, Check in, My Leave, My Tasks — instead of one tab and three
+   * closed doors, and the bar never renders with a single lonely item.
+   */
+  const fallback = [
+    { key: 'checkin', label: 'Check in', href: `/${slug}/check-in` },
+    { key: 'leave', label: 'My Leave', href: `/${slug}/people/leave` },
+    { key: 'mytasks', label: 'My Tasks', href: `/${slug}/tasks` },
+  ];
+  const allowed = candidates.filter((item) => held(item.token));
+  const items = [...allowed, ...fallback.filter((extra) => !allowed.some((item) => item.href === extra.href))].slice(
+    0,
+    4,
+  );
 
   return (
     <nav className="lf-tabbar" aria-label="Primary">

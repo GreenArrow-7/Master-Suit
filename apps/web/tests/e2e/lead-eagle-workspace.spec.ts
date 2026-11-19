@@ -269,22 +269,49 @@ test.describe('Lead Eagle, from the platform portal to a lead', () => {
 
     await test.step('Admin > Roles lists Lead Eagle’s starter roles beside the administrator, each with its scope (M2-03)', async () => {
       await page.goto(at('/admin/roles'));
-      await expect(page.locator('.lf-roles__row strong')).toHaveText([
+      /**
+       * The administrator, Lead Eagle's five starter roles, and the three
+       * six-role templates any lead module brings (lib/roles/templates.ts):
+       * Sales Manager, Sales Agent and Employee.
+       *
+       * Compared as a sorted set rather than in rendered order: the templates
+       * share ranks with the starter roles — Sales Manager 30 with Team Lead,
+       * Sales Agent 50 with Telecaller — and the list is ordered by rank, so a
+       * tie has no defined position.
+       */
+      await expect(page.locator('.lf-roles__row strong').first()).toBeVisible();
+      expect((await page.locator('.lf-roles__row strong').allTextContents()).sort()).toEqual([
         'Agent',
         'Company Administrator',
+        'Employee',
         'Manager',
+        'Sales Agent',
+        'Sales Manager',
         'Team Lead',
         'Telecaller',
         'Viewer',
       ]);
-      await expect(page.locator('.lf-roles__scope')).toHaveText([
-        '· Own',
-        '· Organization',
-        '· Organization',
-        '· Team',
-        '· Own',
-        '· Organization',
-      ]);
+      // Each row carries its own scope beside the name (M2-03), checked per
+      // role rather than as a positional list, for the same tie reason.
+      for (const [name, scope] of [
+        ['Company Administrator', 'Organization'],
+        ['Manager', 'Organization'],
+        ['Team Lead', 'Team'],
+        ['Sales Manager', 'Team'],
+        ['Agent', 'Own'],
+        ['Sales Agent', 'Own'],
+        ['Telecaller', 'Own'],
+        ['Viewer', 'Organization'],
+        ['Employee', 'Own'],
+      ] as const) {
+        await expect(
+          page
+            .locator('.lf-roles__row')
+            .filter({ hasText: new RegExp(`^${name}`) })
+            .first(),
+          name,
+        ).toContainText(scope);
+      }
     });
 
     await test.step('its menu offers Forms and Landing Pages; a form is published with its embed code (M6-06, M6-09, M6-07)', async () => {

@@ -7,6 +7,7 @@ import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
 import PermissionMatrix, { type MatrixRow } from '@/components/workspace/PermissionMatrix';
 import { listRoles, permissionMatrix, roleAssignmentHistory } from '@/services/identity/roles';
+import { PRIMARY_TEMPLATE_KEYS } from '@/lib/roles/templates';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 
 export const metadata = { title: 'Roles & permissions' };
@@ -116,8 +117,26 @@ export default async function Page({
     ...branches.map((branch) => ({ value: branch.id, label: `Branch · ${branch.name}` })),
     ...regions.map((region) => ({ value: region.id, label: `Region · ${region.name}` })),
   ];
-  // The list reads alphabetically by display name, as the reference shows.
-  const ordered = [...roles].sort((a, b) => a.name.localeCompare(b.name));
+  /**
+   * Two groups, not one alphabetical list.
+   *
+   * A workspace can hold the six business roles, Lead Eagle's specialist
+   * starter roles and whatever an administrator has built, and alphabetical
+   * order buried "Sales Agent" between "Journey Rep" and "Scope probe". The six
+   * a brokerage recognises come first, in their own order; everything else
+   * follows under Advanced, alphabetically, and nothing is hidden.
+   */
+  const alphabetical = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
+  const primary = PRIMARY_TEMPLATE_KEYS.map((key) => roles.find((role) => role.key === key)).filter(
+    (role): role is (typeof roles)[number] => Boolean(role),
+  );
+  const advanced = roles.filter((role) => !PRIMARY_TEMPLATE_KEYS.includes(role.key)).sort(alphabetical);
+  const groups = [
+    { key: 'primary', label: 'Business roles', roles: primary },
+    { key: 'advanced', label: 'Advanced & custom roles', roles: advanced },
+  ].filter((group) => group.roles.length > 0);
+  // Selecting a role still works whichever group it is in.
+  const ordered = [...primary, ...advanced];
 
   return (
     <div className="lf-page-stack">
@@ -135,29 +154,45 @@ export default async function Page({
 
       <div className="lf-roles__split">
         <section className="lf-card lf-roles__list">
-          {ordered.map((role) => (
-            <Link
-              key={role.id}
-              href={`?roleId=${role.id}`}
-              className="lf-roles__row"
-              aria-current={selected?.role.id === role.id ? 'true' : undefined}
-            >
-              <span className="lf-roles__row-head">
-                <strong>{role.name}</strong>
-                {/* The role's own scope, as the roles API returns it (M2-03), and how far its grants reach when wider. */}
-                <span className="lf-roles__scope" title="Default scope, and the widest any permission reaches">
-                  · {scopeLabel(role.defaultScope)}
-                  {role.widestScope &&
-                    SCOPE_RANK[role.widestScope] > SCOPE_RANK[role.defaultScope] &&
-                    ` (up to ${scopeLabel(role.widestScope)})`}
-                </span>
-                {role.isSystem && <span className="lf-roles__default">default</span>}
-                {!role.isActive && <span className="lf-roles__default">inactive</span>}
-              </span>
-              <span className="lf-roles__slug">
-                {role.key} · {role.users} user{role.users === 1 ? '' : 's'}
-              </span>
-            </Link>
+          {groups.map((group) => (
+            <div key={group.key} className="lf-roles__group">
+              {groups.length > 1 && <div className="lf-roles__group-label">{group.label}</div>}
+              {group.roles.map((role) => (
+                <Link
+                  key={role.id}
+                  href={`?roleId=${role.id}`}
+                  className="lf-roles__row"
+                  aria-current={selected?.role.id === role.id ? 'true' : undefined}
+                >
+                  <span className="lf-roles__row-head">
+                    <strong>{role.name}</strong>
+                    {/* The role's own scope, as the roles API returns it (M2-03), and how far its grants reach when wider. */}
+                    <span className="lf-roles__scope" title="Default scope, and the widest any permission reaches">
+                      · {scopeLabel(role.defaultScope)}
+                      {role.widestScope &&
+                        SCOPE_RANK[role.widestScope] > SCOPE_RANK[role.defaultScope] &&
+                        ` (up to ${scopeLabel(role.widestScope)})`}
+                    </span>
+                    {role.isSystem && <span className="lf-roles__default">default</span>}
+                    {!role.isActive && <span className="lf-roles__default">inactive</span>}
+                  </span>
+                  {/*
+                   * What the role is for, in words. This line used to read the
+                   * role's key — `realestate_ops` — which is an implementation
+                   * detail standing where the explanation belongs. The key is
+                   * still here for an administrator who needs it, on hover and
+                   * in the detail panel opposite.
+                   */}
+                  {role.description && <span className="lf-roles__purpose">{role.description}</span>}
+                  <span className="lf-roles__slug" title={`Role key: ${role.key}`}>
+                    {role.modules.length
+                      ? `${role.modules.length} module${role.modules.length === 1 ? '' : 's'}`
+                      : 'No permissions yet'}{' '}
+                    · {role.users} user{role.users === 1 ? '' : 's'}
+                  </span>
+                </Link>
+              ))}
+            </div>
           ))}
           {mayManage && (
             <div className="lf-roles__list-actions">
