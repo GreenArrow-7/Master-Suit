@@ -14,6 +14,7 @@ import { basic, vendorFetch } from './telephony/http';
 import { GRAPH_VERSION } from './meta/send';
 import { GRAPH_EVENTS, googleOAuthConfigured, googleToken, microsoftOAuthConfigured, microsoftToken } from './calendar';
 import { aiProviderKey, generateWithTools, type AiProviderKey } from '../ai/provider';
+import { checkModel, describeCheck } from '../ai/catalogue';
 
 export type VerifyResult = { ok: true; detail?: string } | { ok: false; detail: string } | { ok: null; detail: string };
 
@@ -108,6 +109,38 @@ export async function verifyConnection(provider: string, c: Record<string, strin
         if (mismatch) return { ok: false, detail: mismatch };
 
         /**
+         * The assistant's own request, because a live key and a listed model
+         * still say nothing about whether ONE AI can run.
+         *
+         * ONE AI was down in production for every question while this card
+         * read Connected: one of its sixteen tools took no arguments, Google
+         * refused the declaration, and nothing that ran here sent a tool at
+         * all. So the real declarations go to the real endpoint, on whichever
+         * provider is selected. Answers null when accepted, else the reason.
+         *
+         * Imported here rather than at module load: the tool layer pulls in the
+         * CRM services, and nothing else in this file needs them.
+         */
+        const toolRound = async (model: string): Promise<string | null> => {
+          const { TOOLS } = await import('../ai/assistant/tools');
+          try {
+            await generateWithTools({
+              credential: { key: c.apiKey ?? '', provider: selected },
+              model,
+              system: 'Connection check. Reply with OK.',
+              turns: [{ role: 'user', text: 'OK' }],
+              tools: TOOLS.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })),
+              maxOutputTokens: 16,
+            });
+            return null;
+          } catch (err) {
+            // Through `redactSecrets` like every other vendor body on this
+            // screen: a 400 quotes the payload it refused.
+            return redactSecrets((err as Error).message ?? '', c).slice(0, 200);
+          }
+        };
+
+        /**
          * OpenRouter keys are Bearer tokens against an OpenAI-compatible
          * endpoint, so the check that proves a Google key says nothing about
          * one. Verifying the wrong way round is worse than not verifying: the
@@ -120,7 +153,7 @@ export async function verifyConnection(provider: string, c: Record<string, strin
             return {
               ok: false,
               detail:
-                'OpenRouter selected but no model is set. It has no default — set one, e.g. google/gemini-2.0-flash-001.',
+                'OpenRouter selected but no model is set. It has no default — pick a model id from the Model list.',
             };
           }
           /**
@@ -139,7 +172,18 @@ export async function verifyConnection(provider: string, c: Record<string, strin
             typeof credits.data?.limit === 'number'
               ? `${(credits.data.limit - (credits.data.usage ?? 0)).toFixed(2)} credits remaining`
               : 'no credit limit set';
-          return { ok: true, detail: `OpenRouter key valid — ${remaining}. Model ${c.model}.` };
+          const key = `OpenRouter key valid — ${remaining}.`;
+          // Credential, then model, then tool calling: each failure names its own fix.
+          const check = await checkModel('openrouter', c.model, c.apiKey ?? '');
+          if (!check.ok) return { ok: false, detail: `${key} ${describeCheck('openrouter', c.model, check)}` };
+          const refused = await toolRound(c.model);
+          if (refused) {
+            return {
+              ok: false,
+              detail: `${key} ${c.model} is listed, but the assistant's tool request failed — ${refused}`,
+            };
+          }
+          return { ok: true, detail: `${key} Model ${check.model.label} (${c.model}). Tool calling verified.` };
         }
 
         /**
@@ -165,43 +209,22 @@ export async function verifyConnection(provider: string, c: Record<string, strin
          * so the health line is where that answer belongs.
          */
         const chosen = usable.find((n) => n === 'gemini-flash-latest') ?? usable[0]!;
+        // A 404 from the tool round would read as a declaration problem; name the id instead.
+        if (c.model && !usable.includes(c.model)) {
+          return {
+            ok: false,
+            detail: `Google key valid, but ${c.model} is not a model id this key can use, e.g. ${chosen}.`,
+          };
+        }
 
-        /**
-         * And then the assistant's own request, because listing models proves
-         * only that the key is live.
-         *
-         * ONE AI was down in production for every question while this card
-         * read Connected: one of its sixteen tools took no arguments, Google
-         * refused the declaration, and nothing that ran here sent a tool at
-         * all. A health check that exercises a different request than the
-         * feature it reports on is how that stayed invisible. So the real
-         * declarations go to the real endpoint, and "Connected" means the
-         * payload ONE AI sends is accepted.
-         *
-         * Imported here rather than at module load: the tool layer pulls in the
-         * CRM services, and nothing else in this file needs them.
-         */
-        const { TOOLS } = await import('../ai/assistant/tools');
         const model = c.model || chosen;
-        try {
-          await generateWithTools({
-            credential: { key: c.apiKey ?? '', provider: 'google' },
-            model,
-            system: 'Connection check. Reply with OK.',
-            turns: [{ role: 'user', text: 'OK' }],
-            tools: TOOLS.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })),
-            maxOutputTokens: 16,
-          });
-        } catch (err) {
-          // Through `redactSecrets` like every other vendor body on this
-          // screen: a 400 quotes the payload it refused, and this one carries
-          // the whole tool layer.
-          const detail = redactSecrets((err as Error).message ?? '', c).slice(0, 200);
+        const refused = await toolRound(model);
+        if (refused) {
           return {
             ok: false,
             // Named apart from a bad key on purpose: the key is fine and
             // re-issuing it changes nothing.
-            detail: `The key works, but ${model} refused the assistant's tool declarations — ${detail}`,
+            detail: `The key works, but ${model} refused the assistant's tool declarations — ${refused}`,
           };
         }
         return {
@@ -290,7 +313,7 @@ function keyVendorMismatch(apiKey: string, provider: AiProviderKey): string | un
   if (key.startsWith('sk-or-')) {
     return usingOpenRouter
       ? undefined
-      : 'That is an OpenRouter key, but Provider is google. Set Provider to "openrouter" and Model to an OpenRouter id, e.g. google/gemini-2.0-flash-001.';
+      : 'That is an OpenRouter key, but Provider is google. Set Provider to "openrouter" and pick an OpenRouter model id from the Model list.';
   }
   if (usingOpenRouter) return undefined; // OpenRouter accepts several key shapes.
   if (key.startsWith('sk-ant-'))

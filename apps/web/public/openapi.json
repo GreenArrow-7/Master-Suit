@@ -10866,6 +10866,51 @@
         }
       }
     },
+    "/api/v1/integrations/{provider}/models": {
+      "get": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "integrations:MANAGE_CONFIGURATION",
+        "x-permission": "integrations:MANAGE_CONFIGURATION",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "operationId": "getIntegrationsProviderModels",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "const": "gemini"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
     "/api/v1/integrations/meta": {
       "post": {
         "tags": [

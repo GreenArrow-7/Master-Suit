@@ -383,6 +383,27 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
 
   const configured = provider.status !== 'NOT_CONFIGURED';
 
+  /**
+   * The Model box offers the selected provider's own tool-capable ids, so the
+   * id is picked rather than typed — a typed display name ("Google Gemini")
+   * is how ONE AI went down. Native datalist: searchable, shows the id.
+   */
+  const [models, setModels] = useState<{ id: string; label: string }[]>([]);
+  const listsModels = provider.key === 'gemini' && canEdit;
+  const chosenProvider = String(values.provider ?? provider.settings.provider ?? '');
+  useEffect(() => {
+    if (!open || !listsModels) return;
+    let live = true;
+    const q = chosenProvider ? `?provider=${encodeURIComponent(chosenProvider)}` : '';
+    fetch(`/api/v1/integrations/gemini/models${q}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => live && setModels(d?.models ?? []))
+      .catch(() => live && setModels([]));
+    return () => {
+      live = false;
+    };
+  }, [open, listsModels, chosenProvider]);
+
   // Back from the consent screen with the browser's Back button: the page comes out of the cache still "Opening…".
   useEffect(() => {
     const restored = (event: PageTransitionEvent) => event.persisted && setBusy(null);
@@ -482,6 +503,12 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
                 {f.label}: {provider.settings[f.key] ? 'on' : 'off'}
               </p>
             ))}
+          {provider.key === 'gemini' && typeof provider.settings.model === 'string' && provider.settings.model && (
+            <p className="lf-hint" style={{ marginTop: 4 }}>
+              Model: {typeof provider.settings.modelLabel === 'string' ? `${provider.settings.modelLabel} · ` : ''}
+              <code>{provider.settings.model}</code>
+            </p>
+          )}
           {provider.errorMessage && (
             <p className="lf-hint lf-hint--error" style={{ marginTop: 4 }}>
               {provider.errorMessage}
@@ -665,7 +692,15 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
                   }
                   value={String(values[field.key] ?? '')}
                   onChange={(e) => setValues({ ...values, [field.key]: e.target.value })}
+                  list={listsModels && field.key === 'model' ? `${provider.key}-model-ids` : undefined}
                 />
+                {listsModels && field.key === 'model' && (
+                  <datalist id={`${provider.key}-model-ids`}>
+                    {models.map((m) => (
+                      <option key={m.id} value={m.id} label={m.label} />
+                    ))}
+                  </datalist>
+                )}
                 {field.hint && <p className="lf-hint">{field.hint}</p>}
               </div>
             );
